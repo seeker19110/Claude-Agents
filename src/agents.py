@@ -87,6 +87,7 @@ def firefighting_agent_node(state: AgentState):
 def qs_agent_node(state: AgentState):
     prompt = """Bạn là một Kỹ sư QS xuất sắc sở hữu Khả năng Hiểu Ngữ cảnh Hình học & Mũi tên Chỉ dẫn (Spatial Intelligence).
     - Bạn dùng công cụ `read_cad` để đọc bản vẽ DXF. 
+    - QUY TẮC BẮT BUỘC TẠO FILE EXCEL: Sau khi đọc/bóc khối lượng bản vẽ CAD, bạn BẮT BUỘC PHẢI GỌI TOOL `write_excel` để ghi kết quả ra file Excel vật lý (ví dụ: `write_excel(file_path='bao_cao_du_toan.xlsx', data=...)`). Tuyệt đối KHÔNG được chỉ trả lời lý thuyết suông mà KHÔNG tạo file Excel!
     - QUY TẮC ĐỒNG NHẤT KÝ HIỆU ĐƯỜNG KÍNH: Hiểu rõ các ký hiệu `Ø110` = `D110` = `d110` = `%%c110` = `Φ110` = `OD110` (Đường kính ngoài 110mm) = `DN100` (Đường kính danh nghĩa). Tự động gộp tất cả các ký hiệu này về cùng một hạng mục ống duy nhất khi bóc dự toán.
     - PHÂN TÍCH MŨI TÊN & GHI CHÚ CHỈ DẪN: Hãy dùng công cụ `analyze_cad_spatial_context` để hiểu các mũi tên chỉ dẫn (Leader), đường ống và thẻ ghi chú kích thước/chất liệu (ví dụ: 'Ống uPVC Ø110', 'Ống gió 600x400') như một kỹ sư thật sự.
     - Nếu bản vẽ bị phá Block (nổ Block), hãy yêu cầu/hoặc tự dùng `ai_block_recovery` để phục hồi lại Block trước khi đếm khối lượng.
@@ -95,7 +96,7 @@ def qs_agent_node(state: AgentState):
       + Electrical (Điện): 'LIGHT_PANEL' (600x600), 'LIGHT_DOWNLIGHT' (Tròn R=100), 'SOCKET' (Tròn R=50), 'SWITCH' (Tròn R=30)
       + Firefighting (PCCC): 'SPRINKLER' (Tròn R=50)
       + Plumbing (Nước): 'PUMP' (Tròn R=50)
-    Sau khi phục hồi và phân tích không gian, đếm lại và xuất file Excel dự toán (`write_excel`).
+    Sau khi phân tích không gian và đếm xong, GỌI NGAY `write_excel` để xuất file Excel dự toán cho người dùng!
     """
     return call_mepf_agent(state, prompt, "QSAgent")
 
@@ -135,6 +136,7 @@ def reviewer_agent_node(state: AgentState):
 Yêu cầu bắt buộc:
 1. Nếu là tính toán thiết kế MEPF, phải có trích dẫn Tiêu chuẩn (TCVN/ASHRAE/NFPA).
 2. Nếu là gọi Tool đọc/ghi file, đánh giá APPROVE ngay để không chặn luồng.
+3. BẮT BUỘC XUẤT FILE EXCEL: Nếu bộ phận QSAgent báo cáo bóc khối lượng nhưng KHÔNG gọi tool `write_excel` để xuất file Excel thật sự, bạn BẮT BUỘC phải REJECT và yêu cầu QSAgent gọi tool `write_excel` ngay lập tức!
 Nếu thông tin sai kỹ thuật hoặc thiếu căn cứ, hãy REJECT.""")
 
     try:
