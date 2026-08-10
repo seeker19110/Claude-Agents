@@ -118,41 +118,48 @@ with tab_chat:
             config = {"configurable": {"thread_id": st.session_state.thread_id}}
             start_time = time.time()
             
-            try:
-                for event in graph_app.stream({"messages": [HumanMessage(content=full_user_prompt)]}, config=config, stream_mode="updates"):
-                    for node_name, node_state in event.items():
-                        if "messages" in node_state:
-                            last_msg = node_state["messages"][-1]
-                            name = getattr(last_msg, "name", node_name).upper()
-                            content = last_msg.content
-                            is_tool_status = False
-                            if not content and hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
-                                tools_used = ", ".join([t['name'] for t in last_msg.tool_calls])
-                                content = f"*(⏳ Đang thực thi công cụ: {tools_used}...)*"
-                                is_tool_status = True
-                            
-                            badge_title = f"### 🏢 [{name}]\n"
-                            full_response += f"{badge_title}{content}\n\n---\n"
-                            
-                            elapsed = max(time.time() - start_time, 0.01)
-                            est_tokens = max(1, int(len(full_response) / 4))
-                            tps = est_tokens / elapsed
-                            
-                            if is_tool_status:
-                                live_speed = f"*(⏳ Đang chờ công cụ Python xử lý file... | Thời gian: {elapsed:.1f}s)*"
-                            else:
-                                live_speed = f"*(⚡ Tốc độ sinh AI: **{tps:.1f} tokens/s** | Thời gian: {elapsed:.1f}s)*"
-                            
-                            message_placeholder.markdown(full_response + "\n" + live_speed + " ▌")
-                            
-                elapsed = max(time.time() - start_time, 0.01)
-                est_tokens = max(1, int(len(full_response) / 4))
-                tps = est_tokens / elapsed
-                speed_summary = f"\n*(⚡ Tốc độ sinh: **{tps:.1f} tokens/giây** | Thời gian xử lý: **{elapsed:.2f}s** | Dung lượng: **~{est_tokens} tokens**)*\n"
-                full_response += speed_summary
-                message_placeholder.markdown(full_response)
-            except Exception as e:
-                full_response += f"\n\n**[LỖI HỆ THỐNG]**\n{str(e)}"
-                message_placeholder.markdown(full_response)
+            with st.status("🚀 Giám đốc Dự án đang điều phối nhân sự xử lý...", expanded=True) as status_container:
+                try:
+                    for event in graph_app.stream({"messages": [HumanMessage(content=full_user_prompt)]}, config=config, stream_mode="updates"):
+                        for node_name, node_state in event.items():
+                            if "messages" in node_state:
+                                last_msg = node_state["messages"][-1]
+                                name = getattr(last_msg, "name", node_name).upper()
+                                content = last_msg.content
+                                is_tool_status = False
+                                
+                                if not content and hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+                                    tools_used = ", ".join([t['name'] for t in last_msg.tool_calls])
+                                    content = f"*(⏳ Đang thực thi công cụ: `{tools_used}`...)*"
+                                    is_tool_status = True
+                                    status_container.update(label=f"⚙️ **{name}** đang chạy công cụ: `{tools_used}`...", state="running")
+                                else:
+                                    status_container.update(label=f"🧠 **{name}** đang phân tích và lập báo cáo...", state="running")
+                                
+                                badge_title = f"### 🏢 [{name}]\n"
+                                full_response += f"{badge_title}{content}\n\n---\n"
+                                
+                                elapsed = max(time.time() - start_time, 0.01)
+                                est_tokens = max(1, int(len(full_response) / 4))
+                                tps = est_tokens / elapsed
+                                
+                                if is_tool_status:
+                                    live_speed = f"*(⏳ Đang xử lý dữ liệu... | Thời gian: {elapsed:.1f}s)*"
+                                else:
+                                    live_speed = f"*(⚡ Tốc độ sinh AI: **{tps:.1f} tokens/s** | Thời gian: {elapsed:.1f}s)*"
+                                
+                                message_placeholder.markdown(full_response + "\n" + live_speed + " ▌")
+                                
+                    elapsed = max(time.time() - start_time, 0.01)
+                    est_tokens = max(1, int(len(full_response) / 4))
+                    tps = est_tokens / elapsed
+                    speed_summary = f"\n*(⚡ Tốc độ sinh: **{tps:.1f} tokens/giây** | Thời gian xử lý: **{elapsed:.2f}s** | Dung lượng: **~{est_tokens} tokens**)*\n"
+                    full_response += speed_summary
+                    message_placeholder.markdown(full_response)
+                    status_container.update(label="✅ Đã hoàn tất nhiệm vụ!", state="complete", expanded=False)
+                except Exception as e:
+                    full_response += f"\n\n**[LỖI HỆ THỐNG]**\n{str(e)}"
+                    message_placeholder.markdown(full_response)
+                    status_container.update(label="❌ Gặp lỗi hệ thống!", state="error")
                 
             st.session_state.chat_history.append({"role": "assistant", "content": full_response})
