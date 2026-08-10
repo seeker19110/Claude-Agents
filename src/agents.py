@@ -170,12 +170,19 @@ class RouteResponse(BaseModel):
 
 def supervisor_node(state: AgentState):
     messages = state.get("messages", [])
+    errors = state.get("errors", [])
     if not messages:
         return {"next": "FINISH"}
         
     last_msg = messages[-1]
     
     if getattr(last_msg, "name", "") == "ReviewerAgent":
+        content = getattr(last_msg, "content", "")
+        if "TỪ CHỐI" in content or errors:
+            sender = state.get("sender", "qs")
+            if sender in ["mechanical", "electrical", "plumbing", "firefighting", "qs", "cad", "bim"]:
+                return {"next": sender}
+            return {"next": "qs"}
         return {"next": "FINISH"}
 
     supervisor_prompt = """Bạn là Giám đốc Dự án (Project Manager) của Văn phòng tư vấn MEPF.
