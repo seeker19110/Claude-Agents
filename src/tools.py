@@ -470,16 +470,39 @@ def edit_cad(file_path: str, actions_json: str) -> str:
     except Exception as e:
         return f"Lỗi sửa CAD (.dxf): {e}"
 
+@tool
+def render_cad_image(file_path: str, output_png_path: str = "cad_preview.png") -> str:
+    """Chuyển đổi file bản vẽ CAD (.dxf) thành hình ảnh PNG sắc nét để hiển thị trực quan (Computer Vision) lên giao diện Web."""
+    print(f"\n[Tool] Rendering CAD to Image: {file_path} -> {output_png_path}")
+    try:
+        from ezdxf.addons.drawing import RenderContext, Frontend
+        from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
+        import matplotlib.pyplot as plt
+        
+        doc = ezdxf.readfile(file_path)
+        msp = doc.modelspace()
+        
+        fig = plt.figure(figsize=(12, 8), dpi=150)
+        ax = fig.add_axes([0, 0, 1, 1])
+        ctx = RenderContext(doc)
+        out = MatplotlibBackend(ax)
+        Frontend(ctx, out).draw_layout(msp, finalize=True)
+        fig.savefig(output_png_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        return f"Đã xuất hình ảnh bản vẽ CAD (Computer Vision) thành công tại: {output_png_path}"
+    except Exception as e:
+        return f"Lỗi xuất ảnh CAD: {e}"
+
 from src.hvac_tools import calc_psychrometrics, calc_duct_size, calc_cooling_load, calc_chw_pipe_size, calc_pump_fan_power, calc_ventilation_rate
 from src.elec_tools import calc_cable_size, calc_breaker_size, calc_lighting_qty
 from src.plumb_tools import calc_water_pipe, calc_water_tank, calc_plumbing_pump_head
 from src.ff_tools import calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty
 
 tools = [
-    search_standards, search_web, calculate, list_directory, read_excel, write_excel, 
-    read_word, write_word, read_pdf, read_cad, write_cad, edit_cad, execute_python_code, ai_block_recovery,
-    calc_psychrometrics, calc_duct_size, calc_cooling_load,
-    calc_chw_pipe_size, calc_pump_fan_power, calc_ventilation_rate,
+    search_web, execute_python_code, list_directory,
+    read_excel, write_excel, read_word, write_word, read_pdf,
+    read_cad, write_cad, edit_cad, ai_block_recovery, render_cad_image,
+    calc_psychrometrics, calc_duct_size, calc_cooling_load, calc_chw_pipe_size, calc_pump_fan_power, calc_ventilation_rate,
     calc_cable_size, calc_breaker_size, calc_lighting_qty,
     calc_water_pipe, calc_water_tank, calc_plumbing_pump_head,
     calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty

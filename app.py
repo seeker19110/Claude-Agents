@@ -49,7 +49,11 @@ with st.sidebar:
     st.caption("Khởi chạy với Project Manager, MEPF Agents (Tra cứu Tiêu chuẩn), CAD và QS Agents.")
 
 # 3. Main Area - Tabs
-tab_chat, tab_excel = st.tabs(["💬 Chat Tư vấn & Bóc tách", "📊 Trình xem Bảng tính Excel"])
+tab_chat, tab_excel, tab_cad = st.tabs([
+    "💬 Chat Tư vấn & Bóc tách", 
+    "📊 Trình xem Bảng tính Excel", 
+    "🖼️ Trình xem Bản vẽ CAD (Visual Preview)"
+])
 
 with tab_excel:
     st.header("📊 Xem trực tiếp Bảng tính Dự toán Excel")
@@ -77,6 +81,50 @@ with tab_excel:
                 st.error(f"Lỗi khi đọc file Excel: {e}")
     else:
         st.info("Chưa có file Excel dự toán nào được tạo trong dự án này.")
+
+with tab_cad:
+    st.header("🖼️ Xem trực tiếp Bản vẽ CAD sắc nét (Computer Vision)")
+    cad_files = [f for f in os.listdir('.') if f.endswith(('.dxf', '.dwg')) and os.path.isfile(f)]
+    if cad_files:
+        col_cad_sel, col_cad_btn = st.columns([0.7, 0.3])
+        with col_cad_sel:
+            selected_cad = st.selectbox("📂 Chọn file bản vẽ CAD để xem trực quan:", cad_files)
+        with col_cad_btn:
+            st.write("")
+            st.write("")
+            render_clicked = st.button("📸 Xuất ảnh CAD Trực quan", key="btn_render_cad", use_container_width=True, type="primary")
+            
+        preview_png_path = f"preview_{selected_cad}.png"
+        
+        if render_clicked and selected_cad:
+            with st.spinner("🎨 Đang render bản vẽ CAD thành hình ảnh PNG sắc nét..."):
+                try:
+                    from ezdxf.addons.drawing import RenderContext, Frontend
+                    from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
+                    import matplotlib.pyplot as plt
+                    import ezdxf
+                    
+                    doc = ezdxf.readfile(selected_cad)
+                    msp = doc.modelspace()
+                    fig = plt.figure(figsize=(14, 9), dpi=150)
+                    ax = fig.add_axes([0, 0, 1, 1])
+                    ctx = RenderContext(doc)
+                    out = MatplotlibBackend(ax)
+                    Frontend(ctx, out).draw_layout(msp, finalize=True)
+                    fig.savefig(preview_png_path, dpi=150, bbox_inches='tight')
+                    plt.close(fig)
+                    st.success(f"Đã tạo ảnh CAD trực quan thành công!")
+                except Exception as e:
+                    st.error(f"Lỗi render ảnh CAD: {e}")
+                    
+        if os.path.exists(preview_png_path):
+            st.image(preview_png_path, caption=f"🖼️ Hình ảnh trực quan của bản vẽ: {selected_cad}", use_container_width=True)
+        elif os.path.exists("cad_preview.png"):
+            st.image("cad_preview.png", caption="🖼️ Hình ảnh trực quan của bản vẽ CAD gần nhất", use_container_width=True)
+        else:
+            st.info("Nhấp nút '📸 Xuất ảnh CAD Trực quan' ở trên để render và xem hình ảnh bản vẽ sắc nét!")
+    else:
+        st.info("Chưa có file bản vẽ CAD (.dxf) nào được tải lên trong dự án.")
 
 with tab_chat:
     # Render toàn bộ lịch sử tin nhắn

@@ -98,12 +98,13 @@ def qs_agent_node(state: AgentState):
 
 # --- 6. CAD Agent (Draftsman) ---
 def cad_agent_node(state: AgentState):
-    prompt = """Bạn là Họa viên CAD (Draftsman) xuất sắc nhất thế giới.
-    - Bạn có quyền sử dụng công cụ `read_cad`, `write_cad`, và `edit_cad`.
+    prompt = """Bạn là Họa viên CAD (Draftsman) xuất sắc nhất thế giới sở hữu Thị giác Máy tính (Computer Vision).
+    - Bạn có quyền sử dụng công cụ `read_cad`, `write_cad`, `edit_cad`, và `render_cad_image`.
+    - THỊ GIÁC CAD (COMPUTER VISION): Mỗi khi đọc, chỉnh sửa hoặc tạo mới bản vẽ, bạn NÊN gọi công cụ `render_cad_image` để xuất hình ảnh PNG trực quan giúp người dùng và hệ thống xem trực tiếp bản vẽ trên màn hình.
     - CÔNG CỤ PHỤC HỒI (AI BLOCK RECOVERY): Khi khách yêu cầu khôi phục bản vẽ vỡ block, dùng công cụ `ai_block_recovery` quét hình dáng (circle/rectangle) để ráp lại thành Block từ Tổng kho.
       + Mẹo: Các block chuẩn 4 hệ MEPF đã có sẵn trong kho gồm: 'DIFFUSER_SUPPLY', 'DIFFUSER_RETURN', 'FCU', 'LIGHT_PANEL', 'LIGHT_DOWNLIGHT', 'SOCKET', 'SWITCH', 'SPRINKLER', 'PUMP'.
     - CƠ CHẾ AUTO-DRAW (SIÊU NĂNG LỰC): Nếu người dùng yêu cầu chèn một thiết bị máy móc mà không có sẵn trong thư viện, hãy dùng `search_web` tìm kích thước, dùng `execute_python_code` viết script ezdxf vẽ Block đó lưu vào 'data/blocks/mepf_library.dxf', sau đó chèn vào bản vẽ.
-    - LUẬT PHÊ DUYỆT BẮT BUỘC: Sau khi bạn dùng tool sửa xong bản vẽ, LUÔN chốt lại bằng câu: "Bản vẽ đã hoàn thiện và làm sạch. Xin Sếp hãy mở file lên kiểm tra và gõ 'DUYỆT' để tôi báo Giám đốc gọi bộ phận QS bóc khối lượng!".
+    - LUẬT PHÊ DUYỆT BẮT BUỘC: Sau khi bạn dùng tool sửa xong bản vẽ, LUÔN chốt lại bằng câu: "Bản vẽ đã hoàn thiện và làm sạch. Xin Sếp hãy mở file lên kiểm tra và nhấp nút '✅ DUYỆT BẢN VẼ' để tôi báo Giám đốc gọi bộ phận QS bóc khối lượng!".
     """
     return call_mepf_agent(state, prompt, "CADAgent")
 
