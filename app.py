@@ -3,71 +3,20 @@ from langchain_core.messages import HumanMessage
 from src.graph import app as graph_app
 import uuid
 import os
+import pandas as pd
 
 st.set_page_config(page_title="Văn phòng MEPF Hoàn hảo", layout="wide", page_icon="🏢")
 
-st.markdown("""
-<style>
-/* Điều chỉnh khoảng cách lề trên để không bị che bởi Sticky Header */
-.main .block-container {
-    padding-top: 3.8rem !important;
-}
-
-/* Tùy chỉnh màu nền cho thanh Navbar Top Header mặc định của Streamlit */
-header[data-testid="stHeader"] {
-    background-color: #11111b !important;
-    z-index: 999990 !important;
-}
-
-/* Định vị tiêu đề nằm cố định trên thanh Top Header cùng hàng với nút Deploy */
-.top-nav-title {
-    position: fixed;
-    top: 0;
-    left: 4.5rem;
-    height: 3.75rem;
-    z-index: 999999;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    pointer-events: none;
-}
-
-.top-nav-main-title {
-    color: #cdd6f4;
-    font-weight: 700;
-    font-size: 15px;
-    white-space: nowrap;
-}
-
-.top-nav-sub-title {
-    color: #a6adc8;
-    font-size: 12px;
-    white-space: nowrap;
-    opacity: 0.85;
-    border-left: 1px solid #45475a;
-    padding-left: 10px;
-}
-
-@media (max-width: 768px) {
-    .top-nav-sub-title {
-        display: none;
-    }
-}
-</style>
-
-<div class="top-nav-title">
-    <span class="top-nav-main-title">🏢 Văn phòng Tư vấn Thiết kế MEPF (X-Agents)</span>
-    <span class="top-nav-sub-title">Tự động hóa RAG Tiêu chuẩn, xử lý AutoCAD (DXF) & Lập dự toán</span>
-</div>
-""", unsafe_allow_html=True)
-
-import pandas as pd
+# 1. Header Trang web (Gọn gàng, Cố định đỉnh)
+st.title("🏢 Văn phòng Tư vấn Thiết kế MEPF (X-Agents)")
+st.caption("Hệ thống tự động hóa tư vấn chuyên sâu ứng dụng Tiêu chuẩn (RAG), xử lý AutoCAD (DXF), và tự động lập dự toán.")
 
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
+# 2. Sidebar - Quản lý Hồ sơ
 with st.sidebar:
     st.header("📂 Trạm Quản lý Hồ sơ")
     uploaded_file = st.file_uploader("Tải lên bản vẽ (.dxf) hoặc báo cáo (.pdf, .xlsx)...", type=['dxf', 'pdf', 'xlsx'])
@@ -97,8 +46,8 @@ with st.sidebar:
     st.divider()
     st.header("⚙️ Cấu hình hệ thống")
     st.caption("Khởi chạy với Project Manager, MEPF Agents (Tra cứu Tiêu chuẩn), CAD và QS Agents.")
-    st.caption("Tính năng bảo mật Human-in-the-loop được tắt trên UI để đảm bảo tự động hóa hoàn toàn.")
 
+# 3. Main Area - Tabs
 tab_chat, tab_excel = st.tabs(["💬 Chat Tư vấn & Bóc tách", "📊 Trình xem Bảng tính Excel"])
 
 with tab_excel:
@@ -129,17 +78,14 @@ with tab_excel:
         st.info("Chưa có file Excel dự toán nào được tạo trong dự án này.")
 
 with tab_chat:
+    # Render toàn bộ lịch sử tin nhắn
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-# Ghim ô chat_input cố định ở đáy trang web (Root Level)
-user_input = st.chat_input("Giao việc cho Giám đốc Dự án (Ví dụ: Thiết kế chiếu sáng phòng khách theo tiêu chuẩn và lập dự toán)...")
-
-if user_input:
-    st.session_state.chat_history.append({"role": "user", "content": user_input})
-    
-    with tab_chat:
+    # Ô chat input chuẩn Streamlit (Luôn nằm ở đáy cùng của tab chat)
+    if user_input := st.chat_input("Giao việc cho Giám đốc Dự án (Ví dụ: Thiết kế chiếu sáng phòng khách theo tiêu chuẩn và lập dự toán)..."):
+        st.session_state.chat_history.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.markdown(user_input)
             
@@ -167,7 +113,6 @@ if user_input:
                                 tools_used = ", ".join([t['name'] for t in last_msg.tool_calls])
                                 content = f"*(Đang sử dụng công cụ: {tools_used}...)*"
                             
-                            # Nhãn phòng ban luôn nằm nổi bật phía trên cùng
                             badge_title = f"### 🏢 [{name}]\n"
                             full_response += f"{badge_title}{content}\n\n---\n"
                             message_placeholder.markdown(full_response + "▌")
