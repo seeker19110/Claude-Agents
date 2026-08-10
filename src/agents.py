@@ -13,7 +13,7 @@ model_name = settings.model_name
 if llm_provider == "groq":
     from langchain_groq import ChatGroq
     api_key = settings.groq_api_key or "dummy_key_to_prevent_crash_on_import"
-    if not model_name or "gpt" in model_name or "gemini" in model_name:
+    if not model_name or "gpt" in model_name or "gemini" in model_name or "3.1" in model_name:
         model_name = "llama-3.3-70b-versatile"
     llm = ChatGroq(model=model_name, api_key=api_key, temperature=0)
 elif llm_provider == "gemini":
