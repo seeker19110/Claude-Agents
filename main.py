@@ -18,5 +18,11 @@ def run_multi_agent():
         if "__end__" not in s:
             print(s)
 
+    print("\n--- Test 3: Vòng lặp sửa lỗi (Retry Loop) ---")
+    initial_state_3 = {"messages": [HumanMessage(content="Hãy thực hiện hành động giả lập thử lỗi.")], "errors": []}
+    for s in app.stream(initial_state_3, config={"configurable": {"thread_id": "test_user_error_3"}, "recursion_limit": 10}):
+        if "__end__" not in s:
+            print(s)
+
 if __name__ == "__main__":
     run_multi_agent()

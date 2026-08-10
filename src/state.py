@@ -21,3 +21,7 @@ class AgentState(TypedDict):
     
     # Errors occurred during execution, if any
     errors: Annotated[Sequence[str], operator.add]
+    
+    # Track the last active worker (e.g. "rag_agent" or "tool_agent") 
+    # so Reviewer knows who to send back to if there's an error.
+    sender: str
