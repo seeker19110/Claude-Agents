@@ -9,16 +9,27 @@ from ezdxf import audit
 import math
 import re
 
-def normalize_pipe_diameter_spec(text: str) -> str:
-    """Chuẩn hóa mọi ký hiệu đường kính ống MEPF trong CAD (%%c, Φ, Ø, D, d, DN, OD) về chuẩn đồng nhất Ø110 (D110/DN100)."""
+def normalize_mepf_parameter_spec(text: str) -> str:
+    """Chuẩn hóa toàn bộ các ký hiệu thông số kỹ thuật MEPF trong CAD về định dạng đồng nhất cho AI:
+    1. Đường kính ống: %%c, Φ, Ø, D, d, DN, OD -> Ø110 (D110)
+    2. Kích thước ống gió: 600*400, 600X400, W600xH400 -> 600x400
+    3. Độ dốc thoát nước: i=1%, s=1%, i=1.5% -> i=1%
+    4. Tiết diện dây điện: 3x2.5mm2, 3x2.5sqmm -> 3x2.5mm²
+    5. Điện áp / Pha: 220V/1P, 220V 1 Phase -> 220V-1P
+    6. Lưu lượng: CMH, m3/h -> m³/h
+    """
     if not text:
         return text
     text = text.replace('%%c', 'Ø').replace('%%C', 'Ø').replace('Φ', 'Ø')
-    pattern = r'(?i)(Ø|DN|D|d|OD)\s*(\d+)'
-    def replacer(match):
-        size = match.group(2)
-        return f"Ø{size} (D{size})"
-    return re.sub(pattern, replacer, text)
+    text = re.sub(r'(?i)\b(Ø|DN|D|d|OD)\s*(\d+)\b', r'Ø\2 (D\2)', text)
+    text = re.sub(r'(?i)(?:W)?(\d+)\s*[\*xX]\s*(?:H)?(\d+)', r'\1x\2', text)
+    text = re.sub(r'(?i)\b[is]\s*=\s*(\d+(?:\.\d+)?)\s*%', r'i=\1%', text)
+    text = re.sub(r'(?i)\b(\d+x\d+(?:\.\d+)?)\s*(?:mm2|sqmm|mm²)\b', r'\1mm²', text)
+    text = re.sub(r'(?i)\b(220|230|380|400)\s*V?\s*[\/\-]?\s*([13])\s*(?:P|Phase|Pha)\b', r'\1V-\2P', text)
+    text = re.sub(r'(?i)\b(?:CMH|m3\/h|m3h)\b', r'm³/h', text)
+    return text
+
+normalize_pipe_diameter_spec = normalize_mepf_parameter_spec
 
 @tool
 def search_standards(query: str) -> str:
