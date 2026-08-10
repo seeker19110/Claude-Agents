@@ -30,8 +30,17 @@ with st.sidebar:
     st.info("Sau khi QS hoặc CAD Agent tạo file xong, tải về tại đây.")
     files = [f for f in os.listdir('.') if f.endswith(('.xlsx', '.docx', '.dxf')) and os.path.isfile(f)]
     for f in files:
-        with open(f, "rb") as file:
-            st.download_button(label=f"⬇️ Tải {f}", data=file, file_name=f)
+        col1, col2 = st.columns([0.8, 0.2])
+        with col1:
+            with open(f, "rb") as file:
+                st.download_button(label=f"⬇️ {f}", data=file, file_name=f, key=f"dl_{f}")
+        with col2:
+            if st.button("🗑️", key=f"del_side_{f}", help=f"Xóa file {f}"):
+                try:
+                    os.remove(f)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Lỗi: {e}")
             
     st.divider()
     st.header("⚙️ Cấu hình hệ thống")
@@ -44,8 +53,20 @@ with tab_excel:
     st.header("📊 Xem trực tiếp Bảng tính Dự toán Excel")
     excel_files = [f for f in os.listdir('.') if f.endswith('.xlsx') and os.path.isfile(f)]
     if excel_files:
-        selected_excel = st.selectbox("📂 Chọn file Excel báo cáo cần xem:", excel_files)
-        if selected_excel:
+        col_sel, col_del = st.columns([0.85, 0.15])
+        with col_sel:
+            selected_excel = st.selectbox("📂 Chọn file Excel báo cáo cần xem:", excel_files)
+        with col_del:
+            st.write("")
+            st.write("")
+            if selected_excel and st.button("🗑️ Xóa file", key=f"del_tab_{selected_excel}"):
+                try:
+                    os.remove(selected_excel)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Lỗi: {e}")
+                    
+        if selected_excel and os.path.exists(selected_excel):
             try:
                 df = pd.read_excel(selected_excel)
                 st.success(f"Đã nạp file thành công: **{selected_excel}** ({len(df)} dòng dữ liệu)")
