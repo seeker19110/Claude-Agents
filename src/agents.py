@@ -8,19 +8,26 @@ from src.tools import tools
 
 # Initialize LLM
 llm_provider = settings.llm_provider.lower()
+model_name = settings.model_name
 
 if llm_provider == "groq":
     from langchain_groq import ChatGroq
     api_key = settings.groq_api_key or "dummy_key_to_prevent_crash_on_import"
-    llm = ChatGroq(model=settings.model_name, api_key=api_key, temperature=0)
+    if not model_name or "gpt" in model_name or "gemini" in model_name:
+        model_name = "llama-3.3-70b-versatile"
+    llm = ChatGroq(model=model_name, api_key=api_key, temperature=0)
 elif llm_provider == "gemini":
     from langchain_google_genai import ChatGoogleGenerativeAI
     api_key = settings.google_api_key or "dummy_key_to_prevent_crash_on_import"
-    llm = ChatGoogleGenerativeAI(model=settings.model_name, google_api_key=api_key, temperature=0)
+    if not model_name or "gpt" in model_name or "llama" in model_name:
+        model_name = "gemini-1.5-flash"
+    llm = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0)
 else:
     from langchain_openai import ChatOpenAI
     api_key = settings.openai_api_key or "dummy_key_to_prevent_crash_on_import"
-    llm = ChatOpenAI(model=settings.model_name, api_key=api_key, temperature=0)
+    if not model_name or "llama" in model_name or "gemini" in model_name:
+        model_name = "gpt-4o-mini"
+    llm = ChatOpenAI(model=model_name, api_key=api_key, temperature=0)
 
 tool_llm = llm.bind_tools(tools)
 
