@@ -7,8 +7,21 @@ from typing import Literal
 from src.tools import tools
 
 # Initialize LLM
-api_key = settings.openai_api_key or "dummy_key_to_prevent_crash_on_import"
-llm = ChatOpenAI(model=settings.model_name, api_key=api_key, temperature=0)
+llm_provider = settings.llm_provider.lower()
+
+if llm_provider == "groq":
+    from langchain_groq import ChatGroq
+    api_key = settings.groq_api_key or "dummy_key_to_prevent_crash_on_import"
+    llm = ChatGroq(model=settings.model_name, api_key=api_key, temperature=0)
+elif llm_provider == "gemini":
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    api_key = settings.google_api_key or "dummy_key_to_prevent_crash_on_import"
+    llm = ChatGoogleGenerativeAI(model=settings.model_name, google_api_key=api_key, temperature=0)
+else:
+    from langchain_openai import ChatOpenAI
+    api_key = settings.openai_api_key or "dummy_key_to_prevent_crash_on_import"
+    llm = ChatOpenAI(model=settings.model_name, api_key=api_key, temperature=0)
+
 tool_llm = llm.bind_tools(tools)
 
 def call_mepf_agent(state: AgentState, system_prompt: str, agent_name: str):
@@ -149,8 +162,9 @@ QUY TẮC THÉP (LUẬT PHÊ DUYỆT):
     try:
         response = structured_llm.invoke([sys_msg, last_msg])
         next_agent = response.next
+        return {"next": next_agent}
     except Exception as e:
-        print(f"[PM] Lỗi định tuyến: {str(e)}")
-        next_agent = "FINISH"
-        
-    return {"next": next_agent}
+        error_msg = f"Lỗi hệ thống (Vui lòng kiểm tra lại OPENAI_API_KEY trong file .env): {str(e)}"
+        print(f"[PM] Lỗi định tuyến: {error_msg}")
+        from langchain_core.messages import AIMessage
+        return {"messages": [AIMessage(content=error_msg, name="ProjectManager")], "next": "FINISH"}

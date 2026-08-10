@@ -59,6 +59,9 @@ if user_input:
                         last_msg = node_state["messages"][-1]
                         name = getattr(last_msg, "name", node_name).upper()
                         content = last_msg.content
+                        if not content and hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+                            tools_used = ", ".join([t['name'] for t in last_msg.tool_calls])
+                            content = f"*(Đang sử dụng công cụ: {tools_used}...)*"
                         full_response += f"**[{name}]**\n{content}\n\n---\n"
                         message_placeholder.markdown(full_response + "▌")
             message_placeholder.markdown(full_response)
