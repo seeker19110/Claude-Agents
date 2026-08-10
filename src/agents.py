@@ -7,89 +7,77 @@ from typing import Literal
 from src.tools import tools
 
 # Initialize LLM
-llm = ChatOpenAI(model=settings.model_name, api_key=settings.openai_api_key, temperature=0)
-
-# Bind tools to LLM for the Tool Agent
+api_key = settings.openai_api_key or "dummy_key_to_prevent_crash_on_import"
+llm = ChatOpenAI(model=settings.model_name, api_key=api_key, temperature=0)
 tool_llm = llm.bind_tools(tools)
 
-# --- 1. Supervisor Agent ---
-class RouteResponse(BaseModel):
-    next: Literal["FINISH", "rag_agent", "tool_agent"] = Field(description="The next agent to route to, or FINISH.")
-
-def supervisor_node(state: AgentState):
+def call_mepf_agent(state: AgentState, system_prompt: str, agent_name: str):
     messages = state.get("messages", [])
-    if not messages:
-        return {"next": "FINISH"}
+    errors = state.get("errors", [])
+    
+    if errors:
+        system_prompt += f"\n\nCẢNH BÁO: Lần trả lời trước của bạn đã bị Reviewer từ chối với lỗi: '{errors[-1]}'. Hãy sửa lỗi này và đưa ra phương án khả thi hơn."
         
-    last_msg = messages[-1]
+    sys_msg = SystemMessage(content=system_prompt)
     
-    # Nếu tin nhắn cuối cùng là từ Reviewer, thì kết thúc
-    if getattr(last_msg, "name", "") == "ReviewerAgent":
-        return {"next": "FINISH"}
-    
-    # Sử dụng LLM để ra quyết định điều hướng
-    system_prompt = SystemMessage(content="""Bạn là một nhạc trưởng điều phối công việc.
-Nhiệm vụ của bạn là phân tích yêu cầu của người dùng và điều hướng đến một trong các agent sau:
-- 'rag_agent': Nếu người dùng hỏi về kiến thức, tài liệu nội bộ, chính sách, hoặc cần tra cứu thông tin tĩnh.
-- 'tool_agent': Nếu người dùng yêu cầu thực hiện một hành động (như tìm kiếm web, tính toán, gửi API).
-- 'FINISH': Nếu không cần làm gì thêm hoặc đã hoàn thành.
-""")
-    
-    # Chỉ truyền system prompt và tin nhắn cuối của user để Supervisor quyết định
-    # Tránh truyền toàn bộ lịch sử nếu không cần thiết để giảm token
-    invoke_msgs = [system_prompt, last_msg]
-    
-    supervisor_llm = llm.with_structured_output(RouteResponse)
-    response = supervisor_llm.invoke(invoke_msgs)
-    
-    return {"next": response.next}
+    try:
+        response = tool_llm.invoke([sys_msg] + messages)
+        response.name = agent_name
+        return {"messages": [response], "sender": agent_name.lower()}
+    except Exception as e:
+        content = f"[{agent_name}] Lỗi khi kết nối LLM: {str(e)}"
+        return {"messages": [AIMessage(content=content, name=agent_name)], "sender": agent_name.lower()}
 
-# --- 2. RAG Agent ---
-def rag_agent_node(state: AgentState):
-    messages = state.get("messages", [])
-    errors = state.get("errors", [])
-    
-    system_prompt_content = """Bạn là một chuyên gia RAG (Retrieval-Augmented Generation).
-Nhiệm vụ của bạn là trả lời câu hỏi của người dùng dựa trên cơ sở tri thức (MOCK: hiện tại hãy giả định bạn có quyền truy cập vào CSDL nội bộ và hãy tự bịa ra một câu trả lời hợp lý, chuyên nghiệp như thể bạn vừa tra cứu tài liệu thật).
-Luôn giữ thái độ lịch sự và chuyên nghiệp."""
+# --- 1. Mechanical (HVAC) Agent ---
+def mechanical_agent_node(state: AgentState):
+    prompt = "Bạn là Kỹ sư Cơ khí (HVAC) cấp chuyên gia. \n- Luôn gọi tool `search_standards` để tra cứu tiêu chuẩn (TCVN/ASHRAE). \n- Luôn sử dụng bộ công cụ HVAC: `calc_cooling_load` (tải lạnh), `calc_duct_size` (ống gió), `calc_psychrometrics` (trạng thái không khí), `calc_chw_pipe_size` (ống nước lạnh), `calc_pump_fan_power` (công suất quạt/bơm), `calc_ventilation_rate` (thông gió/hút khói). \n- Cấm đoán mò các thông số này. Đảm bảo mọi lập luận đều có căn cứ kỹ thuật toán học."
+    return call_mepf_agent(state, prompt, "MechanicalAgent")
 
-    if errors:
-        system_prompt_content += f"\n\nCẢNH BÁO: Lần trả lời trước của bạn đã bị Reviewer từ chối với lỗi: '{errors[-1]}'. Hãy sửa lỗi này trong câu trả lời mới."
+# --- 2. Electrical Agent ---
+def electrical_agent_node(state: AgentState):
+    prompt = "Bạn là Kỹ sư Điện (Electrical) cấp chuyên gia. \n- Luôn gọi tool `search_standards` để tra cứu tiêu chuẩn (TCVN/IEC). \n- Luôn sử dụng bộ công cụ Điện: `calc_cable_size` (tính cáp), `calc_breaker_size` (tính MCB/MCCB), `calc_lighting_qty` (tính số lượng đèn). \n- Cấm đoán mò các thông số này. Đảm bảo mọi lập luận đều có căn cứ kỹ thuật toán học."
+    return call_mepf_agent(state, prompt, "ElectricalAgent")
 
-    invoke_msgs = [SystemMessage(content=system_prompt_content)] + messages
-    
-    response = llm.invoke(invoke_msgs)
-    response.name = "RagAgent"
-    
-    return {
-        "messages": [response], 
-        "sender": "rag_agent",
-        "context": {"rag_status": "success", "docs_retrieved": 1} # Mock context
-    }
+# --- 3. Plumbing Agent ---
+def plumbing_agent_node(state: AgentState):
+    prompt = "Bạn là Kỹ sư Cấp thoát nước (Plumbing) cấp chuyên gia. \n- Luôn gọi tool `search_standards` để tra cứu tiêu chuẩn. \n- Luôn sử dụng bộ công cụ Nước: `calc_water_pipe` (tính lưu lượng/cỡ ống nước), `calc_water_tank` (tính bể ngầm/mái), `calc_plumbing_pump_head` (tính cột áp bơm cấp nước). \n- Cấm đoán mò các thông số này. Đảm bảo mọi lập luận đều có căn cứ kỹ thuật toán học."
+    return call_mepf_agent(state, prompt, "PlumbingAgent")
 
-# --- 3. Tool Agent ---
-def tool_agent_node(state: AgentState):
-    messages = state.get("messages", [])
-    errors = state.get("errors", [])
-    
-    system_prompt_content = """Bạn là một AI Assistant có khả năng sử dụng các công cụ.
-Hãy phân tích yêu cầu và sử dụng công cụ phù hợp để hoàn thành nhiệm vụ."""
-    
-    if errors:
-        system_prompt_content += f"\n\nCẢNH BÁO: Lần thực thi trước của bạn đã bị Reviewer từ chối với lỗi: '{errors[-1]}'. Hãy sửa lỗi này."
+# --- 4. Firefighting Agent ---
+def firefighting_agent_node(state: AgentState):
+    prompt = "Bạn là Kỹ sư Phòng cháy chữa cháy (Firefighting) cấp chuyên gia. \n- Luôn gọi tool `search_standards` để tra cứu quy chuẩn PCCC (TCVN 3890, TCVN 7336). \n- Luôn sử dụng bộ công cụ PCCC: `calc_sprinkler_qty` (tính đầu phun), `calc_fire_pump` (tính bơm chữa cháy), `calc_extinguisher_qty` (tính số lượng bình chữa cháy). \n- Cấm đoán mò các thông số này. Mọi bố trí phải tuân thủ nghiêm ngặt tiêu chuẩn."
+    return call_mepf_agent(state, prompt, "FirefightingAgent")
 
-    invoke_msgs = [SystemMessage(content=system_prompt_content)] + messages
-    
-    response = tool_llm.invoke(invoke_msgs)
-    response.name = "ToolAgent"
-    
-    return {
-        "messages": [response], 
-        "sender": "tool_agent",
-        "context": {"tool_called": bool(response.tool_calls)}
-    }
+# --- 5. QS Agent (Quantity Surveyor) ---
+def qs_agent_node(state: AgentState):
+    prompt = """Bạn là một Kỹ sư QS xuất sắc. Bạn dùng công cụ `read_cad` để đọc bản vẽ DXF. 
+    Nếu bản vẽ bị phá Block (nổ Block), hãy yêu cầu/hoặc tự dùng `ai_block_recovery` để phục hồi lại Block trước khi đếm khối lượng.
+    - DANH MỤC BLOCK CHUẨN ĐỂ PHỤC HỒI CỦA 4 HỆ (CHỨA TRONG TỔNG KHO):
+      + HVAC (Cơ Khí): 'DIFFUSER_SUPPLY' (600x600), 'DIFFUSER_RETURN' (600x600), 'FCU' (1000x500)
+      + Electrical (Điện): 'LIGHT_PANEL' (600x600), 'LIGHT_DOWNLIGHT' (Tròn R=100), 'SOCKET' (Tròn R=50), 'SWITCH' (Tròn R=30)
+      + Firefighting (PCCC): 'SPRINKLER' (Tròn R=50)
+      + Plumbing (Nước): 'PUMP' (Tròn R=50)
+    Sau khi phục hồi, dùng `read_cad` đếm lại và xuất file Excel dự toán (`write_excel`).
+    """
+    return call_mepf_agent(state, prompt, "QSAgent")
 
-# --- 4. Reviewer Agent ---
+# --- 6. CAD Agent (Draftsman) ---
+def cad_agent_node(state: AgentState):
+    prompt = """Bạn là Họa viên CAD (Draftsman) xuất sắc nhất thế giới.
+    - Bạn có quyền sử dụng công cụ `read_cad`, `write_cad`, và `edit_cad`.
+    - CÔNG CỤ PHỤC HỒI (AI BLOCK RECOVERY): Khi khách yêu cầu khôi phục bản vẽ vỡ block, dùng công cụ `ai_block_recovery` quét hình dáng (circle/rectangle) để ráp lại thành Block từ Tổng kho.
+      + Mẹo: Các block chuẩn 4 hệ MEPF đã có sẵn trong kho gồm: 'DIFFUSER_SUPPLY', 'DIFFUSER_RETURN', 'FCU', 'LIGHT_PANEL', 'LIGHT_DOWNLIGHT', 'SOCKET', 'SWITCH', 'SPRINKLER', 'PUMP'.
+    - CƠ CHẾ AUTO-DRAW (SIÊU NĂNG LỰC): Nếu người dùng yêu cầu chèn một thiết bị máy móc mà không có sẵn trong thư viện, hãy dùng `search_web` tìm kích thước, dùng `execute_python_code` viết script ezdxf vẽ Block đó lưu vào 'data/blocks/mepf_library.dxf', sau đó chèn vào bản vẽ.
+    - LUẬT PHÊ DUYỆT BẮT BUỘC: Sau khi bạn dùng tool sửa xong bản vẽ, LUÔN chốt lại bằng câu: "Bản vẽ đã hoàn thiện và làm sạch. Xin Sếp hãy mở file lên kiểm tra và gõ 'DUYỆT' để tôi báo Giám đốc gọi bộ phận QS bóc khối lượng!".
+    """
+    return call_mepf_agent(state, prompt, "CADAgent")
+
+# --- 7. BIM Agent ---
+def bim_agent_node(state: AgentState):
+    prompt = "Bạn là một BIM Coordinator xuất sắc. Quản lý mô hình 3D, kiểm tra xung đột."
+    return call_mepf_agent(state, prompt, "BIMAgent")
+
+# --- 8. Reviewer Agent ---
 class ReviewResponse(BaseModel):
     decision: Literal["APPROVE", "REJECT"] = Field(description="Quyết định phê duyệt hoặc từ chối.")
     reason: str = Field(description="Lý do chi tiết cho quyết định (nếu từ chối).", default="")
@@ -99,28 +87,70 @@ def reviewer_agent_node(state: AgentState):
     last_msg = messages[-1]
     has_errors = len(state.get("errors", [])) > 0
     
-    # Nếu đã từng lỗi 1 lần, duyệt luôn để tránh lặp vô hạn (chỉ là rule tạm thời cho demo)
     if has_errors:
-        response = AIMessage(content=f"[Reviewer Agent] PHÊ DUYỆT (Auto-pass sau khi sửa lỗi): Nội dung đã được cải thiện.", name="ReviewerAgent")
+        response = AIMessage(content=f"[Reviewer Agent] PHÊ DUYỆT (Auto-pass sau khi sửa lỗi).", name="ReviewerAgent")
         return {"messages": [response]}
         
-    system_prompt = SystemMessage(content="""Bạn là một Reviewer Agent. Nhiệm vụ của bạn là kiểm tra kết quả của các Agent khác (như RagAgent, ToolAgent).
-Tiêu chí đánh giá:
-1. Thông tin không được chứa ngôn từ độc hại, xúc phạm.
-2. Nếu kết quả là câu trả lời cho người dùng, nó phải mạch lạc và đúng trọng tâm.
-3. Nếu nội dung có vẻ không an toàn hoặc chứa thông tin giả mạo trắng trợn, hãy REJECT.
-
-Hãy đánh giá và trả về quyết định.""")
+    system_prompt = SystemMessage(content="""Bạn là Kỹ sư trưởng (Reviewer). Kiểm tra kết quả tư vấn.
+Yêu cầu bắt buộc:
+1. Nếu là tính toán thiết kế MEPF, phải có trích dẫn Tiêu chuẩn (TCVN/ASHRAE/NFPA).
+2. Nếu là gọi Tool đọc/ghi file, đánh giá APPROVE ngay để không chặn luồng.
+Nếu thông tin sai kỹ thuật hoặc thiếu căn cứ, hãy REJECT.""")
 
     reviewer_llm = llm.with_structured_output(ReviewResponse)
     review_result = reviewer_llm.invoke([system_prompt, last_msg])
     
     if review_result.decision == "REJECT":
         response = AIMessage(content=f"[Reviewer Agent] TỪ CHỐI: {review_result.reason}", name="ReviewerAgent")
-        return {
-            "messages": [response],
-            "errors": [review_result.reason]
-        }
+        return {"messages": [response], "errors": [review_result.reason]}
     else:
-        response = AIMessage(content=f"[Reviewer Agent] PHÊ DUYỆT: Đã kiểm duyệt kết quả hợp lệ.", name="ReviewerAgent")
+        response = AIMessage(content=f"[Reviewer Agent] PHÊ DUYỆT: Phương án kỹ thuật hợp lệ.", name="ReviewerAgent")
         return {"messages": [response]}
+
+# --- 9. Supervisor Agent (Project Manager) ---
+class RouteResponse(BaseModel):
+    next: Literal["FINISH", "mechanical", "electrical", "plumbing", "firefighting", "qs", "cad", "bim"] = Field(
+        description="Định tuyến đến bộ phận phù hợp, hoặc FINISH."
+    )
+
+def supervisor_node(state: AgentState):
+    messages = state.get("messages", [])
+    if not messages:
+        return {"next": "FINISH"}
+        
+    last_msg = messages[-1]
+    
+    if getattr(last_msg, "name", "") == "ReviewerAgent":
+        return {"next": "FINISH"}
+
+    supervisor_prompt = """Bạn là Giám đốc Dự án (Project Manager) của Văn phòng tư vấn MEPF.
+Bạn là người đứng đầu, chịu trách nhiệm nhận yêu cầu tổng hợp từ khách hàng và chia nhỏ công việc cho đội ngũ Kỹ sư.
+Phân loại yêu cầu:
+- 'mechanical': Nếu liên quan đến HVAC, thông gió, điều hòa.
+- 'electrical': Nếu liên quan đến Điện, chiếu sáng, tủ điện.
+- 'plumbing': Nước, bơm, vệ sinh.
+- 'firefighting': PCCC.
+- 'qs': Bóc khối lượng, lập dự toán, đọc thuộc tính, xuất Excel.
+- 'cad': Tạo/sửa bản vẽ CAD.
+- 'bim': 3D.
+- 'FINISH': Nếu đã hoàn thành hoặc khách hàng chỉ hỏi vu vơ không liên quan dự án.
+
+Hãy hoạt động như một PM thực thụ: Nếu khách hàng yêu cầu "Thiết kế hệ thống điện và lập báo giá", hãy gọi 'electrical' trước. Sau khi 'electrical' hoàn thành, vòng lặp trở lại, bạn mới tiếp tục gọi 'qs' để lập báo giá.
+
+QUY TẮC THÉP (LUẬT PHÊ DUYỆT):
+- Tuyệt đối không được định tuyến sang 'qs' (để bóc khối lượng) ngay sau khi bộ phận 'cad' vừa thao tác sửa/phục hồi bản vẽ xong.
+- Bạn PHẢI định tuyến về 'FINISH' để buộc luồng chạy dừng lại, nhường màn hình cho khách hàng kiểm tra bản vẽ. 
+- Chỉ khi nào có tin nhắn phản hồi mới từ khách hàng với các từ khóa "Duyệt", "Ok", "Tiến hành đi", "Tiếp tục" thì bạn mới được định tuyến sang 'qs'.
+"""
+    
+    sys_msg = SystemMessage(content=supervisor_prompt)
+    structured_llm = llm.with_structured_output(RouteResponse)
+    
+    try:
+        response = structured_llm.invoke([sys_msg, last_msg])
+        next_agent = response.next
+    except Exception as e:
+        print(f"[PM] Lỗi định tuyến: {str(e)}")
+        next_agent = "FINISH"
+        
+    return {"next": next_agent}
