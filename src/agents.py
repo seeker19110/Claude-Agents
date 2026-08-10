@@ -22,6 +22,16 @@ elif llm_provider == "gemini":
     if not model_name or "gpt" in model_name or "llama" in model_name:
         model_name = "gemini-1.5-flash"
     llm = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0)
+elif llm_provider == "ollama":
+    from langchain_openai import ChatOpenAI
+    if not model_name or "gpt" in model_name or "gemini" in model_name:
+        model_name = "qwen2.5-coder:14b"
+    llm = ChatOpenAI(
+        base_url="http://localhost:11434/v1",
+        api_key="ollama",
+        model=model_name,
+        temperature=0
+    )
 else:
     from langchain_openai import ChatOpenAI
     api_key = settings.openai_api_key or "dummy_key_to_prevent_crash_on_import"
