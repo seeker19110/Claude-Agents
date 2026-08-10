@@ -202,21 +202,30 @@ def read_cad(file_path: str) -> str:
             block_summary[key] = block_summary.get(key, 0) + 1
             
         result = f"Đã làm sạch (Audit). Sửa {audit_fixes} lỗi.\n\n"
-        result += f"THƯ VIỆN BLOCK CÓ SẴN (Definitions): {', '.join(block_defs) if block_defs else 'Không có'}\n\n"
+        
+        if len(block_defs) > 25:
+            defs_str = ", ".join(block_defs[:25]) + f"... (và {len(block_defs) - 25} block khác)"
+        else:
+            defs_str = ", ".join(block_defs) if block_defs else "Không có"
+        result += f"THƯ VIỆN BLOCK CÓ SẴN (Definitions): {defs_str}\n\n"
         
         result += "THỐNG KÊ LAYER TRÊN MODELSPACE:\n"
         for k, v in layer_counts.items():
             l_info = f"- Layer '{k}': {v} đối tượng"
             if k in layer_lengths and layer_lengths[k] > 0:
-                l_info += f" (Tổng dài Line tham khảo: {layer_lengths[k]:.2f})"
+                l_info += f" (Tổng chiều dài nắn nét: {layer_lengths[k]:.2f}m)"
             result += l_info + "\n"
             
         result += "\nTHỐNG KÊ BLOCK THỰC TẾ & THUỘC TÍNH (Attributes):\n"
         if not block_summary:
             result += "(Không có block nào)\n"
         else:
-            for k, v in block_summary.items():
+            sorted_blocks = sorted(block_summary.items(), key=lambda x: x[1], reverse=True)
+            display_blocks = sorted_blocks[:40]
+            for k, v in display_blocks:
                 result += f"- Block: {k} -> Số lượng: {v}\n"
+            if len(sorted_blocks) > 40:
+                result += f"... (và {len(sorted_blocks) - 40} nhóm block khác)\n"
                 
         return result
     except Exception as e:
