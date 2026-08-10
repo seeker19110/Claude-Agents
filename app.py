@@ -84,8 +84,22 @@ with tab_chat:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Ô chat input chuẩn Streamlit (Luôn nằm ở đáy cùng của tab chat)
-    if user_input := st.chat_input("Giao việc cho Giám đốc Dự án (Ví dụ: Thiết kế chiếu sáng phòng khách theo tiêu chuẩn và lập dự toán)..."):
+    # Thanh Phê duyệt Nhanh (Quick Approval Action Buttons)
+    col1, col2, col3 = st.columns([0.22, 0.22, 0.56])
+    btn_approve = col1.button("✅ DUYỆT BẢN VẼ", key="btn_approve", use_container_width=True, type="primary")
+    btn_reject = col2.button("❌ TỪ CHỐI", key="btn_reject", use_container_width=True)
+
+    chat_input_val = st.chat_input("Giao việc cho Giám đốc Dự án (Ví dụ: Thiết kế chiếu sáng phòng khách theo tiêu chuẩn và lập dự toán)...")
+
+    user_input = None
+    if btn_approve:
+        user_input = "DUYỆT"
+    elif btn_reject:
+        user_input = "TỪ CHỐI"
+    elif chat_input_val:
+        user_input = chat_input_val
+
+    if user_input:
         st.session_state.chat_history.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.markdown(user_input)
