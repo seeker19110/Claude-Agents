@@ -7,6 +7,18 @@ from pypdf import PdfReader
 import ezdxf
 from ezdxf import audit
 import math
+import re
+
+def normalize_pipe_diameter_spec(text: str) -> str:
+    """Chuẩn hóa mọi ký hiệu đường kính ống MEPF trong CAD (%%c, Φ, Ø, D, d, DN, OD) về chuẩn đồng nhất Ø110 (D110/DN100)."""
+    if not text:
+        return text
+    text = text.replace('%%c', 'Ø').replace('%%C', 'Ø').replace('Φ', 'Ø')
+    pattern = r'(?i)(Ø|DN|D|d|OD)\s*(\d+)'
+    def replacer(match):
+        size = match.group(2)
+        return f"Ø{size} (D{size})"
+    return re.sub(pattern, replacer, text)
 
 @tool
 def search_standards(query: str) -> str:
@@ -519,12 +531,12 @@ def analyze_cad_spatial_context(file_path: str, max_distance: float = 2000.0) ->
             layer = entity.dxf.layer
             
             if dxftype == 'TEXT':
-                t_str = entity.dxf.text.strip()
+                t_str = normalize_pipe_diameter_spec(entity.dxf.text.strip())
                 pos = entity.dxf.insert
                 if t_str:
                     texts.append({"text": t_str, "pos": (pos.x, pos.y), "layer": layer})
             elif dxftype == 'MTEXT':
-                t_str = entity.text.strip()
+                t_str = normalize_pipe_diameter_spec(entity.text.strip())
                 pos = entity.dxf.insert
                 if t_str:
                     texts.append({"text": t_str, "pos": (pos.x, pos.y), "layer": layer})

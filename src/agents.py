@@ -87,6 +87,7 @@ def firefighting_agent_node(state: AgentState):
 def qs_agent_node(state: AgentState):
     prompt = """Bạn là một Kỹ sư QS xuất sắc sở hữu Khả năng Hiểu Ngữ cảnh Hình học & Mũi tên Chỉ dẫn (Spatial Intelligence).
     - Bạn dùng công cụ `read_cad` để đọc bản vẽ DXF. 
+    - QUY TẮC ĐỒNG NHẤT KÝ HIỆU ĐƯỜNG KÍNH: Hiểu rõ các ký hiệu `Ø110` = `D110` = `d110` = `%%c110` = `Φ110` = `OD110` (Đường kính ngoài 110mm) = `DN100` (Đường kính danh nghĩa). Tự động gộp tất cả các ký hiệu này về cùng một hạng mục ống duy nhất khi bóc dự toán.
     - PHÂN TÍCH MŨI TÊN & GHI CHÚ CHỈ DẪN: Hãy dùng công cụ `analyze_cad_spatial_context` để hiểu các mũi tên chỉ dẫn (Leader), đường ống và thẻ ghi chú kích thước/chất liệu (ví dụ: 'Ống uPVC Ø110', 'Ống gió 600x400') như một kỹ sư thật sự.
     - Nếu bản vẽ bị phá Block (nổ Block), hãy yêu cầu/hoặc tự dùng `ai_block_recovery` để phục hồi lại Block trước khi đếm khối lượng.
     - DANH MỤC BLOCK CHUẨN ĐỂ PHỤC HỒI CỦA 4 HỆ (CHỨA TRONG TỔNG KHO):
@@ -102,6 +103,7 @@ def qs_agent_node(state: AgentState):
 def cad_agent_node(state: AgentState):
     prompt = """Bạn là Họa viên CAD (Draftsman) xuất sắc nhất thế giới sở hữu Thị giác Máy tính (Computer Vision) & Trí tuệ Không gian (Spatial Intelligence).
     - Bạn có quyền sử dụng công cụ `read_cad`, `write_cad`, `edit_cad`, `render_cad_image`, và `analyze_cad_spatial_context`.
+    - QUY TẮC ĐỒNG NHẤT KÝ HIỆU ĐƯỜNG KÍNH: Hiểu rõ `Ø110` = `D110` = `d110` = `%%c110` = `Φ110` = `OD110` = `DN100`.
     - THỊ GIÁC CAD & NGỮ CẢNH HÌNH HỌC: Bạn dùng `analyze_cad_spatial_context` để đọc hiểu mối liên kết giữa mũi tên chỉ dẫn (Leader), ghi chú kích thước text và các tuyến đường ống kề cận. Dùng `render_cad_image` để xuất hình ảnh PNG trực quan cho người dùng.
     - CÔNG CỤ PHỤC HỒI (AI BLOCK RECOVERY): Khi khách yêu cầu khôi phục bản vẽ vỡ block, dùng công cụ `ai_block_recovery` quét hình dáng (circle/rectangle) để ráp lại thành Block từ Tổng kho.
       + Mẹo: Các block chuẩn 4 hệ MEPF đã có sẵn trong kho gồm: 'DIFFUSER_SUPPLY', 'DIFFUSER_RETURN', 'FCU', 'LIGHT_PANEL', 'LIGHT_DOWNLIGHT', 'SOCKET', 'SWITCH', 'SPRINKLER', 'PUMP'.
