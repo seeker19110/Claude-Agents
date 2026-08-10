@@ -89,12 +89,20 @@ if user_input:
         st.markdown(user_input)
         
     with st.chat_message("assistant"):
+        # Quét các file có sẵn trong hệ thống để tiêm vào Ngữ cảnh cho Agents
+        project_files = [f for f in os.listdir('.') if f.endswith(('.dxf', '.pdf', '.xlsx', '.docx')) and os.path.isfile(f)]
+        file_context = ""
+        if project_files:
+            file_context = f"\n\n[THÔNG TIN HỆ THỐNG: Danh sách các file hồ sơ/bản vẽ ĐANG CÓ SẴN trong dự án gồm: {project_files}. Hãy chọn file phù hợp nhất từ danh sách này nếu người dùng không chỉ định tên file cụ thể]."
+            
+        full_user_prompt = user_input + file_context
+        
         message_placeholder = st.empty()
         full_response = ""
         config = {"configurable": {"thread_id": st.session_state.thread_id}}
         
         try:
-            for event in graph_app.stream({"messages": [HumanMessage(content=user_input)]}, config=config, stream_mode="updates"):
+            for event in graph_app.stream({"messages": [HumanMessage(content=full_user_prompt)]}, config=config, stream_mode="updates"):
                 for node_name, node_state in event.items():
                     if "messages" in node_state:
                         last_msg = node_state["messages"][-1]
