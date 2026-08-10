@@ -9,6 +9,8 @@ st.set_page_config(page_title="Văn phòng MEPF Hoàn hảo", layout="wide", pag
 st.title("🏢 Văn phòng Tư vấn Thiết kế MEPF (X-Agents)")
 st.markdown("Hệ thống tự động hóa tư vấn chuyên sâu ứng dụng Tiêu chuẩn (RAG), xử lý AutoCAD (DXF), và tự động lập dự toán.")
 
+import pandas as pd
+
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
 if "chat_history" not in st.session_state:
@@ -36,11 +38,29 @@ with st.sidebar:
     st.caption("Khởi chạy với Project Manager, MEPF Agents (Tra cứu Tiêu chuẩn), CAD và QS Agents.")
     st.caption("Tính năng bảo mật Human-in-the-loop được tắt trên UI để đảm bảo tự động hóa hoàn toàn.")
 
-for msg in st.session_state.chat_history:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+tab_chat, tab_excel = st.tabs(["💬 Chat Tư vấn & Bóc tách", "📊 Trình xem Bảng tính Excel"])
 
-user_input = st.chat_input("Giao việc cho Giám đốc Dự án (Ví dụ: Thiết kế chiếu sáng phòng khách theo tiêu chuẩn và lập dự toán)...")
+with tab_excel:
+    st.header("📊 Xem trực tiếp Bảng tính Dự toán Excel")
+    excel_files = [f for f in os.listdir('.') if f.endswith('.xlsx') and os.path.isfile(f)]
+    if excel_files:
+        selected_excel = st.selectbox("📂 Chọn file Excel báo cáo cần xem:", excel_files)
+        if selected_excel:
+            try:
+                df = pd.read_excel(selected_excel)
+                st.success(f"Đã nạp file thành công: **{selected_excel}** ({len(df)} dòng dữ liệu)")
+                st.dataframe(df, use_container_width=True)
+            except Exception as e:
+                st.error(f"Lỗi khi đọc file Excel: {e}")
+    else:
+        st.info("Chưa có file Excel dự toán nào được tạo trong dự án này.")
+
+with tab_chat:
+    for msg in st.session_state.chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    user_input = st.chat_input("Giao việc cho Giám đốc Dự án (Ví dụ: Thiết kế chiếu sáng phòng khách theo tiêu chuẩn và lập dự toán)...")
 
 if user_input:
     st.session_state.chat_history.append({"role": "user", "content": user_input})
