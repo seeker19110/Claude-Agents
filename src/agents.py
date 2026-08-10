@@ -6,40 +6,42 @@ from pydantic import BaseModel, Field
 from typing import Literal
 from src.tools import tools
 
-# Initialize LLM
-llm_provider = settings.llm_provider.lower()
-model_name = settings.model_name
+from dotenv import load_dotenv
+import os
 
-if llm_provider == "groq":
-    from langchain_groq import ChatGroq
-    api_key = settings.groq_api_key or "dummy_key_to_prevent_crash_on_import"
-    if not model_name or "gpt" in model_name or "gemini" in model_name or "3.1" in model_name:
-        model_name = "llama-3.3-70b-versatile"
-    llm = ChatGroq(model=model_name, api_key=api_key, temperature=0)
-elif llm_provider == "gemini":
-    from langchain_google_genai import ChatGoogleGenerativeAI
-    api_key = settings.google_api_key or "dummy_key_to_prevent_crash_on_import"
-    if not model_name or "gpt" in model_name or "llama" in model_name:
-        model_name = "gemini-1.5-flash"
-    llm = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0)
-elif llm_provider == "ollama":
-    from langchain_openai import ChatOpenAI
-    if not model_name or "gpt" in model_name or "gemini" in model_name:
-        model_name = "qwen2.5-coder:14b"
-    llm = ChatOpenAI(
-        base_url="http://localhost:11434/v1",
-        api_key="ollama",
-        model=model_name,
-        temperature=0
-    )
-else:
-    from langchain_openai import ChatOpenAI
-    api_key = settings.openai_api_key or "dummy_key_to_prevent_crash_on_import"
-    if not model_name or "llama" in model_name or "gemini" in model_name:
-        model_name = "gpt-4o-mini"
-    llm = ChatOpenAI(model=model_name, api_key=api_key, temperature=0)
-
-tool_llm = llm.bind_tools(tools)
+def get_llm():
+    load_dotenv(override=True)
+    provider = os.getenv("LLM_PROVIDER", "openai").lower().strip()
+    model_name = os.getenv("MODEL_NAME", "").strip()
+    
+    if provider == "groq":
+        from langchain_groq import ChatGroq
+        key = os.getenv("GROQ_API_KEY", "") or "dummy_key"
+        if not model_name or "gpt" in model_name or "gemini" in model_name or "3.1" in model_name:
+            model_name = "llama-3.3-70b-versatile"
+        return ChatGroq(model=model_name, api_key=key, temperature=0)
+    elif provider == "gemini":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        key = os.getenv("GOOGLE_API_KEY", "") or "dummy_key"
+        if not model_name or "gpt" in model_name or "llama" in model_name:
+            model_name = "gemini-1.5-flash"
+        return ChatGoogleGenerativeAI(model=model_name, google_api_key=key, temperature=0)
+    elif provider == "ollama":
+        from langchain_openai import ChatOpenAI
+        if not model_name or "gpt" in model_name or "gemini" in model_name:
+            model_name = "llama3.1:8b"
+        return ChatOpenAI(
+            base_url="http://localhost:11434/v1",
+            api_key="ollama",
+            model=model_name,
+            temperature=0
+        )
+    else:
+        from langchain_openai import ChatOpenAI
+        key = os.getenv("OPENAI_API_KEY", "") or "dummy_key"
+        if not model_name or "llama" in model_name or "gemini" in model_name:
+            model_name = "gpt-4o-mini"
+        return ChatOpenAI(model=model_name, api_key=key, temperature=0)
 
 def call_mepf_agent(state: AgentState, system_prompt: str, agent_name: str):
     messages = state.get("messages", [])
@@ -50,12 +52,15 @@ def call_mepf_agent(state: AgentState, system_prompt: str, agent_name: str):
         
     sys_msg = SystemMessage(content=system_prompt)
     
+    llm = get_llm()
+    tool_llm = llm.bind_tools(tools)
+    
     try:
         response = tool_llm.invoke([sys_msg] + messages)
         response.name = agent_name
         return {"messages": [response], "sender": agent_name.lower()}
     except Exception as e:
-        content = f"[{agent_name}] Lỗi khi kết nối LLM: {str(e)}"
+        content = f"[{agent_name}] Lỗi khi kết nối LLM ({os.getenv('LLM_PROVIDER', 'openai')}): {str(e)}"
         return {"messages": [AIMessage(content=content, name=agent_name)], "sender": agent_name.lower()}
 
 # --- 1. Mechanical (HVAC) Agent ---
@@ -174,6 +179,7 @@ QUY TẮC THÉP (LUẬT PHÊ DUYỆT):
 """
     
     sys_msg = SystemMessage(content=supervisor_prompt)
+    llm = get_llm()
     structured_llm = llm.with_structured_output(RouteResponse)
     
     try:
@@ -181,7 +187,7 @@ QUY TẮC THÉP (LUẬT PHÊ DUYỆT):
         next_agent = response.next
         return {"next": next_agent}
     except Exception as e:
-        error_msg = f"Lỗi hệ thống (Vui lòng kiểm tra lại OPENAI_API_KEY trong file .env): {str(e)}"
+        error_msg = f"Lỗi Giám đốc Dự án ({os.getenv('LLM_PROVIDER', 'openai')}): {str(e)}"
         print(f"[PM] Lỗi định tuyến: {error_msg}")
         from langchain_core.messages import AIMessage
         return {"messages": [AIMessage(content=error_msg, name="ProjectManager")], "next": "FINISH"}
