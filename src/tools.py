@@ -82,6 +82,13 @@ def write_excel(file_path: str, json_data: str) -> str:
     """Tạo hoặc ghi file Excel (.xlsx). json_data là danh sách các object dưới dạng chuỗi JSON đại diện cho các dòng. Ví dụ: '[{"STT": 1, "Vật tư": "Ống", "KL": 10}]'"""
     print(f"\n[Tool] Writing Excel: {file_path}")
     try:
+        if not file_path.endswith('.xlsx'):
+            file_path += '.xlsx'
+            
+        dir_name = os.path.dirname(file_path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+            
         data = json.loads(json_data)
         df = pd.DataFrame(data)
         df.to_excel(file_path, index=False)
