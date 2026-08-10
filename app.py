@@ -81,41 +81,47 @@ with tab_chat:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    user_input = st.chat_input("Giao việc cho Giám đốc Dự án (Ví dụ: Thiết kế chiếu sáng phòng khách theo tiêu chuẩn và lập dự toán)...")
+# Ghim ô chat_input cố định ở đáy trang web (Root Level)
+user_input = st.chat_input("Giao việc cho Giám đốc Dự án (Ví dụ: Thiết kế chiếu sáng phòng khách theo tiêu chuẩn và lập dự toán)...")
 
 if user_input:
     st.session_state.chat_history.append({"role": "user", "content": user_input})
-    with st.chat_message("user"):
-        st.markdown(user_input)
-        
-    with st.chat_message("assistant"):
-        # Quét các file có sẵn trong hệ thống để tiêm vào Ngữ cảnh cho Agents
-        project_files = [f for f in os.listdir('.') if f.endswith(('.dxf', '.pdf', '.xlsx', '.docx')) and os.path.isfile(f)]
-        file_context = ""
-        if project_files:
-            file_context = f"\n\n[THÔNG TIN HỆ THỐNG: Danh sách các file hồ sơ/bản vẽ ĐANG CÓ SẴN trong dự án gồm: {project_files}. Hãy chọn file phù hợp nhất từ danh sách này nếu người dùng không chỉ định tên file cụ thể]."
+    
+    with tab_chat:
+        with st.chat_message("user"):
+            st.markdown(user_input)
             
-        full_user_prompt = user_input + file_context
-        
-        message_placeholder = st.empty()
-        full_response = ""
-        config = {"configurable": {"thread_id": st.session_state.thread_id}}
-        
-        try:
-            for event in graph_app.stream({"messages": [HumanMessage(content=full_user_prompt)]}, config=config, stream_mode="updates"):
-                for node_name, node_state in event.items():
-                    if "messages" in node_state:
-                        last_msg = node_state["messages"][-1]
-                        name = getattr(last_msg, "name", node_name).upper()
-                        content = last_msg.content
-                        if not content and hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
-                            tools_used = ", ".join([t['name'] for t in last_msg.tool_calls])
-                            content = f"*(Đang sử dụng công cụ: {tools_used}...)*"
-                        full_response += f"**[{name}]**\n{content}\n\n---\n"
-                        message_placeholder.markdown(full_response + "▌")
-            message_placeholder.markdown(full_response)
-        except Exception as e:
-            full_response += f"\n\n**[LỖI HỆ THỐNG]**\n{str(e)}"
-            message_placeholder.markdown(full_response)
+        with st.chat_message("assistant"):
+            # Quét các file có sẵn trong hệ thống để tiêm vào Ngữ cảnh cho Agents
+            project_files = [f for f in os.listdir('.') if f.endswith(('.dxf', '.pdf', '.xlsx', '.docx')) and os.path.isfile(f)]
+            file_context = ""
+            if project_files:
+                file_context = f"\n\n[THÔNG TIN HỆ THỐNG: Danh sách các file hồ sơ/bản vẽ ĐANG CÓ SẴN trong dự án gồm: {project_files}. Hãy chọn file phù hợp nhất từ danh sách này nếu người dùng không chỉ định tên file cụ thể]."
+                
+            full_user_prompt = user_input + file_context
             
-        st.session_state.chat_history.append({"role": "assistant", "content": full_response})
+            message_placeholder = st.empty()
+            full_response = ""
+            config = {"configurable": {"thread_id": st.session_state.thread_id}}
+            
+            try:
+                for event in graph_app.stream({"messages": [HumanMessage(content=full_user_prompt)]}, config=config, stream_mode="updates"):
+                    for node_name, node_state in event.items():
+                        if "messages" in node_state:
+                            last_msg = node_state["messages"][-1]
+                            name = getattr(last_msg, "name", node_name).upper()
+                            content = last_msg.content
+                            if not content and hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+                                tools_used = ", ".join([t['name'] for t in last_msg.tool_calls])
+                                content = f"*(Đang sử dụng công cụ: {tools_used}...)*"
+                            
+                            # Nhãn phòng ban luôn nằm nổi bật phía trên cùng
+                            badge_title = f"### 🏢 [{name}]\n"
+                            full_response += f"{badge_title}{content}\n\n---\n"
+                            message_placeholder.markdown(full_response + "▌")
+                message_placeholder.markdown(full_response)
+            except Exception as e:
+                full_response += f"\n\n**[LỖI HỆ THỐNG]**\n{str(e)}"
+                message_placeholder.markdown(full_response)
+                
+            st.session_state.chat_history.append({"role": "assistant", "content": full_response})

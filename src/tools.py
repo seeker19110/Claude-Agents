@@ -154,7 +154,8 @@ def read_cad(file_path: str) -> str:
         
         block_defs = []
         for block in doc.blocks:
-            if not block.is_layout_block and not block.name.startswith('*'):
+            is_layout = getattr(block, 'is_layout_block', False) or getattr(block, 'is_any_layout', False)
+            if not is_layout and not block.name.startswith('*'):
                 block_defs.append(block.name)
                 
         msp = doc.modelspace()
