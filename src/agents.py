@@ -138,7 +138,7 @@ def reviewer_agent_node(state: AgentState):
         
     if has_errors:
         response = AIMessage(content=f"[Reviewer Agent] PHÊ DUYỆT (Auto-pass sau khi sửa lỗi).", name="ReviewerAgent")
-        return {"messages": [response]}
+        return {"messages": [response], "errors": []}
         
     system_prompt = SystemMessage(content="""Bạn là Kỹ sư trưởng (Reviewer). Kiểm tra kết quả tư vấn.
 Yêu cầu bắt buộc:
@@ -157,10 +157,10 @@ Nếu thông tin sai kỹ thuật hoặc thiếu căn cứ, hãy REJECT.""")
             return {"messages": [response], "errors": [review_result.reason]}
         else:
             response = AIMessage(content=f"[Reviewer Agent] PHÊ DUYỆT: Phương án kỹ thuật hợp lệ.", name="ReviewerAgent")
-            return {"messages": [response]}
+            return {"messages": [response], "errors": []}
     except Exception as e:
         response = AIMessage(content=f"[Reviewer Agent] PHÊ DUYỆT: Phương án kỹ thuật hợp lệ.", name="ReviewerAgent")
-        return {"messages": [response]}
+        return {"messages": [response], "errors": []}
 
 # --- 9. Supervisor Agent (Project Manager) ---
 class RouteResponse(BaseModel):
@@ -170,7 +170,6 @@ class RouteResponse(BaseModel):
 
 def supervisor_node(state: AgentState):
     messages = state.get("messages", [])
-    errors = state.get("errors", [])
     if not messages:
         return {"next": "FINISH"}
         
@@ -178,7 +177,7 @@ def supervisor_node(state: AgentState):
     
     if getattr(last_msg, "name", "") == "ReviewerAgent":
         content = getattr(last_msg, "content", "")
-        if "TỪ CHỐI" in content or errors:
+        if "TỪ CHỐI" in content:
             sender = state.get("sender", "qs")
             if sender in ["mechanical", "electrical", "plumbing", "firefighting", "qs", "cad", "bim"]:
                 return {"next": sender}
