@@ -3,6 +3,7 @@ from langchain_core.messages import HumanMessage
 from src.graph import app as graph_app
 import uuid
 import os
+import time
 import pandas as pd
 
 st.set_page_config(page_title="Văn phòng MEPF Hoàn hảo", layout="wide", page_icon="🏢")
@@ -101,6 +102,7 @@ with tab_chat:
             message_placeholder = st.empty()
             full_response = ""
             config = {"configurable": {"thread_id": st.session_state.thread_id}}
+            start_time = time.time()
             
             try:
                 for event in graph_app.stream({"messages": [HumanMessage(content=full_user_prompt)]}, config=config, stream_mode="updates"):
@@ -115,7 +117,19 @@ with tab_chat:
                             
                             badge_title = f"### 🏢 [{name}]\n"
                             full_response += f"{badge_title}{content}\n\n---\n"
-                            message_placeholder.markdown(full_response + "▌")
+                            
+                            elapsed = max(time.time() - start_time, 0.01)
+                            est_tokens = max(1, int(len(full_response) / 4))
+                            tps = est_tokens / elapsed
+                            live_speed = f"*(⚡ Tốc độ: {tps:.1f} tokens/s | Thời gian: {elapsed:.1f}s)*"
+                            
+                            message_placeholder.markdown(full_response + "\n" + live_speed + " ▌")
+                            
+                elapsed = max(time.time() - start_time, 0.01)
+                est_tokens = max(1, int(len(full_response) / 4))
+                tps = est_tokens / elapsed
+                speed_summary = f"\n*(⚡ Tốc độ sinh: **{tps:.1f} tokens/giây** | Thời gian xử lý: **{elapsed:.2f}s** | Dung lượng: **~{est_tokens} tokens**)*\n"
+                full_response += speed_summary
                 message_placeholder.markdown(full_response)
             except Exception as e:
                 full_response += f"\n\n**[LỖI HỆ THỐNG]**\n{str(e)}"
