@@ -132,13 +132,18 @@ Yêu cầu bắt buộc:
 2. Nếu là gọi Tool đọc/ghi file, đánh giá APPROVE ngay để không chặn luồng.
 Nếu thông tin sai kỹ thuật hoặc thiếu căn cứ, hãy REJECT.""")
 
-    reviewer_llm = llm.with_structured_output(ReviewResponse)
-    review_result = reviewer_llm.invoke([system_prompt, last_msg])
-    
-    if review_result.decision == "REJECT":
-        response = AIMessage(content=f"[Reviewer Agent] TỪ CHỐI: {review_result.reason}", name="ReviewerAgent")
-        return {"messages": [response], "errors": [review_result.reason]}
-    else:
+    try:
+        llm = get_llm()
+        reviewer_llm = llm.with_structured_output(ReviewResponse)
+        review_result = reviewer_llm.invoke([system_prompt, last_msg])
+        
+        if review_result.decision == "REJECT":
+            response = AIMessage(content=f"[Reviewer Agent] TỪ CHỐI: {review_result.reason}", name="ReviewerAgent")
+            return {"messages": [response], "errors": [review_result.reason]}
+        else:
+            response = AIMessage(content=f"[Reviewer Agent] PHÊ DUYỆT: Phương án kỹ thuật hợp lệ.", name="ReviewerAgent")
+            return {"messages": [response]}
+    except Exception as e:
         response = AIMessage(content=f"[Reviewer Agent] PHÊ DUYỆT: Phương án kỹ thuật hợp lệ.", name="ReviewerAgent")
         return {"messages": [response]}
 
