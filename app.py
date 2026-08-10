@@ -6,8 +6,16 @@ import os
 
 st.set_page_config(page_title="Văn phòng MEPF Hoàn hảo", layout="wide", page_icon="🏢")
 
-st.title("🏢 Văn phòng Tư vấn Thiết kế MEPF (X-Agents)")
-st.markdown("Hệ thống tự động hóa tư vấn chuyên sâu ứng dụng Tiêu chuẩn (RAG), xử lý AutoCAD (DXF), và tự động lập dự toán.")
+st.markdown("""
+<div style="background-color: #1E1E2E; padding: 18px 24px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #313244; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+    <h2 style="color: #F5E0DC; margin: 0; font-size: 26px; font-weight: 700; display: flex; align-items: center; gap: 10px;">
+        🏢 Văn phòng Tư vấn Thiết kế MEPF (X-Agents)
+    </h2>
+    <p style="color: #BAC2DE; margin: 6px 0 0 0; font-size: 14px; font-weight: 400;">
+        Hệ thống tự động hóa tư vấn chuyên sâu ứng dụng Tiêu chuẩn (RAG), xử lý AutoCAD (DXF), và tự động lập dự toán.
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 import pandas as pd
 
