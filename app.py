@@ -111,9 +111,11 @@ with tab_chat:
                             last_msg = node_state["messages"][-1]
                             name = getattr(last_msg, "name", node_name).upper()
                             content = last_msg.content
+                            is_tool_status = False
                             if not content and hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
                                 tools_used = ", ".join([t['name'] for t in last_msg.tool_calls])
-                                content = f"*(Đang sử dụng công cụ: {tools_used}...)*"
+                                content = f"*(⏳ Đang thực thi công cụ: {tools_used}...)*"
+                                is_tool_status = True
                             
                             badge_title = f"### 🏢 [{name}]\n"
                             full_response += f"{badge_title}{content}\n\n---\n"
@@ -121,7 +123,11 @@ with tab_chat:
                             elapsed = max(time.time() - start_time, 0.01)
                             est_tokens = max(1, int(len(full_response) / 4))
                             tps = est_tokens / elapsed
-                            live_speed = f"*(⚡ Tốc độ: {tps:.1f} tokens/s | Thời gian: {elapsed:.1f}s)*"
+                            
+                            if is_tool_status:
+                                live_speed = f"*(⏳ Đang chờ công cụ Python xử lý file... | Thời gian: {elapsed:.1f}s)*"
+                            else:
+                                live_speed = f"*(⚡ Tốc độ sinh AI: **{tps:.1f} tokens/s** | Thời gian: {elapsed:.1f}s)*"
                             
                             message_placeholder.markdown(full_response + "\n" + live_speed + " ▌")
                             
