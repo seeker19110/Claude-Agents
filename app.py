@@ -7,13 +7,57 @@ import os
 st.set_page_config(page_title="Văn phòng MEPF Hoàn hảo", layout="wide", page_icon="🏢")
 
 st.markdown("""
-<div style="background-color: #1E1E2E; padding: 18px 24px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #313244; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-    <h2 style="color: #F5E0DC; margin: 0; font-size: 26px; font-weight: 700; display: flex; align-items: center; gap: 10px;">
-        🏢 Văn phòng Tư vấn Thiết kế MEPF (X-Agents)
-    </h2>
-    <p style="color: #BAC2DE; margin: 6px 0 0 0; font-size: 14px; font-weight: 400;">
-        Hệ thống tự động hóa tư vấn chuyên sâu ứng dụng Tiêu chuẩn (RAG), xử lý AutoCAD (DXF), và tự động lập dự toán.
-    </p>
+<style>
+/* Điều chỉnh khoảng cách lề trên để không bị che bởi Sticky Header */
+.main .block-container {
+    padding-top: 3.8rem !important;
+}
+
+/* Tùy chỉnh màu nền cho thanh Navbar Top Header mặc định của Streamlit */
+header[data-testid="stHeader"] {
+    background-color: #11111b !important;
+    z-index: 999990 !important;
+}
+
+/* Định vị tiêu đề nằm cố định trên thanh Top Header cùng hàng với nút Deploy */
+.top-nav-title {
+    position: fixed;
+    top: 0;
+    left: 4.5rem;
+    height: 3.75rem;
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    pointer-events: none;
+}
+
+.top-nav-main-title {
+    color: #cdd6f4;
+    font-weight: 700;
+    font-size: 15px;
+    white-space: nowrap;
+}
+
+.top-nav-sub-title {
+    color: #a6adc8;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0.85;
+    border-left: 1px solid #45475a;
+    padding-left: 10px;
+}
+
+@media (max-width: 768px) {
+    .top-nav-sub-title {
+        display: none;
+    }
+}
+</style>
+
+<div class="top-nav-title">
+    <span class="top-nav-main-title">🏢 Văn phòng Tư vấn Thiết kế MEPF (X-Agents)</span>
+    <span class="top-nav-sub-title">Tự động hóa RAG Tiêu chuẩn, xử lý AutoCAD (DXF) & Lập dự toán</span>
 </div>
 """, unsafe_allow_html=True)
 
