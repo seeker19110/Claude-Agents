@@ -493,6 +493,109 @@ def render_cad_image(file_path: str, output_png_path: str = "cad_preview.png") -
     except Exception as e:
         return f"Lỗi xuất ảnh CAD: {e}"
 
+@tool
+def analyze_cad_spatial_context(file_path: str, max_distance: float = 2000.0) -> str:
+    """Phân tích Ngữ cảnh Hình học & Mũi tên Chỉ dẫn (Leaders, Text Annotations, Spatial Matching) để hiểu bản vẽ CAD như con người: tự động liên kết Ghi chú văn bản (ví dụ: 'Ống uPVC Ø110', 'Ống gió 600x400') và Mũi tên chỉ hướng với đúng nét vẽ đường ống kề cận."""
+    print(f"\n[Tool] Analyzing CAD Spatial Context & Arrows: {file_path}")
+    try:
+        doc = ezdxf.readfile(file_path)
+        msp = doc.modelspace()
+        
+        texts = []
+        leaders = []
+        pipe_segments = []
+        
+        def point_to_seg_dist(px, py, ax, ay, bx, by):
+            l2 = (bx - ax)**2 + (by - ay)**2
+            if l2 == 0:
+                return math.hypot(px - ax, py - ay)
+            t = max(0.0, min(1.0, ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / l2))
+            proj_x = ax + t * (bx - ax)
+            proj_y = ay + t * (by - ay)
+            return math.hypot(px - proj_x, py - proj_y)
+
+        for entity in msp:
+            dxftype = entity.dxftype()
+            layer = entity.dxf.layer
+            
+            if dxftype == 'TEXT':
+                t_str = entity.dxf.text.strip()
+                pos = entity.dxf.insert
+                if t_str:
+                    texts.append({"text": t_str, "pos": (pos.x, pos.y), "layer": layer})
+            elif dxftype == 'MTEXT':
+                t_str = entity.text.strip()
+                pos = entity.dxf.insert
+                if t_str:
+                    texts.append({"text": t_str, "pos": (pos.x, pos.y), "layer": layer})
+            elif dxftype in ('LEADER', 'MULTILEADER'):
+                try:
+                    if hasattr(entity, 'vertices') and entity.vertices:
+                        vertices = [(v.x, v.y) for v in entity.vertices]
+                        leaders.append({"tip": vertices[0], "tail": vertices[-1], "layer": layer})
+                except Exception:
+                    pass
+            elif dxftype == 'LINE':
+                s, e = entity.dxf.start, entity.dxf.end
+                length = math.hypot(e.x - s.x, e.y - s.y)
+                pipe_segments.append({"layer": layer, "seg": (s.x, s.y, e.x, e.y), "length": length})
+            elif dxftype in ('LWPOLYLINE', 'POLYLINE'):
+                try:
+                    if dxftype == 'LWPOLYLINE':
+                        pts = entity.get_points(format='xy')
+                    else:
+                        pts = [(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
+                    for i in range(1, len(pts)):
+                        ax, ay = pts[i-1][0], pts[i-1][1]
+                        bx, by = pts[i][0], pts[i][1]
+                        length = math.hypot(bx - ax, by - ay)
+                        pipe_segments.append({"layer": layer, "seg": (ax, ay, bx, by), "length": length})
+                except Exception:
+                    pass
+
+        associations = {}
+        for text_item in texts:
+            tx, ty = text_item["pos"]
+            txt = text_item["text"]
+            
+            min_dist = float('inf')
+            best_pipe = None
+            
+            for p in pipe_segments:
+                ax, ay, bx, by = p["seg"]
+                d = point_to_seg_dist(tx, ty, ax, ay, bx, by)
+                if d < min_dist:
+                    min_dist = d
+                    best_pipe = p
+                    
+            if best_pipe and min_dist <= max_distance:
+                p_layer = best_pipe["layer"]
+                key = f"Ghi chú: '{txt}' <---> Layer ống: '{p_layer}'"
+                if key not in associations:
+                    associations[key] = {"count": 0, "total_length": 0.0, "text": txt, "layer": p_layer, "min_dist": min_dist}
+                associations[key]["count"] += 1
+                associations[key]["total_length"] += best_pipe["length"]
+
+        report = f"PHÂN TÍCH NGỮ CẢNH HÌNH HỌC & MŨI TÊN CHỈ DẪN (Spatial Intelligence):\n"
+        report += f"- Tìm thấy {len(texts)} văn bản ghi chú (TEXT/MTEXT), {len(leaders)} mũi tên chỉ dẫn (LEADER), và {len(pipe_segments)} đoạn đường ống.\n\n"
+        
+        report += "📌 THỐNG KÊ GHI CHÚ VĂN BẢN VÀ MŨI TÊN (Tối đa 20 ghi chú tiêu biểu):\n"
+        for t in texts[:20]:
+            report += f"  • Ghi chú: \"{t['text']}\" (Layer: {t['layer']}) tại tọa độ ({t['pos'][0]:.1f}, {t['pos'][1]:.1f})\n"
+        if len(texts) > 20:
+            report += f"  ... và {len(texts) - 20} ghi chú khác.\n"
+            
+        report += "\n🔗 LIÊN KẾT HÌNH HỌC KHÔNG GIANG (Text Annotation <-> Pipe Segment): \n"
+        if not associations:
+            report += "  (Không tìm thấy liên kết kề cận trong bán kính khoảng cách quy định)\n"
+        else:
+            for k, v in list(associations.items())[:25]:
+                report += f"  • [{v['text']}] liên kết trực tiếp với tuyến ống Layer '{v['layer']}' (Khoảng cách kề cận: {v['min_dist']:.1f}mm) -> Tổng chiều dài suy luận: {v['total_length']:.2f}m\n"
+                
+        return report
+    except Exception as e:
+        return f"Lỗi phân tích ngữ cảnh không gian CAD: {e}"
+
 from src.hvac_tools import calc_psychrometrics, calc_duct_size, calc_cooling_load, calc_chw_pipe_size, calc_pump_fan_power, calc_ventilation_rate
 from src.elec_tools import calc_cable_size, calc_breaker_size, calc_lighting_qty
 from src.plumb_tools import calc_water_pipe, calc_water_tank, calc_plumbing_pump_head
@@ -501,7 +604,7 @@ from src.ff_tools import calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_q
 tools = [
     search_web, execute_python_code, list_directory,
     read_excel, write_excel, read_word, write_word, read_pdf,
-    read_cad, write_cad, edit_cad, ai_block_recovery, render_cad_image,
+    read_cad, write_cad, edit_cad, ai_block_recovery, render_cad_image, analyze_cad_spatial_context,
     calc_psychrometrics, calc_duct_size, calc_cooling_load, calc_chw_pipe_size, calc_pump_fan_power, calc_ventilation_rate,
     calc_cable_size, calc_breaker_size, calc_lighting_qty,
     calc_water_pipe, calc_water_tank, calc_plumbing_pump_head,
