@@ -115,7 +115,8 @@ def cad_agent_node(state: AgentState):
 
 # --- 7. BIM Agent ---
 def bim_agent_node(state: AgentState):
-    prompt = "Bạn là một BIM Coordinator xuất sắc. Quản lý mô hình 3D, kiểm tra xung đột."
+    prompt = """Bạn là một BIM Coordinator xuất sắc. Quản lý mô hình 3D, kiểm tra xung đột và bóc tách khối lượng.
+    - CẤM NÓI SUÔNG: Nếu được giao nhiệm vụ đếm block, bóc khối lượng hay lập dự toán, bạn BẮT BUỘC phải dùng công cụ `read_cad` để đọc bản vẽ và gọi `write_excel` để xuất file Excel thật sự! Tuyệt đối không được đưa ra danh sách các bước gợi ý lý thuyết suông."""
     return call_mepf_agent(state, prompt, "BIMAgent")
 
 # --- 8. Reviewer Agent ---
@@ -127,7 +128,14 @@ def reviewer_agent_node(state: AgentState):
     messages = state.get("messages", [])
     last_msg = messages[-1]
     has_errors = len(state.get("errors", [])) > 0
+    content = getattr(last_msg, "content", "")
+    has_tool_calls = hasattr(last_msg, "tool_calls") and len(last_msg.tool_calls) > 0
     
+    # CHẶN TUYỆT ĐỐI CÁC CÂU TRẢ LỜI LÝ THUYẾT SUÔNG
+    if not has_tool_calls and any(kw in content.lower() for kw in ["tách biệt các thuộc tính", "tìm kiếm mẫu", "tôi sẽ đề xuất một số bước", "nếu bạn cần giúp đỡ"]):
+        response = AIMessage(content="[Reviewer Agent] TỪ CHỐI: Agent đã trả lời suông lý thuyết thay vì thực thi công cụ Python đếm CAD và xuất Excel thật (`read_cad` / `write_excel`). Yêu cầu thực thi tool ngay!", name="ReviewerAgent")
+        return {"messages": [response], "errors": ["Agent trả lời suông không gọi tool. Hãy gọi tool read_cad và write_excel để tạo file thật."]}
+        
     if has_errors:
         response = AIMessage(content=f"[Reviewer Agent] PHÊ DUYỆT (Auto-pass sau khi sửa lỗi).", name="ReviewerAgent")
         return {"messages": [response]}
@@ -136,7 +144,7 @@ def reviewer_agent_node(state: AgentState):
 Yêu cầu bắt buộc:
 1. Nếu là tính toán thiết kế MEPF, phải có trích dẫn Tiêu chuẩn (TCVN/ASHRAE/NFPA).
 2. Nếu là gọi Tool đọc/ghi file, đánh giá APPROVE ngay để không chặn luồng.
-3. BẮT BUỘC XUẤT FILE EXCEL: Nếu bộ phận QSAgent báo cáo bóc khối lượng nhưng KHÔNG gọi tool `write_excel` để xuất file Excel thật sự, bạn BẮT BUỘC phải REJECT và yêu cầu QSAgent gọi tool `write_excel` ngay lập tức!
+3. BẮT BUỘC XUẤT FILE EXCEL: Nếu bộ phận QSAgent/BIMAgent báo cáo bóc khối lượng nhưng KHÔNG gọi tool `write_excel` để xuất file Excel thật sự, bạn BẮT BUỘC phải REJECT và yêu cầu gọi tool `write_excel` ngay lập tức!
 Nếu thông tin sai kỹ thuật hoặc thiếu căn cứ, hãy REJECT.""")
 
     try:
@@ -173,14 +181,14 @@ def supervisor_node(state: AgentState):
     supervisor_prompt = """Bạn là Giám đốc Dự án (Project Manager) của Văn phòng tư vấn MEPF.
 Bạn là người đứng đầu, chịu trách nhiệm nhận yêu cầu tổng hợp từ khách hàng và chia nhỏ công việc cho đội ngũ Kỹ sư.
 Phân loại yêu cầu:
+- 'qs': Bóc khối lượng, lập dự toán, đếm block, thống kê số lượng thiết bị, đọc thuộc tính, xuất Excel. (LUÔN CHỌN 'qs' NẾU KHÁCH YÊU CẦU BÓC KHỐI LƯỢNG / THỐNG KÊ BLOCK / LẬP DỰ TOÁN / XUẤT EXCEL).
 - 'mechanical': Nếu liên quan đến HVAC, thông gió, điều hòa.
 - 'electrical': Nếu liên quan đến Điện, chiếu sáng, tủ điện.
 - 'plumbing': Nước, bơm, vệ sinh.
 - 'firefighting': PCCC.
-- 'qs': Bóc khối lượng, lập dự toán, đọc thuộc tính, xuất Excel.
 - 'cad': Tạo/sửa bản vẽ CAD.
-- 'bim': 3D.
-- 'FINISH': Nếu đã hoàn thành hoặc khách hàng chỉ hỏi vu vơ không liên quan dự án.
+- 'bim': Quản lý mô hình 3D BIM, kiểm tra xung đột.
+- 'FINISH': Nếu đã hoàn thành hoặc khách hàng chỉ chào hỏi xã giao.
 
 Hãy hoạt động như một PM thực thụ: Nếu khách hàng yêu cầu "Thiết kế hệ thống điện và lập báo giá", hãy gọi 'electrical' trước. Sau khi 'electrical' hoàn thành, vòng lặp trở lại, bạn mới tiếp tục gọi 'qs' để lập báo giá.
 
