@@ -168,18 +168,30 @@ def read_cad(file_path: str) -> str:
             layer_counts[layer] = layer_counts.get(layer, 0) + 1
             dxftype = entity.dxftype()
             
-            if dxftype == 'LINE':
-                start = entity.dxf.start
-                end = entity.dxf.end
-                dist = math.hypot(end.x - start.x, end.y - start.y)
-                layer_lengths[layer] = layer_lengths.get(layer, 0.0) + dist
+            if dxftype in ('LINE', 'LWPOLYLINE', 'POLYLINE'):
+                try:
+                    dist = 0.0
+                    if dxftype == 'LINE':
+                        start = entity.dxf.start
+                        end = entity.dxf.end
+                        dist = math.hypot(end.x - start.x, end.y - start.y)
+                    elif dxftype == 'LWPOLYLINE':
+                        pts = entity.get_points(format='xy')
+                        dist = sum(math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]) for i in range(1, len(pts)))
+                    elif dxftype == 'POLYLINE':
+                        pts = [(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
+                        dist = sum(math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]) for i in range(1, len(pts)))
+                    layer_lengths[layer] = layer_lengths.get(layer, 0.0) + dist
+                except Exception:
+                    pass
             
             if dxftype == 'INSERT':
                 b_name = entity.dxf.name
                 attribs = {}
-                if entity.has_attribs:
+                if hasattr(entity, 'attribs') and entity.attribs:
                     for attrib in entity.attribs:
-                        attribs[attrib.dxf.tag] = attrib.dxf.text
+                        if hasattr(attrib, 'dxf') and hasattr(attrib.dxf, 'tag'):
+                            attribs[attrib.dxf.tag] = getattr(attrib.dxf, 'text', '')
                 block_instances.append({"name": b_name, "attribs": attribs})
                 
         block_summary = {}
