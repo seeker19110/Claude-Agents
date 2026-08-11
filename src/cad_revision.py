@@ -24,6 +24,7 @@ from datetime import datetime
 import ezdxf
 from langchain_core.tools import tool
 
+from src import cad_geometry
 from src.config import settings
 from src.workspace import get_workspace_dir, resolve_safe_path
 
@@ -128,7 +129,8 @@ def _read_history(file_path: str):
 
 
 def summarize_drawing(dxf_path: str) -> dict:
-    """Thống kê nội dung bản vẽ: số Block theo tên, chiều dài theo Layer, danh sách Layer."""
+    """Thống kê nội dung bản vẽ: số Block theo tên, chiều dài THẬT theo Layer (kể cả cung
+    cong và chênh cao độ), danh sách Layer."""
     doc = ezdxf.readfile(dxf_path)
     msp = doc.modelspace()
     blocks, lengths = {}, {}
@@ -136,24 +138,13 @@ def summarize_drawing(dxf_path: str) -> dict:
 
     for entity in msp:
         entity_count += 1
-        layer = entity.dxf.layer
-        dxftype = entity.dxftype()
-        if dxftype == "INSERT":
+        if entity.dxftype() == "INSERT":
             blocks[entity.dxf.name] = blocks.get(entity.dxf.name, 0) + 1
-        elif dxftype == "LINE":
-            s, e = entity.dxf.start, entity.dxf.end
-            lengths[layer] = lengths.get(layer, 0.0) + math.hypot(e.x - s.x, e.y - s.y)
-        elif dxftype in ("LWPOLYLINE", "POLYLINE"):
-            try:
-                if dxftype == "LWPOLYLINE":
-                    pts = entity.get_points(format="xy")
-                else:
-                    pts = [(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
-                total = sum(math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])
-                            for i in range(1, len(pts)))
-                lengths[layer] = lengths.get(layer, 0.0) + total
-            except Exception:
-                continue
+            continue
+        length = cad_geometry.entity_length(entity)
+        if length > 0:
+            layer = entity.dxf.layer
+            lengths[layer] = lengths.get(layer, 0.0) + length
 
     return {
         "blocks": blocks,

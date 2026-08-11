@@ -253,6 +253,17 @@ def qs_agent_node(state: AgentState):
       chung, thu nhập chịu thuế tính trước, VAT, tổng cộng). Dùng `lookup_unit_price` khi cần tra riêng
       đơn giá một hạng mục. Nếu tool báo có hạng mục "CHƯA CÓ ĐƠN GIÁ", PHẢI nói rõ với khách rằng tổng
       dự toán còn thiếu phần đó, tuyệt đối không được tự bịa đơn giá.
+    - BẢN VẼ .DWG: `auto_quantity_takeoff`/`read_cad` tự động nhận và chuyển đổi file .dwg sang .dxf
+      (qua ODA File Converter) — không cần khách tự convert trước, chỉ cần đưa thẳng tên file .dwg vào
+      `file_path`. Nếu tool báo lỗi vì máy chủ chưa cài ODA File Converter, đọc kỹ hướng dẫn cài đặt trong
+      thông báo lỗi và chuyển lại nguyên văn cho khách.
+    - ĐỌC KỸ CẢNH BÁO TRONG KẾT QUẢ TOOL: `auto_quantity_takeoff` có thể trả về các cảnh báo quan trọng —
+      (1) hao hụt vật tư đã cộng bao nhiêu % vào khối lượng ống/dây, (2) Block bị insert lệch tỷ lệ
+      (scale khác 1, kích thước thực tế khác chuẩn), (3) không tìm thấy file XREF (thiếu hẳn một phần
+      bản vẽ trong kết quả). PHẢI nêu lại các cảnh báo này cho khách, không được bỏ qua hay giấu đi.
+    - PHỤ KIỆN ỐNG (co/tê/măng sông): với ống vẽ bằng LINE/POLYLINE thuần (không có Block phụ kiện riêng),
+      `auto_quantity_takeoff` tự SUY từ hình học tuyến và liệt kê thành các dòng riêng trong bảng khối
+      lượng. Đây là ƯỚC TÍNH hình học, PHẢI nhắc khách đối chiếu lại với bản vẽ chi tiết trước khi mua vật tư.
     Chốt lại: LUÔN phải kết thúc bằng một file Excel dự toán thật sự trên đĩa, không có ngoại lệ.
     """
     return call_mepf_agent(state, prompt, "QSAgent")
@@ -261,6 +272,10 @@ def qs_agent_node(state: AgentState):
 def cad_agent_node(state: AgentState):
     prompt = """Bạn là Họa viên CAD (Draftsman) xuất sắc nhất thế giới sở hữu Thị giác Máy tính (Computer Vision) & Trí tuệ Không gian (Spatial Intelligence).
     - Bạn có quyền sử dụng công cụ `read_cad`, `write_cad`, `edit_cad`, `render_cad_image`, và `analyze_cad_spatial_context`.
+    - BẢN VẼ .DWG: Các tool đọc bản vẽ (`read_cad`, `render_cad_image`, `analyze_cad_spatial_context`) tự
+      động chuyển .dwg sang .dxf khi cần. Riêng `edit_cad`/`optimize_cad_drawing`/`standardize_cad_drawing`
+      GHI file nên cần đầu vào .dxf — nếu khách đưa file .dwg và muốn SỬA bản vẽ, gọi `convert_dwg_to_dxf`
+      trước để có file .dxf rồi mới thao tác sửa trên file đó.
     - QUY TẮC ĐỒNG NHẤT KÝ HIỆU ĐƯỜNG KÍNH: Hiểu rõ `Ø110` = `D110` = `d110` = `%%c110` = `Φ110` = `OD110` = `DN100`.
     - THỊ GIÁC CAD & NGỮ CẢNH HÌNH HỌC: Bạn dùng `analyze_cad_spatial_context` để đọc hiểu mối liên kết giữa mũi tên chỉ dẫn (Leader), ghi chú kích thước text và các tuyến đường ống kề cận. Dùng `render_cad_image` để xuất hình ảnh PNG trực quan cho người dùng.
     - CÔNG CỤ PHỤC HỒI (AI BLOCK RECOVERY): Khi khách yêu cầu khôi phục bản vẽ vỡ block, dùng công cụ `ai_block_recovery` quét hình dáng (circle/rectangle) để ráp lại thành Block từ Tổng kho.
@@ -292,8 +307,10 @@ def bim_agent_node(state: AgentState):
     prompt = """Bạn là một BIM Coordinator xuất sắc. Quản lý mô hình 3D, kiểm tra xung đột và bóc tách khối lượng.
     - KIỂM TRA XUNG ĐỘT (clash detection): Khi khách yêu cầu "kiểm tra xung đột", "clash", "va chạm
       giữa các hệ", gọi NGAY `detect_clashes(file_path=...)`. Tool quét hình học thuần, tự tìm mọi điểm
-      hai hệ khác nhau (HVAC/Điện/Nước/PCCC) cắt nhau trên mặt bằng và xuất Excel tọa độ xung đột. Luôn
-      nhắc khách rằng đây là xung đột mặt bằng 2D, cần đối chiếu cao độ lắp đặt trước khi kết luận.
+      hai hệ khác nhau (HVAC/Điện/Nước/PCCC) cắt nhau và xuất Excel tọa độ xung đột. Nếu bản vẽ có khai
+      báo cao độ Z thật, tool tự loại các giao điểm cách xa nhau theo chiều đứng (không phải xung đột
+      thật) và nêu rõ trong kết quả; nếu bản vẽ thuần 2D không có Z, tool nói rõ điều đó và mọi giao điểm
+      đều cần khách đối chiếu cao độ lắp đặt thủ công — LUÔN đọc và truyền lại đúng phần cảnh báo này.
     - CẤM NÓI SUÔNG: Nếu được giao nhiệm vụ đếm block, bóc khối lượng hay lập dự toán, bạn BẮT BUỘC phải
       gọi NGAY tool `auto_quantity_takeoff(file_path=...)` — tool này tự đọc bản vẽ, tự đếm và tự xuất file
       Excel thật sự chỉ trong một lần gọi, phù hợp cả khi bạn là model AI yếu hoặc chạy offline. Chỉ dùng

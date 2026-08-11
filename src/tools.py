@@ -15,6 +15,8 @@ from functools import lru_cache
 from src.workspace import resolve_safe_path, get_project_root
 from src.cad_revision import create_snapshot
 from src import cad_standards
+from src import cad_geometry
+from src import cad_loader
 
 logger = logging.getLogger(__name__)
 
@@ -297,48 +299,37 @@ def read_pdf(file_path: str) -> str:
 
 @tool
 def read_cad(file_path: str) -> str:
-    """Đọc file CAD (.dxf) và trả về thống kê thư viện block, block attributes, chiều dài, và layer sau khi đã làm sạch."""
+    """Đọc file CAD (.dxf/.dwg) và trả về thống kê thư viện block, block attributes, chiều
+    dài THẬT (đã tính cung cong và cao độ), và layer sau khi đã làm sạch."""
     logger.info("Reading, Cleaning & Extracting CAD: %s", file_path)
     try:
-        doc = ezdxf.readfile(resolve_safe_path(file_path))
-        
+        doc, load_notes = cad_loader.load_drawing(file_path)
+
         auditor = audit.Auditor(doc)
         auditor.run()
         audit_fixes = len(auditor.fixes)
-        
+
         block_defs = []
         for block in doc.blocks:
             is_layout = getattr(block, 'is_layout_block', False) or getattr(block, 'is_any_layout', False)
             if not is_layout and not block.name.startswith('*'):
                 block_defs.append(block.name)
-                
+
         msp = doc.modelspace()
         layer_counts = {}
         block_instances = []
+        scaled_blocks = 0
         layer_lengths = {}
-        
+
         for entity in msp:
             layer = entity.dxf.layer
             layer_counts[layer] = layer_counts.get(layer, 0) + 1
             dxftype = entity.dxftype()
-            
-            if dxftype in ('LINE', 'LWPOLYLINE', 'POLYLINE'):
-                try:
-                    dist = 0.0
-                    if dxftype == 'LINE':
-                        start = entity.dxf.start
-                        end = entity.dxf.end
-                        dist = math.hypot(end.x - start.x, end.y - start.y)
-                    elif dxftype == 'LWPOLYLINE':
-                        pts = entity.get_points(format='xy')
-                        dist = sum(math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]) for i in range(1, len(pts)))
-                    elif dxftype == 'POLYLINE':
-                        pts = [(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
-                        dist = sum(math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]) for i in range(1, len(pts)))
-                    layer_lengths[layer] = layer_lengths.get(layer, 0.0) + dist
-                except Exception:
-                    pass
-            
+
+            length = cad_geometry.entity_length(entity)
+            if length > 0:
+                layer_lengths[layer] = layer_lengths.get(layer, 0.0) + length
+
             if dxftype == 'INSERT':
                 b_name = entity.dxf.name
                 attribs = {}
@@ -347,29 +338,34 @@ def read_cad(file_path: str) -> str:
                         if hasattr(attrib, 'dxf') and hasattr(attrib.dxf, 'tag'):
                             attribs[attrib.dxf.tag] = getattr(attrib.dxf, 'text', '')
                 block_instances.append({"name": b_name, "attribs": attribs})
-                
+                if cad_geometry.is_scaled(entity):
+                    scaled_blocks += 1
+
         block_summary = {}
         for b in block_instances:
             b_name = b['name']
             attr_str = json.dumps(b['attribs'], ensure_ascii=False) if b['attribs'] else "No Attributes"
             key = f"{b_name} | Thuộc tính: {attr_str}"
             block_summary[key] = block_summary.get(key, 0) + 1
-            
-        result = f"Đã làm sạch (Audit). Sửa {audit_fixes} lỗi.\n\n"
-        
+
+        result = f"Đã làm sạch (Audit). Sửa {audit_fixes} lỗi.\n"
+        for note in load_notes:
+            result += f"{note}\n"
+        result += "\n"
+
         if len(block_defs) > 25:
             defs_str = ", ".join(block_defs[:25]) + f"... (và {len(block_defs) - 25} block khác)"
         else:
             defs_str = ", ".join(block_defs) if block_defs else "Không có"
         result += f"THƯ VIỆN BLOCK CÓ SẴN (Definitions): {defs_str}\n\n"
-        
+
         result += "THỐNG KÊ LAYER TRÊN MODELSPACE:\n"
         for k, v in layer_counts.items():
             l_info = f"- Layer '{k}': {v} đối tượng"
             if k in layer_lengths and layer_lengths[k] > 0:
-                l_info += f" (Tổng chiều dài nắn nét: {layer_lengths[k]:.2f}m)"
+                l_info += f" (Tổng chiều dài thật, kể cả cung cong/cao độ: {layer_lengths[k]:.2f}m)"
             result += l_info + "\n"
-            
+
         result += "\nTHỐNG KÊ BLOCK THỰC TẾ & THUỘC TÍNH (Attributes):\n"
         if not block_summary:
             result += "(Không có block nào)\n"
@@ -380,10 +376,35 @@ def read_cad(file_path: str) -> str:
                 result += f"- Block: {k} -> Số lượng: {v}\n"
             if len(sorted_blocks) > 40:
                 result += f"... (và {len(sorted_blocks) - 40} nhóm block khác)\n"
-                
+
+        if scaled_blocks:
+            result += (f"\nCẢNH BÁO: {scaled_blocks} block instance bị insert lệch tỷ lệ "
+                      f"(xscale/yscale khác 1) — kích thước thực tế trên bản vẽ khác chuẩn.\n")
+
         return result
     except Exception as e:
-        return f"Lỗi xử lý CAD (.dxf): {e}"
+        return f"Lỗi xử lý CAD (.dxf/.dwg): {e}"
+
+
+@tool
+def convert_dwg_to_dxf(file_path: str) -> str:
+    """Chuyển một file .dwg (định dạng gốc AutoCAD) sang .dxf bằng ODA File Converter.
+
+    Mọi tool đọc bản vẽ khác (`read_cad`, `auto_quantity_takeoff`, `detect_clashes`,
+    `render_cad_image`, `analyze_cad_spatial_context`) đã TỰ ĐỘNG gọi bước này khi thấy
+    file .dwg — không cần gọi tool này trước. Chỉ dùng khi khách hàng cần chính bản thân
+    file .dxf đã chuyển đổi (ví dụ để sửa bằng `edit_cad`/`optimize_cad_drawing`, các tool
+    này ghi file bằng ezdxf nên cần đầu vào .dxf).
+    """
+    logger.info("Manual DWG->DXF conversion requested: %s", file_path)
+    try:
+        if not file_path.lower().endswith(".dwg"):
+            return f"'{file_path}' không phải file .dwg, không cần chuyển đổi."
+        doc, notes = cad_loader.load_drawing(file_path)
+        return "\n".join(notes) if notes else "Đã chuyển đổi (không có ghi chú thêm)."
+    except Exception as e:
+        return f"Lỗi chuyển đổi .dwg sang .dxf: {e}"
+
 
 @tool
 def write_cad(file_path: str, layers: str) -> str:
@@ -661,7 +682,7 @@ def render_cad_image(file_path: str, output_png_path: str = "cad_preview.png") -
         from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
         import matplotlib.pyplot as plt
 
-        doc = ezdxf.readfile(resolve_safe_path(file_path))
+        doc, _load_notes = cad_loader.load_drawing(file_path)
         msp = doc.modelspace()
 
         fig = plt.figure(figsize=(12, 8), dpi=150)
@@ -680,7 +701,7 @@ def analyze_cad_spatial_context(file_path: str, max_distance: float = 2000.0) ->
     """Phân tích Ngữ cảnh Hình học & Mũi tên Chỉ dẫn (Leaders, Text Annotations, Spatial Matching) để hiểu bản vẽ CAD như con người: tự động liên kết Ghi chú văn bản (ví dụ: 'Ống uPVC Ø110', 'Ống gió 600x400') và Mũi tên chỉ hướng với đúng nét vẽ đường ống kề cận."""
     logger.info("Analyzing CAD Spatial Context & Arrows: %s", file_path)
     try:
-        doc = ezdxf.readfile(resolve_safe_path(file_path))
+        doc, _load_notes = cad_loader.load_drawing(file_path)
         msp = doc.modelspace()
         
         texts = []
@@ -779,24 +800,34 @@ def analyze_cad_spatial_context(file_path: str, max_distance: float = 2000.0) ->
         return f"Lỗi phân tích ngữ cảnh không gian CAD: {e}"
 
 @tool
-def auto_quantity_takeoff(file_path: str, output_excel_path: str = "bao_cao_du_toan.xlsx", max_distance: float = 2000.0) -> str:
-    """Bóc tách khối lượng TỰ ĐỘNG & TOÀN DIỆN từ file CAD (.dxf) và xuất thẳng ra Excel
-    CHỈ BẰNG MỘT LẦN GỌI TOOL DUY NHẤT — không cần LLM tự đếm block, tự cộng chiều dài
-    hay tự soạn JSON (những bước dễ sai với model AI yếu/model chạy offline qua Ollama).
+def auto_quantity_takeoff(file_path: str, output_excel_path: str = "bao_cao_du_toan.xlsx",
+                          max_distance: float = 2000.0, wastage_percent: float = 5.0,
+                          pipe_stock_length_mm: float = 6000.0) -> str:
+    """Bóc tách khối lượng TỰ ĐỘNG & TOÀN DIỆN từ file CAD (.dxf/.dwg) và xuất thẳng ra
+    Excel CHỈ BẰNG MỘT LẦN GỌI TOOL DUY NHẤT — không cần LLM tự đếm block, tự cộng chiều
+    dài hay tự soạn JSON (những bước dễ sai với model AI yếu/model chạy offline qua Ollama).
     Quy trình bên trong (thuần toán học/hình học, KHÔNG dùng LLM):
-    1. Audit làm sạch file CAD.
-    2. Đếm số lượng từng loại Block (thiết bị) theo tên + thuộc tính (attributes).
-    3. Cộng dồn tổng chiều dài từng tuyến ống/dây theo Layer.
-    4. Liên kết Ghi chú văn bản (TEXT/MTEXT, ví dụ 'Ống uPVC Ø110') với Layer ống gần nhất
+    1. Nạp bản vẽ (tự chuyển .dwg sang .dxf nếu cần, tự gộp nội dung XREF nếu có) và audit
+       làm sạch cấu trúc file.
+    2. Đếm số lượng từng loại Block (thiết bị) theo tên + thuộc tính (attributes), cảnh báo
+       riêng các Block bị insert lệch tỷ lệ (scale khác 1) vì kích thước thực tế sẽ khác chuẩn.
+    3. Cộng dồn tổng chiều dài THẬT từng tuyến ống/dây theo Layer — tính đúng cung cong
+       (bulge trong LWPOLYLINE, entity ARC/CIRCLE) thay vì chỉ đo dây cung, và cộng cả
+       chênh lệch cao độ Z nếu tuyến đi xiên giữa các cao độ.
+    4. Suy ra số lượng phụ kiện co/tê/măng sông theo từng layer từ chính hình học tuyến —
+       cần thiết vì ống vẽ bằng LINE/POLYLINE thuần (không chèn Block phụ kiện) trước đây
+       bị bỏ sót hoàn toàn phần phụ kiện.
+    5. Liên kết Ghi chú văn bản (TEXT/MTEXT, ví dụ 'Ống uPVC Ø110') với Layer ống gần nhất
        (Spatial Matching) để đặt tên hạng mục đúng theo bản vẽ thay vì chỉ ghi tên Layer thô.
-    5. Ghi toàn bộ kết quả (STT, Hạng mục, Đơn vị, Khối lượng, Ghi chú) ra file Excel thật.
+    6. Cộng % hao hụt vật tư (`wastage_percent`, mặc định 5%) vào khối lượng ống/dây — số đo
+       hình học thuần luôn thấp hơn khối lượng cần mua thực tế do cắt nối, bù trừ khi thi công.
+    7. Ghi toàn bộ kết quả (STT, Hạng mục, Đơn vị, Khối lượng, Ghi chú) ra file Excel thật.
     Dùng tool này làm bước ĐẦU TIÊN VÀ DUY NHẤT khi cần bóc khối lượng/lập dự toán từ CAD;
     chỉ cần dùng `read_cad`/`analyze_cad_spatial_context` riêng lẻ khi cần phân tích sâu hơn.
     """
     logger.info("Auto Quantity Takeoff (offline, deterministic): %s -> %s", file_path, output_excel_path)
     try:
-        safe_path = resolve_safe_path(file_path)
-        doc = ezdxf.readfile(safe_path)
+        doc, load_notes = cad_loader.load_drawing(file_path)
 
         auditor = audit.Auditor(doc)
         auditor.run()
@@ -805,19 +836,11 @@ def auto_quantity_takeoff(file_path: str, output_excel_path: str = "bao_cao_du_t
         msp = doc.modelspace()
 
         block_counts = {}  # (name, attrib_str) -> count
-        layer_lengths = {}  # layer -> total length (m, theo đơn vị bản vẽ)
+        scaled_blocks = {}  # (name, xscale, yscale) -> count
         texts = []
-        pipe_segments = []
-
-        def _seg_dist(px, py, ax, ay, bx, by):
-            l2 = (bx - ax) ** 2 + (by - ay) ** 2
-            if l2 == 0:
-                return math.hypot(px - ax, py - ay)
-            t = max(0.0, min(1.0, ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / l2))
-            return math.hypot(px - (ax + t * (bx - ax)), py - (ay + t * (by - ay)))
+        all_segments = []  # dùng cho cả tổng chiều dài, spatial-match và suy phụ kiện
 
         for entity in msp:
-            layer = entity.dxf.layer
             dxftype = entity.dxftype()
 
             if dxftype == 'INSERT':
@@ -830,6 +853,10 @@ def auto_quantity_takeoff(file_path: str, output_excel_path: str = "bao_cao_du_t
                 attr_str = json.dumps(attribs, ensure_ascii=False) if attribs else ""
                 key = (b_name, attr_str)
                 block_counts[key] = block_counts.get(key, 0) + 1
+                if cad_geometry.is_scaled(entity):
+                    xs, ys, _ = cad_geometry.block_scale(entity)
+                    skey = (b_name, round(xs, 3), round(ys, 3))
+                    scaled_blocks[skey] = scaled_blocks.get(skey, 0) + 1
                 continue
 
             if dxftype in ('TEXT', 'MTEXT'):
@@ -840,27 +867,29 @@ def auto_quantity_takeoff(file_path: str, output_excel_path: str = "bao_cao_du_t
                     texts.append({"text": t_str, "pos": (pos.x, pos.y)})
                 continue
 
-            if dxftype == 'LINE':
-                start, end = entity.dxf.start, entity.dxf.end
-                dist = math.hypot(end.x - start.x, end.y - start.y)
-                layer_lengths[layer] = layer_lengths.get(layer, 0.0) + dist
-                pipe_segments.append({"layer": layer, "seg": (start.x, start.y, end.x, end.y)})
-            elif dxftype in ('LWPOLYLINE', 'POLYLINE'):
-                try:
-                    if dxftype == 'LWPOLYLINE':
-                        pts = entity.get_points(format='xy')
-                    else:
-                        pts = [(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
-                    dist = 0.0
-                    for i in range(1, len(pts)):
-                        ax, ay = pts[i - 1][0], pts[i - 1][1]
-                        bx, by = pts[i][0], pts[i][1]
-                        seg_len = math.hypot(bx - ax, by - ay)
-                        dist += seg_len
-                        pipe_segments.append({"layer": layer, "seg": (ax, ay, bx, by)})
-                    layer_lengths[layer] = layer_lengths.get(layer, 0.0) + dist
-                except Exception:
-                    pass
+            all_segments.extend(cad_geometry.collect_segments([entity]))
+
+        # XREF: gộp thêm tuyến nằm trong file tham chiếu ngoài, nếu có khai báo và tìm
+        # được file đi kèm. Không tìm được thì nêu rõ tên trong load_notes thay vì âm thầm
+        # bỏ qua — bỏ sót một xref có thể làm khối lượng thiếu cả một hệ thống.
+        base_dir = os.path.dirname(resolve_safe_path(file_path))
+        xref_segments, xref_notes = cad_loader.resolve_xref_segments(
+            doc, base_dir, lambda space: cad_geometry.collect_segments(list(space))
+        )
+        all_segments.extend(xref_segments)
+        load_notes.extend(xref_notes)
+
+        layer_lengths = {}
+        for seg in all_segments:
+            layer_lengths[seg["layer"]] = layer_lengths.get(seg["layer"], 0.0) + seg["length"]
+
+        def _seg_dist(px, py, seg):
+            (ax, ay, _), (bx, by, _) = seg["start"], seg["end"]
+            l2 = (bx - ax) ** 2 + (by - ay) ** 2
+            if l2 == 0:
+                return math.hypot(px - ax, py - ay)
+            t = max(0.0, min(1.0, ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / l2))
+            return math.hypot(px - (ax + t * (bx - ax)), py - (ay + t * (by - ay)))
 
         # Liên kết ghi chú <-> layer ống gần nhất, để đặt tên hạng mục theo đúng ghi chú
         # trên bản vẽ (ví dụ 'Ống uPVC Ø110') thay vì chỉ hiển thị tên Layer kỹ thuật.
@@ -868,14 +897,15 @@ def auto_quantity_takeoff(file_path: str, output_excel_path: str = "bao_cao_du_t
         for t in texts:
             tx, ty = t["pos"]
             min_dist, best_layer = float('inf'), None
-            for p in pipe_segments:
-                ax, ay, bx, by = p["seg"]
-                d = _seg_dist(tx, ty, ax, ay, bx, by)
+            for seg in all_segments:
+                d = _seg_dist(tx, ty, seg)
                 if d < min_dist:
-                    min_dist, best_layer = d, p["layer"]
+                    min_dist, best_layer = d, seg["layer"]
             if best_layer is not None and min_dist <= max_distance:
                 bucket = layer_labels.setdefault(best_layer, {})
                 bucket[t["text"]] = bucket.get(t["text"], 0) + 1
+
+        fittings_by_layer = cad_geometry.detect_fittings(all_segments, stock_length=pipe_stock_length_mm)
 
         rows = []
         stt = 1
@@ -892,9 +922,24 @@ def auto_quantity_takeoff(file_path: str, output_excel_path: str = "bao_cao_du_t
             if layer in layer_labels:
                 best_label = max(layer_labels[layer].items(), key=lambda x: x[1])[0]
                 label = best_label
-                note = f"Layer: {layer}"
-            rows.append({"STT": stt, "Hạng mục": label, "Đơn vị": "m", "Khối lượng": round(length, 2), "Ghi chú": note})
+            length_with_wastage = length * (1 + wastage_percent / 100.0)
+            if wastage_percent > 0:
+                note += f" (đã cộng {wastage_percent:.0f}% hao hụt vật tư)"
+            rows.append({"STT": stt, "Hạng mục": label, "Đơn vị": "m",
+                        "Khối lượng": round(length_with_wastage, 2), "Ghi chú": note})
             stt += 1
+
+            fittings = fittings_by_layer.get(layer, {})
+            fitting_labels = {"co": "Co (elbow)", "te": "Tê (nhánh rẽ)", "mang_song": "Măng sông (nối ống)"}
+            for key, qty in fittings.items():
+                if qty <= 0:
+                    continue
+                rows.append({
+                    "STT": stt, "Hạng mục": f"{fitting_labels[key]} - {label}", "Đơn vị": "Cái",
+                    "Khối lượng": qty,
+                    "Ghi chú": f"Suy từ hình học tuyến (Layer: {layer}) — cần đối chiếu bản vẽ chi tiết",
+                })
+                stt += 1
 
         if not rows:
             return "Không tìm thấy Block hoặc tuyến ống/dây nào trong bản vẽ để bóc khối lượng."
@@ -912,8 +957,15 @@ def auto_quantity_takeoff(file_path: str, output_excel_path: str = "bao_cao_du_t
             f"BÓC TÁCH KHỐI LƯỢNG TỰ ĐỘNG THÀNH CÔNG (offline, không cần LLM tính toán).\n"
             f"- Đã làm sạch bản vẽ (Audit sửa {audit_fixes} lỗi).\n"
             f"- Tổng {len(block_counts)} loại Block (thiết bị) và {len([l for l, v in layer_lengths.items() if v > 0])} tuyến ống/dây có khối lượng.\n"
+            f"- Khối lượng ống/dây đã cộng {wastage_percent:.0f}% hao hụt vật tư theo định mức.\n"
             f"- Đã ghi {len(rows)} dòng dự toán ra file Excel tại: {out_path}\n"
         )
+        for note in load_notes:
+            summary += f"- {note}\n"
+        if scaled_blocks:
+            summary += f"\nCẢNH BÁO: {len(scaled_blocks)} loại Block bị insert LỆCH TỶ LỆ (kích thước thực tế khác chuẩn):\n"
+            for (b_name, xs, ys), count in sorted(scaled_blocks.items(), key=lambda x: -x[1])[:10]:
+                summary += f"  - {b_name}: scale ({xs}, {ys}) x {count} lần chèn — kiểm tra lại với khách trước khi lập dự toán.\n"
         preview_rows = rows[:15]
         summary += "\nXem trước:\n"
         for r in preview_rows:
@@ -1303,7 +1355,7 @@ tools = [
     search_standards, search_web, calculate, execute_python_code, list_directory,
     read_excel, write_excel, read_word, write_word, read_pdf,
     read_cad, write_cad, edit_cad, ai_block_recovery, render_cad_image, analyze_cad_spatial_context,
-    auto_quantity_takeoff, optimize_cad_drawing, standardize_cad_drawing,
+    auto_quantity_takeoff, optimize_cad_drawing, standardize_cad_drawing, convert_dwg_to_dxf,
     calc_psychrometrics, calc_duct_size, calc_cooling_load, calc_chw_pipe_size, calc_pump_fan_power, calc_ventilation_rate,
     calc_cooling_load_detailed, calc_duct_total_pressure_loss, calc_chiller_ahu_selection, calc_refrigerant_pipe_size,
     calc_cable_size, calc_breaker_size, calc_lighting_qty, calc_voltage_drop,
@@ -1348,18 +1400,19 @@ TOOLS_BY_ROLE = {
     ],
     "qs": _COMMON_TOOLS + [
         auto_quantity_takeoff, read_cad, write_excel, analyze_cad_spatial_context, ai_block_recovery,
-        lookup_unit_price, calc_boq_cost, export_boq_vietnam,
+        lookup_unit_price, calc_boq_cost, export_boq_vietnam, convert_dwg_to_dxf,
     ],
     "cad": _COMMON_TOOLS + [
         read_cad, write_cad, edit_cad, ai_block_recovery, render_cad_image,
         analyze_cad_spatial_context, execute_python_code, optimize_cad_drawing,
         standardize_cad_drawing, auto_route_mepf_path, extract_new_blocks_to_library,
         snapshot_cad, list_cad_revisions, diff_cad_revisions, restore_cad_revision,
+        convert_dwg_to_dxf,
     ],
     "bim": _COMMON_TOOLS + [
         auto_quantity_takeoff, read_cad, write_excel, analyze_cad_spatial_context, detect_clashes,
         read_ifc_model,
-        diff_cad_revisions, list_cad_revisions,
+        diff_cad_revisions, list_cad_revisions, convert_dwg_to_dxf,
     ],
 }
 
