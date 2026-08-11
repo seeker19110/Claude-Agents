@@ -1,14 +1,25 @@
 import os
 import shutil
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from src.celery_app import parse_cad_to_db_task
+from celery.result import AsyncResult
+from src.celery_app import app as celery_app, parse_cad_to_db_task
 from src.workspace import get_project_root
 
 app = FastAPI(
     title="MEP-Agents Cloud API",
     description="SaaS Backend for MEP-Agents Phase 3 (BIM & Cloud Era)",
     version="3.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 UPLOAD_DIR = os.path.join(get_project_root(), "uploads")
@@ -40,3 +51,27 @@ async def upload_and_takeoff(file: UploadFile = File(...)):
         task_id=task.id,
         message=f"File {file.filename} đã được đưa vào hàng đợi xử lý phân tán. Dùng task_id để theo dõi."
     )
+
+@app.get("/api/v1/task/{task_id}")
+def get_task_status(task_id: str):
+    task_result = AsyncResult(task_id, app=celery_app)
+    if task_result.state == 'PENDING':
+        return {"status": "Processing", "logs": ["Đang khởi tạo Swarm...", "Mechanical: Đang phân tích ống gió..."]}
+    elif task_result.state != 'FAILURE':
+        return {
+            "status": "success",
+            "logs": ["Phân tích hoàn tất", "Bảng BOQ đã sẵn sàng."],
+            "result": task_result.result
+        }
+    else:
+        return {"status": "error", "logs": [str(task_result.info)]}
+
+@app.get("/api/v1/download/{task_id}")
+def download_boq(task_id: str):
+    # Trả về file Excel thật (nếu có), hoặc trả về file log tạm cho demo
+    task_result = AsyncResult(task_id, app=celery_app)
+    # Demo giả định file excel nằm trong uploads
+    excel_path = os.path.join(get_project_root(), "bao_cao_du_toan_AI.xlsx")
+    if os.path.exists(excel_path):
+        return FileResponse(excel_path, filename="Bao_Cao_BOQ_MEP.xlsx")
+    return {"error": "File not found"}

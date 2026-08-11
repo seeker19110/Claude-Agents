@@ -1,12 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UploadCloud, File, CheckCircle, Activity, Box, DownloadCloud } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import axios from 'axios';
+
+const API_URL = 'http://localhost:8081/api/v1';
 
 function App() {
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [taskId, setTaskId] = useState(null);
   const [logs, setLogs] = useState([]);
+  const [taskStatus, setTaskStatus] = useState('');
 
   const handleDrop = (e) => {
     e.preventDefault();
@@ -19,29 +23,60 @@ function App() {
   const handleUpload = async () => {
     if (!file) return;
     setIsUploading(true);
+    setLogs(["Đang tải file lên máy chủ FastAPI..."]);
     
-    // Giả lập gọi API FastAPI /api/v1/takeoff
-    setTimeout(() => {
-      setTaskId('tk_cad_998822');
-      setIsUploading(false);
-      
-      // Giả lập log trả về từ Agentic Swarm
-      const mockLogs = [
-        "Khởi tạo Swarm: Mechanical Agent, Electrical Agent, QS Auditor đã tham gia.",
-        "Mechanical: Đang quét topology ống gió... Phát hiện 12 ống hở.",
-        "Electrical: Đang nhận dạng thiết bị bằng YOLOv11... Hoàn tất.",
-        "QS: Đang tổng hợp khối lượng ra Excel...",
-        "QSAuditor: Tổng tiền 1.5 tỷ / 1000m2 -> Đạt chuẩn suất đầu tư.",
-        "✅ Hoàn tất! Bảng BOQ đã sẵn sàng."
-      ];
-      
-      mockLogs.forEach((log, index) => {
-        setTimeout(() => {
-          setLogs(prev => [...prev, log]);
-        }, (index + 1) * 1500);
-      });
+    const formData = new FormData();
+    formData.append("file", file);
 
-    }, 1500);
+    try {
+      const response = await axios.post(`${API_URL}/takeoff`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      setTaskId(response.data.task_id);
+      setLogs(prev => [...prev, "Tải lên thành công! Bắt đầu hàng đợi Celery..."]);
+    } catch (error) {
+      setLogs(prev => [...prev, `Lỗi tải lên: ${error.message}`]);
+      setIsUploading(false);
+    }
+  };
+
+  useEffect(() => {
+    let interval;
+    if (taskId && taskStatus !== 'success') {
+      interval = setInterval(async () => {
+        try {
+          const res = await axios.get(`${API_URL}/task/${taskId}`);
+          setTaskStatus(res.data.status);
+          
+          if (res.data.logs) {
+            setLogs(prev => {
+              const newLogs = [...prev];
+              res.data.logs.forEach(l => {
+                if (!newLogs.includes(l)) newLogs.push(l);
+              });
+              return newLogs;
+            });
+          }
+
+          if (res.data.status === 'success') {
+            setIsUploading(false);
+            clearInterval(interval);
+            setLogs(prev => [...prev, "✅ Hoàn tất! Bảng BOQ đã sẵn sàng."]);
+          }
+        } catch (error) {
+          console.error("Polling error", error);
+        }
+      }, 1500);
+    }
+    return () => clearInterval(interval);
+  }, [taskId, taskStatus]);
+
+  const handleDownload = () => {
+    if (taskId) {
+      window.location.href = `${API_URL}/download/${taskId}`;
+    }
   };
 
   return (
@@ -81,7 +116,7 @@ function App() {
                   <File className="w-16 h-16 text-cyan-400" />
                   <span className="font-medium text-lg">{file.name}</span>
                   <button onClick={handleUpload} disabled={isUploading} className="mt-4 px-6 py-2.5 bg-cyan-600 hover:bg-cyan-500 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-2">
-                    {isUploading ? 'Đang tải lên...' : 'Phân tích bản vẽ'}
+                    {isUploading ? 'Đang xử lý...' : 'Phân tích bản vẽ'}
                   </button>
                 </motion.div>
               ) : (
@@ -95,16 +130,16 @@ function App() {
           </div>
 
           <AnimatePresence>
-            {logs.length > 5 && (
+            {taskStatus === 'success' && (
               <motion.div initial={{opacity:0, y:20}} animate={{opacity:1, y:0}} className="glass-panel p-6 rounded-2xl flex items-center justify-between border-emerald-500/30 bg-emerald-950/20">
                 <div className="flex items-center gap-3">
                   <CheckCircle className="w-6 h-6 text-emerald-400" />
                   <div>
                     <h3 className="font-semibold text-emerald-100">Báo cáo BOQ đã hoàn tất</h3>
-                    <p className="text-sm text-emerald-400/80">Không phát hiện sai sót bất thường.</p>
+                    <p className="text-sm text-emerald-400/80">Nhấp để tải file Excel dự toán.</p>
                   </div>
                 </div>
-                <button className="px-4 py-2 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 rounded-lg font-medium transition-colors border border-emerald-500/30 flex items-center gap-2">
+                <button onClick={handleDownload} className="px-4 py-2 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 rounded-lg font-medium transition-colors border border-emerald-500/30 flex items-center gap-2">
                   <DownloadCloud className="w-4 h-4"/> Tải Excel
                 </button>
               </motion.div>
@@ -118,10 +153,10 @@ function App() {
             <div className="w-3 h-3 rounded-full bg-rose-500" />
             <div className="w-3 h-3 rounded-full bg-amber-500" />
             <div className="w-3 h-3 rounded-full bg-emerald-500" />
-            <span className="ml-2 text-xs font-mono text-slate-500">Agentic Swarm Terminal</span>
+            <span className="ml-2 text-xs font-mono text-slate-500">Agentic Swarm Terminal (LIVE API)</span>
           </div>
           <div className="p-6 font-mono text-sm flex-1 bg-[#0a0f18] text-slate-300 overflow-y-auto space-y-3">
-            {!taskId ? (
+            {logs.length === 0 ? (
               <p className="text-slate-600">Waiting for input...</p>
             ) : (
               <AnimatePresence>
@@ -130,7 +165,7 @@ function App() {
                     key={i} 
                     initial={{opacity: 0, x: -10}} 
                     animate={{opacity: 1, x: 0}}
-                    className={`flex gap-3 ${log.includes('✅') ? 'text-emerald-400' : ''} ${log.includes('QSAuditor') ? 'text-amber-400' : ''}`}
+                    className={`flex gap-3 ${log.includes('✅') ? 'text-emerald-400' : ''}`}
                   >
                     <span className="text-slate-600 shrink-0">[{new Date().toLocaleTimeString()}]</span>
                     <span>{log}</span>
@@ -138,10 +173,10 @@ function App() {
                 ))}
               </AnimatePresence>
             )}
-            {taskId && logs.length < 6 && (
+            {isUploading && (
               <motion.div animate={{opacity:[0.3, 1, 0.3]}} transition={{repeat:Infinity, duration:1.5}} className="flex gap-3 text-cyan-500">
                 <span className="text-slate-600 shrink-0">[{new Date().toLocaleTimeString()}]</span>
-                <span>Processing...</span>
+                <span>Polling FastAPI Celery Worker...</span>
               </motion.div>
             )}
           </div>
