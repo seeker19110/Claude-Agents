@@ -7,52 +7,203 @@ from pypdf import PdfReader
 import ezdxf
 from ezdxf import audit
 import math
+import re
+import ast
+import operator as op
+import logging
+from functools import lru_cache
+from src.workspace import resolve_safe_path, get_project_root
+from src.cad_revision import create_snapshot
+from src import cad_standards
+
+logger = logging.getLogger(__name__)
+
+def normalize_mepf_parameter_spec(text: str) -> str:
+    """Chuẩn hóa toàn bộ các ký hiệu thông số kỹ thuật MEPF trong CAD về định dạng đồng nhất cho AI:
+    1. Đường kính ống: %%c, Φ, Ø, D, d, DN, OD -> Ø110 (D110)
+    2. Kích thước ống gió: 600*400, 600X400, W600xH400 -> 600x400
+    3. Độ dốc thoát nước: i=1%, s=1%, i=1.5% -> i=1%
+    4. Tiết diện dây điện: 3x2.5mm2, 3x2.5sqmm -> 3x2.5mm²
+    5. Điện áp / Pha: 220V/1P, 220V 1 Phase -> 220V-1P
+    6. Lưu lượng: CMH, m3/h -> m³/h
+    """
+    if not text:
+        return text
+    text = text.replace('%%c', 'Ø').replace('%%C', 'Ø').replace('Φ', 'Ø')
+    text = re.sub(r'(?i)\b(Ø|DN|D|d|OD)\s*(\d+)\b', r'Ø\2 (D\2)', text)
+    text = re.sub(r'(?i)(?:W)?(\d+)\s*[\*xX]\s*(?:H)?(\d+)', r'\1x\2', text)
+    text = re.sub(r'(?i)\b[is]\s*=\s*(\d+(?:\.\d+)?)\s*%', r'i=\1%', text)
+    text = re.sub(r'(?i)\b(\d+x\d+(?:\.\d+)?)\s*(?:mm2|sqmm|mm²)\b', r'\1mm²', text)
+    text = re.sub(r'(?i)\b(220|230|380|400)\s*V?\s*[\/\-]?\s*([13])\s*(?:P|Phase|Pha)\b', r'\1V-\2P', text)
+    text = re.sub(r'(?i)\b(?:CMH|m3\/h|m3h)\b', r'm³/h', text)
+    return text
+
+normalize_pipe_diameter_spec = normalize_mepf_parameter_spec
+
+@lru_cache(maxsize=4)
+def _load_vectorstore(api_key: str, index_path: str):
+    """Load (and cache) the FAISS index once per api_key/index_path instead of on every call."""
+    from langchain_openai import OpenAIEmbeddings
+    from langchain_community.vectorstores import FAISS
+
+    embeddings = OpenAIEmbeddings(api_key=api_key)
+    return FAISS.load_local(index_path, embeddings, allow_dangerous_deserialization=True)
+
+
+_STOPWORDS_VI_EN = {
+    "va", "la", "cua", "cho", "theo", "tai", "trong", "voi", "khi", "de", "the",
+    "and", "or", "of", "the", "for", "to", "in", "a", "an", "is", "are", "how",
+    "what", "bao", "nhieu", "nao", "duoc", "co", "khong", "nhu", "mot",
+}
+
+
+def _strip_accents(text: str) -> str:
+    """Bỏ dấu tiếng Việt bằng ánh xạ ASCII đơn giản (không cần thư viện ngoài) để so
+    khớp từ khóa không phân biệt dấu — hữu ích khi người dùng gõ không dấu."""
+    mapping = str.maketrans(
+        "àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ"
+        "ÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ",
+        "aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd"
+        "AAAAAAAAAAAAAAAAAEEEEEEEEEEEIIIIIOOOOOOOOOOOOOOOOOUUUUUUUUUUUYYYYYD",
+    )
+    return text.translate(mapping)
+
+
+def _tokenize(text: str) -> set:
+    normalized = _strip_accents(text.lower())
+    words = re.findall(r"[a-z0-9]+", normalized)
+    return {w for w in words if w not in _STOPWORDS_VI_EN and len(w) > 1}
+
+
+@lru_cache(maxsize=1)
+def _load_offline_corpus(standards_dir: str) -> tuple:
+    """Nạp toàn bộ file .txt trong data/standards/ thành các đoạn (chunk) văn bản, không
+    cần embedding/API — dùng cho tra cứu offline hoàn toàn (không cần OPENAI_API_KEY)."""
+    chunks = []
+    if not os.path.isdir(standards_dir):
+        return tuple(chunks)
+    for fname in sorted(os.listdir(standards_dir)):
+        if not fname.lower().endswith(".txt"):
+            continue
+        fpath = os.path.join(standards_dir, fname)
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                content = f.read()
+        except Exception:
+            continue
+        # Chia theo đoạn trống (paragraph) để giữ ngữ cảnh liền mạch, bỏ đoạn quá ngắn.
+        for para in re.split(r"\n\s*\n", content):
+            para = para.strip()
+            if len(para) >= 20:
+                chunks.append((fname, para))
+    return tuple(chunks)
+
+
+def _offline_keyword_search(query: str, standards_dir: str = "data/standards", k: int = 3) -> str:
+    """Tra cứu tiêu chuẩn không cần internet/API key: so khớp từ khóa (Jaccard) trên toàn
+    bộ đoạn văn bản trong data/standards/. Không mạnh bằng vector search ngữ nghĩa nhưng
+    hoạt động 100% offline — đúng mục tiêu hỗ trợ model AI yếu/máy chạy Ollama cục bộ."""
+    query_tokens = _tokenize(query)
+    if not query_tokens:
+        return "Câu truy vấn rỗng hoặc không có từ khóa hợp lệ để tra cứu."
+
+    chunks = _load_offline_corpus(standards_dir)
+    if not chunks:
+        return (
+            "Không tìm thấy tài liệu tiêu chuẩn nào trong 'data/standards/' để tra cứu offline. "
+            "Vui lòng thêm file .txt vào thư mục này."
+        )
+
+    scored = []
+    for fname, para in chunks:
+        para_tokens = _tokenize(para)
+        if not para_tokens:
+            continue
+        overlap = len(query_tokens & para_tokens)
+        if overlap == 0:
+            continue
+        score = overlap / len(query_tokens | para_tokens)
+        scored.append((score, fname, para))
+
+    if not scored:
+        return f"Không tìm thấy thông tin tiêu chuẩn nào khớp với '{query}' (tra cứu offline theo từ khóa)."
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = scored[:k]
+
+    result = f"Kết quả tra cứu tiêu chuẩn OFFLINE (theo từ khóa, không cần API) cho '{query}':\n"
+    for i, (score, fname, para) in enumerate(top, 1):
+        result += f"\n--- Trích đoạn {i} (Nguồn: {fname}, độ khớp: {score:.2f}) ---\n{para}\n"
+    return result
+
 
 @tool
 def search_standards(query: str) -> str:
-    """Tra cứu Tiêu chuẩn thiết kế MEPF (TCVN, ASHRAE, NFPA...) từ cơ sở dữ liệu nội bộ."""
-    print(f"\n[Tool] Tra cứu tiêu chuẩn thực: {query}")
+    """Tra cứu Tiêu chuẩn thiết kế MEPF (TCVN, ASHRAE, NFPA...) từ cơ sở dữ liệu nội bộ.
+    Tự động dùng FAISS + OpenAI Embeddings nếu đã cấu hình OPENAI_API_KEY và đã 'ingest',
+    ngược lại tự động rơi về tra cứu offline theo từ khóa (không cần internet/API key) —
+    để tính năng tra cứu tiêu chuẩn vẫn hoạt động khi chạy hoàn toàn offline (VD: Ollama)."""
+    logger.info("Tra cứu tiêu chuẩn thực: %s", query)
     try:
-        from langchain_openai import OpenAIEmbeddings
-        from langchain_community.vectorstores import FAISS
         from src.config import settings
-        import os
-        
-        api_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY", "dummy_key_to_prevent_crash_on_import")
-        embeddings = OpenAIEmbeddings(api_key=api_key)
-        
+
+        api_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY", "")
         index_path = "faiss_index"
-        if not os.path.exists(index_path):
-            return "Hệ thống RAG chưa được khởi tạo. Vui lòng thêm tài liệu vào 'data/standards/' và chạy 'uv run python src/ingest.py'."
-            
-        vectorstore = FAISS.load_local(index_path, embeddings, allow_dangerous_deserialization=True)
+        has_real_key = bool(api_key) and api_key != "dummy_key_to_prevent_crash_on_import"
+
+        if not has_real_key or not os.path.exists(index_path):
+            return _offline_keyword_search(query)
+
+        vectorstore = _load_vectorstore(api_key, index_path)
         docs = vectorstore.similarity_search(query, k=3)
-        
+
         if not docs:
-            return "Không tìm thấy thông tin tiêu chuẩn nào khớp với yêu cầu."
-            
+            return _offline_keyword_search(query)
+
         result = f"Kết quả RAG Tiêu chuẩn cho '{query}':\n"
         for i, doc in enumerate(docs, 1):
             source = doc.metadata.get('source', 'Unknown')
             result += f"\n--- Trích đoạn {i} (Nguồn: {source}) ---\n"
             result += doc.page_content + "\n"
-            
+
         return result
     except Exception as e:
-        return f"Lỗi tra cứu tiêu chuẩn RAG: {e}"
+        logger.warning("Lỗi tra cứu RAG, chuyển sang offline: %s", e)
+        try:
+            return _offline_keyword_search(query)
+        except Exception as e2:
+            return f"Lỗi tra cứu tiêu chuẩn: {e2}"
 
 @tool
 def search_web(query: str) -> str:
     """Tìm kiếm thông tin trên internet."""
-    print(f"\n[Tool] Searching web for: {query}")
+    logger.info("Searching web for: %s", query)
     return f"Kết quả mô phỏng cho '{query}': Tìm thấy nhiều tài liệu liên quan."
+
+# Chỉ cho phép các toán tử số học thuần túy - không có tên biến, thuộc tính hay lời gọi hàm,
+# nên không thể escape sandbox như với eval() (kể cả khi đã tắt __builtins__).
+_SAFE_OPERATORS = {
+    ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul, ast.Div: op.truediv,
+    ast.Pow: op.pow, ast.Mod: op.mod, ast.FloorDiv: op.floordiv,
+    ast.USub: op.neg, ast.UAdd: op.pos,
+}
+
+def _safe_eval_node(node):
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return node.value
+    if isinstance(node, ast.BinOp) and type(node.op) in _SAFE_OPERATORS:
+        return _SAFE_OPERATORS[type(node.op)](_safe_eval_node(node.left), _safe_eval_node(node.right))
+    if isinstance(node, ast.UnaryOp) and type(node.op) in _SAFE_OPERATORS:
+        return _SAFE_OPERATORS[type(node.op)](_safe_eval_node(node.operand))
+    raise ValueError("Biểu thức chứa cú pháp không được phép (chỉ hỗ trợ số và các phép toán +-*/%**).")
 
 @tool
 def calculate(expression: str) -> str:
     """Thực hiện tính toán toán học cơ bản (ví dụ: '25 * 4')."""
-    print(f"\n[Tool] Calculating: {expression}")
+    logger.info("Calculating: %s", expression)
     try:
-        result = eval(expression, {"__builtins__": {}})
+        tree = ast.parse(expression, mode="eval")
+        result = _safe_eval_node(tree.body)
         return f"Kết quả: {result}"
     except Exception as e:
         return f"Lỗi tính toán: {e}"
@@ -60,9 +211,10 @@ def calculate(expression: str) -> str:
 @tool
 def list_directory(path: str = ".") -> str:
     """Liệt kê danh sách các file trong thư mục để xem có file nào tồn tại."""
-    print(f"\n[Tool] Listing directory: {path}")
+    logger.info("Listing directory: %s", path)
     try:
-        files = os.listdir(path)
+        safe_path = resolve_safe_path(path)
+        files = os.listdir(safe_path)
         return f"Files trong '{path}': {', '.join(files)}"
     except Exception as e:
         return f"Lỗi đọc thư mục: {e}"
@@ -70,9 +222,9 @@ def list_directory(path: str = ".") -> str:
 @tool
 def read_excel(file_path: str) -> str:
     """Đọc nội dung từ file Excel (.xlsx)."""
-    print(f"\n[Tool] Reading Excel: {file_path}")
+    logger.info("Reading Excel: %s", file_path)
     try:
-        df = pd.read_excel(file_path)
+        df = pd.read_excel(resolve_safe_path(file_path))
         return f"Dữ liệu Excel:\n{df.to_string(index=False)}"
     except Exception as e:
         return f"Lỗi đọc Excel: {e}"
@@ -80,11 +232,19 @@ def read_excel(file_path: str) -> str:
 @tool
 def write_excel(file_path: str, json_data: str) -> str:
     """Tạo hoặc ghi file Excel (.xlsx). json_data là danh sách các object dưới dạng chuỗi JSON đại diện cho các dòng. Ví dụ: '[{"STT": 1, "Vật tư": "Ống", "KL": 10}]'"""
-    print(f"\n[Tool] Writing Excel: {file_path}")
+    logger.info("Writing Excel: %s", file_path)
     try:
+        if not file_path.endswith('.xlsx'):
+            file_path += '.xlsx'
+
+        safe_path = resolve_safe_path(file_path)
+        dir_name = os.path.dirname(safe_path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+
         data = json.loads(json_data)
         df = pd.DataFrame(data)
-        df.to_excel(file_path, index=False)
+        df.to_excel(safe_path, index=False)
         return f"Đã ghi đè/tạo thành công file Excel tại: {file_path}"
     except Exception as e:
         return f"Lỗi ghi Excel: {e}"
@@ -92,9 +252,9 @@ def write_excel(file_path: str, json_data: str) -> str:
 @tool
 def read_word(file_path: str) -> str:
     """Đọc nội dung từ file Word (.docx)."""
-    print(f"\n[Tool] Reading Word: {file_path}")
+    logger.info("Reading Word: %s", file_path)
     try:
-        doc = Document(file_path)
+        doc = Document(resolve_safe_path(file_path))
         full_text = [para.text for para in doc.paragraphs]
         return "\n".join(full_text)
     except Exception as e:
@@ -103,9 +263,10 @@ def read_word(file_path: str) -> str:
 @tool
 def write_word(file_path: str, content: str, font_name: str = 'Arial') -> str:
     """Tạo hoặc ghi file Word (.docx) với nội dung được truyền vào. Tham số font_name hỗ trợ 'Arial' hoặc 'Times New Roman'."""
-    print(f"\n[Tool] Writing Word: {file_path}")
+    logger.info("Writing Word: %s", file_path)
     try:
         from docx.shared import Pt
+        safe_path = resolve_safe_path(file_path)
         doc = Document()
         # Thiết lập Font chữ chuẩn Unicode (Arial / Times New Roman) cho tiếng Việt
         style = doc.styles['Normal']
@@ -114,9 +275,9 @@ def write_word(file_path: str, content: str, font_name: str = 'Arial') -> str:
             font_name = 'Arial'
         font.name = font_name
         font.size = Pt(12)
-        
+
         doc.add_paragraph(content)
-        doc.save(file_path)
+        doc.save(safe_path)
         return f"Đã lưu nội dung vào file Word tại: {file_path} (Font: {font_name})"
     except Exception as e:
         return f"Lỗi ghi Word: {e}"
@@ -124,22 +285,22 @@ def write_word(file_path: str, content: str, font_name: str = 'Arial') -> str:
 @tool
 def read_pdf(file_path: str) -> str:
     """Đọc và trích xuất toàn bộ văn bản từ file PDF."""
-    print(f"\n[Tool] Reading PDF: {file_path}")
+    logger.info("Reading PDF: %s", file_path)
     try:
-        reader = PdfReader(file_path)
+        reader = PdfReader(resolve_safe_path(file_path))
         text = ""
         for page in reader.pages:
             text += page.extract_text() + "\n"
-        return f"Nội dung PDF ({len(reader.pages)} trang):\n{text[:5000]}..." 
+        return f"Nội dung PDF ({len(reader.pages)} trang):\n{text[:5000]}..."
     except Exception as e:
         return f"Lỗi đọc PDF: {e}"
 
 @tool
 def read_cad(file_path: str) -> str:
     """Đọc file CAD (.dxf) và trả về thống kê thư viện block, block attributes, chiều dài, và layer sau khi đã làm sạch."""
-    print(f"\n[Tool] Reading, Cleaning & Extracting CAD: {file_path}")
+    logger.info("Reading, Cleaning & Extracting CAD: %s", file_path)
     try:
-        doc = ezdxf.readfile(file_path)
+        doc = ezdxf.readfile(resolve_safe_path(file_path))
         
         auditor = audit.Auditor(doc)
         auditor.run()
@@ -147,7 +308,8 @@ def read_cad(file_path: str) -> str:
         
         block_defs = []
         for block in doc.blocks:
-            if not block.is_layout_block and not block.name.startswith('*'):
+            is_layout = getattr(block, 'is_layout_block', False) or getattr(block, 'is_any_layout', False)
+            if not is_layout and not block.name.startswith('*'):
                 block_defs.append(block.name)
                 
         msp = doc.modelspace()
@@ -160,18 +322,30 @@ def read_cad(file_path: str) -> str:
             layer_counts[layer] = layer_counts.get(layer, 0) + 1
             dxftype = entity.dxftype()
             
-            if dxftype == 'LINE':
-                start = entity.dxf.start
-                end = entity.dxf.end
-                dist = math.hypot(end.x - start.x, end.y - start.y)
-                layer_lengths[layer] = layer_lengths.get(layer, 0.0) + dist
+            if dxftype in ('LINE', 'LWPOLYLINE', 'POLYLINE'):
+                try:
+                    dist = 0.0
+                    if dxftype == 'LINE':
+                        start = entity.dxf.start
+                        end = entity.dxf.end
+                        dist = math.hypot(end.x - start.x, end.y - start.y)
+                    elif dxftype == 'LWPOLYLINE':
+                        pts = entity.get_points(format='xy')
+                        dist = sum(math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]) for i in range(1, len(pts)))
+                    elif dxftype == 'POLYLINE':
+                        pts = [(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
+                        dist = sum(math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]) for i in range(1, len(pts)))
+                    layer_lengths[layer] = layer_lengths.get(layer, 0.0) + dist
+                except Exception:
+                    pass
             
             if dxftype == 'INSERT':
                 b_name = entity.dxf.name
                 attribs = {}
-                if entity.has_attribs:
+                if hasattr(entity, 'attribs') and entity.attribs:
                     for attrib in entity.attribs:
-                        attribs[attrib.dxf.tag] = attrib.dxf.text
+                        if hasattr(attrib, 'dxf') and hasattr(attrib.dxf, 'tag'):
+                            attribs[attrib.dxf.tag] = getattr(attrib.dxf, 'text', '')
                 block_instances.append({"name": b_name, "attribs": attribs})
                 
         block_summary = {}
@@ -182,21 +356,30 @@ def read_cad(file_path: str) -> str:
             block_summary[key] = block_summary.get(key, 0) + 1
             
         result = f"Đã làm sạch (Audit). Sửa {audit_fixes} lỗi.\n\n"
-        result += f"THƯ VIỆN BLOCK CÓ SẴN (Definitions): {', '.join(block_defs) if block_defs else 'Không có'}\n\n"
+        
+        if len(block_defs) > 25:
+            defs_str = ", ".join(block_defs[:25]) + f"... (và {len(block_defs) - 25} block khác)"
+        else:
+            defs_str = ", ".join(block_defs) if block_defs else "Không có"
+        result += f"THƯ VIỆN BLOCK CÓ SẴN (Definitions): {defs_str}\n\n"
         
         result += "THỐNG KÊ LAYER TRÊN MODELSPACE:\n"
         for k, v in layer_counts.items():
             l_info = f"- Layer '{k}': {v} đối tượng"
             if k in layer_lengths and layer_lengths[k] > 0:
-                l_info += f" (Tổng dài Line tham khảo: {layer_lengths[k]:.2f})"
+                l_info += f" (Tổng chiều dài nắn nét: {layer_lengths[k]:.2f}m)"
             result += l_info + "\n"
             
         result += "\nTHỐNG KÊ BLOCK THỰC TẾ & THUỘC TÍNH (Attributes):\n"
         if not block_summary:
             result += "(Không có block nào)\n"
         else:
-            for k, v in block_summary.items():
+            sorted_blocks = sorted(block_summary.items(), key=lambda x: x[1], reverse=True)
+            display_blocks = sorted_blocks[:40]
+            for k, v in display_blocks:
                 result += f"- Block: {k} -> Số lượng: {v}\n"
+            if len(sorted_blocks) > 40:
+                result += f"... (và {len(sorted_blocks) - 40} nhóm block khác)\n"
                 
         return result
     except Exception as e:
@@ -205,40 +388,63 @@ def read_cad(file_path: str) -> str:
 @tool
 def write_cad(file_path: str, layers: str) -> str:
     """Tạo một file CAD mới (.dxf) sạch sẽ với các layer định trước. Tham số layers: chuỗi ngăn cách bởi dấu phẩy."""
-    print(f"\n[Tool] Writing CAD: {file_path}")
+    logger.info("Writing CAD: %s", file_path)
     try:
+        safe_path = resolve_safe_path(file_path)
         doc = ezdxf.new('R2010')
         layer_list = [l.strip() for l in layers.split(',') if l.strip()]
         for layer in layer_list:
             doc.layers.add(name=layer)
-            
-        doc.saveas(file_path)
+
+        doc.saveas(safe_path)
         return f"Đã tạo thành công bản vẽ CAD tại {file_path} với các layers: {', '.join(layer_list)}"
     except Exception as e:
         return f"Lỗi tạo CAD (.dxf): {e}"
 
 import sys
 from io import StringIO
+import builtins
+
+# Sandbox cho execute_python_code: chỉ cho phép các builtin an toàn (không có open/eval/exec/input)
+# và chỉ cho phép import các module cần thiết cho việc dựng Block ezdxf (ezdxf, math, json).
+# Đây KHÔNG phải cô lập tuyệt đối (không thay thế container/subprocess sandbox thật sự),
+# nhưng chặn được các vector tấn công rõ ràng nhất: đọc/ghi file tùy ý, exec chuỗi động, os/subprocess.
+_ALLOWED_MODULES = {"ezdxf", "math", "json"}
+
+def _sandboxed_import(name, globals=None, locals=None, fromlist=(), level=0):
+    if name.split(".")[0] not in _ALLOWED_MODULES:
+        raise ImportError(f"Module '{name}' không được phép sử dụng trong execute_python_code.")
+    return builtins.__import__(name, globals, locals, fromlist, level)
+
+_SAFE_BUILTIN_NAMES = (
+    "abs", "all", "any", "bool", "dict", "enumerate", "float", "int", "len", "list",
+    "max", "min", "print", "range", "round", "set", "sorted", "str", "sum", "tuple",
+    "zip", "True", "False", "None", "isinstance",
+)
+_SAFE_BUILTINS = {name: getattr(builtins, name) for name in _SAFE_BUILTIN_NAMES}
+_SAFE_BUILTINS["__import__"] = _sandboxed_import
 
 @tool
 def execute_python_code(code: str) -> str:
     """
-    Thực thi mã Python động. 
+    Thực thi mã Python động trong môi trường giới hạn (sandbox).
     Được dùng để Họa viên CAD tự viết code ezdxf vẽ Block mới và lưu vào 'data/blocks/mepf_library.dxf'.
+    Chỉ cho phép import ezdxf/math/json và không có quyền truy cập file/network trực tiếp qua builtin open().
     """
-    print("\n[Tool] Executing Custom Python Code")
+    logger.info("Executing Custom Python Code (sandboxed)")
+    old_stdout = sys.stdout
     try:
-        old_stdout = sys.stdout
         redirected_output = sys.stdout = StringIO()
-        
+
+        safe_globals = {"__builtins__": _SAFE_BUILTINS}
         local_env = {}
-        exec(code, globals(), local_env)
-        
-        sys.stdout = old_stdout
+        exec(code, safe_globals, local_env)
+
         return f"Thực thi Python thành công. Output:\n{redirected_output.getvalue()}"
     except Exception as e:
-        sys.stdout = old_stdout
         return f"Lỗi quá trình thực thi Python: {e}"
+    finally:
+        sys.stdout = old_stdout
 
 @tool
 def ai_block_recovery(file_path: str, layer: str, shape: str, dimensions: str, replacement_block: str) -> str:
@@ -248,18 +454,21 @@ def ai_block_recovery(file_path: str, layer: str, shape: str, dimensions: str, r
     - dimensions: Với circle là 'bán kính' (ví dụ: '100'). Với rectangle là 'dài,rộng' (ví dụ '600,600').
     - replacement_block: Tên Block mới sẽ được chèn vào.
     """
-    print(f"\n[Tool] AI Block Recovery: {file_path}, Layer={layer}, Shape={shape}")
+    logger.info("AI Block Recovery: %s, Layer=%s, Shape=%s", file_path, layer, shape)
     try:
         from ezdxf.addons import importer
-        import os
-        
-        if not os.path.exists(file_path):
+
+        # Lưu điểm lùi TRƯỚC khi ghi đè: các tool này sửa file tại chỗ, không có snapshot
+        # thì một lần AI sửa sai là mất luôn bản gốc.
+        create_snapshot(file_path, note=f"Trước khi phục hồi Block '{replacement_block}' trên layer '{layer}'")
+        safe_path = resolve_safe_path(file_path)
+        if not os.path.exists(safe_path):
             return f"Lỗi: Không tìm thấy file {file_path}"
-            
-        doc = ezdxf.readfile(file_path)
+
+        doc = ezdxf.readfile(safe_path)
         msp = doc.modelspace()
-        
-        library_path = os.path.join("data", "blocks", "mepf_library.dxf")
+
+        library_path = os.path.join(get_project_root(), "data", "blocks", "mepf_library.dxf")
         lib_doc = None
         if os.path.exists(library_path):
             lib_doc = ezdxf.readfile(library_path)
@@ -336,7 +545,7 @@ def ai_block_recovery(file_path: str, layer: str, shape: str, dimensions: str, r
         for cx, cy in centers:
             msp.add_blockref(replacement_block, (cx, cy), dxfattribs={'layer': layer})
             
-        doc.saveas(file_path)
+        doc.saveas(safe_path)
         return f"AI Recovery thành công: Đã tìm thấy và phục hồi {len(centers)} đối tượng '{shape}' thành Block '{replacement_block}'."
     except Exception as e:
         return f"Lỗi phục hồi Block: {e}"
@@ -350,24 +559,26 @@ def edit_cad(file_path: str, actions_json: str) -> str:
     - Chèn block: {"action": "insert_block", "name": "TU_DIEN", "x": 10, "y": 10, "layer": "MEP_DIEN", "scale": 1.0, "rotation": 0}
     - Đồng bộ font (chống lỗi tiếng Việt): {"action": "fix_fonts", "font_name": "Arial"}
     """
-    print(f"\n[Tool] Editing CAD: {file_path}")
+    logger.info("Editing CAD: %s", file_path)
     try:
-        if not os.path.exists(file_path):
+        create_snapshot(file_path, note="Trước khi edit_cad")
+        safe_path = resolve_safe_path(file_path)
+        if not os.path.exists(safe_path):
             return f"Lỗi: Không tìm thấy file {file_path}"
-            
-        doc = ezdxf.readfile(file_path)
+
+        doc = ezdxf.readfile(safe_path)
         msp = doc.modelspace()
-        
+
         auditor = audit.Auditor(doc)
         auditor.run()
         audit_fixes = len(auditor.fixes)
-        
+
         actions = json.loads(actions_json)
         results = []
-        
+
         # Tải Master Library (Tổng kho Block)
         from ezdxf.addons import importer
-        library_path = os.path.join("data", "blocks", "mepf_library.dxf")
+        library_path = os.path.join(get_project_root(), "data", "blocks", "mepf_library.dxf")
         lib_doc = None
         if os.path.exists(library_path):
             lib_doc = ezdxf.readfile(library_path)
@@ -436,22 +647,601 @@ def edit_cad(file_path: str, actions_json: str) -> str:
                 else:
                     results.append(f"Lỗi: Block '{b_name}' không tồn tại trong bản vẽ và cả Thư viện Trung tâm.")
                     
-        doc.saveas(file_path)
+        doc.saveas(safe_path)
         return f"Đã làm sạch ({audit_fixes} lỗi rác được xóa) và chỉnh sửa thành công {file_path}:\n- " + "\n- ".join(results)
     except Exception as e:
         return f"Lỗi sửa CAD (.dxf): {e}"
 
-from src.hvac_tools import calc_psychrometrics, calc_duct_size, calc_cooling_load, calc_chw_pipe_size, calc_pump_fan_power, calc_ventilation_rate
+@tool
+def render_cad_image(file_path: str, output_png_path: str = "cad_preview.png") -> str:
+    """Chuyển đổi file bản vẽ CAD (.dxf) thành hình ảnh PNG sắc nét để hiển thị trực quan (Computer Vision) lên giao diện Web."""
+    logger.info("Rendering CAD to Image: %s -> %s", file_path, output_png_path)
+    try:
+        from ezdxf.addons.drawing import RenderContext, Frontend
+        from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
+        import matplotlib.pyplot as plt
+
+        doc = ezdxf.readfile(resolve_safe_path(file_path))
+        msp = doc.modelspace()
+
+        fig = plt.figure(figsize=(12, 8), dpi=150)
+        ax = fig.add_axes([0, 0, 1, 1])
+        ctx = RenderContext(doc)
+        out = MatplotlibBackend(ax)
+        Frontend(ctx, out).draw_layout(msp, finalize=True)
+        fig.savefig(resolve_safe_path(output_png_path), dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        return f"Đã xuất hình ảnh bản vẽ CAD (Computer Vision) thành công tại: {output_png_path}"
+    except Exception as e:
+        return f"Lỗi xuất ảnh CAD: {e}"
+
+@tool
+def analyze_cad_spatial_context(file_path: str, max_distance: float = 2000.0) -> str:
+    """Phân tích Ngữ cảnh Hình học & Mũi tên Chỉ dẫn (Leaders, Text Annotations, Spatial Matching) để hiểu bản vẽ CAD như con người: tự động liên kết Ghi chú văn bản (ví dụ: 'Ống uPVC Ø110', 'Ống gió 600x400') và Mũi tên chỉ hướng với đúng nét vẽ đường ống kề cận."""
+    logger.info("Analyzing CAD Spatial Context & Arrows: %s", file_path)
+    try:
+        doc = ezdxf.readfile(resolve_safe_path(file_path))
+        msp = doc.modelspace()
+        
+        texts = []
+        leaders = []
+        pipe_segments = []
+        
+        def point_to_seg_dist(px, py, ax, ay, bx, by):
+            l2 = (bx - ax)**2 + (by - ay)**2
+            if l2 == 0:
+                return math.hypot(px - ax, py - ay)
+            t = max(0.0, min(1.0, ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / l2))
+            proj_x = ax + t * (bx - ax)
+            proj_y = ay + t * (by - ay)
+            return math.hypot(px - proj_x, py - proj_y)
+
+        for entity in msp:
+            dxftype = entity.dxftype()
+            layer = entity.dxf.layer
+            
+            if dxftype == 'TEXT':
+                t_str = normalize_pipe_diameter_spec(entity.dxf.text.strip())
+                pos = entity.dxf.insert
+                if t_str:
+                    texts.append({"text": t_str, "pos": (pos.x, pos.y), "layer": layer})
+            elif dxftype == 'MTEXT':
+                t_str = normalize_pipe_diameter_spec(entity.text.strip())
+                pos = entity.dxf.insert
+                if t_str:
+                    texts.append({"text": t_str, "pos": (pos.x, pos.y), "layer": layer})
+            elif dxftype in ('LEADER', 'MULTILEADER'):
+                try:
+                    if hasattr(entity, 'vertices') and entity.vertices:
+                        vertices = [(v.x, v.y) for v in entity.vertices]
+                        leaders.append({"tip": vertices[0], "tail": vertices[-1], "layer": layer})
+                except Exception:
+                    pass
+            elif dxftype == 'LINE':
+                s, e = entity.dxf.start, entity.dxf.end
+                length = math.hypot(e.x - s.x, e.y - s.y)
+                pipe_segments.append({"layer": layer, "seg": (s.x, s.y, e.x, e.y), "length": length})
+            elif dxftype in ('LWPOLYLINE', 'POLYLINE'):
+                try:
+                    if dxftype == 'LWPOLYLINE':
+                        pts = entity.get_points(format='xy')
+                    else:
+                        pts = [(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
+                    for i in range(1, len(pts)):
+                        ax, ay = pts[i-1][0], pts[i-1][1]
+                        bx, by = pts[i][0], pts[i][1]
+                        length = math.hypot(bx - ax, by - ay)
+                        pipe_segments.append({"layer": layer, "seg": (ax, ay, bx, by), "length": length})
+                except Exception:
+                    pass
+
+        associations = {}
+        for text_item in texts:
+            tx, ty = text_item["pos"]
+            txt = text_item["text"]
+            
+            min_dist = float('inf')
+            best_pipe = None
+            
+            for p in pipe_segments:
+                ax, ay, bx, by = p["seg"]
+                d = point_to_seg_dist(tx, ty, ax, ay, bx, by)
+                if d < min_dist:
+                    min_dist = d
+                    best_pipe = p
+                    
+            if best_pipe and min_dist <= max_distance:
+                p_layer = best_pipe["layer"]
+                key = f"Ghi chú: '{txt}' <---> Layer ống: '{p_layer}'"
+                if key not in associations:
+                    associations[key] = {"count": 0, "total_length": 0.0, "text": txt, "layer": p_layer, "min_dist": min_dist}
+                associations[key]["count"] += 1
+                associations[key]["total_length"] += best_pipe["length"]
+
+        report = f"PHÂN TÍCH NGỮ CẢNH HÌNH HỌC & MŨI TÊN CHỈ DẪN (Spatial Intelligence):\n"
+        report += f"- Tìm thấy {len(texts)} văn bản ghi chú (TEXT/MTEXT), {len(leaders)} mũi tên chỉ dẫn (LEADER), và {len(pipe_segments)} đoạn đường ống.\n\n"
+        
+        report += "📌 THỐNG KÊ GHI CHÚ VĂN BẢN VÀ MŨI TÊN (Tối đa 20 ghi chú tiêu biểu):\n"
+        for t in texts[:20]:
+            report += f"  • Ghi chú: \"{t['text']}\" (Layer: {t['layer']}) tại tọa độ ({t['pos'][0]:.1f}, {t['pos'][1]:.1f})\n"
+        if len(texts) > 20:
+            report += f"  ... và {len(texts) - 20} ghi chú khác.\n"
+            
+        report += "\n🔗 LIÊN KẾT HÌNH HỌC KHÔNG GIANG (Text Annotation <-> Pipe Segment): \n"
+        if not associations:
+            report += "  (Không tìm thấy liên kết kề cận trong bán kính khoảng cách quy định)\n"
+        else:
+            for k, v in list(associations.items())[:25]:
+                report += f"  • [{v['text']}] liên kết trực tiếp với tuyến ống Layer '{v['layer']}' (Khoảng cách kề cận: {v['min_dist']:.1f}mm) -> Tổng chiều dài suy luận: {v['total_length']:.2f}m\n"
+                
+        return report
+    except Exception as e:
+        return f"Lỗi phân tích ngữ cảnh không gian CAD: {e}"
+
+@tool
+def auto_quantity_takeoff(file_path: str, output_excel_path: str = "bao_cao_du_toan.xlsx", max_distance: float = 2000.0) -> str:
+    """Bóc tách khối lượng TỰ ĐỘNG & TOÀN DIỆN từ file CAD (.dxf) và xuất thẳng ra Excel
+    CHỈ BẰNG MỘT LẦN GỌI TOOL DUY NHẤT — không cần LLM tự đếm block, tự cộng chiều dài
+    hay tự soạn JSON (những bước dễ sai với model AI yếu/model chạy offline qua Ollama).
+    Quy trình bên trong (thuần toán học/hình học, KHÔNG dùng LLM):
+    1. Audit làm sạch file CAD.
+    2. Đếm số lượng từng loại Block (thiết bị) theo tên + thuộc tính (attributes).
+    3. Cộng dồn tổng chiều dài từng tuyến ống/dây theo Layer.
+    4. Liên kết Ghi chú văn bản (TEXT/MTEXT, ví dụ 'Ống uPVC Ø110') với Layer ống gần nhất
+       (Spatial Matching) để đặt tên hạng mục đúng theo bản vẽ thay vì chỉ ghi tên Layer thô.
+    5. Ghi toàn bộ kết quả (STT, Hạng mục, Đơn vị, Khối lượng, Ghi chú) ra file Excel thật.
+    Dùng tool này làm bước ĐẦU TIÊN VÀ DUY NHẤT khi cần bóc khối lượng/lập dự toán từ CAD;
+    chỉ cần dùng `read_cad`/`analyze_cad_spatial_context` riêng lẻ khi cần phân tích sâu hơn.
+    """
+    logger.info("Auto Quantity Takeoff (offline, deterministic): %s -> %s", file_path, output_excel_path)
+    try:
+        safe_path = resolve_safe_path(file_path)
+        doc = ezdxf.readfile(safe_path)
+
+        auditor = audit.Auditor(doc)
+        auditor.run()
+        audit_fixes = len(auditor.fixes)
+
+        msp = doc.modelspace()
+
+        block_counts = {}  # (name, attrib_str) -> count
+        layer_lengths = {}  # layer -> total length (m, theo đơn vị bản vẽ)
+        texts = []
+        pipe_segments = []
+
+        def _seg_dist(px, py, ax, ay, bx, by):
+            l2 = (bx - ax) ** 2 + (by - ay) ** 2
+            if l2 == 0:
+                return math.hypot(px - ax, py - ay)
+            t = max(0.0, min(1.0, ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / l2))
+            return math.hypot(px - (ax + t * (bx - ax)), py - (ay + t * (by - ay)))
+
+        for entity in msp:
+            layer = entity.dxf.layer
+            dxftype = entity.dxftype()
+
+            if dxftype == 'INSERT':
+                b_name = entity.dxf.name
+                attribs = {}
+                if hasattr(entity, 'attribs') and entity.attribs:
+                    for attrib in entity.attribs:
+                        if hasattr(attrib, 'dxf') and hasattr(attrib.dxf, 'tag'):
+                            attribs[attrib.dxf.tag] = getattr(attrib.dxf, 'text', '')
+                attr_str = json.dumps(attribs, ensure_ascii=False) if attribs else ""
+                key = (b_name, attr_str)
+                block_counts[key] = block_counts.get(key, 0) + 1
+                continue
+
+            if dxftype in ('TEXT', 'MTEXT'):
+                raw = entity.dxf.text if dxftype == 'TEXT' else entity.text
+                t_str = normalize_mepf_parameter_spec((raw or '').strip())
+                pos = entity.dxf.insert
+                if t_str:
+                    texts.append({"text": t_str, "pos": (pos.x, pos.y)})
+                continue
+
+            if dxftype == 'LINE':
+                start, end = entity.dxf.start, entity.dxf.end
+                dist = math.hypot(end.x - start.x, end.y - start.y)
+                layer_lengths[layer] = layer_lengths.get(layer, 0.0) + dist
+                pipe_segments.append({"layer": layer, "seg": (start.x, start.y, end.x, end.y)})
+            elif dxftype in ('LWPOLYLINE', 'POLYLINE'):
+                try:
+                    if dxftype == 'LWPOLYLINE':
+                        pts = entity.get_points(format='xy')
+                    else:
+                        pts = [(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
+                    dist = 0.0
+                    for i in range(1, len(pts)):
+                        ax, ay = pts[i - 1][0], pts[i - 1][1]
+                        bx, by = pts[i][0], pts[i][1]
+                        seg_len = math.hypot(bx - ax, by - ay)
+                        dist += seg_len
+                        pipe_segments.append({"layer": layer, "seg": (ax, ay, bx, by)})
+                    layer_lengths[layer] = layer_lengths.get(layer, 0.0) + dist
+                except Exception:
+                    pass
+
+        # Liên kết ghi chú <-> layer ống gần nhất, để đặt tên hạng mục theo đúng ghi chú
+        # trên bản vẽ (ví dụ 'Ống uPVC Ø110') thay vì chỉ hiển thị tên Layer kỹ thuật.
+        layer_labels = {}  # layer -> {label: count of matching texts}
+        for t in texts:
+            tx, ty = t["pos"]
+            min_dist, best_layer = float('inf'), None
+            for p in pipe_segments:
+                ax, ay, bx, by = p["seg"]
+                d = _seg_dist(tx, ty, ax, ay, bx, by)
+                if d < min_dist:
+                    min_dist, best_layer = d, p["layer"]
+            if best_layer is not None and min_dist <= max_distance:
+                bucket = layer_labels.setdefault(best_layer, {})
+                bucket[t["text"]] = bucket.get(t["text"], 0) + 1
+
+        rows = []
+        stt = 1
+        for (b_name, attr_str), count in sorted(block_counts.items(), key=lambda x: -x[1]):
+            ghi_chu = attr_str if attr_str else ""
+            rows.append({"STT": stt, "Hạng mục": b_name, "Đơn vị": "Bộ", "Khối lượng": count, "Ghi chú": ghi_chu})
+            stt += 1
+
+        for layer, length in sorted(layer_lengths.items(), key=lambda x: -x[1]):
+            if length <= 0:
+                continue
+            label = layer
+            note = f"Layer: {layer}"
+            if layer in layer_labels:
+                best_label = max(layer_labels[layer].items(), key=lambda x: x[1])[0]
+                label = best_label
+                note = f"Layer: {layer}"
+            rows.append({"STT": stt, "Hạng mục": label, "Đơn vị": "m", "Khối lượng": round(length, 2), "Ghi chú": note})
+            stt += 1
+
+        if not rows:
+            return "Không tìm thấy Block hoặc tuyến ống/dây nào trong bản vẽ để bóc khối lượng."
+
+        out_path = output_excel_path if output_excel_path.endswith('.xlsx') else output_excel_path + '.xlsx'
+        out_safe_path = resolve_safe_path(out_path)
+        dir_name = os.path.dirname(out_safe_path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+
+        df = pd.DataFrame(rows)
+        df.to_excel(out_safe_path, index=False)
+
+        summary = (
+            f"BÓC TÁCH KHỐI LƯỢNG TỰ ĐỘNG THÀNH CÔNG (offline, không cần LLM tính toán).\n"
+            f"- Đã làm sạch bản vẽ (Audit sửa {audit_fixes} lỗi).\n"
+            f"- Tổng {len(block_counts)} loại Block (thiết bị) và {len([l for l, v in layer_lengths.items() if v > 0])} tuyến ống/dây có khối lượng.\n"
+            f"- Đã ghi {len(rows)} dòng dự toán ra file Excel tại: {out_path}\n"
+        )
+        preview_rows = rows[:15]
+        summary += "\nXem trước:\n"
+        for r in preview_rows:
+            summary += f"  {r['STT']}. {r['Hạng mục']} — {r['Khối lượng']} {r['Đơn vị']}\n"
+        if len(rows) > 15:
+            summary += f"  ... và {len(rows) - 15} dòng khác trong file Excel.\n"
+        return summary
+    except Exception as e:
+        return f"Lỗi bóc tách khối lượng tự động: {e}"
+
+
+@tool
+def optimize_cad_drawing(file_path: str, output_path: str = "", dedupe_tolerance: float = 1.0) -> str:
+    """Tối ưu & dọn dẹp bản vẽ CAD (.dxf) TỰ ĐỘNG, thuần hình học (KHÔNG dùng LLM) — phù
+    hợp chạy offline hoặc với model AI yếu vì không cần suy luận, chỉ cần gọi 1 tool:
+    1. Audit sửa lỗi cấu trúc file.
+    2. Xóa các đoạn LINE/POLYLINE có chiều dài = 0 (rác vẽ thừa).
+    3. Xóa các Block instance (INSERT) bị trùng lặp hoàn toàn (cùng tên Block, cùng vị trí
+       trong phạm vi dedupe_tolerance) — lỗi thường gặp khi copy/paste nhầm trong CAD.
+    4. Xóa các Layer rỗng (không còn entity nào tham chiếu) ngoại trừ layer '0'/'Defpoints'.
+    Nếu output_path bỏ trống, ghi đè lên chính file_path.
+    """
+    logger.info("Optimize CAD Drawing (offline, deterministic): %s", file_path)
+    try:
+        create_snapshot(file_path, note="Trước khi optimize_cad_drawing")
+        safe_path = resolve_safe_path(file_path)
+        doc = ezdxf.readfile(safe_path)
+        msp = doc.modelspace()
+
+        auditor = audit.Auditor(doc)
+        auditor.run()
+        audit_fixes = len(auditor.fixes)
+
+        removed_zero_len = 0
+        removed_dupe_blocks = 0
+
+        for entity in list(msp.query('LINE')):
+            start, end = entity.dxf.start, entity.dxf.end
+            if math.hypot(end.x - start.x, end.y - start.y) < 1e-6:
+                msp.delete_entity(entity)
+                removed_zero_len += 1
+
+        for entity in list(msp.query('LWPOLYLINE')):
+            try:
+                pts = entity.get_points(format='xy')
+                total = sum(math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]) for i in range(1, len(pts)))
+                if total < 1e-6:
+                    msp.delete_entity(entity)
+                    removed_zero_len += 1
+            except Exception:
+                pass
+
+        seen_inserts = set()
+        for entity in list(msp.query('INSERT')):
+            ins = entity.dxf.insert
+            key = (
+                entity.dxf.name,
+                entity.dxf.layer,
+                round(ins.x / dedupe_tolerance) if dedupe_tolerance > 0 else ins.x,
+                round(ins.y / dedupe_tolerance) if dedupe_tolerance > 0 else ins.y,
+            )
+            if key in seen_inserts:
+                msp.delete_entity(entity)
+                removed_dupe_blocks += 1
+            else:
+                seen_inserts.add(key)
+
+        used_layers = {entity.dxf.layer for entity in msp}
+        removed_layers = []
+        for layer in list(doc.layers):
+            lname = layer.dxf.name
+            if lname in ('0', 'Defpoints') or lname in used_layers:
+                continue
+            try:
+                doc.layers.remove(lname)
+                removed_layers.append(lname)
+            except Exception:
+                pass
+
+        target_path = output_path.strip() or file_path
+        out_safe_path = resolve_safe_path(target_path)
+        doc.saveas(out_safe_path)
+
+        return (
+            f"TỐI ƯU BẢN VẼ THÀNH CÔNG (offline, không cần LLM suy luận):\n"
+            f"- Audit sửa {audit_fixes} lỗi cấu trúc.\n"
+            f"- Xóa {removed_zero_len} đối tượng có chiều dài bằng 0 (rác vẽ).\n"
+            f"- Xóa {removed_dupe_blocks} Block trùng lặp (cùng tên + cùng vị trí).\n"
+            f"- Xóa {len(removed_layers)} Layer rỗng không dùng đến"
+            + (f": {', '.join(removed_layers)}." if removed_layers else ".") + "\n"
+            f"- Đã lưu bản vẽ đã tối ưu tại: {target_path}"
+        )
+    except Exception as e:
+        return f"Lỗi tối ưu bản vẽ CAD: {e}"
+
+
+def _apply_layer_style(layer, std: dict) -> bool:
+    """Áp màu/linetype/mô tả chuẩn lên 1 Layer. Trả về True nếu có thay đổi."""
+    changed = False
+    if layer.dxf.color != std["color"]:
+        layer.dxf.color = std["color"]
+        changed = True
+    if layer.dxf.linetype != cad_standards.LAYER_LINETYPE:
+        layer.dxf.linetype = cad_standards.LAYER_LINETYPE
+        changed = True
+    if layer.description != std["description"]:
+        layer.description = std["description"]
+        changed = True
+    return changed
+
+
+def _ensure_block_attributes(block, std: dict) -> bool:
+    """Gắn ATTDEF MA_HIEU/MO_TA (ẩn, hằng số) vào định nghĩa Block nếu còn thiếu, để
+    khi Block được chèn vào bản vẽ, mã hiệu/mô tả chuẩn luôn đi kèm. Trả về True nếu
+    có ATTDEF mới được thêm."""
+    from ezdxf.lldxf import const as dxf_const
+
+    existing_tags = {a.dxf.tag for a in block.attdefs()}
+    changed = False
+    flags = dxf_const.ATTRIB_INVISIBLE + dxf_const.ATTRIB_CONST
+    if "MA_HIEU" not in existing_tags:
+        block.add_attdef("MA_HIEU", (0, 0), text=std["ma_hieu"],
+                          dxfattribs={"height": 30, "flags": flags, "layer": "0"})
+        changed = True
+    if "MO_TA" not in existing_tags:
+        block.add_attdef("MO_TA", (0, 0), text=std["description"],
+                          dxfattribs={"height": 30, "flags": flags, "layer": "0"})
+        changed = True
+    return changed
+
+
+@tool
+def standardize_cad_drawing(file_path: str, output_path: str = "") -> str:
+    """Chuẩn hóa TÊN LAYER, TÊN BLOCK và MÔ TẢ/MÃ HIỆU của bản vẽ CAD (.dxf) người
+    dùng đẩy vào theo tiêu chuẩn nội bộ MEPF (xem `src/cad_standards.py`). CHỈ sửa
+    đặt tên, màu/linetype của layer, và gắn thuộc tính MA_HIEU/MO_TA vào Block —
+    TUYỆT ĐỐI KHÔNG động vào hình học/nét vẽ, khác với `ai_block_recovery` (phục hồi
+    Block bị vỡ) và `optimize_cad_drawing` (dọn rác hình học).
+    Layer/Block không nhận diện được theo tiêu chuẩn sẽ được liệt kê để người dùng tự
+    kiểm tra thay vì bị đoán bừa. Nếu output_path bỏ trống, ghi đè lên chính file_path.
+    """
+    logger.info("Standardize CAD Drawing: %s", file_path)
+    try:
+        create_snapshot(file_path, note="Trước khi standardize_cad_drawing")
+        safe_path = resolve_safe_path(file_path)
+        if not os.path.exists(safe_path):
+            return f"Lỗi: Không tìm thấy file {file_path}"
+
+        doc = ezdxf.readfile(safe_path)
+        msp = doc.modelspace()
+
+        auditor = audit.Auditor(doc)
+        auditor.run()
+        audit_fixes = len(auditor.fixes)
+
+        renamed_layers = []
+        fixed_layer_props = []
+        unmatched_layers = []
+
+        for layer in list(doc.layers):
+            lname = layer.dxf.name
+            if lname.lower() in ("0", "defpoints"):
+                continue
+            canonical = cad_standards.match_layer(lname)
+            if not canonical:
+                unmatched_layers.append(lname)
+                continue
+            std = cad_standards.LAYER_STANDARD[canonical]
+            if lname == canonical:
+                if _apply_layer_style(layer, std):
+                    fixed_layer_props.append(lname)
+                continue
+            if canonical in doc.layers:
+                moved = 0
+                for e in list(msp.query(f'*[layer=="{lname}"]')):
+                    e.dxf.layer = canonical
+                    moved += 1
+                _apply_layer_style(doc.layers.get(canonical), std)
+                try:
+                    doc.layers.remove(lname)
+                except Exception:
+                    pass
+                renamed_layers.append(f"{lname} -> {canonical} (gộp {moved} đối tượng)")
+            else:
+                layer.rename(canonical)
+                _apply_layer_style(doc.layers.get(canonical), std)
+                renamed_layers.append(f"{lname} -> {canonical}")
+
+        renamed_blocks = []
+        annotated_blocks = []
+        unmatched_blocks = []
+
+        used_block_names = sorted({e.dxf.name for e in msp.query('INSERT') if not e.dxf.name.startswith('*')})
+        for bname in used_block_names:
+            target_name = bname
+            canonical = cad_standards.match_block(bname)
+            if not canonical:
+                unmatched_blocks.append(bname)
+                continue
+            if canonical != bname:
+                if canonical in doc.blocks:
+                    unmatched_blocks.append(
+                        f"{bname} (trùng ý nghĩa với Block chuẩn có sẵn '{canonical}' nhưng hình học có thể khác "
+                        f"— cần kiểm tra thủ công, dùng `ai_block_recovery` nếu muốn thay hẳn bằng Block chuẩn)"
+                    )
+                    continue
+                doc.blocks.rename_block(bname, canonical)
+                for ins in msp.query(f'INSERT[name=="{bname}"]'):
+                    ins.dxf.name = canonical
+                renamed_blocks.append(f"{bname} -> {canonical}")
+                target_name = canonical
+
+            std = cad_standards.BLOCK_STANDARD.get(target_name)
+            if std and _ensure_block_attributes(doc.blocks.get(target_name), std):
+                annotated_blocks.append(target_name)
+
+        target_path = output_path.strip() or file_path
+        out_safe_path = resolve_safe_path(target_path)
+        doc.saveas(out_safe_path)
+
+        report = ["CHUẨN HÓA BẢN VẼ THÀNH CÔNG (chỉ sửa tên/layer/mô tả, KHÔNG đổi hình học):"]
+        report.append(f"- Audit sửa {audit_fixes} lỗi cấu trúc.")
+        report.append("- Đổi tên layer về chuẩn: " + ("; ".join(renamed_layers) if renamed_layers else "(không có)"))
+        report.append("- Sửa màu/linetype/mô tả layer đã đúng tên nhưng sai thuộc tính: "
+                       + (", ".join(fixed_layer_props) if fixed_layer_props else "(không có)"))
+        if unmatched_layers:
+            report.append(f"- CẦN REVIEW THỦ CÔNG {len(unmatched_layers)} layer không nhận diện được theo chuẩn: "
+                           + ", ".join(unmatched_layers))
+        report.append("- Đổi tên Block về chuẩn: " + ("; ".join(renamed_blocks) if renamed_blocks else "(không có)"))
+        report.append("- Gắn thuộc tính MA_HIEU/MO_TA cho Block: "
+                       + (", ".join(annotated_blocks) if annotated_blocks else "(không có)"))
+        if unmatched_blocks:
+            report.append(f"- CẦN REVIEW THỦ CÔNG {len(unmatched_blocks)} Block không nhận diện được theo chuẩn: "
+                           + "; ".join(unmatched_blocks))
+        report.append(f"- Đã lưu bản vẽ đã chuẩn hóa tại: {target_path}")
+        return "\n".join(report)
+    except Exception as e:
+        return f"Lỗi chuẩn hóa bản vẽ CAD: {e}"
+
+
+from src.hvac_tools import (
+    calc_psychrometrics, calc_duct_size, calc_cooling_load, calc_chw_pipe_size, calc_pump_fan_power, calc_ventilation_rate,
+    calc_cooling_load_detailed, calc_duct_total_pressure_loss, calc_chiller_ahu_selection, calc_refrigerant_pipe_size,
+)
 from src.elec_tools import calc_cable_size, calc_breaker_size, calc_lighting_qty
-from src.plumb_tools import calc_water_pipe, calc_water_tank, calc_plumbing_pump_head
+from src.plumb_tools import (
+    calc_water_pipe, calc_water_tank, calc_plumbing_pump_head,
+    calc_drainage_pipe, calc_rainwater_drainage, calc_septic_tank, calc_hot_water_system,
+)
 from src.ff_tools import calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty
+from src.elec_tools import (
+    calc_voltage_drop, calc_total_load, calc_short_circuit,
+    calc_cable_tray_size, calc_lightning_protection,
+)
+from src.hvac_tools import calc_nc_level
+from src.ff_tools import (
+    calc_sprinkler_hydraulics, calc_standpipe, calc_smoke_control, calc_fire_detector_qty,
+)
+from src.qs_tools import lookup_unit_price, calc_boq_cost, export_boq_vietnam
+from src.bim_tools import detect_clashes
+from src.panel_schedule import generate_panel_schedule
+from src.cad_revision import (
+    snapshot_cad, list_cad_revisions, diff_cad_revisions, restore_cad_revision,
+)
 
 tools = [
-    search_standards, search_web, calculate, list_directory, read_excel, write_excel, 
-    read_word, write_word, read_pdf, read_cad, write_cad, edit_cad, execute_python_code, ai_block_recovery,
-    calc_psychrometrics, calc_duct_size, calc_cooling_load,
-    calc_chw_pipe_size, calc_pump_fan_power, calc_ventilation_rate,
-    calc_cable_size, calc_breaker_size, calc_lighting_qty,
+    search_standards, search_web, calculate, execute_python_code, list_directory,
+    read_excel, write_excel, read_word, write_word, read_pdf,
+    read_cad, write_cad, edit_cad, ai_block_recovery, render_cad_image, analyze_cad_spatial_context,
+    auto_quantity_takeoff, optimize_cad_drawing, standardize_cad_drawing,
+    calc_psychrometrics, calc_duct_size, calc_cooling_load, calc_chw_pipe_size, calc_pump_fan_power, calc_ventilation_rate,
+    calc_cooling_load_detailed, calc_duct_total_pressure_loss, calc_chiller_ahu_selection, calc_refrigerant_pipe_size,
+    calc_cable_size, calc_breaker_size, calc_lighting_qty, calc_voltage_drop,
+    calc_total_load, calc_short_circuit, calc_cable_tray_size, calc_lightning_protection,
+    generate_panel_schedule,
     calc_water_pipe, calc_water_tank, calc_plumbing_pump_head,
-    calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty
+    calc_drainage_pipe, calc_rainwater_drainage, calc_septic_tank, calc_hot_water_system,
+    calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty,
+    calc_sprinkler_hydraulics, calc_standpipe, calc_smoke_control, calc_fire_detector_qty,
+    calc_nc_level,
+    lookup_unit_price, calc_boq_cost, export_boq_vietnam, detect_clashes,
+    snapshot_cad, list_cad_revisions, diff_cad_revisions, restore_cad_revision,
 ]
+
+# Giảm token: trước đây MỌI agent đều bị bind cả danh sách `tools` đầy đủ (30+ schema),
+# kể cả tool hoàn toàn không liên quan chuyên môn (VD: ElectricalAgent vẫn nhận schema
+# đọc/ghi CAD, tính PCCC...). Tách theo từng vai trò để mỗi agent chỉ gửi kèm tool nó
+# thực sự cần trong LLM request, cắt đáng kể input token mỗi lượt gọi mà không đổi
+# hành vi (ToolNode trong src/graph.py vẫn dùng `tools` đầy đủ để thực thi bất kỳ
+# tool_call nào, không phụ thuộc danh sách bind ở đây).
+_COMMON_TOOLS = [search_standards, search_web, calculate, list_directory, read_excel, read_word, read_pdf]
+
+TOOLS_BY_ROLE = {
+    "mechanical": _COMMON_TOOLS + [
+        calc_cooling_load, calc_cooling_load_detailed, calc_duct_size, calc_duct_total_pressure_loss,
+        calc_psychrometrics, calc_chw_pipe_size, calc_chiller_ahu_selection, calc_refrigerant_pipe_size,
+        calc_pump_fan_power, calc_ventilation_rate, calc_nc_level,
+    ],
+    "electrical": _COMMON_TOOLS + [
+        calc_cable_size, calc_breaker_size, calc_lighting_qty, calc_voltage_drop,
+        calc_total_load, calc_short_circuit, calc_cable_tray_size, calc_lightning_protection,
+        generate_panel_schedule,
+    ],
+    "plumbing": _COMMON_TOOLS + [
+        calc_water_pipe, calc_water_tank, calc_plumbing_pump_head,
+        calc_drainage_pipe, calc_rainwater_drainage, calc_septic_tank, calc_hot_water_system,
+    ],
+    "firefighting": _COMMON_TOOLS + [
+        calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty,
+        calc_sprinkler_hydraulics, calc_standpipe, calc_smoke_control, calc_fire_detector_qty,
+    ],
+    "qs": _COMMON_TOOLS + [
+        auto_quantity_takeoff, read_cad, write_excel, analyze_cad_spatial_context, ai_block_recovery,
+        lookup_unit_price, calc_boq_cost, export_boq_vietnam,
+    ],
+    "cad": _COMMON_TOOLS + [
+        read_cad, write_cad, edit_cad, ai_block_recovery, render_cad_image,
+        analyze_cad_spatial_context, execute_python_code, optimize_cad_drawing,
+        standardize_cad_drawing,
+        snapshot_cad, list_cad_revisions, diff_cad_revisions, restore_cad_revision,
+    ],
+    "bim": _COMMON_TOOLS + [
+        auto_quantity_takeoff, read_cad, write_excel, analyze_cad_spatial_context, detect_clashes,
+        diff_cad_revisions, list_cad_revisions,
+    ],
+}
+
+def get_tools_for_role(role: str) -> list:
+    """Tool set thu gọn cho một vai trò cụ thể; vai trò không xác định (VD: Supervisor
+    gọi nhầm) sẽ nhận về toàn bộ `tools` để không bao giờ thiếu tool cần thiết."""
+    return TOOLS_BY_ROLE.get((role or "").lower().strip(), tools)
