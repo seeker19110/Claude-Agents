@@ -243,3 +243,43 @@ def test_add_color_legend_is_idempotent_to_call_twice(workspace):
     assert "THÀNH CÔNG" in first
     second = add_color_legend.invoke({"file_path": dxf_path})
     assert "THÀNH CÔNG" in second
+
+
+# --- Mỗi hệ MEPF một dải màu riêng, không hệ nào dùng lại đúng mã màu của hệ khác ---
+
+def test_no_two_disciplines_share_the_same_layer_color():
+    """Trước đây nhiều layer khác hệ dùng chung 1 mã màu ACI (VD màu 1 vừa là ống gió
+    tăng áp Mechanical, vừa là ổ cắm Electrical, vừa là ống nước nóng Plumbing, vừa là
+    đầu phun Firefighting) — nhìn nhanh rất dễ nhầm hệ. Ngoại lệ có chủ đích DUY NHẤT là
+    nhóm thiết bị chính (`*-EQUIP-*`) của M/P/F dùng chung màu xám trung tính (9)."""
+    by_color = {}
+    for key, std in cad_standards.LAYER_STANDARD.items():
+        if std["color"] == 9:  # ngoại lệ có chủ đích: khối thiết bị dùng chung xám
+            continue
+        color = std["color"]
+        discipline = std["discipline"]
+        if color in by_color and by_color[color] != discipline:
+            pytest.fail(
+                f"Mã màu {color} bị dùng chung giữa hệ '{by_color[color]}' và '{discipline}' "
+                f"(layer '{key}') — dễ nhầm hệ khi nhìn bản vẽ."
+            )
+        by_color[color] = discipline
+
+
+def test_no_two_different_aci_codes_render_the_same_rgb_within_a_discipline():
+    """Bẫy dễ mắc khi chọn mã màu ACI thủ công: hai mã số khác nhau (VD ACI 1 và ACI 10)
+    có thể ra ĐÚNG MỘT màu RGB thật trên bản vẽ — khi đó dù mã số khác nhau, mắt người
+    vẫn thấy trùng màu. Xác minh bằng bảng màu ACI thật của ezdxf, không đoán mò."""
+    import ezdxf.colors as aci_colors
+
+    rgb_to_aci = {}
+    for key, std in cad_standards.LAYER_STANDARD.items():
+        aci = std["color"]
+        rgb = aci_colors.aci2rgb(aci)
+        if rgb in rgb_to_aci and rgb_to_aci[rgb][0] != aci:
+            other_aci, other_key = rgb_to_aci[rgb]
+            pytest.fail(
+                f"ACI {aci} (layer '{key}') và ACI {other_aci} (layer '{other_key}') "
+                f"cùng ra màu RGB {rgb} — trùng màu thật dù mã số khác nhau."
+            )
+        rgb_to_aci[rgb] = (aci, key)
