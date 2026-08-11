@@ -32,14 +32,27 @@ WORKSPACE_DIR = set_workspace_dir(
 # 2. Sidebar - Quản lý Hồ sơ
 with st.sidebar:
     st.header("📂 Trạm Quản lý Hồ sơ")
-    uploaded_file = st.file_uploader("Tải lên bản vẽ (.dxf) hoặc báo cáo (.pdf, .xlsx)...", type=['dxf', 'pdf', 'xlsx'])
+    # Cho phép tải lên mọi loại file
+    uploaded_file = st.file_uploader("Tải lên bản vẽ, báo cáo, tài liệu đính kèm...")
     if uploaded_file:
         # Chỉ giữ lại tên file (basename) để chặn path traversal từ tên file upload.
         safe_name = os.path.basename(uploaded_file.name)
         file_path = os.path.join(WORKSPACE_DIR, safe_name)
         with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
-        st.success(f"Đã lưu thành công: {safe_name}")
+            
+        if safe_name.lower().endswith('.dxf'):
+            with st.spinner(f"Đang làm sạch và tối ưu CAD tự động (Purge, Overkill, Chuẩn hóa)..."):
+                from src.tools import standardize_cad_drawing, optimize_cad_drawing, extract_new_blocks_to_library
+                try:
+                    standardize_cad_drawing(file_path)
+                    optimize_cad_drawing(file_path)
+                    extract_res = extract_new_blocks_to_library(file_path)
+                    st.success(f"Đã làm sạch và tối ưu thành công bản vẽ: {safe_name}. {extract_res}")
+                except Exception as e:
+                    st.warning(f"Đã lưu file {safe_name}, nhưng gặp lỗi khi tối ưu tự động: {e}")
+        else:
+            st.success(f"Đã lưu thành công: {safe_name}")
 
     st.divider()
     st.header("📥 File Báo cáo (Download)")

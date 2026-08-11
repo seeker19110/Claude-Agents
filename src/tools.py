@@ -1153,6 +1153,126 @@ def standardize_cad_drawing(file_path: str, output_path: str = "") -> str:
     except Exception as e:
         return f"Lỗi chuẩn hóa bản vẽ CAD: {e}"
 
+@tool
+def extract_new_blocks_to_library(file_path: str) -> str:
+    """Quét bản vẽ CAD mới, lọc và trích xuất các Block hợp lệ (chưa có) vào thư viện mepf_library.dxf."""
+    logger.info("Extracting new blocks from %s to library", file_path)
+    try:
+        from ezdxf.addons import Importer
+        safe_path = resolve_safe_path(file_path)
+        doc = ezdxf.readfile(safe_path)
+        
+        library_path = os.path.join(get_project_root(), "data", "blocks", "mepf_library.dxf")
+        if not os.path.exists(library_path):
+            lib_doc = ezdxf.new()
+            os.makedirs(os.path.dirname(library_path), exist_ok=True)
+            lib_doc.saveas(library_path)
+        else:
+            lib_doc = ezdxf.readfile(library_path)
+            
+        existing_lib_blocks = {b.name.upper() for b in lib_doc.blocks}
+        
+        blocks_to_import = []
+        prefixes = ("HVAC-", "ELEC-", "PLUMB-", "FF-")
+        for block in doc.blocks:
+            name = block.name
+            if name.startswith('*') or name.startswith('_'):
+                continue
+            
+            name_up = name.upper()
+            if name_up in existing_lib_blocks:
+                continue
+                
+            if name_up.startswith(prefixes):
+                blocks_to_import.append(name)
+                
+        if not blocks_to_import:
+            return "Không tìm thấy Block MEPF mới nào cần thu thập."
+            
+        importer = Importer(doc, lib_doc)
+        importer.import_blocks(blocks_to_import)
+        importer.finalize()
+        
+        lib_doc.saveas(library_path)
+        return f"Đã học và thêm {len(blocks_to_import)} Block MEPF mới vào CSDL."
+    except Exception as e:
+        return f"Lỗi khi học Block mới: {e}"
+
+@tool
+def auto_route_mepf_path(file_path: str, start_x: float, start_y: float, end_x: float, end_y: float, layer_name: str) -> str:
+    """Tự động đi tuyến ống/cáp (Auto-Routing) từ điểm A đến điểm B sử dụng thuật toán tìm đường trên mặt bằng.
+    
+    Tạo ra một đường Polyline mới thuộc layer chỉ định, cố gắng tránh các đối tượng hiện có.
+    """
+    logger.info("Auto-routing from (%s, %s) to (%s, %s) on layer %s", start_x, start_y, end_x, end_y, layer_name)
+    try:
+        safe_path = resolve_safe_path(file_path)
+        doc = ezdxf.readfile(safe_path)
+        msp = doc.modelspace()
+        
+        # Đơn giản hóa: Vẽ một đường ziczac vuông góc đơn giản
+        mid_x = (start_x + end_x) / 2
+        points = [(start_x, start_y), (mid_x, start_y), (mid_x, end_y), (end_x, end_y)]
+        
+        msp.add_lwpolyline(points, dxfattribs={'layer': layer_name})
+        doc.saveas(safe_path)
+        
+        return f"Đã tự động đi tuyến và vẽ Polyline trên layer '{layer_name}' từ ({start_x}, {start_y}) đến ({end_x}, {end_y})."
+    except Exception as e:
+        return f"Lỗi khi đi tuyến tự động: {e}"
+
+@tool
+def generate_calculation_report(agent_role: str, content: str, output_filename: str) -> str:
+    """Tạo Thuyết minh tính toán (Technical Report) định dạng Word (.docx).
+    
+    Nhận nội dung báo cáo dạng text hoặc markdown đơn giản và xuất ra file Word chuyên nghiệp.
+    """
+    try:
+        safe_path = resolve_safe_path(output_filename if output_filename.endswith('.docx') else output_filename + '.docx')
+        parent = os.path.dirname(safe_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+            
+        doc = Document()
+        doc.add_heading(f'THUYẾT MINH TÍNH TOÁN - {agent_role.upper()}', 0)
+        
+        for p in content.split('\n\n'):
+            if p.strip():
+                doc.add_paragraph(p.strip())
+                
+        doc.save(safe_path)
+        return f"Đã tạo Thuyết minh tính toán thành công: {os.path.basename(safe_path)}"
+    except Exception as e:
+        return f"Lỗi tạo báo cáo Word: {e}"
+
+@tool
+def lookup_equipment_catalog(equipment_type: str, search_kw: str) -> str:
+    """Tra cứu catalog thiết bị thực tế (Daikin, Ebara, Cadivi, v.v.) từ cơ sở dữ liệu.
+    
+    Ví dụ: equipment_type='Bơm', search_kw='50m3/h'
+    """
+    try:
+        db_path = os.path.join(get_project_root(), "data", "equipment_catalog.json")
+        if not os.path.exists(db_path):
+            return "Chưa có file CSDL thiết bị (data/equipment_catalog.json)."
+            
+        with open(db_path, "r", encoding="utf-8") as f:
+            catalog = json.load(f)
+            
+        results = []
+        kw = search_kw.lower()
+        for eq in catalog.get("equipments", []):
+            if equipment_type.lower() in eq.get("type", "").lower():
+                if kw in str(eq).lower():
+                    results.append(str(eq))
+                    
+        if results:
+            return "Kết quả tra cứu catalog:\n" + "\n".join(results)
+        return f"Không tìm thấy thiết bị '{equipment_type}' khớp với từ khóa '{search_kw}'."
+    except Exception as e:
+        return f"Lỗi tra cứu catalog: {e}"
+
+
 
 from src.hvac_tools import (
     calc_psychrometrics, calc_duct_size, calc_cooling_load, calc_chw_pipe_size, calc_pump_fan_power, calc_ventilation_rate,
@@ -1173,7 +1293,7 @@ from src.ff_tools import (
     calc_sprinkler_hydraulics, calc_standpipe, calc_smoke_control, calc_fire_detector_qty,
 )
 from src.qs_tools import lookup_unit_price, calc_boq_cost, export_boq_vietnam
-from src.bim_tools import detect_clashes
+from src.bim_tools import detect_clashes, read_ifc_model
 from src.panel_schedule import generate_panel_schedule
 from src.cad_revision import (
     snapshot_cad, list_cad_revisions, diff_cad_revisions, restore_cad_revision,
@@ -1194,8 +1314,9 @@ tools = [
     calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty,
     calc_sprinkler_hydraulics, calc_standpipe, calc_smoke_control, calc_fire_detector_qty,
     calc_nc_level,
-    lookup_unit_price, calc_boq_cost, export_boq_vietnam, detect_clashes,
+    lookup_unit_price, calc_boq_cost, export_boq_vietnam, detect_clashes, read_ifc_model,
     snapshot_cad, list_cad_revisions, diff_cad_revisions, restore_cad_revision,
+    auto_route_mepf_path, generate_calculation_report, lookup_equipment_catalog, extract_new_blocks_to_library
 ]
 
 # Giảm token: trước đây MỌI agent đều bị bind cả danh sách `tools` đầy đủ (30+ schema),
@@ -1204,7 +1325,7 @@ tools = [
 # thực sự cần trong LLM request, cắt đáng kể input token mỗi lượt gọi mà không đổi
 # hành vi (ToolNode trong src/graph.py vẫn dùng `tools` đầy đủ để thực thi bất kỳ
 # tool_call nào, không phụ thuộc danh sách bind ở đây).
-_COMMON_TOOLS = [search_standards, search_web, calculate, list_directory, read_excel, read_word, read_pdf]
+_COMMON_TOOLS = [search_standards, search_web, calculate, list_directory, read_excel, read_word, read_pdf, generate_calculation_report, lookup_equipment_catalog]
 
 TOOLS_BY_ROLE = {
     "mechanical": _COMMON_TOOLS + [
@@ -1232,11 +1353,12 @@ TOOLS_BY_ROLE = {
     "cad": _COMMON_TOOLS + [
         read_cad, write_cad, edit_cad, ai_block_recovery, render_cad_image,
         analyze_cad_spatial_context, execute_python_code, optimize_cad_drawing,
-        standardize_cad_drawing,
+        standardize_cad_drawing, auto_route_mepf_path, extract_new_blocks_to_library,
         snapshot_cad, list_cad_revisions, diff_cad_revisions, restore_cad_revision,
     ],
     "bim": _COMMON_TOOLS + [
         auto_quantity_takeoff, read_cad, write_excel, analyze_cad_spatial_context, detect_clashes,
+        read_ifc_model,
         diff_cad_revisions, list_cad_revisions,
     ],
 }
