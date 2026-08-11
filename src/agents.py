@@ -4,7 +4,7 @@ from src.state import AgentState
 from src.config import settings
 from pydantic import BaseModel, Field
 from typing import Literal
-from src.tools import tools
+from src.tools import get_tools_for_role
 
 from dotenv import load_dotenv
 from functools import lru_cache
@@ -24,6 +24,9 @@ def _build_llm(provider: str, model_name: str, api_key: str):
     elif provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key or "dummy_key", temperature=0)
+    elif provider == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+        return ChatAnthropic(model=model_name, api_key=api_key or "dummy_key", temperature=0)
     elif provider == "ollama":
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
@@ -36,27 +39,43 @@ def _build_llm(provider: str, model_name: str, api_key: str):
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(model=model_name, api_key=api_key or "dummy_key", temperature=0)
 
-def get_llm():
+# Vai trò mặc định dùng khi không truyền role cụ thể (ví dụ chạy get_llm() một mình).
+DEFAULT_ROLE = "DEFAULT"
+
+def get_llm(role: str = DEFAULT_ROLE):
+    """Lấy LLM client cho một VAI TRÒ cụ thể (SUPERVISOR, REVIEWER, MECHANICAL, ...).
+
+    Cho phép mỗi vai trò dùng provider/model riêng qua biến môi trường
+    `<ROLE>_LLM_PROVIDER` / `<ROLE>_MODEL_NAME` (và `<ROLE>_<PROVIDER>_API_KEY` nếu cần
+    key riêng), nếu không đặt thì rơi về biến toàn cục `LLM_PROVIDER` / `MODEL_NAME`.
+    Xem AI_MODEL_SETUP.md để biết khuyến nghị model theo từng vai trò.
+    """
     load_dotenv(override=True)
-    provider = os.getenv("LLM_PROVIDER", "openai").lower().strip()
-    model_name = os.getenv("MODEL_NAME", "").strip()
+    role_key = (role or DEFAULT_ROLE).upper().strip()
+
+    provider = (os.getenv(f"{role_key}_LLM_PROVIDER") or os.getenv("LLM_PROVIDER", "openai")).lower().strip()
+    model_name = (os.getenv(f"{role_key}_MODEL_NAME") or os.getenv("MODEL_NAME", "")).strip()
 
     if provider == "groq":
-        key = os.getenv("GROQ_API_KEY", "")
-        if not model_name or "gpt" in model_name or "gemini" in model_name or "3.1" in model_name:
+        key = os.getenv(f"{role_key}_GROQ_API_KEY") or os.getenv("GROQ_API_KEY", "")
+        if not model_name or "gpt" in model_name or "gemini" in model_name or "claude" in model_name or "3.1" in model_name:
             model_name = "llama-3.3-70b-versatile"
     elif provider == "gemini":
-        key = os.getenv("GOOGLE_API_KEY", "")
-        if not model_name or "gpt" in model_name or "llama" in model_name:
+        key = os.getenv(f"{role_key}_GOOGLE_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
+        if not model_name or "gpt" in model_name or "llama" in model_name or "claude" in model_name:
             model_name = "gemini-1.5-flash"
+    elif provider == "anthropic":
+        key = os.getenv(f"{role_key}_ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "")
+        if not model_name or "gpt" in model_name or "llama" in model_name or "gemini" in model_name:
+            model_name = "claude-sonnet-5"
     elif provider == "ollama":
         key = ""
-        if not model_name or "gpt" in model_name or "gemini" in model_name:
+        if not model_name or "gpt" in model_name or "gemini" in model_name or "claude" in model_name:
             model_name = "llama3.1:8b"
     else:
         provider = "openai"
-        key = os.getenv("OPENAI_API_KEY", "")
-        if not model_name or "llama" in model_name or "gemini" in model_name:
+        key = os.getenv(f"{role_key}_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY", "")
+        if not model_name or "llama" in model_name or "gemini" in model_name or "claude" in model_name:
             model_name = "gpt-4o-mini"
 
     return _build_llm(provider, model_name, key)
@@ -69,9 +88,10 @@ def call_mepf_agent(state: AgentState, system_prompt: str, agent_name: str):
         system_prompt += f"\n\nCẢNH BÁO: Lần trả lời trước của bạn đã bị Reviewer từ chối với lỗi: '{errors[-1]}'. Hãy sửa lỗi này và đưa ra phương án khả thi hơn."
         
     sys_msg = SystemMessage(content=system_prompt)
-    
-    llm = get_llm()
-    tool_llm = llm.bind_tools(tools)
+
+    role = agent_name[:-5] if agent_name.endswith("Agent") else agent_name  # "MechanicalAgent" -> "Mechanical"
+    llm = get_llm(role)
+    tool_llm = llm.bind_tools(get_tools_for_role(role))
     
     try:
         response = tool_llm.invoke([sys_msg] + messages)
@@ -83,7 +103,7 @@ def call_mepf_agent(state: AgentState, system_prompt: str, agent_name: str):
 
 # --- 1. Mechanical (HVAC) Agent ---
 def mechanical_agent_node(state: AgentState):
-    prompt = "Bạn là Kỹ sư Cơ khí (HVAC) cấp chuyên gia. \n- Luôn gọi tool `search_standards` để tra cứu tiêu chuẩn (TCVN/ASHRAE). \n- Luôn sử dụng bộ công cụ HVAC: `calc_cooling_load` (tải lạnh), `calc_duct_size` (ống gió), `calc_psychrometrics` (trạng thái không khí), `calc_chw_pipe_size` (ống nước lạnh), `calc_pump_fan_power` (công suất quạt/bơm), `calc_ventilation_rate` (thông gió/hút khói). \n- Cấm đoán mò các thông số này. Đảm bảo mọi lập luận đều có căn cứ kỹ thuật toán học."
+    prompt = "Bạn là Kỹ sư Cơ khí (HVAC) cấp chuyên gia. \n- Luôn gọi tool `search_standards` để tra cứu tiêu chuẩn (TCVN/ASHRAE). \n- Luôn sử dụng bộ công cụ HVAC: `calc_cooling_load` (tải lạnh sơ bộ theo hệ số W/m2), `calc_cooling_load_detailed` (tải lạnh chi tiết theo người/đèn/thiết bị/kết cấu/nắng/gió tươi - ưu tiên dùng khi có đủ dữ liệu phòng), `calc_duct_size` (kích thước 1 đoạn ống gió), `calc_duct_total_pressure_loss` (tổng tổn thất áp suất toàn tuyến để chọn cột áp quạt), `calc_psychrometrics` (trạng thái không khí), `calc_chw_pipe_size` (ống nước lạnh), `calc_chiller_ahu_selection` (chọn công suất Chiller/AHU/FCU theo catalog), `calc_refrigerant_pipe_size` (cỡ ống gas VRV/VRF), `calc_pump_fan_power` (công suất quạt/bơm), `calc_ventilation_rate` (thông gió/hút khói). \n- Cấm đoán mò các thông số này. Đảm bảo mọi lập luận đều có căn cứ kỹ thuật toán học."
     return call_mepf_agent(state, prompt, "MechanicalAgent")
 
 # --- 2. Electrical Agent ---
@@ -93,7 +113,7 @@ def electrical_agent_node(state: AgentState):
 
 # --- 3. Plumbing Agent ---
 def plumbing_agent_node(state: AgentState):
-    prompt = "Bạn là Kỹ sư Cấp thoát nước (Plumbing) cấp chuyên gia. \n- Luôn gọi tool `search_standards` để tra cứu tiêu chuẩn. \n- Luôn sử dụng bộ công cụ Nước: `calc_water_pipe` (tính lưu lượng/cỡ ống nước), `calc_water_tank` (tính bể ngầm/mái), `calc_plumbing_pump_head` (tính cột áp bơm cấp nước). \n- Cấm đoán mò các thông số này. Đảm bảo mọi lập luận đều có căn cứ kỹ thuật toán học."
+    prompt = "Bạn là Kỹ sư Cấp thoát nước (Plumbing) cấp chuyên gia. \n- Luôn gọi tool `search_standards` để tra cứu tiêu chuẩn. \n- Luôn sử dụng bộ công cụ Nước: `calc_water_pipe` (tính lưu lượng/cỡ ống cấp nước), `calc_water_tank` (tính bể ngầm/mái), `calc_plumbing_pump_head` (tính cột áp bơm cấp nước), `calc_drainage_pipe` (cỡ ống thoát nước thải theo DFU), `calc_rainwater_drainage` (cỡ ống/máng thoát nước mưa mái), `calc_septic_tank` (dung tích bể tự hoại), `calc_hot_water_system` (công suất/dung tích hệ thống nước nóng). \n- Cấm đoán mò các thông số này. Đảm bảo mọi lập luận đều có căn cứ kỹ thuật toán học."
     return call_mepf_agent(state, prompt, "PlumbingAgent")
 
 # --- 4. Firefighting Agent ---
@@ -166,7 +186,7 @@ Yêu cầu bắt buộc:
 Nếu thông tin sai kỹ thuật hoặc thiếu căn cứ, hãy REJECT.""")
 
     try:
-        llm = get_llm()
+        llm = get_llm("Reviewer")
         reviewer_llm = llm.with_structured_output(ReviewResponse)
         review_result = reviewer_llm.invoke([system_prompt, last_msg])
         
@@ -231,7 +251,7 @@ QUY TẮC THÉP (LUẬT PHÊ DUYỆT):
 """
     
     sys_msg = SystemMessage(content=supervisor_prompt)
-    llm = get_llm()
+    llm = get_llm("Supervisor")
     structured_llm = llm.with_structured_output(RouteResponse)
     
     try:
