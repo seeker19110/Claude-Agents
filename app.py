@@ -1,8 +1,9 @@
 import streamlit as st
 from langchain_core.messages import HumanMessage
-from src.graph import app as graph_app
+from src.graph import app as graph_app, GRAPH_CONFIG
 from src.workspace import set_workspace_dir, get_project_root
 from src.logging_config import setup_logging
+from src.usage import get_tracker, reset_tracker
 import uuid
 import os
 import time
@@ -60,6 +61,17 @@ with st.sidebar:
     st.divider()
     st.header("⚙️ Cấu hình hệ thống")
     st.caption("Khởi chạy với Project Manager, MEPF Agents (Tra cứu Tiêu chuẩn), CAD và QS Agents.")
+
+    st.divider()
+    st.header("💰 Token & Chi phí lượt gần nhất")
+    # Đọc từ session_state chứ không đọc thẳng tracker: mỗi lần Streamlit rerun là một
+    # thread mới nên contextvar đã bị khởi tạo lại; snapshot được lưu lại sau mỗi lượt chạy.
+    _usage_rows = st.session_state.get("last_usage_rows")
+    if _usage_rows:
+        st.dataframe(pd.DataFrame(_usage_rows), use_container_width=True, hide_index=True)
+        st.caption(st.session_state.get("last_usage_caption", ""))
+    else:
+        st.caption("Chưa có dữ liệu — số liệu xuất hiện sau lượt hội thoại đầu tiên.")
 
 # 3. Main Area - Tabs
 tab_chat, tab_excel, tab_cad = st.tabs([
@@ -179,7 +191,9 @@ with tab_chat:
             
             message_placeholder = st.empty()
             full_response = ""
-            config = {"configurable": {"thread_id": st.session_state.thread_id}}
+            config = {"configurable": {"thread_id": st.session_state.thread_id}, **GRAPH_CONFIG}
+            # Đếm token của riêng lượt hội thoại này.
+            reset_tracker()
             start_time = time.time()
             
             with st.status("🚀 Giám đốc Dự án đang điều phối nhân sự xử lý...", expanded=True) as status_container:
@@ -204,21 +218,40 @@ with tab_chat:
                                 full_response += f"{badge_title}{content}\n\n---\n"
                                 
                                 elapsed = max(time.time() - start_time, 0.01)
-                                est_tokens = max(1, int(len(full_response) / 4))
-                                tps = est_tokens / elapsed
-                                
+                                # Token THẬT do nhà cung cấp LLM báo về (usage_metadata),
+                                # không còn ước lượng bịa bằng len(text)/4.
+                                used_tokens = get_tracker().total_tokens
                                 if is_tool_status:
                                     live_speed = f"*(⏳ Đang xử lý dữ liệu... | Thời gian: {elapsed:.1f}s)*"
                                 else:
-                                    live_speed = f"*(⚡ Tốc độ sinh AI: **{tps:.1f} tokens/s** | Thời gian: {elapsed:.1f}s)*"
+                                    live_speed = f"*(⚡ Đã dùng **{used_tokens:,} token** | Thời gian: {elapsed:.1f}s)*"
                                 
                                 message_placeholder.markdown(full_response + "\n" + live_speed + " ▌")
                                 
                     elapsed = max(time.time() - start_time, 0.01)
-                    est_tokens = max(1, int(len(full_response) / 4))
-                    tps = est_tokens / elapsed
-                    speed_summary = f"\n*(⚡ Tốc độ sinh: **{tps:.1f} tokens/giây** | Thời gian xử lý: **{elapsed:.2f}s** | Dung lượng: **~{est_tokens} tokens**)*\n"
+                    tracker = get_tracker()
+                    cost = tracker.total_cost_usd
+                    cost_text = f" | Chi phí ước tính: **${cost:.4f}**" if cost is not None else ""
+                    speed_summary = (
+                        f"\n*(⚡ Token thực tế: **{tracker.total_tokens:,}** "
+                        f"| Thời gian xử lý: **{elapsed:.2f}s**{cost_text})*\n"
+                    )
                     full_response += speed_summary
+                    # Lưu snapshot cho sidebar của lần rerun sau.
+                    st.session_state.last_usage_rows = [
+                        {
+                            "Vai trò": entry.role,
+                            "Model": entry.model or "-",
+                            "Input": entry.input_tokens,
+                            "Output": entry.output_tokens,
+                            "Chi phí ($)": round(entry.cost_usd, 4) if entry.cost_usd is not None else None,
+                        }
+                        for entry in tracker.by_role.values()
+                    ]
+                    st.session_state.last_usage_caption = (
+                        f"Tổng: {tracker.total_tokens:,} token"
+                        + (f" — ước tính ${cost:.4f}" if cost is not None else " (chưa có bảng giá cho model này)")
+                    )
                     message_placeholder.markdown(full_response)
                     status_container.update(label="✅ Đã hoàn tất nhiệm vụ!", state="complete", expanded=False)
                 except Exception as e:

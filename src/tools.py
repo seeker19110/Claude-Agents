@@ -13,6 +13,7 @@ import operator as op
 import logging
 from functools import lru_cache
 from src.workspace import resolve_safe_path, get_project_root
+from src.cad_revision import create_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -456,6 +457,9 @@ def ai_block_recovery(file_path: str, layer: str, shape: str, dimensions: str, r
     try:
         from ezdxf.addons import importer
 
+        # Lưu điểm lùi TRƯỚC khi ghi đè: các tool này sửa file tại chỗ, không có snapshot
+        # thì một lần AI sửa sai là mất luôn bản gốc.
+        create_snapshot(file_path, note=f"Trước khi phục hồi Block '{replacement_block}' trên layer '{layer}'")
         safe_path = resolve_safe_path(file_path)
         if not os.path.exists(safe_path):
             return f"Lỗi: Không tìm thấy file {file_path}"
@@ -556,6 +560,7 @@ def edit_cad(file_path: str, actions_json: str) -> str:
     """
     logger.info("Editing CAD: %s", file_path)
     try:
+        create_snapshot(file_path, note="Trước khi edit_cad")
         safe_path = resolve_safe_path(file_path)
         if not os.path.exists(safe_path):
             return f"Lỗi: Không tìm thấy file {file_path}"
@@ -932,6 +937,7 @@ def optimize_cad_drawing(file_path: str, output_path: str = "", dedupe_tolerance
     """
     logger.info("Optimize CAD Drawing (offline, deterministic): %s", file_path)
     try:
+        create_snapshot(file_path, note="Trước khi optimize_cad_drawing")
         safe_path = resolve_safe_path(file_path)
         doc = ezdxf.readfile(safe_path)
         msp = doc.modelspace()
@@ -1013,6 +1019,20 @@ from src.plumb_tools import (
     calc_drainage_pipe, calc_rainwater_drainage, calc_septic_tank, calc_hot_water_system,
 )
 from src.ff_tools import calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty
+from src.elec_tools import (
+    calc_voltage_drop, calc_total_load, calc_short_circuit,
+    calc_cable_tray_size, calc_lightning_protection,
+)
+from src.hvac_tools import calc_nc_level
+from src.ff_tools import (
+    calc_sprinkler_hydraulics, calc_standpipe, calc_smoke_control, calc_fire_detector_qty,
+)
+from src.qs_tools import lookup_unit_price, calc_boq_cost, export_boq_vietnam
+from src.bim_tools import detect_clashes
+from src.panel_schedule import generate_panel_schedule
+from src.cad_revision import (
+    snapshot_cad, list_cad_revisions, diff_cad_revisions, restore_cad_revision,
+)
 
 tools = [
     search_standards, search_web, calculate, execute_python_code, list_directory,
@@ -1021,10 +1041,16 @@ tools = [
     auto_quantity_takeoff, optimize_cad_drawing,
     calc_psychrometrics, calc_duct_size, calc_cooling_load, calc_chw_pipe_size, calc_pump_fan_power, calc_ventilation_rate,
     calc_cooling_load_detailed, calc_duct_total_pressure_loss, calc_chiller_ahu_selection, calc_refrigerant_pipe_size,
-    calc_cable_size, calc_breaker_size, calc_lighting_qty,
+    calc_cable_size, calc_breaker_size, calc_lighting_qty, calc_voltage_drop,
+    calc_total_load, calc_short_circuit, calc_cable_tray_size, calc_lightning_protection,
+    generate_panel_schedule,
     calc_water_pipe, calc_water_tank, calc_plumbing_pump_head,
     calc_drainage_pipe, calc_rainwater_drainage, calc_septic_tank, calc_hot_water_system,
-    calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty
+    calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty,
+    calc_sprinkler_hydraulics, calc_standpipe, calc_smoke_control, calc_fire_detector_qty,
+    calc_nc_level,
+    lookup_unit_price, calc_boq_cost, export_boq_vietnam, detect_clashes,
+    snapshot_cad, list_cad_revisions, diff_cad_revisions, restore_cad_revision,
 ]
 
 # Giảm token: trước đây MỌI agent đều bị bind cả danh sách `tools` đầy đủ (30+ schema),
@@ -1039,22 +1065,34 @@ TOOLS_BY_ROLE = {
     "mechanical": _COMMON_TOOLS + [
         calc_cooling_load, calc_cooling_load_detailed, calc_duct_size, calc_duct_total_pressure_loss,
         calc_psychrometrics, calc_chw_pipe_size, calc_chiller_ahu_selection, calc_refrigerant_pipe_size,
-        calc_pump_fan_power, calc_ventilation_rate,
+        calc_pump_fan_power, calc_ventilation_rate, calc_nc_level,
     ],
-    "electrical": _COMMON_TOOLS + [calc_cable_size, calc_breaker_size, calc_lighting_qty],
+    "electrical": _COMMON_TOOLS + [
+        calc_cable_size, calc_breaker_size, calc_lighting_qty, calc_voltage_drop,
+        calc_total_load, calc_short_circuit, calc_cable_tray_size, calc_lightning_protection,
+        generate_panel_schedule,
+    ],
     "plumbing": _COMMON_TOOLS + [
         calc_water_pipe, calc_water_tank, calc_plumbing_pump_head,
         calc_drainage_pipe, calc_rainwater_drainage, calc_septic_tank, calc_hot_water_system,
     ],
-    "firefighting": _COMMON_TOOLS + [calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty],
+    "firefighting": _COMMON_TOOLS + [
+        calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty,
+        calc_sprinkler_hydraulics, calc_standpipe, calc_smoke_control, calc_fire_detector_qty,
+    ],
     "qs": _COMMON_TOOLS + [
         auto_quantity_takeoff, read_cad, write_excel, analyze_cad_spatial_context, ai_block_recovery,
+        lookup_unit_price, calc_boq_cost, export_boq_vietnam,
     ],
     "cad": _COMMON_TOOLS + [
         read_cad, write_cad, edit_cad, ai_block_recovery, render_cad_image,
         analyze_cad_spatial_context, execute_python_code, optimize_cad_drawing,
+        snapshot_cad, list_cad_revisions, diff_cad_revisions, restore_cad_revision,
     ],
-    "bim": _COMMON_TOOLS + [auto_quantity_takeoff, read_cad, write_excel, analyze_cad_spatial_context],
+    "bim": _COMMON_TOOLS + [
+        auto_quantity_takeoff, read_cad, write_excel, analyze_cad_spatial_context, detect_clashes,
+        diff_cad_revisions, list_cad_revisions,
+    ],
 }
 
 def get_tools_for_role(role: str) -> list:

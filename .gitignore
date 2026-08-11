@@ -18,3 +18,6 @@ __pycache__/
 
 # Thư mục làm việc riêng theo từng phiên Streamlit (per-session workspace, xem src/workspace.py)
 outputs/
+
+# Checkpoint hội thoại (SQLite) — dữ liệu chạy, không commit
+data/checkpoints.sqlite*

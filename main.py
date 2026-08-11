@@ -1,6 +1,6 @@
 import sys
 from langchain_core.messages import HumanMessage
-from src.graph import app
+from src.graph import app, GRAPH_CONFIG
 from src.config import settings
 from src.logging_config import setup_logging
 
@@ -32,7 +32,7 @@ def interactive_loop():
     print("Kỹ sư trưởng (Reviewer) sẽ duyệt tất cả đầu ra.")
     print("Gõ 'quit' hoặc 'exit' để thoát.\n")
     
-    config = {"configurable": {"thread_id": "mepf_full_room_session_1"}, "recursion_limit": 20}
+    config = {"configurable": {"thread_id": "mepf_full_room_session_1"}, **GRAPH_CONFIG}
     
     while True:
         try:
