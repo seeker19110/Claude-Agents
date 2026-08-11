@@ -1,7 +1,8 @@
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
-from src.state import AgentState
+from src.state import AgentState, RESET
 from src.config import settings
+from src.usage import record_usage
 from pydantic import BaseModel, Field
 from typing import Literal
 from src.tools import get_tools_for_role
@@ -80,26 +81,47 @@ def get_llm(role: str = DEFAULT_ROLE):
 
     return _build_llm(provider, model_name, key)
 
+def agent_node_key(agent_name: str) -> str:
+    """'MechanicalAgent' -> 'mechanical': tên NODE trong graph.
+
+    Trước đây `sender` được ghi là `agent_name.lower()` ('mechanicalagent'), trong khi
+    `src/graph.py` và Supervisor lại so khớp với tên node ('mechanical'). Không bao giờ
+    khớp, nên sau khi ToolNode chạy xong, kết quả tool bị đẩy ngược lên Supervisor thay
+    vì trả về đúng agent đã gọi tool, và Reviewer TỪ CHỐI thì luôn rơi về 'qs' bất kể
+    bộ phận nào gây lỗi.
+    """
+    name = (agent_name or "").strip()
+    if name.lower().endswith("agent"):
+        name = name[: -len("agent")]
+    return name.lower()
+
+
 def call_mepf_agent(state: AgentState, system_prompt: str, agent_name: str):
     messages = state.get("messages", [])
     errors = state.get("errors", [])
-    
+
     if errors:
         system_prompt += f"\n\nCẢNH BÁO: Lần trả lời trước của bạn đã bị Reviewer từ chối với lỗi: '{errors[-1]}'. Hãy sửa lỗi này và đưa ra phương án khả thi hơn."
-        
+
     sys_msg = SystemMessage(content=system_prompt)
 
     role = agent_name[:-5] if agent_name.endswith("Agent") else agent_name  # "MechanicalAgent" -> "Mechanical"
     llm = get_llm(role)
     tool_llm = llm.bind_tools(get_tools_for_role(role))
-    
+
+    node_key = agent_node_key(agent_name)
     try:
         response = tool_llm.invoke([sys_msg] + messages)
         response.name = agent_name
-        return {"messages": [response], "sender": agent_name.lower()}
+        record_usage(role, response)
+        return {
+            "messages": [response],
+            "sender": node_key,
+            "completed_agents": [node_key],
+        }
     except Exception as e:
         content = f"[{agent_name}] Lỗi khi kết nối LLM ({os.getenv('LLM_PROVIDER', 'openai')}): {str(e)}"
-        return {"messages": [AIMessage(content=content, name=agent_name)], "sender": agent_name.lower()}
+        return {"messages": [AIMessage(content=content, name=agent_name)], "sender": node_key}
 
 # --- 1. Mechanical (HVAC) Agent ---
 def mechanical_agent_node(state: AgentState):
@@ -108,7 +130,7 @@ def mechanical_agent_node(state: AgentState):
 
 # --- 2. Electrical Agent ---
 def electrical_agent_node(state: AgentState):
-    prompt = "Bạn là Kỹ sư Điện (Electrical) cấp chuyên gia. \n- Luôn gọi tool `search_standards` để tra cứu tiêu chuẩn (TCVN/IEC). \n- Luôn sử dụng bộ công cụ Điện: `calc_cable_size` (tính cáp), `calc_breaker_size` (tính MCB/MCCB), `calc_lighting_qty` (tính số lượng đèn). \n- Cấm đoán mò các thông số này. Đảm bảo mọi lập luận đều có căn cứ kỹ thuật toán học."
+    prompt = "Bạn là Kỹ sư Điện (Electrical) cấp chuyên gia. \n- Luôn gọi tool `search_standards` để tra cứu tiêu chuẩn (TCVN/IEC). \n- Luôn sử dụng bộ công cụ Điện: `calc_cable_size` (chọn cáp - LUÔN hỏi và truyền `length_m` là chiều dài tuyến cáp để tool kiểm tra sụt áp; chọn cáp mà bỏ qua sụt áp là SAI theo TCVN 9206), `calc_voltage_drop` (kiểm tra riêng %sụt áp của một tuyến), `calc_breaker_size` (tính MCB/MCCB), `calc_lighting_qty` (tính số lượng đèn). \n- Cấm đoán mò các thông số này. Đảm bảo mọi lập luận đều có căn cứ kỹ thuật toán học."
     return call_mepf_agent(state, prompt, "ElectricalAgent")
 
 # --- 3. Plumbing Agent ---
@@ -118,7 +140,7 @@ def plumbing_agent_node(state: AgentState):
 
 # --- 4. Firefighting Agent ---
 def firefighting_agent_node(state: AgentState):
-    prompt = "Bạn là Kỹ sư Phòng cháy chữa cháy (Firefighting) cấp chuyên gia. \n- Luôn gọi tool `search_standards` để tra cứu quy chuẩn PCCC (TCVN 3890, TCVN 7336). \n- Luôn sử dụng bộ công cụ PCCC: `calc_sprinkler_qty` (tính đầu phun), `calc_fire_pump` (tính bơm chữa cháy), `calc_extinguisher_qty` (tính số lượng bình chữa cháy). \n- Cấm đoán mò các thông số này. Mọi bố trí phải tuân thủ nghiêm ngặt tiêu chuẩn."
+    prompt = "Bạn là Kỹ sư Phòng cháy chữa cháy (Firefighting) cấp chuyên gia. \n- Luôn gọi tool `search_standards` để tra cứu quy chuẩn PCCC (TCVN 3890, TCVN 7336). \n- Luôn sử dụng bộ công cụ PCCC: `calc_sprinkler_qty` (tính đầu phun), `calc_fire_pump` (chọn bơm chữa cháy - LUÔN hỏi và truyền `static_head_m` (chiều cao hình học) và `pipe_length_m` (chiều dài tuyến ống) để tool tính được CỘT ÁP H; chỉ có lưu lượng Q mà thiếu H thì KHÔNG chọn được bơm thật), `calc_extinguisher_qty` (tính số lượng bình chữa cháy). \n- Cấm đoán mò các thông số này. Mọi bố trí phải tuân thủ nghiêm ngặt tiêu chuẩn."
     return call_mepf_agent(state, prompt, "FirefightingAgent")
 
 # --- 5. QS Agent (Quantity Surveyor) ---
@@ -139,6 +161,12 @@ def qs_agent_node(state: AgentState):
       + Electrical (Điện): 'LIGHT_PANEL' (600x600), 'LIGHT_DOWNLIGHT' (Tròn R=100), 'SOCKET' (Tròn R=50), 'SWITCH' (Tròn R=30)
       + Firefighting (PCCC): 'SPRINKLER' (Tròn R=50)
       + Plumbing (Nước): 'PUMP' (Tròn R=50)
+    - LẬP DỰ TOÁN CÓ TIỀN (khi khách yêu cầu "dự toán", "báo giá", "thành tiền", "BOQ"):
+      Bóc khối lượng xong, gọi tiếp `calc_boq_cost(takeoff_excel_path=<file Excel vừa tạo>)` để tra đơn
+      giá trong `data/unit_prices.csv` và xuất bảng dự toán có giá trị tiền (chi phí trực tiếp, chi phí
+      chung, thu nhập chịu thuế tính trước, VAT, tổng cộng). Dùng `lookup_unit_price` khi cần tra riêng
+      đơn giá một hạng mục. Nếu tool báo có hạng mục "CHƯA CÓ ĐƠN GIÁ", PHẢI nói rõ với khách rằng tổng
+      dự toán còn thiếu phần đó, tuyệt đối không được tự bịa đơn giá.
     Chốt lại: LUÔN phải kết thúc bằng một file Excel dự toán thật sự trên đĩa, không có ngoại lệ.
     """
     return call_mepf_agent(state, prompt, "QSAgent")
@@ -163,6 +191,10 @@ def cad_agent_node(state: AgentState):
 # --- 7. BIM Agent ---
 def bim_agent_node(state: AgentState):
     prompt = """Bạn là một BIM Coordinator xuất sắc. Quản lý mô hình 3D, kiểm tra xung đột và bóc tách khối lượng.
+    - KIỂM TRA XUNG ĐỘT (clash detection): Khi khách yêu cầu "kiểm tra xung đột", "clash", "va chạm
+      giữa các hệ", gọi NGAY `detect_clashes(file_path=...)`. Tool quét hình học thuần, tự tìm mọi điểm
+      hai hệ khác nhau (HVAC/Điện/Nước/PCCC) cắt nhau trên mặt bằng và xuất Excel tọa độ xung đột. Luôn
+      nhắc khách rằng đây là xung đột mặt bằng 2D, cần đối chiếu cao độ lắp đặt trước khi kết luận.
     - CẤM NÓI SUÔNG: Nếu được giao nhiệm vụ đếm block, bóc khối lượng hay lập dự toán, bạn BẮT BUỘC phải
       gọi NGAY tool `auto_quantity_takeoff(file_path=...)` — tool này tự đọc bản vẽ, tự đếm và tự xuất file
       Excel thật sự chỉ trong một lần gọi, phù hợp cả khi bạn là model AI yếu hoặc chạy offline. Chỉ dùng
@@ -175,22 +207,74 @@ class ReviewResponse(BaseModel):
     decision: Literal["APPROVE", "REJECT"] = Field(description="Quyết định phê duyệt hoặc từ chối.")
     reason: str = Field(description="Lý do chi tiết cho quyết định (nếu từ chối).", default="")
 
+# Tool nào được coi là "đã tạo ra sản phẩm thật trên đĩa" cho nhiệm vụ bóc khối
+# lượng / dự toán. Dùng để kiểm tra theo CẤU TRÚC (có tool_call hay không) thay cho
+# blacklist chuỗi tiếng Việt cũ — blacklist chỉ cần LLM đổi cách diễn đạt là lọt.
+DELIVERABLE_TOOLS = {"auto_quantity_takeoff", "write_excel", "calc_boq_cost", "write_word", "write_cad", "edit_cad"}
+
+# Từ khóa cho biết lượt yêu cầu này ĐÒI HỎI một file sản phẩm, không chỉ tư vấn miệng.
+_DELIVERABLE_INTENT_KEYWORDS = (
+    "bóc khối lượng", "boc khoi luong", "dự toán", "du toan", "thống kê block",
+    "thong ke block", "xuất excel", "xuat excel", "báo giá", "bao gia", "boq",
+)
+
+
+def _requires_deliverable(messages) -> bool:
+    """Yêu cầu gần nhất của người dùng có đòi file sản phẩm (Excel/CAD) hay không."""
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            text = str(getattr(msg, "content", "")).lower()
+            return any(kw in text for kw in _DELIVERABLE_INTENT_KEYWORDS)
+    return False
+
+
+def _tool_calls_in_thread(messages) -> set:
+    """Tên tất cả tool đã được gọi trong luồng hội thoại hiện tại."""
+    names = set()
+    for msg in messages:
+        for call in getattr(msg, "tool_calls", None) or []:
+            name = call.get("name") if isinstance(call, dict) else getattr(call, "name", None)
+            if name:
+                names.add(name)
+    return names
+
+
 def reviewer_agent_node(state: AgentState):
     messages = state.get("messages", [])
     last_msg = messages[-1]
-    has_errors = len(state.get("errors", [])) > 0
-    content = getattr(last_msg, "content", "")
-    has_tool_calls = hasattr(last_msg, "tool_calls") and len(last_msg.tool_calls) > 0
-    
-    # CHẶN TUYỆT ĐỐI CÁC CÂU TRẢ LỜI LÝ THUYẾT SUÔNG
-    if not has_tool_calls and any(kw in content.lower() for kw in ["tách biệt các thuộc tính", "tìm kiếm mẫu", "tôi sẽ đề xuất một số bước", "nếu bạn cần giúp đỡ"]):
-        response = AIMessage(content="[Reviewer Agent] TỪ CHỐI: Agent đã trả lời suông lý thuyết thay vì thực thi công cụ Python đếm CAD và xuất Excel thật (`read_cad` / `write_excel`). Yêu cầu thực thi tool ngay!", name="ReviewerAgent")
-        return {"messages": [response], "errors": ["Agent trả lời suông không gọi tool. Hãy gọi tool read_cad và write_excel để tạo file thật."]}
-        
-    if has_errors:
-        response = AIMessage(content=f"[Reviewer Agent] PHÊ DUYỆT (Auto-pass sau khi sửa lỗi).", name="ReviewerAgent")
-        return {"messages": [response], "errors": []}
-        
+    retry_count = state.get("retry_count", 0) or 0
+    has_tool_calls = bool(getattr(last_msg, "tool_calls", None))
+
+    def _reject(reason: str):
+        """Từ chối và bắt worker làm lại — trừ khi đã hết hạn mức thử lại.
+
+        Trước đây, hễ state đã có lỗi là Reviewer tự động PHÊ DUYỆT ("auto-pass") để
+        thoát vòng lặp vô tận, nghĩa là bản sửa lần hai KHÔNG BAO GIỜ được kiểm duyệt
+        thật. Nay hạn mức được đếm tường minh: vẫn review nghiêm túc mọi lần, và khi
+        chạm trần thì dừng kèm cảnh báo trung thực thay vì báo "đã duyệt".
+        """
+        if retry_count >= settings.max_review_retries:
+            response = AIMessage(
+                content=(
+                    f"[Reviewer Agent] DỪNG KIỂM DUYỆT: Đã yêu cầu sửa {retry_count} lần nhưng vẫn còn vấn đề "
+                    f"'{reason}'. Kết quả dưới đây CHƯA ĐẠT yêu cầu kiểm duyệt — vui lòng xem lại thủ công "
+                    f"hoặc bổ sung dữ liệu đầu vào rồi giao lại nhiệm vụ."
+                ),
+                name="ReviewerAgent",
+            )
+            return {"messages": [response], "errors": [], "retry_count": 0}
+        response = AIMessage(content=f"[Reviewer Agent] TỪ CHỐI: {reason}", name="ReviewerAgent")
+        return {"messages": [response], "errors": [reason], "retry_count": retry_count + 1}
+
+    # CHẶN TRẢ LỜI LÝ THUYẾT SUÔNG — kiểm tra bằng cấu trúc: nhiệm vụ đòi file sản
+    # phẩm mà cả luồng chưa hề gọi tool tạo file nào thì chắc chắn chưa xong việc.
+    if not has_tool_calls and _requires_deliverable(messages):
+        if not (_tool_calls_in_thread(messages) & DELIVERABLE_TOOLS):
+            return _reject(
+                "Nhiệm vụ yêu cầu bóc khối lượng/dự toán nhưng chưa hề gọi tool tạo file thật. "
+                "Hãy gọi ngay `auto_quantity_takeoff` (hoặc `write_excel`) để xuất file Excel."
+            )
+
     system_prompt = SystemMessage(content="""Bạn là Kỹ sư trưởng (Reviewer). Kiểm tra kết quả tư vấn.
 Yêu cầu bắt buộc:
 1. Nếu là tính toán thiết kế MEPF, phải có trích dẫn Tiêu chuẩn (TCVN/ASHRAE/NFPA).
@@ -202,13 +286,11 @@ Nếu thông tin sai kỹ thuật hoặc thiếu căn cứ, hãy REJECT.""")
         llm = get_llm("Reviewer")
         reviewer_llm = llm.with_structured_output(ReviewResponse)
         review_result = reviewer_llm.invoke([system_prompt, last_msg])
-        
+
         if review_result.decision == "REJECT":
-            response = AIMessage(content=f"[Reviewer Agent] TỪ CHỐI: {review_result.reason}", name="ReviewerAgent")
-            return {"messages": [response], "errors": [review_result.reason]}
-        else:
-            response = AIMessage(content=f"[Reviewer Agent] PHÊ DUYỆT: Phương án kỹ thuật hợp lệ.", name="ReviewerAgent")
-            return {"messages": [response], "errors": []}
+            return _reject(review_result.reason)
+        response = AIMessage(content=f"[Reviewer Agent] PHÊ DUYỆT: Phương án kỹ thuật hợp lệ.", name="ReviewerAgent")
+        return {"messages": [response], "errors": [], "retry_count": 0}
     except Exception as e:
         # Không được ngầm coi lỗi kết nối/parsing là "PHÊ DUYỆT" (fail-open che giấu sự cố
         # kiểm duyệt thật sự). Thông báo rõ là CHƯA kiểm duyệt được thay vì báo sai trạng thái;
@@ -219,7 +301,7 @@ Nếu thông tin sai kỹ thuật hoặc thiếu căn cứ, hãy REJECT.""")
                     f"Kết quả CHƯA được kiểm duyệt — vui lòng kiểm tra cấu hình API/Provider và thử lại.",
             name="ReviewerAgent"
         )
-        return {"messages": [response], "errors": []}
+        return {"messages": [response], "errors": [], "retry_count": 0}
 
 # --- 9. Supervisor Agent (Project Manager) ---
 class RouteResponse(BaseModel):
@@ -227,21 +309,80 @@ class RouteResponse(BaseModel):
         description="Định tuyến đến bộ phận phù hợp, hoặc FINISH."
     )
 
+WORKER_AGENTS = ["mechanical", "electrical", "plumbing", "firefighting", "qs", "cad", "bim"]
+
+# Số lượt giao việc tối đa cho một yêu cầu của khách hàng (VD: electrical -> qs là 2).
+MAX_AGENT_HANDOFFS = 4
+
+# Số message gần nhất mà Supervisor được đọc. Trước đây nó chỉ thấy `messages[-1]`,
+# nên không thể thực hiện đúng kịch bản nhiều bước mà chính prompt của nó hứa hẹn
+# ("chạy 'electrical' trước, xong mới tới 'qs'") — nó không biết bước nào đã xong.
+SUPERVISOR_CONTEXT_WINDOW = 6
+
+
+def _supervisor_context(state: AgentState) -> HumanMessage:
+    """Tóm tắt trạng thái dự án để PM ra quyết định định tuyến có căn cứ."""
+    messages = state.get("messages", [])
+    done = list(state.get("completed_agents", []) or [])
+    recent = messages[-SUPERVISOR_CONTEXT_WINDOW:]
+
+    lines = []
+    for msg in recent:
+        name = getattr(msg, "name", None) or type(msg).__name__
+        content = str(getattr(msg, "content", "") or "")
+        if not content and getattr(msg, "tool_calls", None):
+            content = "(đang gọi tool: " + ", ".join(
+                c.get("name", "?") if isinstance(c, dict) else "?" for c in msg.tool_calls
+            ) + ")"
+        lines.append(f"[{name}] {content[:600]}")
+
+    summary = "\n".join(lines)
+    done_text = ", ".join(done) if done else "(chưa bộ phận nào chạy)"
+    return HumanMessage(content=(
+        f"CÁC BỘ PHẬN ĐÃ XỬ LÝ TRONG YÊU CẦU NÀY: {done_text}\n\n"
+        f"DIỄN BIẾN GẦN NHẤT:\n{summary}\n\n"
+        f"Dựa vào diễn biến trên, hãy chọn bộ phận tiếp theo hoặc FINISH. "
+        f"KHÔNG giao lại việc cho bộ phận đã hoàn thành xong phần của mình, trừ khi có "
+        f"yêu cầu mới của khách hàng."
+    ))
+
+
 def supervisor_node(state: AgentState):
     messages = state.get("messages", [])
     if not messages:
         return {"next": "FINISH"}
-        
+
     last_msg = messages[-1]
-    
+
+    # Yêu cầu MỚI của khách hàng => xóa lịch sử điều phối của yêu cầu cũ, nếu không
+    # trần MAX_AGENT_HANDOFFS sẽ cạn dần và các câu hỏi sau bị FINISH ngay lập tức.
+    if isinstance(last_msg, HumanMessage):
+        reset_update = {"completed_agents": [RESET], "retry_count": 0}
+    else:
+        reset_update = {}
+
     if getattr(last_msg, "name", "") == "ReviewerAgent":
         content = getattr(last_msg, "content", "")
         if "TỪ CHỐI" in content:
             sender = state.get("sender", "qs")
-            if sender in ["mechanical", "electrical", "plumbing", "firefighting", "qs", "cad", "bim"]:
+            if sender in WORKER_AGENTS:
                 return {"next": sender}
             return {"next": "qs"}
-        return {"next": "FINISH"}
+        # Reviewer đã duyệt (hoặc dừng kiểm duyệt): để PM tự quyết còn bộ phận nào
+        # phải chạy tiếp cho yêu cầu này hay đã xong, thay vì luôn FINISH cứng nhắc.
+        done = list(state.get("completed_agents", []) or [])
+
+        # LUẬT PHÊ DUYỆT BẢN VẼ: sau khi CAD vừa sửa/phục hồi bản vẽ, luồng PHẢI dừng
+        # để khách hàng mở file kiểm tra. Trước đây luật này chỉ nằm trong prompt nên
+        # LLM có thể bỏ qua; nay chốt cứng bằng code.
+        if done and done[-1] == "cad":
+            return {"next": "FINISH"}
+
+        # Chốt chặn chống lặp: mỗi yêu cầu chỉ điều phối tối đa MAX_AGENT_HANDOFFS
+        # lượt giao việc. Hết hạn mức thì kết thúc thay vì quay vòng đốt token.
+        if len(done) >= MAX_AGENT_HANDOFFS:
+            logger.warning("[PM] Đạt trần %s lượt giao việc, kết thúc luồng.", MAX_AGENT_HANDOFFS)
+            return {"next": "FINISH"}
 
     supervisor_prompt = """Bạn là Giám đốc Dự án (Project Manager) của Văn phòng tư vấn MEPF.
 Bạn là người đứng đầu, chịu trách nhiệm nhận yêu cầu tổng hợp từ khách hàng và chia nhỏ công việc cho đội ngũ Kỹ sư.
@@ -268,9 +409,8 @@ QUY TẮC THÉP (LUẬT PHÊ DUYỆT):
     structured_llm = llm.with_structured_output(RouteResponse)
     
     try:
-        response = structured_llm.invoke([sys_msg, last_msg])
-        next_agent = response.next
-        return {"next": next_agent}
+        response = structured_llm.invoke([sys_msg, _supervisor_context(state)])
+        return {"next": response.next, **reset_update}
     except Exception as e:
         error_msg = f"Lỗi Giám đốc Dự án ({os.getenv('LLM_PROVIDER', 'openai')}): {str(e)}"
         logger.error("[PM] Lỗi định tuyến: %s", error_msg)

@@ -1013,6 +1013,9 @@ from src.plumb_tools import (
     calc_drainage_pipe, calc_rainwater_drainage, calc_septic_tank, calc_hot_water_system,
 )
 from src.ff_tools import calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty
+from src.elec_tools import calc_voltage_drop
+from src.qs_tools import lookup_unit_price, calc_boq_cost
+from src.bim_tools import detect_clashes
 
 tools = [
     search_standards, search_web, calculate, execute_python_code, list_directory,
@@ -1021,10 +1024,11 @@ tools = [
     auto_quantity_takeoff, optimize_cad_drawing,
     calc_psychrometrics, calc_duct_size, calc_cooling_load, calc_chw_pipe_size, calc_pump_fan_power, calc_ventilation_rate,
     calc_cooling_load_detailed, calc_duct_total_pressure_loss, calc_chiller_ahu_selection, calc_refrigerant_pipe_size,
-    calc_cable_size, calc_breaker_size, calc_lighting_qty,
+    calc_cable_size, calc_breaker_size, calc_lighting_qty, calc_voltage_drop,
     calc_water_pipe, calc_water_tank, calc_plumbing_pump_head,
     calc_drainage_pipe, calc_rainwater_drainage, calc_septic_tank, calc_hot_water_system,
-    calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty
+    calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty,
+    lookup_unit_price, calc_boq_cost, detect_clashes,
 ]
 
 # Giảm token: trước đây MỌI agent đều bị bind cả danh sách `tools` đầy đủ (30+ schema),
@@ -1041,7 +1045,7 @@ TOOLS_BY_ROLE = {
         calc_psychrometrics, calc_chw_pipe_size, calc_chiller_ahu_selection, calc_refrigerant_pipe_size,
         calc_pump_fan_power, calc_ventilation_rate,
     ],
-    "electrical": _COMMON_TOOLS + [calc_cable_size, calc_breaker_size, calc_lighting_qty],
+    "electrical": _COMMON_TOOLS + [calc_cable_size, calc_breaker_size, calc_lighting_qty, calc_voltage_drop],
     "plumbing": _COMMON_TOOLS + [
         calc_water_pipe, calc_water_tank, calc_plumbing_pump_head,
         calc_drainage_pipe, calc_rainwater_drainage, calc_septic_tank, calc_hot_water_system,
@@ -1049,12 +1053,15 @@ TOOLS_BY_ROLE = {
     "firefighting": _COMMON_TOOLS + [calc_sprinkler_qty, calc_fire_pump, calc_extinguisher_qty],
     "qs": _COMMON_TOOLS + [
         auto_quantity_takeoff, read_cad, write_excel, analyze_cad_spatial_context, ai_block_recovery,
+        lookup_unit_price, calc_boq_cost,
     ],
     "cad": _COMMON_TOOLS + [
         read_cad, write_cad, edit_cad, ai_block_recovery, render_cad_image,
         analyze_cad_spatial_context, execute_python_code, optimize_cad_drawing,
     ],
-    "bim": _COMMON_TOOLS + [auto_quantity_takeoff, read_cad, write_excel, analyze_cad_spatial_context],
+    "bim": _COMMON_TOOLS + [
+        auto_quantity_takeoff, read_cad, write_excel, analyze_cad_spatial_context, detect_clashes,
+    ],
 }
 
 def get_tools_for_role(role: str) -> list:

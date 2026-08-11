@@ -1,7 +1,11 @@
+import logging
+import os
+
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import ToolNode
 from src.state import AgentState
+from src.config import settings
 from src.tools import tools
 from src.agents import (
     supervisor_node, mechanical_agent_node, electrical_agent_node,
@@ -72,7 +76,43 @@ workflow.add_conditional_edges(
     }
 )
 
-# 4. Compile đồ thị với MemorySaver
-# Compile đồ thị với MemorySaver
-memory = MemorySaver()
+# 4. Compile đồ thị kèm checkpointer (bộ nhớ hội thoại)
+logger = logging.getLogger(__name__)
+
+
+def build_checkpointer(db_path: str = None):
+    """Checkpointer bền vững (SQLite) nếu cấu hình được `checkpoint_db`, ngược lại RAM.
+
+    MemorySaver mất TOÀN BỘ lịch sử hội thoại mỗi lần tiến trình khởi động lại
+    (redeploy, Streamlit restart, hết phiên container), nên mặc định hệ thống ghi
+    checkpoint xuống file SQLite. Nếu không dùng được (thiếu package, đĩa chỉ đọc)
+    thì rơi về MemorySaver thay vì làm sập ứng dụng.
+    """
+    if not db_path:
+        return MemorySaver()
+    try:
+        from langgraph.checkpoint.sqlite import SqliteSaver
+        import sqlite3
+
+        parent = os.path.dirname(os.path.abspath(db_path))
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        # check_same_thread=False: Streamlit chạy mỗi rerun trên một thread khác nhau.
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        return SqliteSaver(conn)
+    except Exception as e:  # pragma: no cover - phụ thuộc môi trường cài đặt
+        logger.warning(
+            "Không dùng được SQLite checkpointer (%s) — tạm dùng bộ nhớ RAM, "
+            "lịch sử hội thoại sẽ mất khi restart.", e
+        )
+        return MemorySaver()
+
+
+memory = build_checkpointer(settings.checkpoint_db)
+
+# recursion_limit là chốt chặn cuối cùng chống vòng lặp supervisor -> agent ->
+# reviewer -> supervisor. Hạn mức nghiệp vụ (số lần Reviewer được từ chối) nằm ở
+# `settings.max_review_retries` trong src/agents.py.
+GRAPH_CONFIG = {"recursion_limit": settings.recursion_limit}
+
 app = workflow.compile(checkpointer=memory)
