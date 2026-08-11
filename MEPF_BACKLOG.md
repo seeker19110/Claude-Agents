@@ -91,7 +91,8 @@
   (`snapshot_cad`, `list_cad_revisions`, `diff_cad_revisions`, `restore_cad_revision`).
   `edit_cad` / `optimize_cad_drawing` / `ai_block_recovery` tự chụp bản vẽ TRƯỚC khi ghi đè,
   nên một lần AI sửa sai không còn làm mất bản gốc; diff so sánh số Block, chiều dài theo
-  Layer và danh sách Layer.
+  Layer và danh sách Layer. Mặc định chỉ giữ 3 revision gần nhất cho mỗi bản vẽ
+  (`MAX_CAD_REVISIONS`) vì mỗi revision là một bản sao .dxf đầy đủ.
 - [x] ~~Tách tool schema theo từng vai trò để giảm token mỗi lượt gọi LLM~~ — đã làm
   (`src/tools.py` → `TOOLS_BY_ROLE`/`get_tools_for_role`), xem `AI_MODEL_SETUP.md` §6.
 - [x] ~~**Prompt caching (Anthropic)**~~ — đã làm: `src/agents.py` → `build_system_message`

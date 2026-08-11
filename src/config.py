@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     # Trần số bước của LangGraph cho mỗi lượt chạy (chốt chặn cuối cùng).
     recursion_limit: int = 25
 
+    # --- Lịch sử phiên bản bản vẽ CAD ---
+    # Số revision gần nhất giữ lại cho MỖI bản vẽ. Mỗi revision là một bản sao .dxf đầy
+    # đủ, nên phiên sửa bản vẽ nhiều lần sẽ phình dung lượng nếu giữ hết. Đặt 0 để giữ
+    # toàn bộ (không dọn).
+    max_cad_revisions: int = 3
+
     # --- Persistence ---
     # Đường dẫn file SQLite lưu checkpoint hội thoại. Để rỗng => dùng bộ nhớ RAM
     # (MemorySaver), mất toàn bộ lịch sử khi restart tiến trình.

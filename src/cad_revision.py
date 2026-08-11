@@ -18,11 +18,13 @@ import logging
 import math
 import os
 import shutil
+import tempfile
 from datetime import datetime
 
 import ezdxf
 from langchain_core.tools import tool
 
+from src.config import settings
 from src.workspace import get_workspace_dir, resolve_safe_path
 
 logger = logging.getLogger(__name__)
@@ -37,22 +39,74 @@ def _revision_dir(file_name: str) -> str:
     return base
 
 
+def _unique_revision_name(folder: str) -> str:
+    """Tên revision không bao giờ trùng, kể cả khi hai lần chụp cách nhau dưới 1 mili-giây.
+
+    Dấu thời gian đơn thuần là KHÔNG đủ: hai snapshot liên tiếp (ví dụ `edit_cad` gọi ngay
+    sau `snapshot_cad`) có thể rơi vào cùng một mili-giây, khiến bản sau ghi đè bản trước
+    trong khi lịch sử vẫn ghi hai dòng — người dùng thấy một phiên bản không còn khôi phục
+    đúng nội dung nữa.
+    """
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+    name = f"rev_{stamp}.dxf"
+    counter = 1
+    while os.path.exists(os.path.join(folder, name)):
+        name = f"rev_{stamp}_{counter}.dxf"
+        counter += 1
+    return name
+
+
+def _prune_revisions(file_path: str, keep: int = None) -> int:
+    """Xóa bớt revision cũ, chỉ giữ `keep` bản gần nhất. Trả về số bản đã xóa.
+
+    Mỗi revision là một bản sao .dxf ĐẦY ĐỦ, nên một phiên sửa bản vẽ nhiều lần sẽ phình
+    dung lượng workspace nếu giữ hết. `keep <= 0` nghĩa là giữ toàn bộ (tắt dọn dẹp).
+    """
+    limit = settings.max_cad_revisions if keep is None else keep
+    if limit <= 0:
+        return 0
+
+    entries = _read_history(file_path)
+    if len(entries) <= limit:
+        return 0
+
+    folder = _revision_dir(file_path)
+    obsolete, kept = entries[:-limit], entries[-limit:]
+    for entry in obsolete:
+        path = os.path.join(folder, entry.get("revision", ""))
+        try:
+            os.remove(path)
+        except OSError:
+            # File đã bị xóa tay hoặc chưa từng ghi được — vẫn phải bỏ khỏi lịch sử để
+            # `list_cad_revisions` không hiển thị phiên bản không còn khôi phục được.
+            logger.debug("Không xóa được revision %s (có thể đã mất).", path)
+
+    # Ghi lại lịch sử chỉ còn các bản còn tồn tại.
+    with open(os.path.join(folder, "history.jsonl"), "w", encoding="utf-8") as f:
+        for entry in kept:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    logger.info("Đã dọn %s revision cũ của %s (giữ lại %s bản).", len(obsolete), file_path, limit)
+    return len(obsolete)
+
+
 def create_snapshot(file_path: str, note: str = "") -> str:
     """Chụp bản vẽ thành một revision mới. Trả về tên revision đã tạo ('' nếu file chưa tồn tại).
 
-    Được các tool sửa bản vẽ gọi TRƯỚC khi ghi đè, nên bản gốc luôn còn đường lùi.
+    Được các tool sửa bản vẽ gọi TRƯỚC khi ghi đè, nên bản gốc luôn còn đường lùi. Sau mỗi
+    lần chụp, các revision quá cũ được dọn theo `settings.max_cad_revisions`.
     """
     safe_path = resolve_safe_path(file_path)
     if not os.path.exists(safe_path):
         return ""
     folder = _revision_dir(file_path)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-    rev_name = f"rev_{stamp}.dxf"
+    rev_name = _unique_revision_name(folder)
     shutil.copy2(safe_path, os.path.join(folder, rev_name))
     meta = {"revision": rev_name, "thoi_gian": datetime.now().isoformat(timespec="seconds"), "ghi_chu": note}
     with open(os.path.join(folder, "history.jsonl"), "a", encoding="utf-8") as f:
         f.write(json.dumps(meta, ensure_ascii=False) + "\n")
     logger.info("Created CAD revision %s for %s", rev_name, file_path)
+    _prune_revisions(file_path)
     return rev_name
 
 
@@ -121,9 +175,12 @@ def snapshot_cad(file_path: str, note: str = "") -> str:
         if not rev:
             return f"Không tìm thấy file '{file_path}' để lưu phiên bản."
         total = len(_read_history(file_path))
+        limit_note = (f" Hệ thống chỉ giữ {settings.max_cad_revisions} phiên bản gần nhất "
+                      f"cho mỗi bản vẽ; các bản cũ hơn đã được dọn để tiết kiệm dung lượng."
+                      if settings.max_cad_revisions > 0 else "")
         return (f"Đã lưu phiên bản '{rev}' của bản vẽ '{file_path}'"
                 + (f" (ghi chú: {note})" if note else "")
-                + f". Tổng số phiên bản hiện có: {total}.")
+                + f". Tổng số phiên bản hiện có: {total}.{limit_note}")
     except Exception as e:
         return f"Lỗi lưu phiên bản bản vẽ: {e}"
 
@@ -141,6 +198,8 @@ def list_cad_revisions(file_path: str) -> str:
         for i, entry in enumerate(entries, start=1):
             note = f" — {entry['ghi_chu']}" if entry.get("ghi_chu") else ""
             lines.append(f"  {i}. {entry['revision']} (lưu lúc {entry['thoi_gian']}){note}")
+        if settings.max_cad_revisions > 0:
+            lines.append(f"(Chỉ giữ {settings.max_cad_revisions} phiên bản gần nhất; bản cũ hơn đã bị dọn.)")
         lines.append("Dùng `diff_cad_revisions` để so sánh, `restore_cad_revision` để quay lại.")
         return "\n".join(lines)
     except Exception as e:
@@ -247,8 +306,23 @@ def restore_cad_revision(file_path: str, revision: str = "") -> str:
             return f"Không tìm thấy phiên bản '{revision}'. Dùng `list_cad_revisions` để xem danh sách."
 
         target = resolve_safe_path(file_path)
-        backup = create_snapshot(file_path, note=f"Tự động lưu trước khi khôi phục về {revision}")
-        shutil.copy2(source, target)
+
+        # Giữ nội dung bản cần khôi phục ra chỗ tạm TRƯỚC khi chụp backup: thao tác chụp
+        # kéo theo dọn dẹp theo hạn mức, và nếu `revision` đang là bản cũ nhất còn giữ thì
+        # chính nó sẽ bị xóa ngay trước khi kịp copy — khôi phục thất bại đúng lúc người
+        # dùng cần nó nhất.
+        fd, staged = tempfile.mkstemp(suffix=".dxf", dir=os.path.dirname(target) or None)
+        os.close(fd)
+        try:
+            shutil.copy2(source, staged)
+            backup = create_snapshot(file_path, note=f"Tự động lưu trước khi khôi phục về {revision}")
+            shutil.copy2(staged, target)
+        finally:
+            try:
+                os.remove(staged)
+            except OSError:  # pragma: no cover - file tạm đã bị dọn
+                pass
+
         note = f" (bản trước khi khôi phục đã được lưu thành '{backup}')" if backup else ""
         return f"Đã khôi phục bản vẽ '{file_path}' về phiên bản '{revision}'{note}."
     except Exception as e:

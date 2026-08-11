@@ -3,8 +3,8 @@ import ezdxf
 import pytest
 
 from src.cad_revision import (
-    create_snapshot, diff_cad_revisions, list_cad_revisions, restore_cad_revision,
-    snapshot_cad, summarize_drawing,
+    _read_history, create_snapshot, diff_cad_revisions, list_cad_revisions,
+    restore_cad_revision, snapshot_cad, summarize_drawing,
 )
 from src.workspace import resolve_safe_path, set_workspace_dir
 
@@ -151,3 +151,79 @@ def test_revisions_are_isolated_per_session(tmp_path):
 
     set_workspace_dir(str(tmp_path / "phien_b"))
     assert "chưa có phiên bản nào" in list_cad_revisions.invoke({"file_path": "bv.dxf"})
+
+
+# --- Hạn mức lưu trữ: chỉ giữ N revision gần nhất ---
+
+def test_only_the_configured_number_of_revisions_is_kept(workspace):
+    """Mỗi revision là một bản sao .dxf đầy đủ; phiên sửa nhiều lần sẽ phình workspace
+    nếu giữ hết."""
+    from src.config import settings
+
+    _make_dxf(workspace / "bv.dxf", lines=[("PIPE", (0, 0), (10, 0))])
+    for i in range(8):
+        create_snapshot("bv.dxf", f"lần {i}")
+
+    assert len(_read_history("bv.dxf")) == settings.max_cad_revisions
+    on_disk = [f for f in (workspace / ".revisions" / "bv.dxf").iterdir() if f.suffix == ".dxf"]
+    assert len(on_disk) == settings.max_cad_revisions
+
+
+def test_pruning_keeps_the_newest_revisions(workspace):
+    _make_dxf(workspace / "bv.dxf", lines=[("PIPE", (0, 0), (10, 0))])
+    for i in range(6):
+        create_snapshot("bv.dxf", f"lần {i}")
+
+    notes = [e["ghi_chu"] for e in _read_history("bv.dxf")]
+    assert notes == ["lần 3", "lần 4", "lần 5"]
+
+
+def test_history_never_lists_a_revision_whose_file_was_pruned(workspace):
+    """Regression: lịch sử hiển thị phiên bản không còn khôi phục được là tệ hơn cả việc
+    không có lịch sử."""
+    _make_dxf(workspace / "bv.dxf", lines=[("PIPE", (0, 0), (10, 0))])
+    for i in range(10):
+        create_snapshot("bv.dxf", f"lần {i}")
+
+    folder = workspace / ".revisions" / "bv.dxf"
+    on_disk = {f.name for f in folder.iterdir() if f.suffix == ".dxf"}
+    assert {e["revision"] for e in _read_history("bv.dxf")} <= on_disk
+
+
+def test_revision_names_are_unique_even_within_the_same_millisecond(workspace):
+    """Regression: hai snapshot liên tiếp (snapshot_cad rồi edit_cad) có thể rơi vào cùng
+    một mili-giây; nếu tên trùng thì bản sau ghi đè bản trước mà lịch sử vẫn ghi hai dòng."""
+    _make_dxf(workspace / "bv.dxf", lines=[("PIPE", (0, 0), (10, 0))])
+    names = [create_snapshot("bv.dxf", f"lần {i}") for i in range(10)]
+    assert len(set(names)) == len(names)
+
+
+def test_pruning_can_be_disabled(workspace, monkeypatch):
+    from src import cad_revision
+    from src.config import settings
+
+    monkeypatch.setattr(settings, "max_cad_revisions", 0)
+    _make_dxf(workspace / "bv.dxf", lines=[("PIPE", (0, 0), (10, 0))])
+    for i in range(6):
+        cad_revision.create_snapshot("bv.dxf", f"lần {i}")
+
+    assert len(cad_revision._read_history("bv.dxf")) == 6
+
+
+def test_restore_still_works_on_the_oldest_kept_revision(workspace):
+    """Dọn dẹp không được làm hỏng khả năng khôi phục các bản còn giữ."""
+    path = workspace / "bv.dxf"
+    _make_dxf(path, lines=[("PIPE", (0, 0), (7, 0))])
+    for _ in range(6):
+        create_snapshot("bv.dxf")
+        _make_dxf(path, lines=[("PIPE", (0, 0), (99, 0))])
+
+    oldest = _read_history("bv.dxf")[0]["revision"]
+    result = restore_cad_revision.invoke({"file_path": "bv.dxf", "revision": oldest})
+    assert "Đã khôi phục" in result
+    assert summarize_drawing(str(path))["lengths"]["PIPE"] == 99.0
+
+
+def test_snapshot_report_mentions_the_retention_limit(workspace):
+    _make_dxf(workspace / "bv.dxf", lines=[("PIPE", (0, 0), (10, 0))])
+    assert "phiên bản gần nhất" in snapshot_cad.invoke({"file_path": "bv.dxf"})

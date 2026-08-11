@@ -44,7 +44,9 @@ Xây dựng bằng **LangGraph**, giao diện **Streamlit**, theo nguyên tắc
   (phần thay đổi mỗi lượt được tách ra sau để không phá cache); tool search beta bật được
   bằng `ANTHROPIC_TOOL_SEARCH=true`.
 - 🕓 **Không mất bản gốc bản vẽ**: mọi tool sửa CAD tự lưu revision trước khi ghi đè, có
-  `diff_cad_revisions` và `restore_cad_revision` để xem thay đổi và quay lui.
+  `diff_cad_revisions` và `restore_cad_revision` để xem thay đổi và quay lui. Mặc định giữ
+  **3 phiên bản gần nhất** cho mỗi bản vẽ (`MAX_CAD_REVISIONS`, đặt 0 để giữ tất cả) —
+  mỗi phiên bản là một bản sao `.dxf` đầy đủ nên không giới hạn sẽ phình workspace.
 
 ## Cấu trúc thư mục
 
