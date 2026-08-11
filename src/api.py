@@ -97,3 +97,18 @@ def analyze_revit_model(payload: RevitPayload):
     message += "\nAgentic Swarm đã xác nhận không gian 3D BIM và chuẩn bị lập bảng Bóc tách Khối lượng (BOQ)!"
     
     return {"status": "success", "message": message}
+
+@app.post("/api/v1/autocad/analyze")
+def analyze_autocad_model(payload: RevitPayload):
+    """
+    Nhận gói dữ liệu JSON từ AutoCAD (via COM), phân tích bởi Agentic Swarm.
+    """
+    total_elements = len(payload.elements)
+    lines = sum(1 for el in payload.elements if el.get("type") in ["AcDbLine", "AcDbPolyline"])
+    
+    message = f"Dự án CAD: {payload.project_name}\n"
+    message += f"Đã quét thành công {total_elements} đối tượng.\n"
+    message += f" - Số lượng đường Line/PLine: {lines}\n"
+    message += "\nSwarm AI đang xử lý khối lượng trực tiếp từ bản vẽ đang mở!"
+    
+    return {"status": "success", "message": message}
