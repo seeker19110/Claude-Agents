@@ -215,6 +215,48 @@ BLOCK_STANDARD = {
 }
 
 
+# Tên tiếng Việt cho 9 màu ACI (AutoCAD Color Index) cơ bản 1-9 — đây là 9 màu duy
+# nhất có tên chuẩn hóa giống nhau trên mọi bản AutoCAD/ezdxf. Màu mở rộng (10-255,
+# dùng cho các hệ ELV/báo cháy cần nhiều màu phân biệt) KHÔNG có tên chuẩn hóa phổ
+# quát — cố tình không đoán tên để tránh ghi chú sai, chỉ báo "ACI <n>".
+ACI_BASIC_COLOR_NAMES = {
+    1: "Đỏ",
+    2: "Vàng",
+    3: "Lục (xanh lá)",
+    4: "Lam nhạt (Cyan)",
+    5: "Lam (xanh dương)",
+    6: "Tím hồng (Magenta)",
+    7: "Trắng/Đen (theo nền)",
+    8: "Xám đậm",
+    9: "Xám nhạt",
+}
+
+
+def color_name(aci: int) -> str:
+    """Tên màu tiếng Việt cho mã màu ACI. Chỉ 9 màu cơ bản (1-9) có tên chuẩn hóa;
+    màu mở rộng trả về dạng "ACI <n>" — người dùng cần xem trực tiếp trong CAD."""
+    return ACI_BASIC_COLOR_NAMES.get(aci, f"ACI {aci}")
+
+
+def color_legend_rows() -> list[dict]:
+    """Toàn bộ quy chuẩn màu Layer MEPF, nhóm theo discipline (Mechanical > Electrical
+    > Plumbing > Firefighting > General), dùng để in bảng chú thích/legend cho khách
+    hàng hoặc vẽ trực tiếp vào bản vẽ (xem `add_color_legend` trong `src/tools.py`)."""
+    discipline_order = {"Mechanical": 0, "Electrical": 1, "Plumbing": 2, "Firefighting": 3, "General": 4}
+    rows = [
+        {
+            "layer": key,
+            "discipline": std["discipline"],
+            "description": std["description"],
+            "color": std["color"],
+            "color_name": color_name(std["color"]),
+        }
+        for key, std in LAYER_STANDARD.items()
+    ]
+    rows.sort(key=lambda r: (discipline_order.get(r["discipline"], 9), r["layer"]))
+    return rows
+
+
 def normalize(name: str) -> str:
     """Chuẩn hóa chuỗi để so khớp: bỏ dấu tiếng Việt, viết hoa, chỉ giữ chữ/số."""
     if not name:

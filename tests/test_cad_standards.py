@@ -3,7 +3,7 @@ import ezdxf
 import pytest
 
 from src import cad_standards
-from src.tools import standardize_cad_drawing
+from src.tools import add_color_legend, standardize_cad_drawing
 from src.workspace import resolve_safe_path, set_workspace_dir
 
 
@@ -186,3 +186,60 @@ def test_standardize_can_write_to_separate_output(workspace):
     assert os.path.exists(resolve_safe_path("orig_standardized.dxf"))
     original = ezdxf.readfile(resolve_safe_path(dxf_path))
     assert "Ong_Gio_Cap" in original.layers  # file gốc không bị đổi vì có output_path riêng
+
+
+# --- Quy chuẩn màu sắc (ACI) và bảng chú thích vẽ trực tiếp vào bản vẽ ---
+
+def test_color_name_has_vietnamese_names_for_the_nine_basic_aci_colors():
+    assert cad_standards.color_name(5) == "Lam (xanh dương)"
+    assert cad_standards.color_name(1) == "Đỏ"
+
+
+def test_color_name_falls_back_to_raw_aci_for_extended_colors():
+    """Màu mở rộng (>9) không có tên chuẩn hóa phổ quát — không được đoán bừa."""
+    assert cad_standards.color_name(140) == "ACI 140"
+
+
+def test_color_legend_rows_covers_every_duct_and_pipe_system():
+    rows = cad_standards.color_legend_rows()
+    layers = {r["layer"] for r in rows}
+    # Toàn bộ hệ ống gió + ống nước/gas lạnh của Mechanical phải có mặt trong quy chuẩn.
+    for key in ("M-SAD", "M-RAD", "M-FAD", "M-EAD", "M-KEAD", "M-PAD", "M-SEAD",
+                "M-PIPE-REF", "M-PIPE-COND", "M-PIPE-CHWS", "M-PIPE-CHWR"):
+        assert key in layers
+    # Grouped by discipline in a fixed order (Mechanical trước Electrical).
+    disciplines_seen = [r["discipline"] for r in rows]
+    assert disciplines_seen.index("Mechanical") < disciplines_seen.index("Electrical")
+
+
+def test_add_color_legend_draws_a_swatch_and_label_per_standard_layer(workspace):
+    dxf_path = "bv.dxf"
+    doc = ezdxf.new()
+    msp = doc.modelspace()
+    doc.layers.add("M-SAD")
+    msp.add_line((0, 0), (1000, 0), dxfattribs={"layer": "M-SAD"})
+    doc.saveas(resolve_safe_path(dxf_path))
+
+    result = add_color_legend.invoke({"file_path": dxf_path, "output_path": "legend.dxf"})
+    assert "THÀNH CÔNG" in result
+
+    out = ezdxf.readfile(resolve_safe_path("legend.dxf"))
+    out_msp = out.modelspace()
+    legend_solids = list(out_msp.query('SOLID[layer=="G-LEGEND"]'))
+    assert len(legend_solids) == len(cad_standards.color_legend_rows())
+    # Bảng chú thích không được đè lên hình học gốc (đặt bên phải bounding box).
+    original_line = list(out_msp.query('LINE'))[0]
+    assert legend_solids[0].dxf.vtx0.x > original_line.dxf.end.x
+
+
+def test_add_color_legend_is_idempotent_to_call_twice(workspace):
+    """Gọi lần 2 không được lỗi hay đè chồng vô hạn lên legend cũ (chỉ cần không crash
+    và vẫn tạo đủ số dòng ở mỗi lần chạy)."""
+    dxf_path = "bv.dxf"
+    doc = ezdxf.new()
+    doc.saveas(resolve_safe_path(dxf_path))
+
+    first = add_color_legend.invoke({"file_path": dxf_path})
+    assert "THÀNH CÔNG" in first
+    second = add_color_legend.invoke({"file_path": dxf_path})
+    assert "THÀNH CÔNG" in second

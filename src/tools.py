@@ -1286,6 +1286,93 @@ def standardize_cad_drawing(file_path: str, output_path: str = "") -> str:
     except Exception as e:
         return f"Lỗi chuẩn hóa bản vẽ CAD: {e}"
 
+
+@tool
+def add_color_legend(file_path: str, output_path: str = "") -> str:
+    """Vẽ trực tiếp vào bản vẽ CAD (.dxf) một bảng CHÚ THÍCH MÀU SẮC (legend) thể hiện
+    đầy đủ quy chuẩn màu Layer MEPF nội bộ (`src/cad_standards.py`): ống gió cấp/hồi/
+    tươi/thải/thải bếp/tăng áp/hút khói (SAD/RAD/FAD/EAD/KEAD/PAD/SEAD), ống đồng gas
+    lạnh, ống nước ngưng, ống nước lạnh Chiller cấp/hồi, ống cấp nước lạnh/nóng sinh
+    hoạt, hồi nước nóng, thoát nước thải/thông hơi/nước mưa, Sprinkler, họng nước, và
+    toàn bộ layer thiết bị/dây dẫn của 4 hệ Mechanical/Electrical/Plumbing/Firefighting.
+    Mỗi dòng gồm 1 ô màu (SOLID) + tên Layer chuẩn + mô tả + tên màu (9 màu ACI cơ bản
+    1-9 có tên tiếng Việt; màu mở rộng ghi "ACI <n>" vì không có tên chuẩn hóa phổ quát).
+    Legend nằm trên layer riêng 'G-LEGEND', tự động đặt bên phải vùng vẽ hiện có (dựa
+    theo bounding box thực tế) để không đè lên hình học gốc.
+    Dùng sau `standardize_cad_drawing` để hồ sơ nộp có ghi chú quy chuẩn màu ngay trên
+    bản vẽ, không phải tra tài liệu rời. Nếu output_path bỏ trống, ghi đè lên file_path.
+    """
+    logger.info("Add color legend: %s", file_path)
+    try:
+        create_snapshot(file_path, note="Trước khi add_color_legend")
+        safe_path = resolve_safe_path(file_path)
+        if not os.path.exists(safe_path):
+            return f"Lỗi: Không tìm thấy file {file_path}"
+
+        doc = ezdxf.readfile(safe_path)
+        msp = doc.modelspace()
+
+        if "G-LEGEND" not in doc.layers:
+            doc.layers.add("G-LEGEND", dxfattribs={"color": 7})
+
+        start_x, start_y = 0.0, 0.0
+        try:
+            from ezdxf import bbox
+            extents = bbox.extents(msp)
+            if extents.has_data:
+                start_x = extents.extmax.x + 2000.0
+                start_y = extents.extmax.y
+        except Exception:
+            pass
+
+        rows = cad_standards.color_legend_rows()
+        row_h = 250.0
+        swatch_w = 200.0
+        swatch_h = 180.0
+        text_h = 150.0
+        cur_y = start_y
+
+        msp.add_text(
+            "QUY CHUẨN MÀU SẮC LAYER MEPF",
+            dxfattribs={"layer": "G-LEGEND", "height": text_h * 1.4},
+        ).set_placement((start_x, cur_y))
+        cur_y -= row_h * 1.4
+
+        last_discipline = None
+        for row in rows:
+            if row["discipline"] != last_discipline:
+                last_discipline = row["discipline"]
+                msp.add_text(
+                    last_discipline.upper(),
+                    dxfattribs={"layer": "G-LEGEND", "height": text_h * 1.15},
+                ).set_placement((start_x, cur_y))
+                cur_y -= row_h
+
+            bl = (start_x, cur_y - swatch_h)
+            br = (start_x + swatch_w, cur_y - swatch_h)
+            tl = (start_x, cur_y)
+            tr = (start_x + swatch_w, cur_y)
+            msp.add_solid([bl, br, tl, tr], dxfattribs={"layer": "G-LEGEND", "color": row["color"]})
+
+            label = f"{row['layer']} - {row['description']} ({row['color_name']}, màu ACI {row['color']})"
+            msp.add_text(
+                label, dxfattribs={"layer": "G-LEGEND", "height": text_h},
+            ).set_placement((start_x + swatch_w + 100, cur_y - swatch_h * 0.6))
+            cur_y -= row_h
+
+        target_path = output_path.strip() or file_path
+        out_safe_path = resolve_safe_path(target_path)
+        doc.saveas(out_safe_path)
+
+        return (
+            "THÊM CHÚ THÍCH MÀU SẮC THÀNH CÔNG:\n"
+            f"- Đã vẽ {len(rows)} dòng quy chuẩn màu Layer (4 hệ M/E/P/F + General) trên layer 'G-LEGEND'.\n"
+            f"- Vị trí góc trên-trái bảng chú thích: ({start_x:.0f}, {start_y:.0f}).\n"
+            f"- Đã lưu bản vẽ tại: {target_path}"
+        )
+    except Exception as e:
+        return f"Lỗi thêm chú thích màu sắc: {e}"
+
 @tool
 def extract_new_blocks_to_library(file_path: str) -> str:
     """Quét bản vẽ CAD mới, lọc và trích xuất các Block hợp lệ (chưa có) vào thư viện mepf_library.dxf."""
@@ -1436,7 +1523,7 @@ tools = [
     search_standards, search_web, calculate, execute_python_code, list_directory,
     read_excel, write_excel, read_word, write_word, read_pdf,
     read_cad, write_cad, edit_cad, ai_block_recovery, render_cad_image, analyze_cad_spatial_context,
-    auto_quantity_takeoff, optimize_cad_drawing, standardize_cad_drawing, convert_dwg_to_dxf,
+    auto_quantity_takeoff, optimize_cad_drawing, standardize_cad_drawing, convert_dwg_to_dxf, add_color_legend,
     calc_psychrometrics, calc_duct_size, calc_cooling_load, calc_chw_pipe_size, calc_pump_fan_power, calc_ventilation_rate,
     calc_cooling_load_detailed, calc_duct_total_pressure_loss, calc_chiller_ahu_selection, calc_refrigerant_pipe_size,
     calc_cable_size, calc_breaker_size, calc_lighting_qty, calc_voltage_drop,
@@ -1488,7 +1575,7 @@ TOOLS_BY_ROLE = {
         analyze_cad_spatial_context, execute_python_code, optimize_cad_drawing,
         standardize_cad_drawing, auto_route_mepf_path, extract_new_blocks_to_library,
         snapshot_cad, list_cad_revisions, diff_cad_revisions, restore_cad_revision,
-        convert_dwg_to_dxf,
+        convert_dwg_to_dxf, add_color_legend,
     ],
     "bim": _COMMON_TOOLS + [
         auto_quantity_takeoff, read_cad, write_excel, analyze_cad_spatial_context, detect_clashes,

@@ -17,7 +17,7 @@ Xây dựng bằng **LangGraph**, giao diện **Streamlit**, theo nguyên tắc
 | **Plumbing** | Cấp thoát nước, bể, bơm, nước nóng | `calc_water_pipe`, `calc_plumbing_pump_head` |
 | **Firefighting** | PCCC: **thủy lực sprinkler**, bơm chữa cháy (Q và H), **họng nước, kiểm soát khói, đầu báo cháy** | `calc_sprinkler_hydraulics`, `calc_fire_pump`, `calc_standpipe`, `calc_smoke_control`, `calc_fire_detector_qty` |
 | **QS** | Bóc khối lượng + **lập dự toán có giá trị tiền + BOQ mẫu Việt Nam** | `auto_quantity_takeoff`, `calc_boq_cost`, `export_boq_vietnam`, `lookup_unit_price` |
-| **CAD** | Đọc/sửa/tối ưu/**chuẩn hóa** bản vẽ, phục hồi Block, render ảnh, **theo dõi revision** | `edit_cad`, `optimize_cad_drawing`, `standardize_cad_drawing`, `snapshot_cad`, `diff_cad_revisions`, `restore_cad_revision` |
+| **CAD** | Đọc/sửa/tối ưu (**Overkill + Purge**)/**chuẩn hóa** bản vẽ, **chú thích quy chuẩn màu**, phục hồi Block, render ảnh, **theo dõi revision** | `edit_cad`, `optimize_cad_drawing`, `standardize_cad_drawing`, `add_color_legend`, `snapshot_cad`, `diff_cad_revisions`, `restore_cad_revision` |
 | **BIM** | Mô hình 3D và **kiểm tra xung đột giữa các hệ** | `detect_clashes`, `auto_quantity_takeoff` |
 | **Reviewer** | Kỹ sư trưởng — kiểm duyệt, bắt làm lại nếu chưa đạt | (guardrail) |
 
@@ -66,6 +66,18 @@ Xây dựng bằng **LangGraph**, giao diện **Streamlit**, theo nguyên tắc
   viện `ezdxf` không hỗ trợ ghi; muốn dùng Block động thật sự phải vẽ tay 1 lần trong
   AutoCAD/BricsCAD rồi đưa vào `data/blocks/mepf_library.dxf`, hệ thống sẽ tự copy/chèn
   lại (giữ nguyên tính năng động) chứ không tự tạo mới được.
+- 🎨 **Chú thích quy chuẩn màu ngay trên bản vẽ**: `add_color_legend` vẽ trực tiếp một
+  bảng legend (ô màu SOLID + tên Layer + mô tả + tên màu) liệt kê toàn bộ quy chuẩn màu
+  của `src/cad_standards.py` lên layer riêng `G-LEGEND`, tự đặt bên phải vùng vẽ hiện có
+  để không đè hình học gốc — dùng sau `standardize_cad_drawing` để hồ sơ nộp có ghi chú
+  quy chuẩn ngay trên bản vẽ, không cần tra tài liệu rời. Chỉ 9 màu ACI cơ bản (1-9) có
+  tên tiếng Việt chuẩn hóa (`cad_standards.color_name`); màu mở rộng (>9, dùng cho các
+  hệ ELV/báo cháy cần nhiều màu phân biệt) ghi rõ "ACI \<n\>" thay vì đoán tên màu sai.
+- 🧹 **Overkill + Purge tự động**: `optimize_cad_drawing` nay còn xóa LINE/LWPOLYLINE
+  trùng lặp/chồng đè hình học hoàn toàn (Overkill — lỗi thường gặp khi trace lại nét cũ)
+  và xóa Block định nghĩa/text style/linetype không còn được tham chiếu (Purge, tương
+  đương lệnh PURGE của AutoCAD), bên cạnh audit lỗi + xóa entity chiều dài 0 + Block
+  trùng vị trí đã có trước đó — tất cả trong một lần gọi tool duy nhất.
 
 ## Cấu trúc thư mục
 
