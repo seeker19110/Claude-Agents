@@ -68,10 +68,11 @@ def get_task_status(task_id: str):
 
 @app.get("/api/v1/download/{task_id}")
 def download_boq(task_id: str):
-    # Trả về file Excel thật (nếu có), hoặc trả về file log tạm cho demo
+    # Trả về file Excel thật từ Celery result
     task_result = AsyncResult(task_id, app=celery_app)
-    # Demo giả định file excel nằm trong uploads
-    excel_path = os.path.join(get_project_root(), "bao_cao_du_toan_AI.xlsx")
-    if os.path.exists(excel_path):
-        return FileResponse(excel_path, filename="Bao_Cao_BOQ_MEP.xlsx")
+    if task_result.state == 'SUCCESS':
+        excel_path = task_result.result.get("excel_path")
+        if excel_path and os.path.exists(excel_path):
+            return FileResponse(excel_path, filename=f"Bao_Cao_BOQ_{task_id[:8]}.xlsx")
+            
     return {"error": "File not found"}

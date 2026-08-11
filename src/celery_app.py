@@ -23,8 +23,23 @@ def parse_cad_to_db_task(self, dwg_path: str, user_id: str):
     Task phân tán: Bóc tách bản vẽ CAD nặng chuyển lên database.
     Được gọi qua `parse_cad_to_db_task.delay(dwg_path, user_id)`
     """
-    import time
-    # Import logic từ cad_geometry
-    # from src.cad_geometry import detect_fittings
-    time.sleep(2)  # Simulate heavy processing
-    return {"status": "success", "file": dwg_path, "fittings_count": 120}
+    import os
+    from src.tools import auto_quantity_takeoff
+    from src.workspace import get_project_root
+
+    # Ensure uploads dir exists
+    upload_dir = os.path.join(get_project_root(), "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    # Set output excel path
+    output_excel_path = os.path.join(upload_dir, f"boq_{self.request.id}.xlsx")
+    
+    # Chạy tool bóc tách thật
+    result_text = auto_quantity_takeoff(dwg_path, output_excel_path)
+    
+    return {
+        "status": "success", 
+        "file": dwg_path, 
+        "excel_path": output_excel_path,
+        "logs": result_text
+    }

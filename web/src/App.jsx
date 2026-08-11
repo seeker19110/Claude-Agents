@@ -3,7 +3,7 @@ import { UploadCloud, File, CheckCircle, Activity, Box, DownloadCloud } from 'lu
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8081/api/v1';
+const API_URL = 'http://localhost:8083/api/v1';
 
 function App() {
   const [file, setFile] = useState(null);
