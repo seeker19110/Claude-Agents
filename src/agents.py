@@ -81,6 +81,91 @@ def get_llm(role: str = DEFAULT_ROLE):
 
     return _build_llm(provider, model_name, key)
 
+def resolve_provider(role: str = DEFAULT_ROLE) -> str:
+    """Provider đang được cấu hình cho một vai trò (không khởi tạo client)."""
+    role_key = (role or DEFAULT_ROLE).upper().strip()
+    return (os.getenv(f"{role_key}_LLM_PROVIDER") or os.getenv("LLM_PROVIDER", "openai")).lower().strip()
+
+
+# Ngưỡng tối thiểu để Anthropic thực sự cache một prefix (token). Prompt ngắn hơn
+# ngưỡng này sẽ KHÔNG được cache và cũng không báo lỗi — nên tool chỉ bật cache khi
+# prompt đủ dài, tránh tạo cảm giác đã tiết kiệm chi phí trong khi thực tế thì không.
+ANTHROPIC_CACHE_MIN_CHARS = 4000
+
+
+def build_system_message(system_prompt: str, error_note: str = "", provider: str = "openai") -> SystemMessage:
+    """Dựng SystemMessage, bật prompt caching của Anthropic khi có lợi.
+
+    Anthropic tính tiền phần prefix được cache chỉ bằng ~10%, nhưng cache là so khớp
+    THEO PREFIX: chỉ cần đổi một byte là hỏng toàn bộ. Vì vậy phần prompt CỐ ĐỊNH được
+    đánh dấu `cache_control`, còn cảnh báo lỗi của Reviewer (thay đổi mỗi lượt) được
+    tách thành block riêng ĐỨNG SAU — nếu nhét chung, prefix đổi mỗi lượt và cache
+    không bao giờ trúng.
+
+    Với provider khác Anthropic, hàm trả về SystemMessage thường (chuỗi văn bản).
+    """
+    if provider != "anthropic" or len(system_prompt) < ANTHROPIC_CACHE_MIN_CHARS:
+        # Prompt quá ngắn thì Anthropic bỏ qua cache trong im lặng; ghép chuỗi như cũ.
+        full = system_prompt + error_note
+        return SystemMessage(content=full)
+
+    blocks = [{
+        "type": "text",
+        "text": system_prompt,
+        "cache_control": {"type": "ephemeral"},
+    }]
+    if error_note:
+        blocks.append({"type": "text", "text": error_note})
+    return SystemMessage(content=blocks)
+
+
+# Tool search (beta của Anthropic): thay vì nạp schema TẤT CẢ tool vào mỗi request,
+# chỉ nạp tool `tool_search_tool_regex`; các tool nghiệp vụ được đánh dấu
+# `defer_loading` và chỉ được nạp khi model tìm thấy chúng. Cắt thêm token cho các vai
+# trò còn nhiều tool (Mechanical, CAD, Plumbing) sau khi đã cắt theo vai trò.
+#
+# Mặc định TẮT: đây là beta đặc thù Anthropic, không kiểm chứng được nếu không có API
+# key thật, và với bộ tool đã thu gọn theo vai trò thì lợi ích chỉ đáng kể khi số tool
+# lớn. Bật bằng `ANTHROPIC_TOOL_SEARCH=true` trong .env.
+TOOL_SEARCH_DEFINITION = {
+    "type": "tool_search_tool_regex_20251119",
+    "name": "tool_search_tool_regex",
+}
+# Dưới ngưỡng này thì nạp thẳng còn rẻ hơn là gánh thêm schema của chính tool search.
+TOOL_SEARCH_MIN_TOOLS = 10
+
+
+def tool_search_enabled() -> bool:
+    return os.getenv("ANTHROPIC_TOOL_SEARCH", "").strip().lower() in ("1", "true", "yes")
+
+
+def build_tools_for_llm(role: str, provider: str = "openai"):
+    """Danh sách tool sẽ bind vào LLM cho một vai trò.
+
+    Mặc định trả về đúng bộ tool thu gọn theo vai trò (`get_tools_for_role`). Khi chạy
+    Anthropic và bật `ANTHROPIC_TOOL_SEARCH`, chuyển sang chế độ tool search: mọi tool
+    nghiệp vụ được chuyển thành schema dict có `defer_loading=True` và thêm tool
+    `tool_search_tool_regex` để model tự tìm tool cần dùng.
+    """
+    tools = get_tools_for_role(role)
+    if provider != "anthropic" or not tool_search_enabled() or len(tools) < TOOL_SEARCH_MIN_TOOLS:
+        return tools
+
+    try:
+        from langchain_anthropic.chat_models import convert_to_anthropic_tool
+    except ImportError:  # pragma: no cover - chỉ xảy ra khi thiếu package Anthropic
+        logger.warning("Không import được convert_to_anthropic_tool; bỏ qua tool search.")
+        return tools
+
+    deferred = []
+    for t in tools:
+        schema = dict(convert_to_anthropic_tool(t))
+        schema["defer_loading"] = True
+        deferred.append(schema)
+    # Bản thân tool search KHÔNG được defer, nếu không model không có đường nào tìm tool.
+    return [TOOL_SEARCH_DEFINITION] + deferred
+
+
 def agent_node_key(agent_name: str) -> str:
     """'MechanicalAgent' -> 'mechanical': tên NODE trong graph.
 
@@ -100,14 +185,15 @@ def call_mepf_agent(state: AgentState, system_prompt: str, agent_name: str):
     messages = state.get("messages", [])
     errors = state.get("errors", [])
 
+    error_note = ""
     if errors:
-        system_prompt += f"\n\nCẢNH BÁO: Lần trả lời trước của bạn đã bị Reviewer từ chối với lỗi: '{errors[-1]}'. Hãy sửa lỗi này và đưa ra phương án khả thi hơn."
-
-    sys_msg = SystemMessage(content=system_prompt)
+        error_note = f"\n\nCẢNH BÁO: Lần trả lời trước của bạn đã bị Reviewer từ chối với lỗi: '{errors[-1]}'. Hãy sửa lỗi này và đưa ra phương án khả thi hơn."
 
     role = agent_name[:-5] if agent_name.endswith("Agent") else agent_name  # "MechanicalAgent" -> "Mechanical"
+    provider = resolve_provider(role)
+    sys_msg = build_system_message(system_prompt, error_note, provider)
     llm = get_llm(role)
-    tool_llm = llm.bind_tools(get_tools_for_role(role))
+    tool_llm = llm.bind_tools(build_tools_for_llm(role, provider))
 
     node_key = agent_node_key(agent_name)
     try:

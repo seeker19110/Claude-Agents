@@ -398,3 +398,79 @@ def calc_ventilation_rate(area_m2: float, height_m: float, ach: float) -> str:
                 f"- Lưu lượng yêu cầu: {flow_m3h:.0f} m3/h ({flow_lps:.1f} L/s)")
     except Exception as e:
         return f"Lỗi tính thông gió: {e}"
+
+# --- Tiếng ồn (NC - Noise Criteria) ---
+
+# Mức NC khuyến nghị theo loại phòng (ASHRAE Handbook - Applications, chương Sound & Vibration).
+NC_RECOMMENDED = {
+    "phong_ngu": (25, 30, "Phòng ngủ, khách sạn, bệnh viện"),
+    "phong_hop": (25, 30, "Phòng họp, phòng hội thảo"),
+    "studio": (15, 20, "Studio thu âm, phòng bá âm"),
+    "van_phong_rieng": (30, 35, "Văn phòng riêng, phòng làm việc nhỏ"),
+    "van_phong_chung": (35, 40, "Văn phòng không gian mở"),
+    "lop_hoc": (25, 30, "Lớp học, giảng đường"),
+    "nha_hang": (40, 45, "Nhà hàng, khu ăn uống"),
+    "sanh": (40, 45, "Sảnh, hành lang, khu công cộng"),
+    "xuong": (50, 60, "Xưởng sản xuất, khu kỹ thuật"),
+}
+
+
+@tool
+def calc_nc_level(sound_power_lw: float, room_volume_m3: float, space_type: str = "van_phong_chung",
+                  distance_m: float = 1.5, num_sources: int = 1, duct_attenuation_db: float = 0.0) -> str:
+    """Kiểm tra mức ồn NC (Noise Criteria) do miệng gió/quạt gây ra trong phòng.
+
+    Bắt buộc với phòng yêu cầu yên tĩnh (phòng ngủ, phòng họp, studio, lớp học).
+    Tham số:
+    - sound_power_lw: Mức công suất âm Lw của thiết bị theo catalog (dB).
+    - room_volume_m3: Thể tích phòng (m3).
+    - space_type: Loại phòng (phong_ngu, phong_hop, studio, van_phong_rieng,
+      van_phong_chung, lop_hoc, nha_hang, sanh, xuong).
+    - distance_m: Khoảng cách từ nguồn ồn tới vị trí người nghe (m).
+    - num_sources: Số miệng gió/nguồn ồn giống nhau trong phòng.
+    - duct_attenuation_db: Độ suy giảm của tiêu âm/ống gió trên đường truyền (dB).
+    """
+    logger.info(f"Calculating NC level: Lw={sound_power_lw}dB, V={room_volume_m3}m3, type={space_type}")
+    try:
+        if room_volume_m3 <= 0 or distance_m <= 0:
+            return "Lỗi: Thể tích phòng và khoảng cách phải lớn hơn 0."
+
+        # Cộng nguồn ồn giống nhau: mỗi lần gấp đôi số nguồn thì tăng 3 dB.
+        lw_total = sound_power_lw + 10 * math.log10(max(1, num_sources))
+
+        # Chuyển Lw -> Lp theo công thức phòng (ASHRAE): Lp = Lw - 5*log10(V) - 3*log10(f)
+        # - 10*log10(r) + 12. Lấy f = 1000 Hz làm dải tần tham chiếu để kiểm tra sơ bộ.
+        lp = (lw_total - 5 * math.log10(room_volume_m3) - 3 * math.log10(1000)
+              - 10 * math.log10(distance_m) + 12)
+        lp -= duct_attenuation_db
+
+        # NC xấp xỉ dBA - 7 (quy đổi kinh nghiệm dùng trong thiết kế sơ bộ).
+        nc_estimated = lp - 7
+
+        key = (space_type or "").lower().strip()
+        nc_min, nc_max, label = NC_RECOMMENDED.get(key, NC_RECOMMENDED["van_phong_chung"])
+        if key not in NC_RECOMMENDED:
+            label += " (không nhận diện được space_type, dùng mặc định)"
+
+        report = [
+            f"Kiểm tra tiếng ồn NC ({label}):",
+            f"- Mức công suất âm nguồn Lw: {sound_power_lw:.1f} dB x {num_sources} nguồn = {lw_total:.1f} dB",
+            f"- Suy giảm do tiêu âm/ống gió: {duct_attenuation_db:.1f} dB",
+            f"- Mức áp suất âm tại vị trí nghe (cách {distance_m} m): {lp:.1f} dB",
+            f"- NC ước tính: NC-{nc_estimated:.0f}",
+            f"- NC cho phép theo ASHRAE: NC-{nc_min} đến NC-{nc_max}",
+        ]
+
+        if nc_estimated <= nc_max:
+            report.append("- Kết luận: ĐẠT yêu cầu tiếng ồn.")
+        else:
+            excess = nc_estimated - nc_max
+            report.append(f"- Kết luận: KHÔNG ĐẠT, vượt {excess:.0f} dB so với giới hạn NC-{nc_max}.")
+            report.append("- Biện pháp: giảm vận tốc gió tại miệng (dưới 2.5 m/s cho phòng yên tĩnh), "
+                          "lắp hộp tiêu âm/ống mềm tiêu âm, tăng kích thước miệng gió, hoặc đặt "
+                          "quạt/AHU xa phòng và bọc cách âm.")
+        report.append("- Lưu ý: Đây là kiểm tra SƠ BỘ ở dải tần tham chiếu 1000 Hz. Phòng đặc biệt "
+                      "yên tĩnh (studio, phòng mổ) cần phân tích đủ 8 dải octave theo catalog thiết bị.")
+        return "\n".join(report)
+    except Exception as e:
+        return f"Lỗi tính NC: {e}"

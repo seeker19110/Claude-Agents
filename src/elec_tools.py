@@ -1,4 +1,5 @@
 from langchain_core.tools import tool
+import json
 import math
 import logging
 
@@ -161,3 +162,243 @@ def calc_lighting_qty(area_m2: float, required_lux: float, lumen_per_lamp: float
                 f"- Số lượng tối thiểu cần thiết: {math.ceil(N)} bộ đèn")
     except Exception as e:
         return f"Lỗi tính đèn: {e}"
+
+
+# --- Tổng hợp phụ tải & chọn nguồn ---
+
+# Hệ số đồng thời (Ku x Ks) tham khảo theo loại phụ tải, TCVN 9206.
+DIVERSITY_FACTORS = {
+    "chieu_sang": 0.9,
+    "o_cam": 0.5,
+    "dieu_hoa": 0.8,
+    "thang_may": 0.7,
+    "bom_quat": 0.8,
+    "bep": 0.6,
+    "khac": 0.8,
+}
+
+
+@tool
+def calc_total_load(loads_json: str, transformer_reserve: float = 1.25, cos_phi: float = 0.85) -> str:
+    """Tổng hợp phụ tải toàn công trình có xét hệ số đồng thời để chọn máy biến áp/máy phát.
+
+    loads_json: chuỗi JSON dạng [{"ten": "Chiếu sáng", "loai": "chieu_sang", "cong_suat_kw": 50}, ...].
+    Trường `loai` nhận: chieu_sang, o_cam, dieu_hoa, thang_may, bom_quat, bep, khac.
+    Cộng thẳng công suất đặt mà không xét hệ số đồng thời sẽ chọn máy biến áp thừa rất
+    nhiều so với nhu cầu thực tế.
+    """
+    logger.info("Calculating total load with diversity factors")
+    try:
+        items = json.loads(loads_json)
+        if not isinstance(items, list) or not items:
+            return "Lỗi: `loads_json` phải là danh sách JSON các phụ tải, không được rỗng."
+
+        rows, total_installed, total_calculated = [], 0.0, 0.0
+        for item in items:
+            name = item.get("ten", "Không tên")
+            kind = str(item.get("loai", "khac")).lower().strip()
+            power = float(item.get("cong_suat_kw", 0))
+            factor = DIVERSITY_FACTORS.get(kind, DIVERSITY_FACTORS["khac"])
+            calculated = power * factor
+            total_installed += power
+            total_calculated += calculated
+            rows.append(f"  - {name} ({kind}): {power:.1f} kW x Kđt {factor} = {calculated:.1f} kW")
+
+        apparent_kva = total_calculated / cos_phi if cos_phi else 0
+        transformer_kva = apparent_kva * transformer_reserve
+        standard_tx = [100, 160, 250, 400, 560, 630, 750, 800, 1000, 1250, 1600, 2000, 2500]
+        selected_tx = next((t for t in standard_tx if t >= transformer_kva), standard_tx[-1])
+        # Máy phát dự phòng thường phủ 60-80% phụ tải tính toán (chỉ tải ưu tiên).
+        generator_kva = apparent_kva * 0.7
+
+        report = [
+            "TỔNG HỢP PHỤ TẢI (TCVN 9206):",
+            *rows,
+            "",
+            f"- Tổng công suất ĐẶT: {total_installed:.1f} kW",
+            f"- Tổng công suất TÍNH TOÁN (sau hệ số đồng thời): {total_calculated:.1f} kW "
+            f"(bằng {total_calculated / total_installed * 100:.0f}% công suất đặt)" if total_installed else "",
+            f"- Công suất biểu kiến (cos φ = {cos_phi}): {apparent_kva:.1f} kVA",
+            f"- Yêu cầu máy biến áp (dự phòng {transformer_reserve:.2f}): {transformer_kva:.1f} kVA",
+            f"=> CHỌN MÁY BIẾN ÁP: {selected_tx} kVA",
+            f"=> Máy phát dự phòng (phủ ~70% tải ưu tiên): khoảng {generator_kva:.0f} kVA",
+            "- Lưu ý: Hệ số đồng thời trên là giá trị tham khảo; dự án thực tế cần đối chiếu "
+            "biểu đồ phụ tải và yêu cầu của đơn vị điện lực.",
+        ]
+        return "\n".join(line for line in report if line != "")
+    except json.JSONDecodeError as e:
+        return f"Lỗi đọc JSON phụ tải: {e}. Định dạng đúng: [{{\"ten\":\"...\",\"loai\":\"chieu_sang\",\"cong_suat_kw\":50}}]"
+    except Exception as e:
+        return f"Lỗi tổng hợp phụ tải: {e}"
+
+
+@tool
+def calc_short_circuit(transformer_kva: float, voltage: float = 380, impedance_percent: float = 4.0,
+                       cable_length_m: float = 0, cable_section_mm2: float = 0) -> str:
+    """Tính dòng ngắn mạch 3 pha và kiểm tra khả năng cắt (Icu) của aptomat.
+
+    Chọn aptomat chỉ theo dòng làm việc mà bỏ qua dòng ngắn mạch là nguy hiểm: khi sự cố,
+    thiết bị không cắt nổi sẽ phát nổ. Nếu nhập chiều dài và tiết diện cáp, tool tính thêm
+    dòng ngắn mạch tại CUỐI tuyến (đã suy giảm do tổng trở cáp) để phối hợp bảo vệ.
+    """
+    logger.info(f"Calculating short circuit: S={transformer_kva}kVA, Uk={impedance_percent}%")
+    try:
+        if transformer_kva <= 0 or impedance_percent <= 0:
+            return "Lỗi: Công suất máy biến áp và điện áp ngắn mạch (%) phải lớn hơn 0."
+
+        # Dòng định mức và dòng ngắn mạch tại thanh cái hạ áp máy biến áp.
+        rated_current = transformer_kva * 1000 / (math.sqrt(3) * voltage)
+        isc_ka = rated_current / (impedance_percent / 100) / 1000
+
+        standard_icu = [6, 10, 15, 18, 25, 36, 50, 65, 85, 100]
+        selected_icu = next((i for i in standard_icu if i >= isc_ka), standard_icu[-1])
+
+        report = [
+            f"DÒNG NGẮN MẠCH (MBA {transformer_kva} kVA, Uk = {impedance_percent}%):",
+            f"- Dòng định mức phía hạ áp: {rated_current:.0f} A",
+            f"- Dòng ngắn mạch 3 pha tại thanh cái tổng (Isc): {isc_ka:.1f} kA",
+            f"=> Aptomat tổng phải có khả năng cắt Icu >= {selected_icu} kA",
+        ]
+
+        if cable_length_m > 0 and cable_section_mm2 > 0:
+            # Tổng trở cáp làm giảm dòng ngắn mạch ở cuối tuyến.
+            z_cable = RHO_COPPER * cable_length_m / cable_section_mm2
+            z_source = voltage / (math.sqrt(3) * isc_ka * 1000)
+            isc_end_ka = voltage / (math.sqrt(3) * (z_source + z_cable)) / 1000
+            selected_icu_end = next((i for i in standard_icu if i >= isc_end_ka), standard_icu[-1])
+            report += [
+                "",
+                f"- Tại cuối tuyến cáp {cable_section_mm2} mm2 dài {cable_length_m} m:",
+                f"  + Tổng trở cáp: {z_cable:.4f} Ohm",
+                f"  + Dòng ngắn mạch cuối tuyến: {isc_end_ka:.1f} kA",
+                f"  => Aptomat nhánh cần Icu >= {selected_icu_end} kA",
+                "- PHỐI HỢP BẢO VỆ (selectivity): aptomat nhánh phải cắt trước aptomat tổng — "
+                "chọn dòng định mức nhánh <= 0.5 lần aptomat tổng, hoặc dùng aptomat tổng có "
+                "chỉnh trễ thời gian (loại selective/thời gian ngắn).",
+            ]
+        else:
+            report.append("- Nhập thêm `cable_length_m` và `cable_section_mm2` để tính dòng ngắn mạch "
+                          "tại cuối tuyến và kiểm tra phối hợp bảo vệ giữa các cấp aptomat.")
+
+        return "\n".join(report)
+    except Exception as e:
+        return f"Lỗi tính ngắn mạch: {e}"
+
+
+@tool
+def calc_cable_tray_size(cables_json: str, fill_ratio: float = 0.4, spare_percent: float = 30.0) -> str:
+    """Chọn kích thước máng cáp / ống luồn dây theo tổng tiết diện các sợi cáp đi trong đó.
+
+    cables_json: [{"ten": "Cáp chiếu sáng", "duong_kinh_mm": 18, "so_luong": 4}, ...].
+    fill_ratio: hệ số điền đầy cho phép (máng cáp 0.4; ống luồn dây theo IEC là 0.4 cho
+    nhiều sợi, 0.53 cho một sợi). spare_percent: dự phòng mở rộng sau này (%).
+    """
+    logger.info("Calculating cable tray size")
+    try:
+        items = json.loads(cables_json)
+        if not isinstance(items, list) or not items:
+            return "Lỗi: `cables_json` phải là danh sách JSON các loại cáp, không được rỗng."
+
+        total_area, rows = 0.0, []
+        for item in items:
+            name = item.get("ten", "Không tên")
+            d = float(item.get("duong_kinh_mm", 0))
+            qty = int(item.get("so_luong", 1))
+            area = math.pi * (d / 2) ** 2 * qty
+            total_area += area
+            rows.append(f"  - {name}: Ø{d} mm x {qty} sợi = {area:.0f} mm2")
+
+        design_area = total_area * (1 + spare_percent / 100)
+        required_area = design_area / fill_ratio
+
+        # Máng cáp tiêu chuẩn (rộng x cao, mm).
+        standard_trays = [(100, 50), (150, 50), (200, 100), (300, 100), (400, 100),
+                          (500, 100), (600, 150), (800, 150), (1000, 200)]
+        selected = next(((w, h) for w, h in standard_trays if w * h >= required_area), standard_trays[-1])
+
+        # Ống luồn dây tiêu chuẩn (đường kính trong, mm).
+        standard_conduits = [16, 20, 25, 32, 40, 50, 63, 75, 90, 110]
+        conduit_d = math.sqrt(4 * required_area / math.pi)
+        selected_conduit = next((c for c in standard_conduits if c >= conduit_d), standard_conduits[-1])
+
+        report = [
+            "TÍNH MÁNG CÁP / ỐNG LUỒN DÂY:",
+            *rows,
+            "",
+            f"- Tổng tiết diện cáp: {total_area:.0f} mm2",
+            f"- Cộng dự phòng {spare_percent:.0f}%: {design_area:.0f} mm2",
+            f"- Tiết diện máng yêu cầu (hệ số điền đầy {fill_ratio}): {required_area:.0f} mm2",
+            f"=> CHỌN MÁNG CÁP: {selected[0]} x {selected[1]} mm "
+            f"(tiết diện {selected[0] * selected[1]} mm2)",
+            f"=> Hoặc ỐNG LUỒN DÂY: Ø{selected_conduit} mm",
+            "- Lưu ý: Cáp động lực và cáp tín hiệu/điều khiển phải đi riêng máng hoặc có vách "
+            "ngăn để tránh nhiễu. Máng đi đứng cần kẹp cáp theo khoảng cách quy định.",
+        ]
+        return "\n".join(report)
+    except json.JSONDecodeError as e:
+        return f"Lỗi đọc JSON cáp: {e}. Định dạng đúng: [{{\"ten\":\"...\",\"duong_kinh_mm\":18,\"so_luong\":4}}]"
+    except Exception as e:
+        return f"Lỗi tính máng cáp: {e}"
+
+
+@tool
+def calc_lightning_protection(length_m: float, width_m: float, height_m: float,
+                              protection_level: str = "III", soil_resistivity: float = 100.0,
+                              rod_length_m: float = 2.4) -> str:
+    """Thiết kế chống sét & tiếp địa: bán kính bảo vệ kim thu sét và số cọc tiếp địa cần đóng.
+
+    - protection_level: cấp bảo vệ I/II/III/IV theo TCVN 9385 (I nghiêm ngặt nhất).
+    - soil_resistivity: điện trở suất đất (Ohm.m) — đất sét ~50, đất pha cát ~200, đá ~1000.
+    - rod_length_m: chiều dài một cọc tiếp địa (m).
+    """
+    logger.info(f"Calculating lightning protection: {length_m}x{width_m}x{height_m}m, level={protection_level}")
+    try:
+        # Bán kính quả cầu lăn theo cấp bảo vệ (TCVN 9385 / IEC 62305).
+        rolling_sphere = {"I": 20, "II": 30, "III": 45, "IV": 60}
+        level = (protection_level or "III").upper().strip()
+        R = rolling_sphere.get(level, 45)
+        if level not in rolling_sphere:
+            level = "III (mặc định, không nhận diện được cấp nhập vào)"
+
+        # Bán kính bảo vệ của kim thu sét theo phương pháp quả cầu lăn.
+        if height_m >= R:
+            protection_radius = R
+        else:
+            protection_radius = math.sqrt(2 * R * height_m - height_m ** 2)
+
+        # Số kim cần thiết để phủ hết mái (bố trí lưới).
+        area = length_m * width_m
+        coverage = math.pi * protection_radius ** 2
+        num_rods = max(1, math.ceil(area / coverage)) if coverage > 0 else 1
+
+        # Điện trở tiếp địa của một cọc thẳng đứng (công thức Dwight rút gọn).
+        d = 0.016  # đường kính cọc thép mạ đồng phổ biến D16
+        r_single = (soil_resistivity / (2 * math.pi * rod_length_m)) * math.log(4 * rod_length_m / d)
+
+        # Điện trở nối đất yêu cầu: <= 10 Ohm cho chống sét công trình thường (TCVN 9385).
+        target = 10.0
+        # Hệ số sử dụng khi ghép nhiều cọc song song (~0.75 với khoảng cách 2 lần chiều dài cọc).
+        utilisation = 0.75
+        num_ground_rods = max(1, math.ceil(r_single / (target * utilisation)))
+        r_final = r_single / (num_ground_rods * utilisation)
+
+        return "\n".join([
+            f"CHỐNG SÉT & TIẾP ĐỊA (công trình {length_m}x{width_m}m, cao {height_m}m, cấp {level}):",
+            f"- Bán kính quả cầu lăn: R = {R} m (TCVN 9385 / IEC 62305)",
+            f"- Bán kính bảo vệ của một kim thu sét ở cao độ {height_m} m: {protection_radius:.1f} m",
+            f"- Diện tích mái cần bảo vệ: {area:.0f} m2",
+            f"=> Số kim thu sét tối thiểu: {num_rods} kim (bố trí lưới đều trên mái, "
+            f"kết hợp dây dẫn sét dọc mép mái)",
+            "",
+            f"TIẾP ĐỊA (điện trở suất đất {soil_resistivity} Ohm.m, cọc dài {rod_length_m} m):",
+            f"- Điện trở một cọc: {r_single:.1f} Ohm",
+            f"- Yêu cầu: điện trở nối đất <= {target:.0f} Ohm",
+            f"=> Số cọc tiếp địa cần đóng: {num_ground_rods} cọc "
+            f"(khoảng cách giữa các cọc >= {2 * rod_length_m:.1f} m)",
+            f"- Điện trở dự kiến sau khi ghép: {r_final:.1f} Ohm",
+            "- Lưu ý: Phải ĐO điện trở nối đất thực tế sau thi công; nếu chưa đạt thì tăng số cọc, "
+            "khoan giếng tiếp địa hoặc dùng hóa chất giảm điện trở. Hệ tiếp địa chống sét và "
+            "tiếp địa an toàn điện phải được liên kết đẳng thế theo TCVN 9385.",
+        ])
+    except Exception as e:
+        return f"Lỗi tính chống sét/tiếp địa: {e}"

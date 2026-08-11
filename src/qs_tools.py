@@ -208,3 +208,134 @@ def calc_boq_cost(takeoff_excel_path: str, output_excel_path: str = "du_toan_chi
         return "\n".join(report)
     except Exception as e:
         return f"Lỗi lập dự toán chi phí: {e}"
+
+
+# --- Xuất BOQ theo mẫu chuẩn hồ sơ thầu Việt Nam ---
+
+# Nhận diện hệ kỹ thuật của từng hạng mục để gom nhóm theo chương mục quen thuộc.
+SYSTEM_GROUPS = [
+    ("A", "HỆ THỐNG ĐIỀU HÒA KHÔNG KHÍ & THÔNG GIÓ (HVAC)",
+     ("ong gio", "duct", "diffuser", "mieng gio", "fcu", "ahu", "chiller", "dan lanh",
+      "ong dong", "refrigerant", "quat", "hvac", "thong gio")),
+    ("B", "HỆ THỐNG ĐIỆN (ELECTRICAL)",
+     ("cap dien", "cable", "day dien", "den", "light", "socket", "o cam", "switch",
+      "cong tac", "tu dien", "panel", "mang cap", "tray", "elec", "dien")),
+    ("C", "HỆ THỐNG CẤP THOÁT NƯỚC (PLUMBING)",
+     ("ong upvc", "upvc", "ppr", "cap nuoc", "thoat nuoc", "be nuoc", "bon nuoc", "bom",
+      "pump", "water", "drain", "plumb", "nuoc")),
+    ("D", "HỆ THỐNG PHÒNG CHÁY CHỮA CHÁY (PCCC)",
+     ("sprinkler", "dau phun", "chua chay", "pccc", "hong nuoc", "hydrant", "binh bot",
+      "extinguisher", "bao chay", "ong thep")),
+]
+OTHER_GROUP = ("E", "HẠNG MỤC KHÁC")
+
+
+def classify_boq_group(item_name: str):
+    """Xếp một hạng mục vào chương mục BOQ (A/B/C/D/E) theo từ khóa tên."""
+    name = _norm(item_name)
+    for code, title, keywords in SYSTEM_GROUPS:
+        if any(kw in name for kw in keywords):
+            return code, title
+    return OTHER_GROUP
+
+
+@tool
+def export_boq_vietnam(boq_excel_path: str, output_excel_path: str = "BOQ_mau_chuan.xlsx",
+                       project_name: str = "", contractor: str = "", location: str = "") -> str:
+    """Xuất BẢNG TIÊN LƯỢNG - DỰ TOÁN theo MẪU CHUẨN hồ sơ thầu Việt Nam.
+
+    Nhận file Excel dự toán do `calc_boq_cost` tạo ra (hoặc bảng khối lượng của
+    `auto_quantity_takeoff`) và định dạng lại thành bảng quen thuộc với hồ sơ thầu:
+    có tiêu đề công trình, hạng mục được gom theo CHƯƠNG MỤC từng hệ (A. HVAC, B. Điện,
+    C. Cấp thoát nước, D. PCCC), đánh số STT theo chương, cộng tiểu tổng từng chương và
+    tổng cộng cuối bảng. Dùng khi khách hàng cần bảng nộp thầu chứ không phải bảng thô.
+    """
+    logger.info("Exporting Vietnamese BOQ template: %s -> %s", boq_excel_path, output_excel_path)
+    try:
+        src = resolve_safe_path(boq_excel_path)
+        if not os.path.exists(src):
+            return (f"Không tìm thấy file '{boq_excel_path}'. Hãy chạy `auto_quantity_takeoff` và "
+                    f"`calc_boq_cost` trước để có bảng dự toán nguồn.")
+
+        df = pd.read_excel(src)
+        name_col = next((c for c in df.columns if _norm(c) in ("hang muc", "ten cong tac", "noi dung")), None)
+        qty_col = next((c for c in df.columns if _norm(c) in ("khoi luong", "so luong")), None)
+        if not name_col or not qty_col:
+            return f"File '{boq_excel_path}' thiếu cột 'Hạng mục'/'Khối lượng'. Cột hiện có: {list(df.columns)}"
+
+        unit_col = next((c for c in df.columns if _norm(c) == "don vi"), None)
+        total_col = next((c for c in df.columns if _norm(c) == "thanh tien"), None)
+        code_col = next((c for c in df.columns if _norm(c) == "ma hieu"), None)
+        unit_price_available = {
+            "vt": next((c for c in df.columns if _norm(c) == "don gia vt"), None),
+            "nc": next((c for c in df.columns if _norm(c) == "don gia nc"), None),
+        }
+
+        # Gom hạng mục theo chương mục.
+        groups = {}
+        for _, item in df.iterrows():
+            code, title = classify_boq_group(str(item[name_col]))
+            groups.setdefault((code, title), []).append(item)
+
+        rows = []
+        grand_total = 0.0
+        for (code, title) in sorted(groups, key=lambda g: g[0]):
+            items = groups[(code, title)]
+            rows.append({"STT": code, "Mã hiệu": "", "Nội dung công việc": title,
+                         "Đơn vị": "", "Khối lượng": None, "Đơn giá VT": None,
+                         "Đơn giá NC": None, "Thành tiền": None})
+            group_total = 0.0
+            for i, item in enumerate(items, start=1):
+                line_total = float(item[total_col]) if total_col and pd.notna(item.get(total_col)) else 0.0
+                group_total += line_total
+                rows.append({
+                    "STT": f"{code}.{i}",
+                    "Mã hiệu": item[code_col] if code_col and pd.notna(item.get(code_col)) else "",
+                    "Nội dung công việc": item[name_col],
+                    "Đơn vị": item[unit_col] if unit_col and pd.notna(item.get(unit_col)) else "",
+                    "Khối lượng": item[qty_col],
+                    "Đơn giá VT": item[unit_price_available["vt"]] if unit_price_available["vt"] else None,
+                    "Đơn giá NC": item[unit_price_available["nc"]] if unit_price_available["nc"] else None,
+                    "Thành tiền": line_total if total_col else None,
+                })
+            grand_total += group_total
+            rows.append({"STT": "", "Mã hiệu": "", "Nội dung công việc": f"Cộng {title}",
+                         "Đơn vị": "", "Khối lượng": None, "Đơn giá VT": None,
+                         "Đơn giá NC": None, "Thành tiền": round(group_total) if total_col else None})
+
+        rows.append({"STT": "", "Mã hiệu": "", "Nội dung công việc": "TỔNG CỘNG",
+                     "Đơn vị": "", "Khối lượng": None, "Đơn giá VT": None,
+                     "Đơn giá NC": None, "Thành tiền": round(grand_total) if total_col else None})
+
+        out_path = output_excel_path if output_excel_path.endswith(".xlsx") else output_excel_path + ".xlsx"
+        out_safe = resolve_safe_path(out_path)
+        parent = os.path.dirname(out_safe)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+
+        header = pd.DataFrame([
+            {"Thông tin": "Công trình", "Nội dung": project_name or "(chưa nhập tên công trình)"},
+            {"Thông tin": "Địa điểm", "Nội dung": location or "(chưa nhập địa điểm)"},
+            {"Thông tin": "Đơn vị lập", "Nội dung": contractor or "(chưa nhập đơn vị)"},
+            {"Thông tin": "Tên bảng", "Nội dung": "BẢNG TIÊN LƯỢNG - DỰ TOÁN HẠNG MỤC MEPF"},
+            {"Thông tin": "Đơn vị tiền tệ", "Nội dung": "VNĐ"},
+        ])
+        with pd.ExcelWriter(out_safe, engine="openpyxl") as writer:
+            header.to_excel(writer, sheet_name="Trang bìa", index=False)
+            pd.DataFrame(rows).to_excel(writer, sheet_name="Tiên lượng - Dự toán", index=False)
+
+        report = [
+            f"XUẤT BOQ THEO MẪU CHUẨN VIỆT NAM THÀNH CÔNG: {out_path}",
+            f"- Công trình: {project_name or '(chưa nhập)'}",
+            f"- Số chương mục: {len(groups)}",
+        ]
+        for (code, title) in sorted(groups, key=lambda g: g[0]):
+            report.append(f"  {code}. {title}: {len(groups[(code, title)])} hạng mục")
+        if total_col:
+            report.append(f"- TỔNG CỘNG: {round(grand_total):,} VNĐ")
+        else:
+            report.append("- Lưu ý: File nguồn chưa có cột 'Thành tiền' nên bảng chỉ có khối lượng, "
+                          "chưa có giá trị tiền. Chạy `calc_boq_cost` trước để có dự toán đầy đủ.")
+        return "\n".join(report)
+    except Exception as e:
+        return f"Lỗi xuất BOQ mẫu chuẩn: {e}"

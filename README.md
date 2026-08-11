@@ -12,12 +12,12 @@ Xây dựng bằng **LangGraph**, giao diện **Streamlit**, theo nguyên tắc
 | Bộ phận | Vai trò | Tool tiêu biểu |
 |---|---|---|
 | **Supervisor** | Giám đốc Dự án — phân việc, điều phối nhiều bước | (định tuyến) |
-| **Mechanical** | HVAC: tải lạnh, ống gió, chiller/AHU, thông gió | `calc_cooling_load_detailed`, `calc_duct_total_pressure_loss` |
-| **Electrical** | Điện: cáp, aptomat, chiếu sáng, **sụt áp** | `calc_cable_size`, `calc_voltage_drop`, `calc_breaker_size` |
+| **Mechanical** | HVAC: tải lạnh, ống gió, chiller/AHU, thông gió, **tiếng ồn NC** | `calc_cooling_load_detailed`, `calc_duct_total_pressure_loss`, `calc_nc_level` |
+| **Electrical** | Điện: cáp (**có kiểm tra sụt áp**), aptomat, chiếu sáng, **phụ tải, ngắn mạch, máng cáp, chống sét, bảng tủ điện** | `calc_cable_size`, `calc_voltage_drop`, `calc_total_load`, `calc_short_circuit`, `calc_cable_tray_size`, `calc_lightning_protection`, `generate_panel_schedule` |
 | **Plumbing** | Cấp thoát nước, bể, bơm, nước nóng | `calc_water_pipe`, `calc_plumbing_pump_head` |
-| **Firefighting** | PCCC: sprinkler, **bơm chữa cháy (Q và H)**, bình chữa cháy | `calc_fire_pump`, `calc_sprinkler_qty` |
-| **QS** | Bóc khối lượng + **lập dự toán có giá trị tiền** | `auto_quantity_takeoff`, `calc_boq_cost`, `lookup_unit_price` |
-| **CAD** | Đọc/sửa/tối ưu bản vẽ, phục hồi Block, render ảnh | `edit_cad`, `optimize_cad_drawing`, `ai_block_recovery` |
+| **Firefighting** | PCCC: **thủy lực sprinkler**, bơm chữa cháy (Q và H), **họng nước, kiểm soát khói, đầu báo cháy** | `calc_sprinkler_hydraulics`, `calc_fire_pump`, `calc_standpipe`, `calc_smoke_control`, `calc_fire_detector_qty` |
+| **QS** | Bóc khối lượng + **lập dự toán có giá trị tiền + BOQ mẫu Việt Nam** | `auto_quantity_takeoff`, `calc_boq_cost`, `export_boq_vietnam`, `lookup_unit_price` |
+| **CAD** | Đọc/sửa/tối ưu bản vẽ, phục hồi Block, render ảnh, **theo dõi revision** | `edit_cad`, `optimize_cad_drawing`, `snapshot_cad`, `diff_cad_revisions`, `restore_cad_revision` |
 | **BIM** | Mô hình 3D và **kiểm tra xung đột giữa các hệ** | `detect_clashes`, `auto_quantity_takeoff` |
 | **Reviewer** | Kỹ sư trưởng — kiểm duyệt, bắt làm lại nếu chưa đạt | (guardrail) |
 
@@ -40,6 +40,11 @@ Xây dựng bằng **LangGraph**, giao diện **Streamlit**, theo nguyên tắc
   cấp (`src/usage.py`) — không phải ước lượng.
 - 🎛️ **Mỗi vai trò một model riêng**: `CAD_MODEL_NAME`, `REVIEWER_LLM_PROVIDER`, ... để
   cân đối chất lượng/chi phí. Tool schema cũng được cắt theo vai trò để giảm token.
+- 💸 **Tối ưu chi phí Anthropic**: prompt caching tự động cho phần system prompt cố định
+  (phần thay đổi mỗi lượt được tách ra sau để không phá cache); tool search beta bật được
+  bằng `ANTHROPIC_TOOL_SEARCH=true`.
+- 🕓 **Không mất bản gốc bản vẽ**: mọi tool sửa CAD tự lưu revision trước khi ghi đè, có
+  `diff_cad_revisions` và `restore_cad_revision` để xem thay đổi và quay lui.
 
 ## Cấu trúc thư mục
 
@@ -56,13 +61,15 @@ src/
   elec_tools.py         # Tính toán Điện (kèm kiểm tra sụt áp)
   plumb_tools.py        # Tính toán Cấp thoát nước
   ff_tools.py           # Tính toán PCCC (Q và H bơm chữa cháy)
-  qs_tools.py           # Tra đơn giá & lập dự toán BOQ
+  qs_tools.py           # Tra đơn giá, lập dự toán BOQ, xuất mẫu BOQ Việt Nam
+  panel_schedule.py     # Bảng tủ điện (Excel) + sơ đồ nguyên lý một sợi (DXF)
   bim_tools.py          # Clash detection
+  cad_revision.py       # Snapshot / diff / restore phiên bản bản vẽ CAD
   usage.py              # Đo token/chi phí theo vai trò
   workspace.py          # Cô lập workspace theo phiên + chống path traversal
   ingest.py             # Nạp tiêu chuẩn vào FAISS cho RAG
 data/
-  standards/            # Kho tiêu chuẩn cho RAG (TCVN/ASHRAE...)
+  standards/            # Kho tiêu chuẩn cho RAG (TCVN Điện/PCCC/Cấp thoát nước, ASHRAE)
   unit_prices.csv       # CSDL đơn giá vật tư/nhân công/máy — SỬA GIÁ Ở ĐÂY
   blocks/               # Thư viện Block MEPF chuẩn
 tests/                  # Test suite (pytest)
@@ -98,6 +105,9 @@ Quy trình đầy đủ từ bản vẽ tới con số tiền:
 3. QS Agent chạy `auto_quantity_takeoff` → file Excel khối lượng, rồi `calc_boq_cost` →
    file Excel dự toán gồm chi phí trực tiếp, chi phí chung, thu nhập chịu thuế tính
    trước, VAT và tổng giá trị (cấu trúc theo Thông tư 11/2021/TT-BXD).
+4. Cần bảng nộp thầu: `export_boq_vietnam` định dạng lại thành bảng tiên lượng — dự toán
+   gom theo chương mục từng hệ (A. HVAC, B. Điện, C. Cấp thoát nước, D. PCCC), có tiểu
+   tổng từng chương và trang bìa công trình.
 
 **Đơn giá nằm ở `data/unit_prices.csv`** — hãy cập nhật theo thời điểm và theo vùng trước
 khi dùng cho hồ sơ thật. Hạng mục không tra được đơn giá sẽ được liệt kê kèm cảnh báo
@@ -118,5 +128,5 @@ Toàn bộ "suy nghĩ", thời gian thực thi và lỗi của từng tác nhân
 
 - [`AI_MODEL_SETUP.md`](AI_MODEL_SETUP.md) — chọn model theo vai trò, chế độ offline, chi phí.
 - [`docs/DEPLOY.md`](docs/DEPLOY.md) — Docker, docker-compose kèm Ollama, systemd VPS, Streamlit Cloud.
-- [`MEPF_BACKLOG.md`](MEPF_BACKLOG.md) — các tính năng còn trong hàng đợi.
+- [`MEPF_BACKLOG.md`](MEPF_BACKLOG.md) — lịch sử backlog tính năng (đã xử lý hết) và tool tương ứng.
 - [`Agentic.md`](Agentic.md) — lộ trình phát triển hệ thống Agentic.
