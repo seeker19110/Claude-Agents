@@ -10,7 +10,8 @@ import pytest
 
 from src.cad_geometry import (
     arc_entity_length, block_scale, bulge_arc_length, collect_segments, detect_fittings,
-    entity_length, entity_points_3d, entity_segments, is_scaled, polyline_segments,
+    entity_length, entity_points_3d, entity_segments, is_scaled, parse_nominal_half_width,
+    polyline_segments,
 )
 
 
@@ -242,3 +243,21 @@ def test_entity_points_3d_preserves_declared_elevation():
     line = msp.add_line((0, 0, 50), (100, 0, 50))
     points = entity_points_3d(line)
     assert all(p[2] == pytest.approx(50) for p in points)
+
+
+# --- Suy bán kính/nửa bề rộng danh nghĩa từ ghi chú kích thước (dùng cho clash theo bề dày) ---
+
+def test_parse_nominal_half_width_from_diameter_notation():
+    assert parse_nominal_half_width("Ống uPVC Ø110 (D110)") == pytest.approx(55.0)
+    assert parse_nominal_half_width("DN100") == pytest.approx(50.0)
+
+
+def test_parse_nominal_half_width_from_rectangular_duct_uses_larger_side():
+    assert parse_nominal_half_width("Ống gió 600x400") == pytest.approx(300.0)
+    assert parse_nominal_half_width("W300xH900") == pytest.approx(450.0)
+
+
+def test_parse_nominal_half_width_returns_none_when_no_size_found():
+    assert parse_nominal_half_width("Ghi chú không có kích thước") is None
+    assert parse_nominal_half_width("") is None
+    assert parse_nominal_half_width(None) is None

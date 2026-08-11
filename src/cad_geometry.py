@@ -14,10 +14,16 @@ hệ quả sai số trong hồ sơ thật:
 Toàn bộ hàm ở đây là hình học thuần, không phụ thuộc LLM.
 """
 import math
+import re
 
 # Sai số tọa độ coi như trùng điểm (đơn vị bản vẽ). Bản vẽ MEPF thường vẽ theo mm nên
 # 1 đơn vị là đủ chặt để nối tuyến mà vẫn bỏ qua lệch do làm tròn khi vẽ.
 JOINT_TOLERANCE = 1.0
+
+# Ghi chú kích thước ống tròn: Ø110, DN100, D110, OD110... -> bán kính = số/2.
+_DIAMETER_RE = re.compile(r"(?i)\b(?:Ø|DN|OD|D)\s*(\d+(?:\.\d+)?)\b")
+# Ghi chú kích thước ống gió chữ nhật: 600x400, 600*400, W600xH400...
+_DUCT_RE = re.compile(r"(?i)\b(?:W)?(\d+(?:\.\d+)?)\s*[xX\*]\s*(?:H)?(\d+(?:\.\d+)?)\b")
 
 # Góc đổi hướng tối thiểu để coi là một co (elbow). Dưới ngưỡng này chỉ là tuyến gần
 # thẳng bị chia nhỏ vertex, không phải chỗ lắp phụ kiện.
@@ -339,3 +345,25 @@ def is_scaled(entity, tolerance: float = 1e-6) -> bool:
     được đếm là "1 bộ đèn 600x600" trong khi kích thước thực tế trên bản vẽ là 900x900.
     """
     return any(abs(s - 1.0) > tolerance for s in block_scale(entity))
+
+
+def parse_nominal_half_width(text: str) -> float | None:
+    """Suy ra bán kính/nửa bề rộng danh nghĩa (mm) từ ghi chú kích thước gần một tuyến ống/
+    gió trên bản vẽ (VD "Ø110", "DN100", "600x400") — dùng để clash detection xét được BỀ
+    DÀY thật của tuyến thay vì chỉ coi tuyến là một đường tâm không có kích thước.
+
+    Ống gió chữ nhật lấy cạnh LỚN HƠN chia đôi (giả định xấu nhất khi tuyến quay hướng bất
+    kỳ trên mặt bằng — dùng cạnh nhỏ sẽ bỏ sót va chạm thật khi tuyến nằm ngang cạnh lớn).
+    Trả về None nếu ghi chú không chứa con số kích thước nào nhận diện được — clash
+    detection sẽ KHÔNG suy đoán kích thước trong trường hợp đó, tránh báo động giả.
+    """
+    if not text:
+        return None
+    duct = _DUCT_RE.search(text)
+    if duct:
+        a, b = float(duct.group(1)), float(duct.group(2))
+        return max(a, b) / 2.0
+    dia = _DIAMETER_RE.search(text)
+    if dia:
+        return float(dia.group(1)) / 2.0
+    return None

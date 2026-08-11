@@ -185,6 +185,97 @@ def test_vertical_clearance_threshold_is_configurable(workspace):
 
 # --- Cung cong (ARC) trong clash detection ---
 
+# --- Xung đột theo BỀ DÀY ống/gió (không cắt tâm nhưng vẫn va chạm vật lý) ---
+
+def test_clash_detected_by_thickness_when_centerlines_run_parallel_and_close(workspace):
+    """Hai tuyến chạy song song, đường tâm không hề cắt nhau, nhưng đường kính thật
+    (Ø110 mỗi bên = bán kính 55mm) khiến chúng chồng lấn vì chỉ cách nhau 80mm."""
+    doc = ezdxf.new()
+    msp = doc.modelspace()
+    doc.layers.add("HVAC_DUCT")
+    doc.layers.add("ELEC_TRAY")
+    msp.add_line((0, 0), (1000, 0), dxfattribs={"layer": "HVAC_DUCT"})
+    msp.add_text("D110", dxfattribs={"layer": "HVAC_DUCT"}).set_placement((500, 0))
+    msp.add_line((0, 80), (1000, 80), dxfattribs={"layer": "ELEC_TRAY"})
+    msp.add_text("D110", dxfattribs={"layer": "ELEC_TRAY"}).set_placement((500, 80))
+    doc.saveas(workspace / "bv.dxf")
+
+    result = detect_clashes.invoke({"file_path": "bv.dxf"})
+    assert "PHÁT HIỆN 1 ĐIỂM XUNG ĐỘT" in result
+    assert "Chồng lấn theo bề dày ống/gió" in result
+
+    report = pd.read_excel(workspace / "bao_cao_xung_dot.xlsx")
+    assert report.iloc[0]["Loại"] == "Chồng lấn theo bề dày ống/gió"
+
+
+def test_no_clash_by_thickness_when_gap_exceeds_combined_radius(workspace):
+    """Cùng cấu hình nhưng cách nhau 300mm > tổng bán kính 110mm -> không va chạm thật."""
+    doc = ezdxf.new()
+    msp = doc.modelspace()
+    doc.layers.add("HVAC_DUCT")
+    doc.layers.add("ELEC_TRAY")
+    msp.add_line((0, 0), (1000, 0), dxfattribs={"layer": "HVAC_DUCT"})
+    msp.add_text("D110", dxfattribs={"layer": "HVAC_DUCT"}).set_placement((500, 0))
+    msp.add_line((0, 300), (1000, 300), dxfattribs={"layer": "ELEC_TRAY"})
+    msp.add_text("D110", dxfattribs={"layer": "ELEC_TRAY"}).set_placement((500, 300))
+    doc.saveas(workspace / "bv.dxf")
+
+    result = detect_clashes.invoke({"file_path": "bv.dxf"})
+    assert "KHÔNG phát hiện xung đột" in result
+
+
+def test_no_false_positive_by_thickness_when_size_is_unknown(workspace):
+    """Hai tuyến song song sát nhau nhưng KHÔNG có ghi chú kích thước nào gần đó — công
+    cụ không được đoán bừa kích thước, phải báo thiếu dữ liệu thay vì báo động giả."""
+    doc = ezdxf.new()
+    msp = doc.modelspace()
+    doc.layers.add("HVAC_DUCT")
+    doc.layers.add("ELEC_TRAY")
+    msp.add_line((0, 0), (1000, 0), dxfattribs={"layer": "HVAC_DUCT"})
+    msp.add_line((0, 80), (1000, 80), dxfattribs={"layer": "ELEC_TRAY"})
+    doc.saveas(workspace / "bv.dxf")
+
+    result = detect_clashes.invoke({"file_path": "bv.dxf"})
+    assert "KHÔNG phát hiện xung đột" in result
+
+
+def test_thickness_clash_respects_vertical_clearance(workspace):
+    """Chồng lấn theo bề dày nhưng hai tuyến cách xa nhau theo cao độ vẫn phải bị loại,
+    giống hệt logic Z-awareness đã áp dụng cho trường hợp cắt tâm trực tiếp."""
+    doc = ezdxf.new()
+    msp = doc.modelspace()
+    doc.layers.add("HVAC_DUCT")
+    doc.layers.add("ELEC_TRAY")
+    msp.add_line((0, 0, 3000), (1000, 0, 3000), dxfattribs={"layer": "HVAC_DUCT"})
+    msp.add_text("D110", dxfattribs={"layer": "HVAC_DUCT"}).set_placement((500, 0))
+    msp.add_line((0, 80, 500), (1000, 80, 500), dxfattribs={"layer": "ELEC_TRAY"})
+    msp.add_text("D110", dxfattribs={"layer": "ELEC_TRAY"}).set_placement((500, 80))
+    doc.saveas(workspace / "bv.dxf")
+
+    result = detect_clashes.invoke({"file_path": "bv.dxf"})
+    assert "KHÔNG phát hiện xung đột" in result
+
+
+def test_duct_size_label_uses_larger_side_for_rectangular_duct(workspace):
+    """Ống gió chữ nhật 600x200 phải lấy cạnh lớn hơn (600, bán kính 300) làm kích thước
+    xấu nhất. Cách nhau 200mm với ống Ø50 (bán kính 25) bên kia: dùng đúng cạnh lớn
+    (300+25=325 > 200) phải RA xung đột; nếu lỡ dùng cạnh nhỏ (100+25=125 < 200) sẽ bỏ
+    sót — test này phân biệt được hai cách cài đặt khác nhau."""
+    doc = ezdxf.new()
+    msp = doc.modelspace()
+    doc.layers.add("HVAC_DUCT")
+    doc.layers.add("ELEC_TRAY")
+    msp.add_line((0, 0), (1000, 0), dxfattribs={"layer": "HVAC_DUCT"})
+    msp.add_text("600x200", dxfattribs={"layer": "HVAC_DUCT"}).set_placement((500, 0))
+    msp.add_line((0, 200), (1000, 200), dxfattribs={"layer": "ELEC_TRAY"})
+    msp.add_text("D50", dxfattribs={"layer": "ELEC_TRAY"}).set_placement((500, 200))
+    doc.saveas(workspace / "bv.dxf")
+
+    result = detect_clashes.invoke({"file_path": "bv.dxf", "label_search_radius": 150})
+    assert "PHÁT HIỆN 1 ĐIỂM XUNG ĐỘT" in result
+    assert "Chồng lấn theo bề dày ống/gió" in result
+
+
 def test_clash_detects_intersection_with_arc_entity(workspace):
     doc = ezdxf.new()
     msp = doc.modelspace()

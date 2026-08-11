@@ -18,7 +18,7 @@ Xây dựng bằng **LangGraph**, giao diện **Streamlit**, theo nguyên tắc
 | **Firefighting** | PCCC: **thủy lực sprinkler**, bơm chữa cháy (Q và H), **họng nước, kiểm soát khói, đầu báo cháy** | `calc_sprinkler_hydraulics`, `calc_fire_pump`, `calc_standpipe`, `calc_smoke_control`, `calc_fire_detector_qty` |
 | **QS** | Bóc khối lượng + **lập dự toán có giá trị tiền + BOQ mẫu Việt Nam** | `auto_quantity_takeoff`, `calc_boq_cost`, `export_boq_vietnam`, `lookup_unit_price` |
 | **CAD** | Đọc/sửa/tối ưu (**Overkill + Purge**)/**chuẩn hóa** bản vẽ, **chú thích quy chuẩn màu**, phục hồi Block, render ảnh, **theo dõi revision** | `edit_cad`, `optimize_cad_drawing`, `standardize_cad_drawing`, `add_color_legend`, `snapshot_cad`, `diff_cad_revisions`, `restore_cad_revision` |
-| **BIM** | Mô hình 3D và **kiểm tra xung đột giữa các hệ** | `detect_clashes`, `auto_quantity_takeoff` |
+| **BIM** | Mô hình 3D và **kiểm tra xung đột giữa các hệ (kể cả theo bề dày ống/gió)** | `detect_clashes`, `auto_quantity_takeoff` |
 | **Reviewer** | Kỹ sư trưởng — kiểm duyệt, bắt làm lại nếu chưa đạt | (guardrail) |
 
 ## Đặc điểm thiết kế
@@ -73,6 +73,16 @@ Xây dựng bằng **LangGraph**, giao diện **Streamlit**, theo nguyên tắc
   quy chuẩn ngay trên bản vẽ, không cần tra tài liệu rời. Chỉ 9 màu ACI cơ bản (1-9) có
   tên tiếng Việt chuẩn hóa (`cad_standards.color_name`); màu mở rộng (>9, dùng cho các
   hệ ELV/báo cháy cần nhiều màu phân biệt) ghi rõ "ACI \<n\>" thay vì đoán tên màu sai.
+- ⚡ **Clash detection xét cả bề dày ống/gió, không chỉ đường tâm**: `detect_clashes`
+  trước đây chỉ báo xung đột khi đường TÂM hai tuyến cắt nhau — bỏ sót trường hợp phổ
+  biến nhất trong thực tế: hai tuyến chạy song song sát nhau, đường tâm không hề giao
+  nhau nhưng đường kính/kích thước thật (ống Ø, ống gió WxH) khiến chúng chồng lấn vật
+  lý. Nay tool suy bán kính/nửa bề rộng mỗi tuyến từ ghi chú kích thước gần nhất trên
+  bản vẽ (TEXT/MTEXT dạng "Ø110", "DN100", "600x400") và báo thêm loại xung đột
+  "Chồng lấn theo bề dày ống/gió" khi khoảng cách đường tâm nhỏ hơn tổng bán kính hai
+  bên — vẫn tôn trọng cao độ Z thật nếu có khai báo. Tuyến không có ghi chú kích thước
+  gần đó CHỈ được xét theo đường tâm (không đoán bừa kích thước để tránh báo động giả);
+  số lượng đoạn thiếu dữ liệu này được liệt kê rõ trong báo cáo.
 - 🧹 **Overkill + Purge tự động**: `optimize_cad_drawing` nay còn xóa LINE/LWPOLYLINE
   trùng lặp/chồng đè hình học hoàn toàn (Overkill — lỗi thường gặp khi trace lại nét cũ)
   và xóa Block định nghĩa/text style/linetype không còn được tham chiếu (Purge, tương

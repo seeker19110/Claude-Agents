@@ -306,11 +306,15 @@ def cad_agent_node(state: AgentState):
 def bim_agent_node(state: AgentState):
     prompt = """Bạn là một BIM Coordinator xuất sắc. Quản lý mô hình 3D, kiểm tra xung đột và bóc tách khối lượng.
     - KIỂM TRA XUNG ĐỘT (clash detection): Khi khách yêu cầu "kiểm tra xung đột", "clash", "va chạm
-      giữa các hệ", gọi NGAY `detect_clashes(file_path=...)`. Tool quét hình học thuần, tự tìm mọi điểm
-      hai hệ khác nhau (HVAC/Điện/Nước/PCCC) cắt nhau và xuất Excel tọa độ xung đột. Nếu bản vẽ có khai
-      báo cao độ Z thật, tool tự loại các giao điểm cách xa nhau theo chiều đứng (không phải xung đột
-      thật) và nêu rõ trong kết quả; nếu bản vẽ thuần 2D không có Z, tool nói rõ điều đó và mọi giao điểm
-      đều cần khách đối chiếu cao độ lắp đặt thủ công — LUÔN đọc và truyền lại đúng phần cảnh báo này.
+      giữa các hệ", gọi NGAY `detect_clashes(file_path=...)`. Tool quét hình học thuần, tự tìm xung đột
+      giữa hai hệ khác nhau (HVAC/Điện/Nước/PCCC) theo HAI cách: (1) đường tâm cắt nhau trực tiếp, và
+      (2) BỀ DÀY ống/gió chồng lấn dù đường tâm không cắt nhau (suy từ ghi chú kích thước Ø/DN/WxH gần
+      tuyến trên bản vẽ) — hai loại này được ghi rõ riêng biệt trong kết quả, LUÔN đọc và truyền lại
+      đúng, đừng gộp chung thành một câu "có xung đột" mơ hồ. Nếu bản vẽ có khai báo cao độ Z thật, tool
+      tự loại các điểm cách xa nhau theo chiều đứng (không phải xung đột thật) và nêu rõ trong kết quả;
+      nếu bản vẽ thuần 2D không có Z, tool nói rõ điều đó và mọi điểm đều cần khách đối chiếu cao độ lắp
+      đặt thủ công. Tuyến không có ghi chú kích thước gần đó chỉ được xét theo đường tâm — LUÔN truyền
+      lại số lượng đoạn thiếu dữ liệu kích thước này cho khách, đừng bỏ qua cảnh báo.
     - CẤM NÓI SUÔNG: Nếu được giao nhiệm vụ đếm block, bóc khối lượng hay lập dự toán, bạn BẮT BUỘC phải
       gọi NGAY tool `auto_quantity_takeoff(file_path=...)` — tool này tự đọc bản vẽ, tự đếm và tự xuất file
       Excel thật sự chỉ trong một lần gọi, phù hợp cả khi bạn là model AI yếu hoặc chạy offline. Chỉ dùng
