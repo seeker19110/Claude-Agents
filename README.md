@@ -59,8 +59,13 @@ Xây dựng bằng **LangGraph**, giao diện **Streamlit**, theo nguyên tắc
   sinh hoạt, hồi nước nóng, thoát nước thải/thông hơi/nước mưa, thiết bị Bơm/Bể/Bình nóng
   lạnh/Trạm xử lý nước thải), **Firefighting** (Sprinkler, họng nước vách tường/trụ cứu
   hỏa, đầu báo/chuông còi báo cháy, chữa cháy khí, bình chữa cháy, thiết bị Bơm chữa
-  cháy/Bể nước chữa cháy/Van điều khiển). Thiết bị chính của cả 3 hệ M/P/F dùng chung màu
-  xám trung tính để không lấn màu ý nghĩa của đường ống/dây.
+  cháy/Bể nước chữa cháy/Van điều khiển). Mỗi hệ M/E/P/F có MỘT dải màu (hue) riêng biệt
+  không trùng với hệ khác — Mechanical=xanh lá, Electrical=cam/vàng, Plumbing=xanh dương,
+  Firefighting=đỏ — để nhìn màu là đoán ngay ra hệ, không còn kiểu mượn màu chéo hệ như
+  trước (VD "nóng = đỏ" từng dùng chung cho cả ống nước nóng Plumbing lẫn PCCC). Toàn bộ
+  mã màu được xác minh bằng `ezdxf.colors.aci2rgb()` để đảm bảo không có 2 mã ACI khác
+  nhau nhưng ra cùng 1 màu RGB thật. Thiết bị chính của cả 3 hệ M/P/F dùng chung màu xám
+  trung tính (ngoại lệ có chủ đích, vì thiết bị đã có Block/nhãn riêng để nhận diện).
   Lưu ý: đây KHÔNG phải "Block động" (Dynamic Block) kiểu AutoCAD Block Editor —
   Visibility State/Parameter/Action là định dạng nhị phân độc quyền của Autodesk mà thư
   viện `ezdxf` không hỗ trợ ghi; muốn dùng Block động thật sự phải vẽ tay 1 lần trong

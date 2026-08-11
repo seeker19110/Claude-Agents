@@ -18,47 +18,58 @@ QUY ƯỚC ĐẶT TÊN (cấu trúc `<HỆ>-<NHÓM>[-<PHÂN LOẠI>]`):
   RAD, CHWS...); thiết bị dùng `EQUIP-<LOẠI>` (VD `M-EQUIP-AHU`, `F-EQUIP-PUMP`); nhóm
   không có thiết bị/ống rõ ràng (đèn, ổ cắm, báo cháy...) đặt tên mô tả ngắn gọn.
 
-Quy ước màu tổng quát để nhìn Layer là đoán ngay được vai trò (áp dụng xuyên suốt
-cả 4 hệ, không chỉ riêng 1 hệ):
-- "Cấp" (nguồn/gió/nước lạnh đi vào không gian) -> Xanh dương (5)
-- "Hồi" (đi ngược về nguồn) -> Cyan (4)
-- Nóng (nước nóng, sưởi) -> Đỏ (1) — quy ước "nóng = đỏ, lạnh = xanh" kinh điển
-- Liên quan an toàn cháy nổ/thoát hiểm (PCCC, tăng áp, hút khói, đèn sự cố)
-  -> luôn thuộc dải màu đỏ/cam để nổi bật, kể cả khi Layer đó do hệ M hay E vẽ
-- Thiết bị chính (`*-EQUIP-*`) của cả 3 hệ M/P/F dùng chung màu xám trung tính (9) —
-  các hệ đã có màu ý nghĩa riêng cho đường ống/dây, thiết bị chỉ cần nổi khối, không
-  cần thêm 1 lớp mã màu riêng cho từng loại máy.
+QUY ƯỚC MÀU (không có TCVN nào quy định màu Layer MEPF, nên áp dụng quy ước chung
+phổ biến trong ngành: MỖI HỆ MỘT DẢI MÀU (hue) RIÊNG BIỆT, không hệ nào dùng lại
+đúng mã màu của hệ khác — mục tiêu là nhìn màu đoán ngay ra hệ, không nhầm lẫn):
+- **Mechanical (M)**: dải XANH LÁ (green, ACI 80-99) — ống gió + ống nước/gas.
+- **Electrical (E)**: dải CAM/VÀNG (orange, ACI 20-39) — đèn, dây, máng cáp, ELV.
+- **Plumbing (P)**: dải XANH DƯƠNG (blue, ACI 140-169) — các loại ống nước.
+- **Firefighting (F)**: dải ĐỎ (red, ACI 10-19) — ống, đầu phun, thiết bị báo cháy.
+- **General (G)**: xám/trắng trung tính (7, 8) — không thuộc hệ nào nên không cần
+  dải màu riêng, chỉ cần khác hẳn 4 dải trên.
+Trong mỗi dải, sắc độ (đậm/nhạt, thuần/pha) phân biệt vai trò con: "cấp" dùng sắc
+thuần/sáng nhất của dải, "hồi"/"thải" dùng sắc đậm hoặc pha hơn — nhưng KHÔNG còn
+mượn màu của hệ khác để biểu đạt (VD trước đây "nóng = đỏ" cho cả ống nước nóng
+Plumbing lẫn PCCC, khiến nhìn nhanh dễ tưởng hai hệ là một; nay ống nước nóng vẫn
+nằm trong dải xanh dương của Plumbing, chỉ đổi sắc độ).
+Ngoại lệ duy nhất, có chủ đích: thiết bị chính (`*-EQUIP-*`) của cả 3 hệ M/P/F dùng
+chung màu xám trung tính (9) — thiết bị luôn có Block/nhãn riêng để nhận diện, thêm
+mã màu theo hệ cho khối thiết bị chỉ gây nhiễu chứ không giúp phân biệt gì thêm.
+Toàn bộ mã màu đã được xác minh bằng `ezdxf.colors.aci2rgb()` (đúng bảng màu ACI
+thật của AutoCAD) để đảm bảo không có 2 mã số ACI khác nhau nhưng lại RA MÀU GIỐNG
+HỆT nhau (VD ACI 1 và ACI 10 cùng là đỏ thuần `(255,0,0)` — bẫy dễ mắc nếu chọn màu
+theo cảm tính mà không tra bảng thật).
 """
 import unicodedata
 
 LAYER_STANDARD = {
     # ---------------------------------------------------------------- MECHANICAL (HVAC)
     # Ống gió (Duct) — dùng đúng ký hiệu viết tắt quốc tế phổ biến trong hồ sơ MEPF.
-    "M-SAD": {"color": 5, "discipline": "Mechanical", "description": "Ống gió cấp (Supply Air Duct)",
+    "M-SAD": {"color": 90, "discipline": "Mechanical", "description": "Ống gió cấp (Supply Air Duct)",
               "keywords": ["SAD", "ONGGIOCAP", "DUCTSUPPLY", "GIOCAPSA", "SUPPLYAIRDUCT", "GIOCAP"]},
-    "M-RAD": {"color": 4, "discipline": "Mechanical", "description": "Ống gió hồi (Return Air Duct)",
+    "M-RAD": {"color": 92, "discipline": "Mechanical", "description": "Ống gió hồi (Return Air Duct)",
               "keywords": ["RAD", "ONGGIOHOI", "DUCTRETURN", "GIOHOIRA", "RETURNAIRDUCT", "GIOHOI"]},
-    "M-FAD": {"color": 3, "discipline": "Mechanical", "description": "Ống gió tươi (Fresh Air Duct)",
+    "M-FAD": {"color": 93, "discipline": "Mechanical", "description": "Ống gió tươi (Fresh Air Duct)",
               "keywords": ["FAD", "ONGGIOTUOI", "FRESHAIRDUCT", "GIOTUOI", "OUTDOORAIRDUCT"]},
-    "M-EAD": {"color": 6, "discipline": "Mechanical", "description": "Ống gió thải (Exhaust Air Duct)",
+    "M-EAD": {"color": 94, "discipline": "Mechanical", "description": "Ống gió thải (Exhaust Air Duct)",
               "keywords": ["EAD", "ONGGIOTHAI", "EXHAUSTAIRDUCT", "GIOTHAI"]},
-    "M-KEAD": {"color": 30, "discipline": "Mechanical", "description": "Ống gió thải bếp (Kitchen Exhaust Air Duct)",
+    "M-KEAD": {"color": 95, "discipline": "Mechanical", "description": "Ống gió thải bếp (Kitchen Exhaust Air Duct)",
                "keywords": ["KEAD", "ONGGIOTHAIBEP", "KITCHENEXHAUST", "GIOTHAIBEP", "HUTMUIBEP"]},
-    "M-PAD": {"color": 1, "discipline": "Mechanical",
+    "M-PAD": {"color": 96, "discipline": "Mechanical",
               "description": "Ống gió tăng áp cầu thang/PCCC (Pressurization Air Duct)",
               "keywords": ["PAD", "ONGGIOTANGAP", "PRESSURIZATIONDUCT", "TANGAPCAUTHANG", "TANGAP"]},
-    "M-SEAD": {"color": 12, "discipline": "Mechanical", "description": "Ống gió hút khói (Smoke Exhaust Air Duct)",
+    "M-SEAD": {"color": 97, "discipline": "Mechanical", "description": "Ống gió hút khói (Smoke Exhaust Air Duct)",
                "keywords": ["SEAD", "ONGGIOHUTKHOI", "SMOKEEXHAUSTDUCT", "HUTKHOI", "SMOKEEXTRACT"]},
     # Ống nước/gas (Pipe)
-    "M-PIPE-REF": {"color": 140, "discipline": "Mechanical", "description": "Ống đồng gas lạnh (Refrigerant Pipe)",
+    "M-PIPE-REF": {"color": 80, "discipline": "Mechanical", "description": "Ống đồng gas lạnh (Refrigerant Pipe)",
                    "keywords": ["ONGDONG", "ONGGASLANH", "REFRIGERANTPIPE", "ONGGAS", "COPPERPIPE"]},
-    "M-PIPE-COND": {"color": 8, "discipline": "Mechanical",
+    "M-PIPE-COND": {"color": 82, "discipline": "Mechanical",
                      "description": "Ống nước ngưng (Condensate Drain Pipe)",
                      "keywords": ["ONGNUOCNGUNG", "CONDENSATEPIPE", "NUOCNGUNG", "DRAINPIPECOND"]},
-    "M-PIPE-CHWS": {"color": 5, "discipline": "Mechanical",
+    "M-PIPE-CHWS": {"color": 83, "discipline": "Mechanical",
                      "description": "Ống cấp nước lạnh Chiller (Chilled Water Supply)",
                      "keywords": ["CHWS", "ONGCAPNUOCLANH", "CHILLEDWATERSUPPLY", "ONGCAPCHILLER"]},
-    "M-PIPE-CHWR": {"color": 4, "discipline": "Mechanical",
+    "M-PIPE-CHWR": {"color": 84, "discipline": "Mechanical",
                      "description": "Ống hồi nước lạnh Chiller (Chilled Water Return)",
                      "keywords": ["CHWR", "ONGHOINUOCLANH", "CHILLEDWATERRETURN", "ONGHOICHILLER"]},
     # Thiết bị (Equipment) — tách theo từng loại máy chính thay vì gộp chung 1 layer.
@@ -80,33 +91,33 @@ LAYER_STANDARD = {
                      "keywords": ["QUATTHONGGIO", "QUATHUT", "QUATTANGAP", "VENTILATIONFAN", "EXHAUSTFAN"]},
 
     # ---------------------------------------------------------------- ELECTRICAL
-    "E-LIGHT": {"color": 2, "discipline": "Electrical", "description": "Đèn chiếu sáng thường",
+    "E-LIGHT": {"color": 20, "discipline": "Electrical", "description": "Đèn chiếu sáng thường",
                 "keywords": ["DENCHIEUSANG", "LIGHTING", "DENOP", "DENTRAN", "LIGHTFIXTURE"]},
-    "E-LIGHT-EMG": {"color": 11, "discipline": "Electrical",
+    "E-LIGHT-EMG": {"color": 22, "discipline": "Electrical",
                      "description": "Đèn sự cố / Đèn Exit (Emergency & Exit Light)",
                      "keywords": ["DENSUCO", "DENEXIT", "EMERGENCYLIGHT", "EXITLIGHT", "DENTHOATHIEM"]},
-    "E-LIGHT-SWITCH": {"color": 32, "discipline": "Electrical", "description": "Công tắc đèn",
+    "E-LIGHT-SWITCH": {"color": 23, "discipline": "Electrical", "description": "Công tắc đèn",
                         "keywords": ["CONGTACDEN", "LIGHTSWITCH", "CONGTAC"]},
-    "E-POWER": {"color": 1, "discipline": "Electrical", "description": "Ổ cắm & đường dây động lực",
+    "E-POWER": {"color": 24, "discipline": "Electrical", "description": "Ổ cắm & đường dây động lực",
                 "keywords": ["OCAMDIEN", "OUTLETPOWER", "DONGLUC", "SOCKETPOWER", "OCAM"]},
-    "E-CABLE-TRAY": {"color": 30, "discipline": "Electrical", "description": "Máng cáp / Thang cáp",
+    "E-CABLE-TRAY": {"color": 25, "discipline": "Electrical", "description": "Máng cáp / Thang cáp",
                       "keywords": ["MANGCAP", "THANGCAP", "CABLETRAY"]},
-    "E-TRUNKING": {"color": 33, "discipline": "Electrical", "description": "Máng nhựa đi dây (Trunking)",
+    "E-TRUNKING": {"color": 26, "discipline": "Electrical", "description": "Máng nhựa đi dây (Trunking)",
                     "keywords": ["MANGNHUA", "TRUNKING", "MANGDIEN"]},
-    "E-PANEL": {"color": 6, "discipline": "Electrical", "description": "Tủ điện / Bảng điện",
+    "E-PANEL": {"color": 27, "discipline": "Electrical", "description": "Tủ điện / Bảng điện",
                 "keywords": ["TUDIEN", "BANGDIEN", "PANELBOARD", "DISTRIBUTIONPANEL"]},
-    "E-GENERATOR": {"color": 14, "discipline": "Electrical",
+    "E-GENERATOR": {"color": 30, "discipline": "Electrical",
                      "description": "Máy phát điện dự phòng & Tủ chuyển nguồn ATS",
                      "keywords": ["MAYPHATDIEN", "GENERATOR", "ATS", "TUCHUYENNGUON"]},
-    "E-LIGHTNING": {"color": 12, "discipline": "Electrical", "description": "Chống sét & Tiếp địa",
+    "E-LIGHTNING": {"color": 32, "discipline": "Electrical", "description": "Chống sét & Tiếp địa",
                      "keywords": ["CHONGSET", "LIGHTNINGPROTECTION", "TIEPDIA", "GROUNDING"]},
-    "E-ELV-DATA": {"color": 140, "discipline": "Electrical", "description": "Mạng Data / Điện thoại (ELV)",
+    "E-ELV-DATA": {"color": 33, "discipline": "Electrical", "description": "Mạng Data / Điện thoại (ELV)",
                     "keywords": ["MANGDATA", "MANGLAN", "DIENTHOAI", "TELEPHONEDATA", "STRUCTUREDCABLING"]},
-    "E-ELV-CCTV": {"color": 141, "discipline": "Electrical", "description": "Camera an ninh (CCTV)",
+    "E-ELV-CCTV": {"color": 34, "discipline": "Electrical", "description": "Camera an ninh (CCTV)",
                     "keywords": ["CAMERA", "CCTV", "ANNINH"]},
-    "E-ELV-ACCESS": {"color": 142, "discipline": "Electrical", "description": "Kiểm soát vào ra (Access Control)",
+    "E-ELV-ACCESS": {"color": 35, "discipline": "Electrical", "description": "Kiểm soát vào ra (Access Control)",
                       "keywords": ["KIEMSOATVAORA", "ACCESSCONTROL", "THEDIEUTU"]},
-    "E-CONDUIT": {"color": 24, "discipline": "Electrical", "description": "Ống luồn dây điện ngầm (Conduit)",
+    "E-CONDUIT": {"color": 36, "discipline": "Electrical", "description": "Ống luồn dây điện ngầm (Conduit)",
                    "keywords": ["ONGLUONDIEN", "CONDUIT", "ONGDIENNGAM"]},
     "E-EQUIP-TRANSFORMER": {"color": 9, "discipline": "Electrical", "description": "Máy biến áp (Transformer)",
                              "keywords": ["MAYBIENAP", "TRANSFORMER", "TRAMBIENAP"]},
@@ -115,20 +126,20 @@ LAYER_STANDARD = {
                            "keywords": ["TUBUCONGSUAT", "CAPACITORBANK", "TUBU"]},
 
     # ---------------------------------------------------------------- PLUMBING (Cấp thoát nước)
-    "P-PIPE-CAP": {"color": 5, "discipline": "Plumbing", "description": "Ống cấp nước sinh hoạt (Cold Water Supply)",
+    "P-PIPE-CAP": {"color": 160, "discipline": "Plumbing", "description": "Ống cấp nước sinh hoạt (Cold Water Supply)",
                    "keywords": ["ONGCAPNUOCSINHHOAT", "ONGCAPNUOC", "CAPNUOC", "COLDWATERSUPPLY", "PIPECAP"]},
-    "P-PIPE-HW": {"color": 1, "discipline": "Plumbing",
+    "P-PIPE-HW": {"color": 162, "discipline": "Plumbing",
                   "description": "Ống cấp nước nóng sinh hoạt (Domestic Hot Water Supply)",
                   "keywords": ["ONGCAPNUOCNONGSINHHOAT", "ONGNUOCNONG", "HOTWATERSUPPLY", "NUOCNONG"]},
-    "P-PIPE-HWR": {"color": 12, "discipline": "Plumbing",
+    "P-PIPE-HWR": {"color": 163, "discipline": "Plumbing",
                    "description": "Ống hồi nước nóng (Hot Water Return / Recirculation)",
                    "keywords": ["ONGHOINUOCNONG", "HOTWATERRETURN", "HOINUOCNONG", "RECIRCULATION"]},
-    "P-PIPE-THOAT": {"color": 43, "discipline": "Plumbing",
+    "P-PIPE-THOAT": {"color": 164, "discipline": "Plumbing",
                       "description": "Ống thoát nước thải (Soil / Waste Drainage)",
                       "keywords": ["ONGTHOATNUOC", "THOATNUOC", "DRAINAGE", "PIPETHOAT", "THOATSAN", "THOATTHAI"]},
-    "P-PIPE-VENT": {"color": 8, "discipline": "Plumbing", "description": "Ống thông hơi (Vent Pipe)",
+    "P-PIPE-VENT": {"color": 165, "discipline": "Plumbing", "description": "Ống thông hơi (Vent Pipe)",
                      "keywords": ["ONGTHONGHOI", "VENTPIPE", "THONGHOI"]},
-    "P-PIPE-RAIN": {"color": 140, "discipline": "Plumbing",
+    "P-PIPE-RAIN": {"color": 166, "discipline": "Plumbing",
                      "description": "Ống thoát nước mưa (Rainwater / Storm Drainage)",
                      "keywords": ["ONGTHOATNUOCMUA", "RAINWATER", "STORMDRAIN", "NUOCMUA"]},
     "P-EQUIP-PUMP": {"color": 9, "discipline": "Plumbing",
@@ -145,11 +156,11 @@ LAYER_STANDARD = {
                      "keywords": ["TRAMXULYNUOCTHAI", "BETUHOAI", "SEPTICTANK", "STP"]},
 
     # ---------------------------------------------------------------- FIREFIGHTING (PCCC)
-    "F-SPRINKLER": {"color": 1, "discipline": "Firefighting", "description": "Đầu phun Sprinkler",
+    "F-SPRINKLER": {"color": 10, "discipline": "Firefighting", "description": "Đầu phun Sprinkler",
                      "keywords": ["DAUPHUNSPRINKLER", "SPRINKLERHEAD", "DAUPHUNCHUACHAY"]},
     "F-PIPE-SPK": {"color": 12, "discipline": "Firefighting", "description": "Ống cấp nước hệ Sprinkler",
                     "keywords": ["ONGSPRINKLER", "SPRINKLERPIPE", "ONGCHUACHAYSPRINKLER"]},
-    "F-PIPE-HYD": {"color": 10, "discipline": "Firefighting",
+    "F-PIPE-HYD": {"color": 13, "discipline": "Firefighting",
                     "description": "Ống họng nước vách tường / trụ cứu hỏa (Standpipe / Hydrant)",
                     "keywords": ["ONGHONGNUOC", "STANDPIPE", "HYDRANTPIPE", "ONGTRUCUUHOA", "HONGNUOCVACHTUONG"]},
     "F-EQUIP-PUMP": {"color": 9, "discipline": "Firefighting",
@@ -160,15 +171,15 @@ LAYER_STANDARD = {
     "F-EQUIP-VALVE": {"color": 9, "discipline": "Firefighting",
                        "description": "Van điều khiển hệ thống (Alarm Check Valve/Zone Control Valve)",
                        "keywords": ["VANDIEUKHIEN", "ALARMCHECKVALVE", "ZONECONTROLVALVE", "VANBAODONG"]},
-    "F-DETECT": {"color": 200, "discipline": "Firefighting", "description": "Đầu báo cháy",
+    "F-DETECT": {"color": 14, "discipline": "Firefighting", "description": "Đầu báo cháy",
                  "keywords": ["DAUBAOCHAY", "SMOKEDETECTOR", "FIREDETECTOR", "BAOCHAY"]},
-    "F-ALARM-DEVICE": {"color": 201, "discipline": "Firefighting",
+    "F-ALARM-DEVICE": {"color": 15, "discipline": "Firefighting",
                         "description": "Chuông / Còi / Đèn báo cháy (Bell/Strobe/Manual Call Point)",
                         "keywords": ["CHUONGBAOCHAY", "COIBAOCHAY", "MANUALCALLPOINT", "FIREBELL", "FIREALARMDEVICE"]},
-    "F-GAS-SUPPRESS": {"color": 202, "discipline": "Firefighting",
+    "F-GAS-SUPPRESS": {"color": 16, "discipline": "Firefighting",
                         "description": "Hệ thống chữa cháy khí (FM200 / Khí sạch)",
                         "keywords": ["CHUACHAYKHI", "GASSUPPRESSION", "FM200", "CLEANAGENT", "KHISACH"]},
-    "F-EXTINGUISHER": {"color": 203, "discipline": "Firefighting", "description": "Bình chữa cháy xách tay",
+    "F-EXTINGUISHER": {"color": 17, "discipline": "Firefighting", "description": "Bình chữa cháy xách tay",
                         "keywords": ["BINHCHUACHAY", "FIREEXTINGUISHER", "BINHBOTBC"]},
 
     # ---------------------------------------------------------------- GENERAL
