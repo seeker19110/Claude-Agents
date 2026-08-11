@@ -16,7 +16,7 @@ import logging
 import os
 import unicodedata
 
-import pandas as pd
+import polars as pl
 from langchain_core.tools import tool
 
 from src.workspace import resolve_safe_path, get_project_root
@@ -40,31 +40,82 @@ def _norm(text: str) -> str:
     return " ".join(_strip_accents(text).lower().replace("_", " ").split())
 
 
-def load_unit_prices(csv_path: str = None) -> pd.DataFrame:
+def load_unit_prices(csv_path: str = None) -> pl.DataFrame:
     """Nạp bảng đơn giá. Đọc từ project root (tài nguyên dùng chung), không phải
-    workspace của phiên — mọi phiên tra cùng một bảng giá."""
+    workspace của phiên — mọi phiên tra cùng một bảng giá.
+    Có tích hợp Cache Redis để giảm thời gian đọc I/O đĩa.
+    """
+    try:
+        import redis
+        import pickle
+        r = redis.Redis(host='localhost', port=6379, db=0, socket_connect_timeout=1)
+        cache_key = f"mep_unit_prices_{csv_path or 'default'}"
+        cached_data = r.get(cache_key)
+        if cached_data:
+            return pickle.loads(cached_data)
+    except Exception as e:
+        r = None
+        logger.debug(f"Redis cache không khả dụng: {e}")
+
     path = csv_path or os.path.join(get_project_root(), UNIT_PRICE_CSV)
-    df = pd.read_csv(path)
-    for col in ("don_gia_vat_tu", "don_gia_nhan_cong", "don_gia_may"):
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+    df = pl.read_csv(path)
+    
+    # Cast to float, fill nulls
+    df = df.with_columns([
+        pl.col("don_gia_vat_tu").cast(pl.Float64, strict=False).fill_null(0.0),
+        pl.col("don_gia_nhan_cong").cast(pl.Float64, strict=False).fill_null(0.0),
+        pl.col("don_gia_may").cast(pl.Float64, strict=False).fill_null(0.0),
+    ])
+        
+    if r is not None:
+        try:
+            r.setex(cache_key, 3600, pickle.dumps(df))  # Cache 1 hour
+        except Exception:
+            pass
+
     return df
 
 
-def match_unit_price(item_name: str, prices: pd.DataFrame):
-    """Tìm dòng đơn giá khớp nhất với tên hạng mục bóc tách được.
-
-    Khớp theo từ khóa (cột `tu_khoa`, ngăn cách bằng '|'): từ khóa nào xuất hiện trong
-    tên hạng mục thì tính điểm bằng độ dài từ khóa — từ khóa dài hơn là bằng chứng
-    khớp mạnh hơn ('bom chua chay' thắng 'bom'). Không khớp thì trả về None thay vì
-    đoán bừa một mức giá.
-    """
+def match_unit_price(item_name: str, prices: pl.DataFrame):
+    """Tìm đơn giá khớp nhất cho một tên hạng mục.
+    Tích hợp AI Semantic Search bằng FAISS (Vector Database)."""
+    
+    # 1. Semantic Search (Độ chính xác cao nhất qua Ngữ nghĩa)
+    try:
+        faiss_idx = _get_faiss_index(prices)
+        docs = faiss_idx.similarity_search_with_score(item_name, k=1)
+        # Điểm L2 distance càng thấp càng tốt, ngưỡng 0.4 là khá gần
+        if docs and docs[0][1] < 0.4:
+            return docs[0][0].metadata
+    except Exception as e:
+        pass
+        
+    # 2. Rơi về (Fallback) Exact substring match
     name_norm = _norm(item_name)
     best_row, best_score = None, 0
-    for _, row in prices.iterrows():
+    
+    for row in prices.iter_rows(named=True):
         for keyword in str(row.get("tu_khoa", "")).split("|"):
             kw = _norm(keyword)
             if kw and kw in name_norm and len(kw) > best_score:
                 best_row, best_score = row, len(kw)
+                
+    # 3. Fuzzy matching nếu không tìm thấy exact
+    if best_row is None:
+        try:
+            from rapidfuzz import fuzz
+            best_fuzz = 0
+            for row in prices.iter_rows(named=True):
+                for keyword in str(row.get("tu_khoa", "")).split("|"):
+                    kw = _norm(keyword)
+                    if kw:
+                        score = fuzz.partial_ratio(kw, name_norm)
+                        if score > 85 and score > best_fuzz:
+                            best_fuzz = score
+                            best_row = row
+        except ImportError:
+            pass
+
     return best_row
 
 
@@ -75,11 +126,31 @@ def lookup_unit_price(keyword: str) -> str:
     try:
         prices = load_unit_prices()
         kw_norm = _norm(keyword)
-        hits = [
-            row for _, row in prices.iterrows()
-            if kw_norm in _norm(row["ten_cong_tac"])
-            or any(_norm(k) and _norm(k) in kw_norm for k in str(row["tu_khoa"]).split("|"))
-        ]
+        hits = []
+        
+        try:
+            from rapidfuzz import fuzz
+            has_fuzz = True
+        except ImportError:
+            has_fuzz = False
+            
+        for row in prices.iter_rows(named=True):
+            row_name_norm = _norm(str(row.get("ten_cong_tac", "")))
+            is_match = False
+            if kw_norm in row_name_norm:
+                is_match = True
+            else:
+                for k in str(row.get("tu_khoa", "")).split("|"):
+                    k_norm = _norm(k)
+                    if k_norm and k_norm in kw_norm:
+                        is_match = True
+                        break
+                    elif has_fuzz and k_norm and fuzz.partial_ratio(k_norm, kw_norm) > 85:
+                        is_match = True
+                        break
+            if is_match:
+                hits.append(row)
+
         if not hits:
             return (f"Không tìm thấy đơn giá cho '{keyword}' trong CSDL ({UNIT_PRICE_CSV}). "
                     f"Hãy bổ sung dòng đơn giá mới vào file CSV này trước khi lập dự toán.")
@@ -118,44 +189,48 @@ def calc_boq_cost(takeoff_excel_path: str, output_excel_path: str = "du_toan_chi
             return (f"Không tìm thấy file khối lượng '{takeoff_excel_path}'. "
                     f"Hãy chạy `auto_quantity_takeoff` trước để tạo bảng khối lượng.")
 
-        df = pd.read_excel(src_path)
-        name_col = next((c for c in df.columns if _norm(c) in ("hang muc", "ten cong tac", "noi dung")), None)
-        qty_col = next((c for c in df.columns if _norm(c) in ("khoi luong", "so luong")), None)
-        unit_col = next((c for c in df.columns if _norm(c) == "don vi"), None)
+        df = pl.read_excel(src_path)
+        cols = df.columns
+        name_col = next((c for c in cols if _norm(c) in ("hang muc", "ten cong tac", "noi dung")), None)
+        qty_col = next((c for c in cols if _norm(c) in ("khoi luong", "so luong")), None)
+        unit_col = next((c for c in cols if _norm(c) == "don vi"), None)
+        
         if not name_col or not qty_col:
             return (f"File '{takeoff_excel_path}' không có cột 'Hạng mục' và 'Khối lượng' cần thiết. "
-                    f"Các cột hiện có: {list(df.columns)}")
+                    f"Các cột hiện có: {cols}")
 
         prices = load_unit_prices()
         rows, missing = [], []
-        for i, item in df.iterrows():
-            name = str(item[name_col])
+        
+        for item in df.iter_rows(named=True):
+            name = str(item.get(name_col, ""))
             try:
-                qty = float(item[qty_col])
+                qty = float(item.get(qty_col, 0.0))
             except (TypeError, ValueError):
                 qty = 0.0
+                
             match = match_unit_price(name, prices)
 
             if match is None:
                 missing.append(name)
                 rows.append({
                     "STT": len(rows) + 1, "Mã hiệu": "", "Hạng mục": name,
-                    "Đơn vị": item[unit_col] if unit_col else "", "Khối lượng": qty,
+                    "Đơn vị": str(item.get(unit_col, "")) if unit_col else "", "Khối lượng": qty,
                     "Đơn giá VT": 0, "Đơn giá NC": 0, "Đơn giá M": 0,
                     "Thành tiền VT": 0, "Thành tiền NC": 0, "Thành tiền M": 0,
                     "Thành tiền": 0, "Ghi chú": "CHƯA CÓ ĐƠN GIÁ - cần bổ sung vào data/unit_prices.csv",
                 })
                 continue
 
-            vt, nc, m = match["don_gia_vat_tu"], match["don_gia_nhan_cong"], match["don_gia_may"]
+            vt, nc, m = match.get("don_gia_vat_tu", 0.0), match.get("don_gia_nhan_cong", 0.0), match.get("don_gia_may", 0.0)
             rows.append({
-                "STT": len(rows) + 1, "Mã hiệu": match["ma_hieu"], "Hạng mục": name,
-                "Đơn vị": match["don_vi"], "Khối lượng": qty,
+                "STT": len(rows) + 1, "Mã hiệu": str(match.get("ma_hieu", "")), "Hạng mục": name,
+                "Đơn vị": str(match.get("don_vi", "")), "Khối lượng": qty,
                 "Đơn giá VT": vt, "Đơn giá NC": nc, "Đơn giá M": m,
                 "Thành tiền VT": round(qty * vt), "Thành tiền NC": round(qty * nc),
                 "Thành tiền M": round(qty * m),
                 "Thành tiền": round(qty * (vt + nc + m)),
-                "Ghi chú": match["ten_cong_tac"],
+                "Ghi chú": str(match.get("ten_cong_tac", "")),
             })
 
         if not rows:
@@ -183,14 +258,16 @@ def calc_boq_cost(takeoff_excel_path: str, output_excel_path: str = "du_toan_chi
         if parent:
             os.makedirs(parent, exist_ok=True)
 
-        detail_df = pd.DataFrame(rows)
-        summary_df = pd.DataFrame(
+        detail_df = pl.DataFrame(rows)
+        summary_df = pl.DataFrame(
             [{"Khoản mục": code, "Nội dung": label, "Giá trị (VNĐ)": round(value)}
              for code, label, value in summary_rows]
         )
-        with pd.ExcelWriter(out_safe, engine="openpyxl") as writer:
-            detail_df.to_excel(writer, sheet_name="Chi tiết dự toán", index=False)
-            summary_df.to_excel(writer, sheet_name="Tổng hợp", index=False)
+        
+        import xlsxwriter
+        with xlsxwriter.Workbook(out_safe) as workbook:
+            detail_df.write_excel(workbook=workbook, worksheet="Chi tiết dự toán")
+            summary_df.write_excel(workbook=workbook, worksheet="Tổng hợp")
 
         report = [
             f"LẬP DỰ TOÁN CHI PHÍ THÀNH CÔNG — đã ghi file Excel: {out_path}",

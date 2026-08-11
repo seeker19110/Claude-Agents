@@ -36,6 +36,14 @@ def _build_llm(provider: str, model_name: str, api_key: str):
             model=model_name,
             temperature=0
         )
+    elif provider == "vllm":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            base_url="http://localhost:8000/v1",
+            api_key="vllm-api-key",
+            model=model_name,
+            temperature=0
+        )
     else:
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(model=model_name, api_key=api_key or "dummy_key", temperature=0)
@@ -73,6 +81,10 @@ def get_llm(role: str = DEFAULT_ROLE):
         key = ""
         if not model_name or "gpt" in model_name or "gemini" in model_name or "claude" in model_name:
             model_name = "llama3.1:8b"
+    elif provider == "vllm":
+        key = ""
+        if not model_name or "gpt" in model_name or "gemini" in model_name or "claude" in model_name:
+            model_name = "meta-llama/Llama-3.1-8B-Instruct"
     else:
         provider = "openai"
         key = os.getenv(f"{role_key}_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY", "")
@@ -264,9 +276,16 @@ def qs_agent_node(state: AgentState):
     - PHỤ KIỆN ỐNG (co/tê/măng sông): với ống vẽ bằng LINE/POLYLINE thuần (không có Block phụ kiện riêng),
       `auto_quantity_takeoff` tự SUY từ hình học tuyến và liệt kê thành các dòng riêng trong bảng khối
       lượng. Đây là ƯỚC TÍNH hình học, PHẢI nhắc khách đối chiếu lại với bản vẽ chi tiết trước khi mua vật tư.
-    Chốt lại: LUÔN phải kết thúc bằng một file Excel dự toán thật sự trên đĩa, không có ngoại lệ.
-    """
-    return call_mepf_agent(state, prompt, "QSAgent")
+    Chốt lại: lỗi và thông báo cho khách biết để họ cài đặt (nếu tool chạy trên local) hoặc báo IT cài đặt (nếu chạy trên server)."""
+    return call_mepf_agent(state, prompt, "QS")
+
+def qs_auditor_agent_node(state: AgentState):
+    prompt = """Bạn là Kiểm toán viên QS (QS Auditor).
+    - Nhiệm vụ của bạn là xem xét kỹ kết quả Dự toán/Bóc tách khối lượng (BOQ) mà Agent QS vừa xuất ra.
+    - Nếu có bảng Excel được trả về, bạn hãy tính nhẩm (suy luận logic) xem đơn giá tổng có hợp lý với quy mô không.
+    - Ví dụ: Hệ thống cơ điện toàn nhà thường có suất đầu tư 1.000.000 - 2.000.000 VNĐ / m2. Nếu tổng dự toán quá thấp hoặc quá cao, hãy đặt câu hỏi nghi ngờ và báo cáo lỗi cho Reviewer hoặc khách hàng.
+    - Bạn không được phép tính lại từ đầu, mà chỉ Đánh giá (Audit) và phê duyệt hoặc phản biện."""
+    return call_mepf_agent(state, prompt, "QSAuditor")
 
 # --- 6. CAD Agent (Draftsman) ---
 def cad_agent_node(state: AgentState):

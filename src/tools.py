@@ -756,6 +756,16 @@ def analyze_cad_spatial_context(file_path: str, max_distance: float = 2000.0) ->
                 except Exception:
                     pass
 
+        try:
+            from rtree import index
+            has_rtree = True
+            pipe_idx = index.Index()
+            for i, p in enumerate(pipe_segments):
+                ax, ay, bx, by = p["seg"]
+                pipe_idx.insert(i, (min(ax, bx), min(ay, by), max(ax, bx), max(ay, by)))
+        except ImportError:
+            has_rtree = False
+
         associations = {}
         for text_item in texts:
             tx, ty = text_item["pos"]
@@ -764,12 +774,24 @@ def analyze_cad_spatial_context(file_path: str, max_distance: float = 2000.0) ->
             min_dist = float('inf')
             best_pipe = None
             
-            for p in pipe_segments:
-                ax, ay, bx, by = p["seg"]
-                d = point_to_seg_dist(tx, ty, ax, ay, bx, by)
-                if d < min_dist:
-                    min_dist = d
-                    best_pipe = p
+            if has_rtree:
+                # Query index with a bounding box expanded by max_distance
+                search_box = (tx - max_distance, ty - max_distance, tx + max_distance, ty + max_distance)
+                candidates = pipe_idx.intersection(search_box)
+                for i in candidates:
+                    p = pipe_segments[i]
+                    ax, ay, bx, by = p["seg"]
+                    d = point_to_seg_dist(tx, ty, ax, ay, bx, by)
+                    if d < min_dist:
+                        min_dist = d
+                        best_pipe = p
+            else:
+                for p in pipe_segments:
+                    ax, ay, bx, by = p["seg"]
+                    d = point_to_seg_dist(tx, ty, ax, ay, bx, by)
+                    if d < min_dist:
+                        min_dist = d
+                        best_pipe = p
                     
             if best_pipe and min_dist <= max_distance:
                 p_layer = best_pipe["layer"]
@@ -873,37 +895,86 @@ def auto_quantity_takeoff(file_path: str, output_excel_path: str = "bao_cao_du_t
         # được file đi kèm. Không tìm được thì nêu rõ tên trong load_notes thay vì âm thầm
         # bỏ qua — bỏ sót một xref có thể làm khối lượng thiếu cả một hệ thống.
         base_dir = os.path.dirname(resolve_safe_path(file_path))
-        xref_segments, xref_notes = cad_loader.resolve_xref_segments(
-            doc, base_dir, lambda space: cad_geometry.collect_segments(list(space))
-        )
-        all_segments.extend(xref_segments)
-        load_notes.extend(xref_notes)
+        import concurrent.futures
+        
+        xref_defs = {name: path for name, path in cad_loader.list_xrefs(doc)}
+        if xref_defs:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                # Chạy resolve_xref_segments trong luồng riêng để tăng tốc đọc file I/O
+                future = executor.submit(
+                    cad_loader.resolve_xref_segments,
+                    doc, base_dir, lambda space: cad_geometry.collect_segments(list(space))
+                )
+                xref_segments, xref_notes = future.result()
+                all_segments.extend(xref_segments)
+                load_notes.extend(xref_notes)
 
         layer_lengths = {}
         for seg in all_segments:
             layer_lengths[seg["layer"]] = layer_lengths.get(seg["layer"], 0.0) + seg["length"]
 
-        def _seg_dist(px, py, seg):
-            (ax, ay, _), (bx, by, _) = seg["start"], seg["end"]
-            l2 = (bx - ax) ** 2 + (by - ay) ** 2
-            if l2 == 0:
-                return math.hypot(px - ax, py - ay)
-            t = max(0.0, min(1.0, ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / l2))
-            return math.hypot(px - (ax + t * (bx - ax)), py - (ay + t * (by - ay)))
-
         # Liên kết ghi chú <-> layer ống gần nhất, để đặt tên hạng mục theo đúng ghi chú
         # trên bản vẽ (ví dụ 'Ống uPVC Ø110') thay vì chỉ hiển thị tên Layer kỹ thuật.
         layer_labels = {}  # layer -> {label: count of matching texts}
-        for t in texts:
-            tx, ty = t["pos"]
-            min_dist, best_layer = float('inf'), None
-            for seg in all_segments:
-                d = _seg_dist(tx, ty, seg)
-                if d < min_dist:
-                    min_dist, best_layer = d, seg["layer"]
-            if best_layer is not None and min_dist <= max_distance:
-                bucket = layer_labels.setdefault(best_layer, {})
-                bucket[t["text"]] = bucket.get(t["text"], 0) + 1
+        if texts and all_segments:
+            try:
+                import numpy as np
+                # Vectorized calculations
+                seg_arr = np.array([
+                    [s["start"][0], s["start"][1], s["end"][0], s["end"][1]]
+                    for s in all_segments
+                ], dtype=float)
+                
+                ax = seg_arr[:, 0]
+                ay = seg_arr[:, 1]
+                bx = seg_arr[:, 2]
+                by = seg_arr[:, 3]
+                
+                dx = bx - ax
+                dy = by - ay
+                l2 = dx**2 + dy**2
+                zero_l2 = (l2 == 0)
+                l2_safe = np.where(zero_l2, 1.0, l2)
+                
+                for t in texts:
+                    tx, ty = t["pos"]
+                    
+                    t_val = ((tx - ax) * dx + (ty - ay) * dy) / l2_safe
+                    t_val = np.clip(t_val, 0.0, 1.0)
+                    
+                    proj_x = ax + t_val * dx
+                    proj_y = ay + t_val * dy
+                    
+                    dist_sq = (tx - proj_x)**2 + (ty - proj_y)**2
+                    dist_sq = np.where(zero_l2, (tx - ax)**2 + (ty - ay)**2, dist_sq)
+                    
+                    min_idx = np.argmin(dist_sq)
+                    min_dist = np.sqrt(dist_sq[min_idx])
+                    
+                    if min_dist <= max_distance:
+                        best_layer = all_segments[min_idx]["layer"]
+                        bucket = layer_labels.setdefault(best_layer, {})
+                        bucket[t["text"]] = bucket.get(t["text"], 0) + 1
+            except ImportError:
+                # Fallback to python loop if numpy is not available
+                def _seg_dist(px, py, seg):
+                    (sax, say, _), (sbx, sby, _) = seg["start"], seg["end"]
+                    sl2 = (sbx - sax) ** 2 + (sby - say) ** 2
+                    if sl2 == 0:
+                        return math.hypot(px - sax, py - say)
+                    st = max(0.0, min(1.0, ((px - sax) * (sbx - sax) + (py - say) * (sby - say)) / sl2))
+                    return math.hypot(px - (sax + st * (sbx - sax)), py - (say + st * (sby - say)))
+                    
+                for t in texts:
+                    tx, ty = t["pos"]
+                    min_dist, best_layer = float('inf'), None
+                    for seg in all_segments:
+                        d = _seg_dist(tx, ty, seg)
+                        if d < min_dist:
+                            min_dist, best_layer = d, seg["layer"]
+                    if best_layer is not None and min_dist <= max_distance:
+                        bucket = layer_labels.setdefault(best_layer, {})
+                        bucket[t["text"]] = bucket.get(t["text"], 0) + 1
 
         fittings_by_layer = cad_geometry.detect_fittings(all_segments, stock_length=pipe_stock_length_mm)
 

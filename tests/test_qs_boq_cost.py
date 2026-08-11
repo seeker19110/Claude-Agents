@@ -23,9 +23,10 @@ def _write_takeoff(path, rows):
 
 
 def test_unit_price_csv_loads_with_numeric_columns(prices):
-    assert not prices.empty
+    import polars as pl
+    assert len(prices) > 0
     for col in ("don_gia_vat_tu", "don_gia_nhan_cong", "don_gia_may"):
-        assert pd.api.types.is_numeric_dtype(prices[col])
+        assert prices[col].dtype.is_numeric()
 
 
 def test_match_is_accent_and_case_insensitive(prices):

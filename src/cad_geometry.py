@@ -168,19 +168,38 @@ def collect_segments(entities):
     return collected
 
 
+try:
+    from numba import njit
+except ImportError:
+    def njit(*args, **kwargs):
+        def wrapper(func): return func
+        if len(args) == 1 and callable(args[0]):
+            return args[0]
+        return wrapper
+
+@njit(fastmath=True, cache=True)
 def _angle(p1, p2) -> float:
     return math.atan2(p2[1] - p1[1], p2[0] - p1[0])
 
 
-def _same_point(p1, p2, tol: float = JOINT_TOLERANCE) -> bool:
+@njit(fastmath=True, cache=True)
+def _same_point(p1, p2, tol: float) -> bool:
     return math.hypot(p1[0] - p2[0], p1[1] - p2[1]) <= tol
 
 
-def _point_on_segment_interior(point, seg, tol: float = JOINT_TOLERANCE) -> bool:
+def _segment_bbox(seg, tol: float = 0.0):
+    ax, ay, _ = seg["start"]
+    bx, by, _ = seg["end"]
+    return (min(ax, bx) - tol, min(ay, by) - tol, max(ax, bx) + tol, max(ay, by) + tol)
+
+
+@njit(fastmath=True, cache=True)
+def _point_on_segment_interior(point, s_start, s_end, tol: float) -> bool:
     """Điểm có nằm trên THÂN đoạn (không phải hai đầu) hay không — dấu hiệu của chỗ rẽ tê."""
-    (ax, ay, _), (bx, by, _) = seg["start"], seg["end"]
+    ax, ay = s_start[0], s_start[1]
+    bx, by = s_end[0], s_end[1]
     px, py = point[0], point[1]
-    if _same_point(point, seg["start"], tol) or _same_point(point, seg["end"], tol):
+    if _same_point(point, s_start, tol) or _same_point(point, s_end, tol):
         return False
     l2 = (bx - ax) ** 2 + (by - ay) ** 2
     if l2 == 0:
@@ -190,6 +209,87 @@ def _point_on_segment_interior(point, seg, tol: float = JOINT_TOLERANCE) -> bool
         return False
     dist = math.hypot(px - (ax + t * (bx - ax)), py - (ay + t * (by - ay)))
     return dist <= tol
+
+
+def _process_fittings_for_layer(args):
+    layer, segs, tolerance, stock_length = args
+    elbows = sum(1 for s in segs if s["is_arc"])
+    tees = 0
+
+    try:
+        from rtree import index
+        has_rtree = True
+    except ImportError:
+        has_rtree = False
+
+    if has_rtree:
+        idx = index.Index()
+        for i, seg in enumerate(segs):
+            idx.insert(i, _segment_bbox(seg, tolerance))
+
+        # Co tại chỗ hai đoạn thẳng nối nhau và đổi hướng đáng kể.
+        for i, a in enumerate(segs):
+            if a["is_arc"]:
+                continue
+            px, py, _ = a["end"]
+            candidates = idx.intersection((px - tolerance, py - tolerance, px + tolerance, py + tolerance))
+            for j in candidates:
+                if j <= i:
+                    continue
+                b = segs[j]
+                if b["is_arc"] or not _same_point(a["end"], b["start"], tolerance):
+                    continue
+                turn = abs(math.degrees(_angle(b["start"], b["end"]) - _angle(a["start"], a["end"])))
+                turn = min(turn % 360, 360 - (turn % 360))
+                if turn >= ELBOW_MIN_ANGLE_DEG:
+                    elbows += 1
+
+        # Tê: đầu mút tuyến này chạm thân tuyến kia.
+        for i, a in enumerate(segs):
+            px, py, _ = a["start"]
+            for j in idx.intersection((px - tolerance, py - tolerance, px + tolerance, py + tolerance)):
+                if i == j: continue
+                if _point_on_segment_interior(a["start"], segs[j]["start"], segs[j]["end"], tolerance):
+                    tees += 1
+                    break
+            else: # if no tee at start, check end
+                px, py, _ = a["end"]
+                for j in idx.intersection((px - tolerance, py - tolerance, px + tolerance, py + tolerance)):
+                    if i == j: continue
+                    if _point_on_segment_interior(a["end"], segs[j]["start"], segs[j]["end"], tolerance):
+                        tees += 1
+                        break
+    else:
+        # Fallback O(N^2) nếu không có rtree
+        for i, a in enumerate(segs):
+            if a["is_arc"]:
+                continue
+            for b in segs[i + 1:]:
+                if b["is_arc"] or not _same_point(a["end"], b["start"], tolerance):
+                    continue
+                turn = abs(math.degrees(_angle(b["start"], b["end"]) - _angle(a["start"], a["end"])))
+                turn = min(turn % 360, 360 - (turn % 360))
+                if turn >= ELBOW_MIN_ANGLE_DEG:
+                    elbows += 1
+
+        for i, a in enumerate(segs):
+            for j, b in enumerate(segs):
+                if i == j:
+                    continue
+                if _point_on_segment_interior(a["start"], b["start"], b["end"], tolerance) or \
+                        _point_on_segment_interior(a["end"], b["start"], b["end"], tolerance):
+                    tees += 1
+                    break
+
+    # Cập nhật logic măng sông: chỉ tính cho phân đoạn vượt quá stock_length,
+    # tránh cộng dồn các đoạn ống vụn dưới 6m rồi chia.
+    couplings = 0
+    if stock_length > 0:
+        for s in segs:
+            if s["length"] > stock_length:
+                couplings += math.floor(s["length"] / stock_length)
+
+    return layer, {"co": elbows, "te": tees, "mang_song": couplings}
 
 
 def detect_fittings(segments, stock_length: float = DEFAULT_PIPE_STOCK_LENGTH,
@@ -212,38 +312,29 @@ def detect_fittings(segments, stock_length: float = DEFAULT_PIPE_STOCK_LENGTH,
     for seg in segments:
         by_layer.setdefault(seg["layer"], []).append(seg)
 
+    if not by_layer:
+        return {}
+
     result = {}
-    for layer, segs in by_layer.items():
-        elbows = sum(1 for s in segs if s["is_arc"])
+    
+    # Nếu chỉ có 1 layer hoặc không có multiprocessing, tính trực tiếp
+    if len(by_layer) == 1:
+        layer, segs = next(iter(by_layer.items()))
+        _, res = _process_fittings_for_layer((layer, segs, tolerance, stock_length))
+        result[layer] = res
+        return result
 
-        # Co tại chỗ hai đoạn thẳng nối nhau và đổi hướng đáng kể.
-        for i, a in enumerate(segs):
-            if a["is_arc"]:
-                continue
-            for b in segs[i + 1:]:
-                if b["is_arc"] or not _same_point(a["end"], b["start"], tolerance):
-                    continue
-                turn = abs(math.degrees(_angle(b["start"], b["end"]) - _angle(a["start"], a["end"])))
-                turn = min(turn % 360, 360 - (turn % 360))
-                if turn >= ELBOW_MIN_ANGLE_DEG:
-                    elbows += 1
+    import concurrent.futures
+    import os
+    
+    tasks = [(layer, segs, tolerance, stock_length) for layer, segs in by_layer.items()]
+    max_workers = min(len(tasks), os.cpu_count() or 4)
+    
+    # Sử dụng ProcessPoolExecutor để tính song song từng layer, vượt rào GIL
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+        for layer, res in executor.map(_process_fittings_for_layer, tasks):
+            result[layer] = res
 
-        # Tê: đầu mút tuyến này chạm thân tuyến kia.
-        tees = 0
-        for i, a in enumerate(segs):
-            for j, b in enumerate(segs):
-                if i == j:
-                    continue
-                if _point_on_segment_interior(a["start"], b, tolerance) or \
-                        _point_on_segment_interior(a["end"], b, tolerance):
-                    tees += 1
-                    break
-
-        total_length = sum(s["length"] for s in segs)
-        runs = max(1, len(segs))
-        couplings = max(0, math.ceil(total_length / stock_length) - runs) if stock_length > 0 else 0
-
-        result[layer] = {"co": elbows, "te": tees, "mang_song": couplings}
     return result
 
 
@@ -367,3 +458,26 @@ def parse_nominal_half_width(text: str) -> float | None:
     if dia:
         return float(dia.group(1)) / 2.0
     return None
+
+def build_topology_graph(segments: list):
+    """Chuyển đổi danh sách các đoạn ống thành Đồ thị (Graph).
+    Sử dụng NetworkX để mô hình hóa Topology.
+    """
+    import networkx as nx
+    G = nx.Graph()
+    for seg in segments:
+        if "start" in seg and "end" in seg:
+            p1 = (round(seg["start"][0], 1), round(seg["start"][1], 1), round(seg["start"][2], 1))
+            p2 = (round(seg["end"][0], 1), round(seg["end"][1], 1), round(seg["end"][2], 1))
+            if p1 != p2:
+                G.add_edge(p1, p2, weight=seg.get("length", 0.0))
+    return G
+
+def detect_disconnected_pipes(segments: list) -> list:
+    """Phát hiện các đầu ống bị hở (không kết nối)."""
+    G = build_topology_graph(segments)
+    open_endpoints = []
+    for node, degree in G.degree():
+        if degree == 1:
+            open_endpoints.append(node)
+    return open_endpoints

@@ -21,3 +21,4 @@ outputs/
 
 # Checkpoint hội thoại (SQLite) — dữ liệu chạy, không commit
 data/checkpoints.sqlite*
+.redis/

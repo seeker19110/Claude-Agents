@@ -10,7 +10,7 @@ from src.tools import tools
 from src.agents import (
     supervisor_node, mechanical_agent_node, electrical_agent_node,
     plumbing_agent_node, firefighting_agent_node,
-    qs_agent_node, cad_agent_node, bim_agent_node,
+    qs_agent_node, qs_auditor_agent_node, cad_agent_node, bim_agent_node,
     reviewer_agent_node
 )
 
@@ -24,6 +24,7 @@ workflow.add_node("electrical", electrical_agent_node)
 workflow.add_node("plumbing", plumbing_agent_node)
 workflow.add_node("firefighting", firefighting_agent_node)
 workflow.add_node("qs", qs_agent_node)
+workflow.add_node("qs_auditor", qs_auditor_agent_node)
 workflow.add_node("cad", cad_agent_node)
 workflow.add_node("bim", bim_agent_node)
 workflow.add_node("reviewer", reviewer_agent_node)
@@ -38,20 +39,33 @@ def route_after_agent(state: AgentState):
     if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
         return "tools"
     return "reviewer"
+    
+def route_after_qs(state: AgentState):
+    last_msg = state.get("messages", [])[-1]
+    if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+        return "tools"
+    return "qs_auditor"
 
 # Áp dụng điều hướng cho tất cả Agent
 agents = ["mechanical", "electrical", "plumbing", "firefighting", "qs", "cad", "bim"]
 for agent in agents:
-    workflow.add_conditional_edges(
-        agent,
-        route_after_agent,
-        {"tools": "tools", "reviewer": "reviewer"}
-    )
+    if agent == "qs":
+        # Áp dụng điều hướng riêng cho QS (chuyển qua qs_auditor thay vì reviewer)
+        workflow.add_conditional_edges("qs", route_after_qs, {"tools": "tools", "qs_auditor": "qs_auditor"})
+    else:
+        workflow.add_conditional_edges(
+            agent,
+            route_after_agent,
+            {"tools": "tools", "reviewer": "reviewer"}
+        )
+
+workflow.add_edge("qs_auditor", "reviewer")
+
 
 # Hàm điều hướng sau khi Tools chạy xong: Trả về Agent đã gọi
 def route_after_tools(state: AgentState):
     sender = state.get("sender")
-    if sender in agents:
+    if sender in agents or sender == "qs":
         return sender
     return "supervisor"
 
