@@ -985,7 +985,11 @@ def optimize_cad_drawing(file_path: str, output_path: str = "", dedupe_tolerance
     2. Xóa các đoạn LINE/POLYLINE có chiều dài = 0 (rác vẽ thừa).
     3. Xóa các Block instance (INSERT) bị trùng lặp hoàn toàn (cùng tên Block, cùng vị trí
        trong phạm vi dedupe_tolerance) — lỗi thường gặp khi copy/paste nhầm trong CAD.
-    4. Xóa các Layer rỗng (không còn entity nào tham chiếu) ngoại trừ layer '0'/'Defpoints'.
+    4. Overkill: xóa LINE/LWPOLYLINE trùng lặp/chồng đè hoàn toàn lên nhau (cùng layer,
+       cùng hình học trong phạm vi dedupe_tolerance) — lỗi thường gặp khi trace lại đường
+       nét cũ mà không xóa nét gốc, khiến file nặng và đo khối lượng bị nhân đôi.
+    5. Purge: xóa Layer rỗng, Block định nghĩa không còn INSERT nào tham chiếu, text style
+       và linetype không còn dùng — tương đương lệnh PURGE của AutoCAD.
     Nếu output_path bỏ trống, ghi đè lên chính file_path.
     """
     logger.info("Optimize CAD Drawing (offline, deterministic): %s", file_path)
@@ -1033,6 +1037,38 @@ def optimize_cad_drawing(file_path: str, output_path: str = "", dedupe_tolerance
             else:
                 seen_inserts.add(key)
 
+        def _rounded_point(x, y):
+            if dedupe_tolerance > 0:
+                return (round(x / dedupe_tolerance), round(y / dedupe_tolerance))
+            return (x, y)
+
+        removed_overkill = 0
+        seen_lines = set()
+        for entity in list(msp.query('LINE')):
+            start, end = entity.dxf.start, entity.dxf.end
+            p1, p2 = _rounded_point(start.x, start.y), _rounded_point(end.x, end.y)
+            key = (entity.dxf.layer, frozenset((p1, p2)))
+            if key in seen_lines:
+                msp.delete_entity(entity)
+                removed_overkill += 1
+            else:
+                seen_lines.add(key)
+
+        seen_polylines = set()
+        for entity in list(msp.query('LWPOLYLINE')):
+            try:
+                pts = tuple(_rounded_point(x, y) for x, y in entity.get_points(format='xy'))
+                if not pts:
+                    continue
+                key = (entity.dxf.layer, min(pts, pts[::-1]))
+                if key in seen_polylines:
+                    msp.delete_entity(entity)
+                    removed_overkill += 1
+                else:
+                    seen_polylines.add(key)
+            except Exception:
+                pass
+
         used_layers = {entity.dxf.layer for entity in msp}
         removed_layers = []
         for layer in list(doc.layers):
@@ -1045,6 +1081,45 @@ def optimize_cad_drawing(file_path: str, output_path: str = "", dedupe_tolerance
             except Exception:
                 pass
 
+        used_block_names = {entity.dxf.name for entity in msp.query('INSERT')}
+        removed_blocks = []
+        for block in list(doc.blocks):
+            bname = block.name
+            if bname.startswith('*') or bname in used_block_names:
+                continue  # bỏ qua Block ẩn hệ thống (*Model_Space, *Paper_Space...)
+            try:
+                doc.blocks.delete_block(bname, safe=True)
+                removed_blocks.append(bname)
+            except Exception:
+                pass
+
+        used_styles = {e.dxf.style for e in msp if e.dxftype() in ('TEXT', 'MTEXT') and e.dxf.hasattr('style')}
+        removed_styles = []
+        for style in list(doc.styles):
+            sname = style.dxf.name
+            if sname.upper() in ('STANDARD',) or sname in used_styles:
+                continue
+            try:
+                doc.styles.remove(sname)
+                removed_styles.append(sname)
+            except Exception:
+                pass
+
+        used_linetypes = {e.dxf.linetype for e in msp if e.dxf.hasattr('linetype')}
+        used_linetypes |= {layer.dxf.linetype for layer in doc.layers}
+        removed_linetypes = []
+        for lt in list(doc.linetypes):
+            ltname = lt.dxf.name
+            if ltname.upper() in ('BYLAYER', 'BYBLOCK', 'CONTINUOUS') or ltname in used_linetypes:
+                continue
+            try:
+                doc.linetypes.remove(ltname)
+                removed_linetypes.append(ltname)
+            except Exception:
+                pass
+
+        purge_total = len(removed_blocks) + len(removed_styles) + len(removed_linetypes)
+
         target_path = output_path.strip() or file_path
         out_safe_path = resolve_safe_path(target_path)
         doc.saveas(out_safe_path)
@@ -1054,8 +1129,14 @@ def optimize_cad_drawing(file_path: str, output_path: str = "", dedupe_tolerance
             f"- Audit sửa {audit_fixes} lỗi cấu trúc.\n"
             f"- Xóa {removed_zero_len} đối tượng có chiều dài bằng 0 (rác vẽ).\n"
             f"- Xóa {removed_dupe_blocks} Block trùng lặp (cùng tên + cùng vị trí).\n"
-            f"- Xóa {len(removed_layers)} Layer rỗng không dùng đến"
-            + (f": {', '.join(removed_layers)}." if removed_layers else ".") + "\n"
+            f"- Overkill: xóa {removed_overkill} LINE/LWPOLYLINE trùng lặp/chồng đè.\n"
+            f"- Purge: xóa {len(removed_layers)} Layer rỗng"
+            + (f" ({', '.join(removed_layers)})" if removed_layers else "") + ", "
+            f"{len(removed_blocks)} Block định nghĩa không dùng"
+            + (f" ({', '.join(removed_blocks)})" if removed_blocks else "") + ", "
+            f"{len(removed_styles)} text style không dùng, "
+            f"{len(removed_linetypes)} linetype không dùng.\n"
+            f"- Tổng cộng purge {purge_total + len(removed_layers)} đối tượng định nghĩa thừa.\n"
             f"- Đã lưu bản vẽ đã tối ưu tại: {target_path}"
         )
     except Exception as e:

@@ -121,6 +121,52 @@ def test_optimize_cad_drawing_removes_zero_length_and_duplicate_blocks(workspace
     assert len(lines) == 0
 
 
+def test_optimize_cad_drawing_overkill_removes_duplicate_overlapping_lines(workspace):
+    """Trace lại đường nét cũ mà quên xóa nét gốc -> LINE trùng hình học hoàn toàn,
+    khiến file nặng và mọi bóc khối lượng theo layer đó bị nhân đôi."""
+    dxf_path = "overkill.dxf"
+    path = resolve_safe_path(dxf_path)
+
+    doc = ezdxf.new('R2010')
+    doc.layers.add(name="PIPE")
+    msp = doc.modelspace()
+    msp.add_line((0, 0), (100, 0), dxfattribs={"layer": "PIPE"})
+    msp.add_line((100, 0), (0, 0), dxfattribs={"layer": "PIPE"})  # cùng đoạn, ngược hướng
+    msp.add_line((0, 100), (100, 100), dxfattribs={"layer": "PIPE"})  # đoạn khác, giữ lại
+    doc.saveas(path)
+
+    result = optimize_cad_drawing.invoke({"file_path": dxf_path})
+    assert "THÀNH CÔNG" in result
+    assert "Overkill: xóa 1 LINE/LWPOLYLINE" in result
+
+    cleaned = ezdxf.readfile(path)
+    lines = list(cleaned.modelspace().query('LINE'))
+    assert len(lines) == 2
+
+
+def test_optimize_cad_drawing_purges_unused_block_definitions(workspace):
+    """Block định nghĩa không còn INSERT nào tham chiếu chỉ làm nặng file, không phục vụ
+    gì cho bản vẽ — tương đương lệnh PURGE của AutoCAD."""
+    dxf_path = "purge.dxf"
+    path = resolve_safe_path(dxf_path)
+
+    doc = ezdxf.new('R2010')
+    doc.blocks.new(name="SOCKET").add_circle((0, 0), radius=50)
+    doc.blocks.new(name="ORPHAN_BLOCK").add_circle((0, 0), radius=10)
+    msp = doc.modelspace()
+    msp.add_blockref("SOCKET", (0, 0))
+    doc.saveas(path)
+
+    result = optimize_cad_drawing.invoke({"file_path": dxf_path})
+    assert "THÀNH CÔNG" in result
+    assert "1 Block định nghĩa không dùng" in result
+    assert "ORPHAN_BLOCK" in result
+
+    cleaned = ezdxf.readfile(path)
+    assert "ORPHAN_BLOCK" not in cleaned.blocks
+    assert "SOCKET" in cleaned.blocks
+
+
 def test_optimize_cad_drawing_can_write_to_separate_output(workspace):
     dxf_path = "orig.dxf"
     _make_sample_dxf(resolve_safe_path(dxf_path))
