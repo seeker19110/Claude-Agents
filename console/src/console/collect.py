@@ -512,7 +512,7 @@ def _tiles(company: CompanyView, studio: StudioView, views: list[_View], now: da
 
 def collect(company_db: Path | None, studio_db: Path | None,
             gateway_token_file: Path | None = None,
-            gateway_url: str = "http://127.0.0.1:8100") -> dict[str, Any]:
+            gateway_url: str = "http://127.0.0.1:1123") -> dict[str, Any]:
     """Trạng thái hợp nhất của hai công ty + gateway (xem `console/API.md`). Không bao giờ ném: nguồn nào hỏng thì
     `sources[<nguồn>].ok = false` kèm lý do và phần dữ liệu của nguồn đó rỗng."""
     now = datetime.now(UTC).astimezone()

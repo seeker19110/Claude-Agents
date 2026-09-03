@@ -20,7 +20,7 @@ Không dùng framework web. Chỉ `http.server`, `json`, `sqlite3` và hai gói 
 ```python
 def collect(company_db: Path | None, studio_db: Path | None,
             gateway_token_file: Path | None = None,
-            gateway_url: str = "http://127.0.0.1:8100") -> dict
+            gateway_url: str = "http://127.0.0.1:1123") -> dict
 ```
 
 Trả về đúng cấu trúc dưới đây. Mọi khoá luôn có mặt; thiếu dữ liệu thì trả list rỗng
@@ -33,7 +33,7 @@ công ty đó bao giờ).
   "sources": {                       // để trang báo phần nào đang trống và vì sao
     "software-company": {"ok": true,  "db": "software-company/company.sqlite", "events": 238, "error": null},
     "Studio-creators":  {"ok": false, "db": null, "events": 0, "error": "chưa có file DB"},
-    "gateway":          {"ok": true,  "url": "http://127.0.0.1:8100", "error": null}
+    "gateway":          {"ok": true,  "url": "http://127.0.0.1:1123", "error": null}
   },
   "tiles": {
     "events": 238, "queue": 12, "model_calls": 45, "tool_calls": 27,

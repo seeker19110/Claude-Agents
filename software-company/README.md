@@ -71,7 +71,7 @@ uv run pytest -q --cov --cov-report=term  # make cov — ngưỡng 90%
 #   COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=http://localhost:11434/v1 COMPANY_MODEL_STRONG=qwen2.5-coder:32b
 #   COMPANY_LLM_PROVIDER=anthropic COMPANY_MODEL_STRONG=claude-opus-5   (uv sync --extra anthropic)
 #   Qua gateway xoay vòng tài khoản Google Antigravity (../gateway: `make login && make start && make setup`
-#   ghi sẵn llm.yaml): COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=http://127.0.0.1:8100/v1 COMPANY_LLM_API_KEY=gateway-local
+#   ghi sẵn llm.yaml): COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=http://127.0.0.1:1123/v1 COMPANY_LLM_API_KEY=gateway-local
 #   Gói Claude Pro/Max trên máy (không key): COMPANY_LLM_PROVIDER=claude-code COMPANY_MODEL_STRONG=claude-opus-5
 #     mặc định không tool-use; muốn cả khối kỹ thuật chạy bằng gói này thì đặt `mcp_tools: true` (ADR-0024, giữ nguyên
 #     sandbox tools.py) hoặc `cli_tools: true` (ADR-0023, CLI tự cầm tool) trong llm.yaml. Hồ sơ sẵn: `make llm`.
