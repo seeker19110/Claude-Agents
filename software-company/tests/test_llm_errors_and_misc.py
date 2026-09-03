@@ -11,7 +11,7 @@ import pytest
 from company import demo
 from company.events import Envelope
 from company.graph import RESEARCH_ORDER, research_order
-from company.llm import Completion, LLMError, OpenAICompatClient, Refused, RetryingClient, TransientError
+from company.llm import ClaudeCodeClient, Completion, LLMConfig, LLMError, OpenAICompatClient, Refused, RetryingClient, TransientError
 from company.registry import load_agents
 from company.sqlite_bus import SQLiteBus
 
@@ -116,6 +116,296 @@ def test_retrying_client_backs_off_between_attempts():
 def test_completion_json_rejects_garbage():
     with pytest.raises(LLMError):
         Completion(text="không phải json", input_tokens=1, output_tokens=1, model="m").json()
+
+
+def test_find_codex_binary_fallback_ve_ten_tho_khi_khong_thay(monkeypatch):
+    """Không có trên PATH và không có %LOCALAPPDATA% (hoặc không có bản kèm app) thì trả về nguyên tên nhị phân
+    (dòng 781) — CLI sẽ tự báo lỗi rõ khi thật sự chạy, không phải lúc tìm đường dẫn."""
+    from company.llm import find_codex_binary
+    import shutil as _shutil
+    monkeypatch.setattr(_shutil, "which", lambda b: None)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    assert find_codex_binary("codex-khong-ton-tai-xyz") == "codex-khong-ton-tai-xyz"
+
+
+def test_codex_client_subprocess_that_tra_ve_stdout(tmp_path):
+    """`_subprocess` mặc định của CodexClient chạy tiến trình con thật (dòng 807-818, thành công)."""
+    from company.llm import CodexClient
+    c = CodexClient(LLMConfig(provider="codex", models={"strong": "m", "standard": "m"}))
+    out = c._subprocess([sys.executable, "-c", "print('hello')"], stdin="")
+    assert out.strip() == "hello"
+    with pytest.raises(LLMError, match="không tìm thấy"):
+        c._subprocess(["khong-ton-tai-binary-xyz"], stdin="")
+    with pytest.raises(LLMError, match="thoát mã"):
+        c._subprocess([sys.executable, "-c", "import sys; sys.exit(1)"], stdin="")
+
+
+def test_codex_client_bo_qua_dong_jsonl_hong_va_bao_chua_dang_nhap(tmp_path):
+    """Dòng JSONL không phải JSON hợp lệ bị bỏ qua (dòng 845); lỗi có 'not logged in' báo rõ CODEX_HOME (dòng 861)."""
+    from company.llm import CodexClient
+    cfg = LLMConfig(provider="codex", models={"strong": "m", "standard": "m"})
+    bad_line = '{khong phai json hop le\n{"type":"error","message":"not logged in, run codex login"}\n{"type":"turn.failed","error":{"message":"x"}}\n'
+    c = CodexClient(cfg, runner=lambda a, s: bad_line)
+    with pytest.raises(LLMError, match="chưa đăng nhập"):
+        c.complete(system="s", user="u", schema={}, model_tier="strong")
+
+
+def test_claude_code_client_subprocess_that_tra_ve_stdout(tmp_path):
+    """`_subprocess` mặc định (không có `runner` giả) phải chạy tiến trình con thật và trả về stdout (dòng 672)."""
+    from company.llm import ClaudeCodeClient
+    c = ClaudeCodeClient(LLMConfig(provider="claude-code", models={"strong": "m", "standard": "m"}))
+    out = c._subprocess([sys.executable, "-c", "print('{\"ok\": true}')"], stdin="")
+    assert out.strip() == '{"ok": true}'
+
+
+def test_retrying_client_bind_toolbox_chuyen_tiep_khi_inner_biet():
+    class _WithBind(_Raising):
+        def __init__(self):
+            super().__init__(Refused("x")); self.bound = None
+        def bind_toolbox(self, tb): self.bound = tb
+
+    rc = RetryingClient(_WithBind())
+    rc.bind_toolbox("hop-tool")
+    assert rc.inner.bound == "hop-tool"
+    rc2 = RetryingClient(_Raising(Refused("x")))   # inner không có bind_toolbox: không sập
+    rc2.bind_toolbox("hop-tool")
+
+
+# ---------- AnthropicClient.complete: SDK giả tối thiểu (không cần cài `anthropic`) ----------
+
+class _FakeBlock:
+    def __init__(self, type_, **kw):
+        self.type = type_
+        for k, v in kw.items(): setattr(self, k, v)
+
+
+class _FakeUsage:
+    def __init__(self, input_tokens=10, output_tokens=2, cache_read_input_tokens=0, cache_creation_input_tokens=0):
+        self.input_tokens = input_tokens; self.output_tokens = output_tokens
+        self.cache_read_input_tokens = cache_read_input_tokens; self.cache_creation_input_tokens = cache_creation_input_tokens
+
+
+class _FakeMessage:
+    def __init__(self, content, stop_reason="end_turn", model="claude-x", usage=None, stop_details=None):
+        self.content, self.stop_reason, self.model = content, stop_reason, model
+        self.usage = usage or _FakeUsage()
+        self.stop_details = stop_details
+
+
+class _FakeStream:
+    def __init__(self, msg): self._msg = msg
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def get_final_message(self): return self._msg
+
+
+def _fake_anthropic_module(monkeypatch, msg=None, raise_=None):
+    """Tiêm một module `anthropic` giả tối thiểu — đủ để `AnthropicClient.complete` đi trọn đường thật."""
+    import sys
+    import types
+    fake = types.ModuleType("anthropic")
+
+    class APIConnectionError(Exception): pass
+    class APIStatusError(Exception):
+        def __init__(self, message, status_code): super().__init__(message); self.message, self.status_code = message, status_code
+
+    class _Messages:
+        def stream(self, **kw):
+            if raise_ is not None: raise raise_
+            return _FakeStream(msg)
+
+    class _Anthropic:
+        def __init__(self, timeout=None): self.messages = _Messages()
+
+    fake.Anthropic = _Anthropic; fake.APIConnectionError = APIConnectionError; fake.APIStatusError = APIStatusError
+    monkeypatch.setitem(sys.modules, "anthropic", fake)
+    return fake
+
+
+def _anthropic_client(monkeypatch, **kw):
+    from company.llm import AnthropicClient
+    _fake_anthropic_module(monkeypatch, **kw)
+    return AnthropicClient(LLMConfig(provider="anthropic", models={"strong": "m", "standard": "m"}))
+
+
+def test_anthropic_complete_duong_thanh_cong_va_tool_call(monkeypatch):
+    msg = _FakeMessage(content=[_FakeBlock("text", text="xin chào"),
+                                _FakeBlock("tool_use", id="c1", name="read_file", input={"path": "x"})],
+                       usage=_FakeUsage(input_tokens=100, output_tokens=5, cache_read_input_tokens=20))
+    from company.tools import ToolSpec
+    c = _anthropic_client(monkeypatch, msg=msg)
+    out = c.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong",
+                     tools=[ToolSpec("read_file", "d", {"type": "object"})])
+    assert out.text == "xin chào" and out.tool_calls[0].name == "read_file" and out.tool_calls[0].args == {"path": "x"}
+    assert out.cached_input_tokens == 20 and out.model == "claude-x"
+
+
+def test_anthropic_complete_tu_choi_ném_refused(monkeypatch):
+    msg = _FakeMessage(content=[], stop_reason="refusal",
+                       stop_details=type("D", (), {"category": "vi_phạm"})())
+    c = _anthropic_client(monkeypatch, msg=msg)
+    with pytest.raises(Refused, match="từ chối"):
+        c.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+
+
+def test_anthropic_complete_loi_mang_thanh_transient(monkeypatch):
+    c = _anthropic_client(monkeypatch)
+    def boom(**kw): raise c._anthropic.APIConnectionError("đứt mạng")
+    c._client.messages.stream = boom
+    with pytest.raises(TransientError, match="lỗi mạng"):
+        c.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+
+
+def test_anthropic_complete_5xx_la_transient_4xx_la_llmerror(monkeypatch):
+    c = _anthropic_client(monkeypatch)
+    def boom_503(**kw): raise c._anthropic.APIStatusError("quá tải", status_code=503)
+    c._client.messages.stream = boom_503
+    with pytest.raises(TransientError, match="API 503"):
+        c.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+
+    def boom_400(**kw): raise c._anthropic.APIStatusError("schema sai", status_code=400)
+    c._client.messages.stream = boom_400
+    with pytest.raises(LLMError) as e:
+        c.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+    assert not isinstance(e.value, TransientError) and "API 400" in str(e.value)
+
+
+# ---------- ClaudeCodeClient: đường lỗi của tiến trình con thật ----------
+
+def _ccc(**kw):
+    return ClaudeCodeClient(LLMConfig(provider="claude-code", models={"strong": "m", "standard": "m"}, **kw), timeout=5)
+
+
+def test_claude_code_binary_khong_ton_tai_bao_loi_ro(monkeypatch):
+    client = _ccc()
+    def boom(*a, **kw):
+        raise FileNotFoundError("no such file")
+    monkeypatch.setattr(subprocess, "run", boom)
+    with pytest.raises(LLMError, match="không tìm thấy"):
+        client._subprocess(["claude", "-p"], "stdin")
+
+
+def test_claude_code_het_gio_la_transient(monkeypatch):
+    client = _ccc()
+    def boom(*a, **kw):
+        raise subprocess.TimeoutExpired(cmd="claude", timeout=5)
+    monkeypatch.setattr(subprocess, "run", boom)
+    with pytest.raises(TransientError, match="quá 5"):
+        client._subprocess(["claude", "-p"], "stdin")
+
+
+def test_claude_code_qua_han_muc_la_transient_con_loi_khac_thi_khong(monkeypatch):
+    client = _ccc()
+
+    class _R:
+        def __init__(self, code, err): self.returncode, self.stderr, self.stdout = code, err, ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _R(1, "Error: rate limit exceeded, retry later"))
+    with pytest.raises(TransientError):
+        client._subprocess(["claude", "-p"], "stdin")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _R(2, "unknown option '--foo'"))
+    with pytest.raises(LLMError) as e:
+        client._subprocess(["claude", "-p"], "stdin")
+    assert not isinstance(e.value, TransientError)
+
+
+def test_claude_code_json_hong_va_thieu_result():
+    cfg = LLMConfig(provider="claude-code", models={"strong": "m", "standard": "m"})
+    client = ClaudeCodeClient(cfg, runner=lambda a, s, cwd=None: "không phải JSON và cũng không có ngoặc")
+    with pytest.raises(LLMError, match="không phải JSON"):
+        client.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+    client2 = ClaudeCodeClient(cfg, runner=lambda a, s, cwd=None: json.dumps({"stop_reason": "end_turn", "usage": {}}))
+    with pytest.raises(LLMError, match="thiếu trường result"):
+        client2.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+
+
+def test_claude_code_subprocess_thanh_cong_tra_stdout(monkeypatch):
+    """Đường thành công thật của `_subprocess` (không qua `runner` giả) — dòng `return r.stdout`."""
+    client = _ccc()
+
+    class _R:
+        returncode = 0
+        stdout = '{"result": "{}", "usage": {}}'
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _R())
+    assert client._subprocess(["claude", "-p"], "stdin") == _R.stdout
+
+
+def test_claude_code_parse_bao_loi_khi_co_ngoac_nhung_json_hong():
+    """`out` có `{` nhưng nội dung sau đó không phải JSON hợp lệ — khác nhánh "không có `{` nào" ở trên."""
+    cfg = LLMConfig(provider="claude-code", models={"strong": "m", "standard": "m"})
+    client = ClaudeCodeClient(cfg, runner=lambda a, s, cwd=None: '{đây không phải JSON hợp lệ')
+    with pytest.raises(LLMError, match="không phải JSON"):
+        client.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+
+
+# ---------- find_codex_binary: dò cài đặt Codex CLI trên Windows qua LOCALAPPDATA ----------
+
+def test_find_codex_binary_do_qua_localappdata(tmp_path, monkeypatch):
+    from company.llm import find_codex_binary
+    import shutil as sh
+
+    monkeypatch.setattr(sh, "which", lambda b: None)   # "codex" không có sẵn trên PATH
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    older = tmp_path / "OpenAI" / "Codex" / "bin" / "0.1.0" / "codex.exe"
+    newer = tmp_path / "OpenAI" / "Codex" / "bin" / "0.2.0" / "codex.exe"
+    older.parent.mkdir(parents=True); older.write_text("x", encoding="utf-8")
+    newer.parent.mkdir(parents=True); newer.write_text("x", encoding="utf-8")
+    import os, time
+    os.utime(older, (1, 1)); os.utime(newer, (2, 2))
+    assert find_codex_binary("codex") == str(newer)
+    # LOCALAPPDATA có nhưng không cài Codex: lùi về tên binary gốc, không sập
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "rong"))
+    assert find_codex_binary("codex") == "codex"
+
+
+# ---------- CodexClient: đường lỗi tiến trình con thật ----------
+
+def _cxc(**kw):
+    from company.llm import CodexClient
+    return CodexClient(LLMConfig(provider="codex", models={"strong": "m", "standard": "m"}, **kw), binary="codex", timeout=5)
+
+
+def test_codex_binary_khong_ton_tai_bao_loi_ro(monkeypatch):
+    client = _cxc()
+    def boom(*a, **kw):
+        raise FileNotFoundError("no such file")
+    monkeypatch.setattr(subprocess, "run", boom)
+    with pytest.raises(LLMError, match="không tìm thấy"):
+        client._subprocess(["codex", "exec"], "stdin")
+
+
+def test_codex_het_gio_la_transient(monkeypatch):
+    client = _cxc()
+    def boom(*a, **kw):
+        raise subprocess.TimeoutExpired(cmd="codex", timeout=5)
+    monkeypatch.setattr(subprocess, "run", boom)
+    with pytest.raises(TransientError, match="quá 5"):
+        client._subprocess(["codex", "exec"], "stdin")
+
+
+def test_codex_thoat_ma_khac_khong_bao_loi_ro(monkeypatch):
+    client = _cxc()
+
+    class _R:
+        def __init__(self, code): self.returncode, self.stdout, self.stderr = code, "chi tiết stdout", "chi tiết stderr"
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _R(1))
+    with pytest.raises(LLMError, match="thoát mã 1"):
+        client._subprocess(["codex", "exec"], "stdin")
+
+
+def test_codex_parse_bo_qua_dong_khong_phai_json_va_bao_loi_dang_nhap(monkeypatch):
+    """`complete` bỏ qua dòng rác không phải JSON (dòng 845) rồi báo lỗi đăng nhập rõ ràng (dòng 861)."""
+    from company.llm import CodexClient
+    out = ("{dòng bắt đầu bằng ngoặc nhưng không phải JSON hợp lệ\n"
+           '{"type":"error","message":"not logged in, run `codex login` first"}\n'
+           '{"type":"turn.failed","error":{"message":"x"}}\n')
+    cfg = LLMConfig(provider="codex", models={"strong": "m", "standard": "m"})
+    client = CodexClient(cfg, binary="codex", runner=lambda a, s: out)
+    with pytest.raises(LLMError, match="chưa đăng nhập"):
+        client.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
 
 
 def test_sqlite_bus_sees_events_written_by_another_process(tmp_path):

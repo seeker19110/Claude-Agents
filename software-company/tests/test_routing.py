@@ -47,6 +47,22 @@ def _call(r, tier="standard", tools=None):
     return r.complete(system="s", user="u", schema={"type": "object"}, model_tier=tier, tools=tools)
 
 
+def test_bind_toolbox_chuyen_tiep_cho_backend_biet_bo_qua_backend_khong_biet():
+    """ADR-0024: `bind_toolbox` phải gọi tới mọi backend có phương thức đó, và không sập với backend không có (vd. codex)."""
+    class _WithBind(_Client):
+        def __init__(self, name):
+            super().__init__(name)
+            self.bound = None
+
+        def bind_toolbox(self, tb):
+            self.bound = tb
+
+    a, b = _WithBind("a"), _Client("b")   # b không có bind_toolbox
+    r = _router(Backend("a", a), Backend("b", b))
+    r.bind_toolbox("hop-tool-gia")
+    assert a.bound == "hop-tool-gia"
+
+
 def test_quota_error_rotates_to_next_backend_and_rests_first():
     a, b = _Client("a", [TransientError("HTTP 429: quota exceeded, thử lại sau 120s")]), _Client("b")
     r = _router(Backend("a", a), Backend("b", b))

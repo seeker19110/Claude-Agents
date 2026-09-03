@@ -1,7 +1,8 @@
 import pytest
 
+from company import registry as R
 from company.events import NAMESPACE_OWNERS
-from company.registry import SKILLS_DIR, _split, load_agents
+from company.registry import SKILLS_DIR, _split, load_agents, load_skill
 
 EXPECTED = {
     # research (6) — ADR-0006 gộp domain/ux-designer/codebase/tech-scout thành researcher
@@ -44,6 +45,39 @@ def test_every_namespace_owner_is_a_real_agent():
     agents = set(load_agents())
     for ns, owners in NAMESPACE_OWNERS.items():
         assert owners <= agents, (ns, owners - agents)
+
+def test_split_bao_loi_khi_thieu_front_matter():
+    with pytest.raises(ValueError, match="thiếu front matter"):
+        _split("# Không có front matter\nchỉ có nội dung.\n")
+
+
+def test_load_skill_core_only_bao_loi_khi_khong_co_muc_loi(tmp_path, monkeypatch):
+    """`core_only=True` chỉ giữ H1 + `## Quy trình`/`## Checklist` (ADR-0008) — thiếu cả hai thì báo rõ."""
+    (tmp_path / "khong-loi.md").write_text(
+        "---\nname: khong-loi\n---\n# Skill: khong-loi\n\n## Tiêu chuẩn\nchi tiết không phải quy trình.\n",
+        encoding="utf-8")
+    monkeypatch.setattr(R, "SKILLS_DIR", tmp_path)
+    with pytest.raises(ValueError, match="không tìm thấy mục lõi"):
+        load_skill("khong-loi", core_only=True)
+
+
+def test_load_agents_bao_loi_khi_skill_vua_day_du_vua_rut_gon(tmp_path, monkeypatch):
+    """ADR-0008: một skill không được vừa nằm trong `skills` (đầy đủ) vừa trong `skills_core` (rút gọn)."""
+    skills_dir = tmp_path / "skills"; agents_dir = tmp_path / "agents"
+    skills_dir.mkdir(); agents_dir.mkdir()
+    (skills_dir / "dung-chung.md").write_text(
+        "---\nname: dung-chung\n---\n# Skill: dung-chung\n\n## Quy trình\nlàm x.\n\n## Checklist\n- [ ] x\n",
+        encoding="utf-8")
+    (agents_dir / "trung.md").write_text(
+        "---\nid: trung\nblock: engineering\nmodel_tier: standard\nreads: []\nwrites: []\n"
+        "context_namespace_write: null\nskills: [dung-chung]\nskills_core: [dung-chung]\n"
+        "budget_tokens_per_task: 1000\nmax_retries: 1\ntimeout_minutes: 10\n---\n# trung\nDoD.\n",
+        encoding="utf-8")
+    monkeypatch.setattr(R, "SKILLS_DIR", skills_dir)
+    monkeypatch.setattr(R, "AGENTS_DIR", agents_dir)
+    with pytest.raises(ValueError, match="skill vừa đầy đủ vừa rút gọn"):
+        load_agents(check_owners=False)
+
 
 def test_skill_front_matter_name_matches_filename():
     for p in SKILLS_DIR.glob("*.md"):

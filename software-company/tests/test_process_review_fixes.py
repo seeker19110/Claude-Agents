@@ -20,7 +20,7 @@ from company.gate_cli import PersistentGate
 from company.gates import GateRequest
 from company.metrics import collect
 from company.tools import ToolError
-from company.web import check_url
+from company.web import check_url, resolve_host
 
 T1 = {"ticket_id": "T1", "project_id": "P1", "requirement_id": "REQ-1", "assignee": "backend", "title": "GET /orders",
       "acceptance": ["given/when/then"], "estimate_tokens": 4_000, "budget_tokens": 6_000}
@@ -201,3 +201,64 @@ def test_search_url_noi_bo_cua_nguoi_van_hanh_duoc_phep_con_url_cua_model_thi_kh
 def test_check_url_van_chan_o_chang_dau():
     with pytest.raises(ToolError):
         check_url("http://127.0.0.1/")
+
+
+def test_resolve_host_bao_loi_khi_khong_phan_giai_duoc(monkeypatch):
+    def boom(host, port):
+        raise socket.gaierror("không phân giải được")
+    monkeypatch.setattr(web_mod.socket, "getaddrinfo", boom)
+    with pytest.raises(ToolError, match="host bị chặn"):
+        resolve_host("khong-ton-tai.invalid")
+
+
+def test_blocked_host_true_khi_resolve_host_bao_loi(monkeypatch):
+    _dns(monkeypatch, {"trong.internal": "127.0.0.1"})
+    assert web_mod._blocked_host("trong.internal") is True
+    _dns(monkeypatch, {"ngoai.example": "93.184.216.34"})
+    assert web_mod._blocked_host("ngoai.example") is False
+
+
+def test_open_pinned_dung_dung_connection_theo_scheme(monkeypatch):
+    """`_open_pinned` chọn `_PinnedHTTPSConnection`/`_PinnedHTTPConnection` theo scheme và trả response thật."""
+    seen = {}
+
+    class FakeConn:
+        def __init__(self, host, port, pinned_ip=None, timeout=None):
+            seen["host"], seen["port"], seen["ip"] = host, port, pinned_ip
+        def request(self, method, path, headers=None):
+            seen["method"], seen["path"] = method, path
+        def getresponse(self):
+            return _Resp(200, {"Content-Type": "text/plain"}, b"ok")
+
+    monkeypatch.setattr(web_mod, "_PinnedHTTPSConnection", FakeConn)
+    monkeypatch.setattr(web_mod, "_PinnedHTTPConnection", FakeConn)
+    r = web_mod._open_pinned("https://example.com/p?x=1", "93.184.216.34", 5)
+    assert r.status == 200 and seen["ip"] == "93.184.216.34" and seen["path"] == "/p?x=1"
+
+
+def test_default_fetcher_bao_loi_khi_ket_noi_hong(monkeypatch):
+    """Lỗi mạng thật (HTTPException/TimeoutError/OSError) lúc mở kết nối phải hoá thành ToolError rõ, không rò traceback."""
+    _dns(monkeypatch, {"loi.example": "93.184.216.34"})
+    def boom(url, ip, t):
+        raise ConnectionResetError("kết nối bị đóng")
+    monkeypatch.setattr(web_mod, "_open_pinned", boom)
+    with pytest.raises(ToolError, match="không lấy được"):
+        web_mod.default_fetcher("https://loi.example/")
+
+
+def test_fetch_url_json_hong_giu_nguyen_van_ban_goc(monkeypatch):
+    _dns(monkeypatch, {"x.example": "93.184.216.34"})
+    def fetcher(url):
+        return 200, "application/json", b"{khong phai json hop le"
+    web = web_mod.WebTools(fetcher=fetcher)
+    out = web.fetch_url("https://x.example/")
+    assert "khong phai json hop le" in out
+
+
+def test_web_search_voi_search_url_json_hong_bao_loi_ro(monkeypatch):
+    """Nhánh có `search_url`: JSON hỏng phải báo lỗi rõ, không sập (dòng 184-185)."""
+    _dns(monkeypatch, {"searx.internal": "10.0.0.5"})
+    def fetcher(url):
+        return 200, "application/json", b"khong phai json"
+    web = web_mod.WebTools(fetcher=fetcher, search_url="http://searx.internal:8080/search?q={q}&format=json")
+    assert web.web_search("abc") == "lỗi: máy tìm kiếm không trả JSON {results: [...]}"

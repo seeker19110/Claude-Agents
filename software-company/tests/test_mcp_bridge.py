@@ -3,6 +3,7 @@ Không cần CLI thật: test nói JSON-RPC trực tiếp với tiến trình MC
 from __future__ import annotations
 
 import json
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -191,6 +192,122 @@ def test_bridge_binds_loopback_only():
         assert br._server is not None and br._server.server_address[0] == "127.0.0.1"
 
 
+def test_proxy_handle_initialize_and_tools_list_in_process():
+    """`test_proxy_answers_notifications_and_unknown_methods` không gọi `initialize`/`tools/list` thành công —
+    bù ở đây, nói thẳng với `ProxyServer.handle` trong tiến trình test (subprocess không tính vào coverage)."""
+    with ToolBridge(_box()) as br:
+        px = ProxyServer(br.port, br.token)
+        r = px.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+        assert r["result"]["serverInfo"] == {"name": SERVER_NAME, "version": "1.0.0"}
+        assert r["result"]["protocolVersion"]
+        r = px.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        assert r["result"]["tools"][0]["name"] == "echo"
+        assert r["result"]["tools"][0]["inputSchema"]["type"] == "object"
+
+
+def test_proxy_tools_list_lien_lac_that_bai_tra_ve_loi_jsonrpc():
+    """Cha đã đóng (hoặc token sai): `tools/list` phải trả lỗi JSON-RPC, không sập server con."""
+    px = ProxyServer(1, "token-khong-ton-tai")
+    r = px.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    assert r["error"]["code"] == -32603
+    assert "không nối được" in r["error"]["message"]
+
+
+def test_socket_dong_goi_lon_hon_line_max_bi_ngat():
+    """Dòng gửi lên socket vượt trần `LINE_MAX` phải bị ngắt kết nối, không được xử lý tiếp (dòng 80)."""
+    from company import mcp_bridge as mb
+
+    with ToolBridge(_box()) as br:
+        with socket.create_connection((br.host, br.port), timeout=5) as s:
+            huge = b"x" * (mb.LINE_MAX + 10) + b"\n"
+            s.sendall(huge)
+            s.shutdown(socket.SHUT_WR)
+            assert s.recv(65536) == b""   # server đóng kết nối mà không trả lời
+
+
+def test_socket_gui_json_hong_bi_ngat_khong_sap_server():
+    """Dòng không phải JSON hợp lệ (hoặc không giải mã được UTF-8) phải bị ngắt kết nối êm (dòng 83-84)."""
+    with ToolBridge(_box()) as br:
+        with socket.create_connection((br.host, br.port), timeout=5) as s:
+            s.sendall(b"khong phai json {{{\n")
+            s.shutdown(socket.SHUT_WR)
+            assert s.recv(65536) == b""
+        # server vẫn sống, phục vụ kết nối tiếp theo bình thường
+        px = ProxyServer(br.port, br.token)
+        assert px.ask({"op": "list"})["ok"]
+
+
+def test_force_utf8_stdio_bo_qua_stream_khong_co_reconfigure(monkeypatch):
+    """Stream bị thay bằng thứ không có `reconfigure` (vd. trong test) thì bỏ qua, không ném lỗi."""
+    from company import mcp_bridge as mb
+
+    class NoReconfigure:
+        pass
+
+    monkeypatch.setattr(mb.sys, "stdin", NoReconfigure())
+    monkeypatch.setattr(mb.sys, "stdout", NoReconfigure())
+    mb.force_utf8_stdio()   # không được ném AttributeError
+
+
+def test_force_utf8_stdio_goi_reconfigure_khi_co():
+    from company import mcp_bridge as mb
+
+    calls: list[dict] = []
+
+    class FakeStream:
+        def reconfigure(self, **kw):
+            calls.append(kw)
+
+    fake_in, fake_out = FakeStream(), FakeStream()
+    import contextlib
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(_patched(mb, "stdin", fake_in))
+        stack.enter_context(_patched(mb, "stdout", fake_out))
+        mb.force_utf8_stdio()
+    assert calls == [{"encoding": "utf-8", "errors": "replace"}] * 2
+
+
+import contextlib as _contextlib
+
+
+@_contextlib.contextmanager
+def _patched(mod, attr, value):
+    orig = getattr(mod.sys, attr)
+    setattr(mod.sys, attr, value)
+    try:
+        yield
+    finally:
+        setattr(mod.sys, attr, orig)
+
+
+def test_main_parses_argv_and_runs_proxy_until_stdin_closes(monkeypatch):
+    """`main()` đọc `--port`/`--token`, ép UTF-8, và chạy `ProxyServer.run` tới khi stdin đóng."""
+    import io as _io
+
+    from company import mcp_bridge as mb
+
+    fake_stdin = _io.StringIO(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"}) + "\n")
+    fake_stdout = _io.StringIO()
+    monkeypatch.setattr(mb.sys, "stdin", fake_stdin)
+    monkeypatch.setattr(mb.sys, "stdout", fake_stdout)
+
+    rc = mb.main(["--port", "1", "--token", "t"])
+
+    assert rc == 0
+    assert json.loads(fake_stdout.getvalue())["result"] == {}
+
+
+def test_main_entrypoint_dung_lam_module(tmp_path):
+    """Chạy `python -m company.mcp_bridge` với stdin rỗng phải thoát mã 0 ngay (đường `__main__`)."""
+    import os as _os
+
+    root = str(Path(__file__).resolve().parents[1] / "src")
+    env = dict(_os.environ, PYTHONPATH=root)
+    proc = subprocess.run([sys.executable, "-m", "company.mcp_bridge", "--port", "1", "--token", "t"],
+                          input="", capture_output=True, text=True, timeout=10, env=env)
+    assert proc.returncode == 0, proc.stderr
+
+
 # ---------- bảng mã: kênh stdio phải sống được trên console không phải UTF-8 ----------
 
 def test_ghi_duoc_thong_diep_tieng_viet_ra_stdout_cp1252():
@@ -207,6 +324,17 @@ def test_ghi_duoc_thong_diep_tieng_viet_ra_stdout_cp1252():
     out.flush()
     raw = out.buffer.getvalue().decode("ascii")           # thuần ASCII: đó chính là điều cần chứng minh
     assert json.loads(raw)["error"]["message"] == "method lạ: phuong-thuc-la"
+
+
+def test_run_bo_qua_dong_trong_va_json_hong_roi_tra_loi_dong_hop_le():
+    """`ProxyServer.run` phải bỏ qua dòng trắng và dòng JSON hỏng (không phải dict), rồi vẫn trả lời dòng hợp lệ tiếp theo."""
+    import io as _io
+
+    out = _io.StringIO()
+    src = _io.StringIO("\n" + "khong phai json {{{\n" + "[1, 2]\n" +
+                       json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"}) + "\n")
+    ProxyServer(1, "token").run(stdin=src, stdout=out)
+    assert json.loads(out.getvalue())["result"] == {}
 
 
 def test_khung_tra_loi_khong_co_byte_ngoai_ascii():

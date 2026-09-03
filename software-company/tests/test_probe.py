@@ -56,6 +56,19 @@ def test_probe_reports_none_when_cli_cannot_run():
     assert r.mode == "none" and "login" in r.detail
 
 
+def test_probe_bao_none_khi_khoi_tao_client_that_bai(monkeypatch):
+    """`ClaudeCodeClient(cfg, ...)` có thể tự ném `LLMError` ngay lúc khởi tạo (vd. binary không tồn tại đường dẫn
+    tuyệt đối hỏng) — `probe_backend` phải bắt và báo `mode="none"`, không để lộ traceback."""
+    import company.probe as probe_mod
+
+    def boom(cfg, timeout=300.0, **kw):
+        raise LLMError("không dựng được client")
+
+    monkeypatch.setattr(probe_mod, "ClaudeCodeClient", boom)
+    r = probe_backend(_cfg(), "claude-1", runner=lambda a, s, cwd=None: _ok())
+    assert r.mode == "none" and "không dựng được client" in r.detail
+
+
 def test_probe_reports_cli_when_model_ignores_the_tools():
     """CLI chạy, nhưng không tool nào được gọi: chưa chứng minh được cầu MCP thông — không kết luận `mcp`."""
     r = probe_backend(_cfg(), "claude-1", runner=lambda a, s, cwd=None: _ok())
@@ -107,6 +120,51 @@ def test_probe_cli_exits_nonzero_when_no_claude_backend(tmp_path: Path, monkeypa
     p.write_text("provider: openai\nbase_url: http://x/v1\nmodels: {light: m}\n", encoding="utf-8")
     assert main(["--config", str(p)]) == 1
     assert "Không có backend" in capsys.readouterr().err
+
+
+def test_probe_cli_ghi_de_model_light_khi_co_tuy_chon_model(tmp_path, monkeypatch, capsys):
+    """`--model` phải ghi đè `models["light"]` của MỌI backend được dò (dòng 126)."""
+    monkeypatch.delenv("COMPANY_LLM_BACKENDS", raising=False); monkeypatch.delenv("COMPANY_LLM_PROVIDER", raising=False)
+    p = tmp_path / "llm.yaml"
+    p.write_text("provider: fake\nbackends:\n  - {name: claude-1, provider: claude-code, models: {light: cu}}\n",
+                 encoding="utf-8")
+    import company.probe as probe_mod
+
+    seen = []
+    monkeypatch.setattr(probe_mod, "probe_backend", lambda cfg, name, timeout=300.0: (seen.append(cfg.models["light"]),
+                        probe_mod.Result(name, "none"))[1])
+    assert main(["--config", str(p), "--model", "moi"]) == 1
+    assert seen == ["moi"]
+
+
+def test_probe_cli_json_output(capsys):
+    """`--json` in mảng JSON các Result thay vì bảng chữ, và mã thoát theo `ok` của mọi backend (dòng 133-135)."""
+    assert main(["--binary", "claude-khong-ton-tai-xyz", "--json"]) == 1
+    data = json.loads(capsys.readouterr().out)
+    assert isinstance(data, list) and data[0]["mode"] == "none"
+
+
+def test_probe_cli_bao_thanh_cong_khi_moi_backend_deu_ok(monkeypatch, capsys):
+    """Mọi backend dùng được `mcp_tools: true` → in dòng tổng kết thành công và thoát 0 (dòng 144-146)."""
+    import company.probe as probe_mod
+    from company.probe import Result
+
+    monkeypatch.setattr(probe_mod, "probe_backend",
+                        lambda cfg, name, timeout=300.0: Result(name, "mcp", "claude", "CLI gọi được tool của công ty", True, "m"))
+    assert main(["--binary", "khong-quan-trong"]) == 0
+    assert "Mọi backend dùng được" in capsys.readouterr().out
+
+
+def test_probe_cli_bao_cli_khi_mot_backend_chi_dung_duoc_cli_tools(monkeypatch, capsys):
+    """Có backend `mode == "cli"` (không phải `none`) → tổng kết phải nêu tên backend đó (dòng 147-149)."""
+    import company.probe as probe_mod
+    from company.probe import Result
+
+    monkeypatch.setattr(probe_mod, "probe_backend",
+                        lambda cfg, name, timeout=300.0: Result(name, "cli", "claude", "CLI cũ, không hỗ trợ --mcp-config"))
+    assert main(["--binary", "khong-quan-trong"]) == 1
+    out = capsys.readouterr().out
+    assert "chỉ dùng được `cli_tools: true`" in out
 
 
 def test_probe_cli_reports_missing_binary(capsys):

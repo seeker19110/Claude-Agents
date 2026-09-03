@@ -31,6 +31,10 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["src/company"]
 omit = ["src/company/graph.py"]   # cần langgraph, không cài trong CI
+# ThreadingTCPServer trong mcp_bridge chạy handler ở thread riêng; không khai concurrency=thread thì
+# coverage đôi khi bỏ sót các dòng chạy trong thread đó, gây flaky giữa các lần đo (thấy rõ khi chạy
+# cùng toàn bộ test suite thay vì riêng test_mcp_bridge.py).
+concurrency = ["thread"]
 
 [tool.coverage.report]
 # Ngưỡng đặt ở mức đang đạt được: nó chặn tụt lùi, không phải mục tiêu để phấn đấu tới.

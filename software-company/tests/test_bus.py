@@ -15,6 +15,13 @@ def test_invalid_payload_rejected():
     with pytest.raises(BusError):
         bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload={"ticket_id": "T1"}))
 
+def test_check_khong_co_schema_cho_topic_bao_loi_ro():
+    """`_check` phải báo rõ khi topic không có schema — nhánh chỉ chạm được khi gọi thẳng, vì `Envelope.topic` đã
+    giới hạn kiểu ở tầng pydantic."""
+    bus = InMemoryBus()
+    with pytest.raises(BusError, match="không có schema cho topic"):
+        bus._check("topic-la", None, {})
+
 def test_schema_required_fields():
     bus = InMemoryBus()
     with pytest.raises(BusError):
@@ -67,3 +74,5 @@ def test_blackboard_isolates_projects_but_shares_knowledge():
     bb.write("supervisor", "knowledge", "lesson:1", "{}", project_id="PA")
     assert bb.read("knowledge", "PB") is not None, "bài học dùng chung mọi dự án"
     assert "knowledge" in bb.snapshot("PB")
+    assert bb.all()["PA/prd"].content_ref == "A/prd.md" and "knowledge" in bb.all()
+    assert bb.overview()["PA/prd"] == "A/prd.md" and bb.overview()["knowledge"] == "lesson:1"

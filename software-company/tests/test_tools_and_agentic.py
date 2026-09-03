@@ -16,7 +16,7 @@ from company.bus import InMemoryBus
 from company.evals import RecordingClient, ReplayClient, run_eval, stale_recordings
 from company.evals import main as evals_main
 from company.events import Envelope
-from company.llm import AnthropicClient, FakeClient, LLMConfig, LLMError, OpenAICompatClient
+from company.llm import AnthropicClient, FakeClient, LLMConfig, LLMError, OpenAICompatClient, Refused
 from company.orchestrator import Orchestrator, _cycle
 from company.runner import AgentRunner, RunnerError
 from company.tools import ToolBox, ToolCall, ToolError, ToolSpec, WorkspaceTools, _clean_env
@@ -74,6 +74,66 @@ def test_tools_allowlist_and_argument_validation(tmp_path):
     with pytest.raises(ToolError, match="không tồn tại"):
         tb.call(_tc("bash", command="ls"))
     assert tb.calls[-1]["name"] == "read_file" and tb.summary() == {"run": 2, "read_file": 2}
+
+
+def test_toolbox_call_bat_typeerror_valueerror_thanh_loi_tham_so():
+    """Hàm tool ném TypeError/ValueError (không phải ToolError) vẫn phải quay về model như lỗi tham số, không sập."""
+    tb = ToolBox()
+    tb.add(ToolSpec("chia", "chia hai số", {"type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"]}),
+           lambda a: 1 / a if a else (_ for _ in ()).throw(ValueError("a không được là 0")))
+    out = tb.call(_tc("chia", a=0))
+    assert out.startswith("lỗi tham số") and "không được là 0" in out
+
+
+def test_write_file_tu_choi_duoi_nhi_phan(tmp_path):
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    tb = WorkspaceTools(ws).toolbox()
+    assert tb.call(_tc("write_file", path="logo.png", content="x")).startswith("lỗi")
+    assert not (ws.path / "logo.png").exists()
+
+
+def test_search_bao_loi_khi_regex_sai(tmp_path):
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    tb = WorkspaceTools(ws).toolbox()
+    out = tb.call(_tc("search", pattern="(", glob="**/*.py"))
+    assert out.startswith("lỗi") and "regex sai" in out
+
+
+def test_search_bo_qua_file_khong_doc_duoc(tmp_path, monkeypatch):
+    """`_walk` liệt kê file OK nhưng `read_text` ném OSError (vd. quyền, race xoá file) — `search` bỏ qua, không sập."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    tb = WorkspaceTools(ws).toolbox()
+    from pathlib import Path as _Path
+    orig = _Path.read_text
+
+    def boom(self, *a, **kw):
+        if self.name == "mod.py":
+            raise OSError("không đọc được")
+        return orig(self, *a, **kw)
+
+    monkeypatch.setattr(_Path, "read_text", boom)
+    out = tb.call(_tc("search", pattern="def", glob="**/*.py"))
+    assert not any(line.startswith("mod.py:") for line in out.splitlines()) and "test_mod.py:" in out
+
+
+def test_run_het_gio_bao_loi_ro(tmp_path, monkeypatch):
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    tb = WorkspaceTools(ws, timeout=1).toolbox()
+    import subprocess as sp
+
+    def boom(*a, **kw):
+        raise sp.TimeoutExpired(cmd="lint", timeout=1)
+
+    monkeypatch.setattr(sp, "run", boom)
+    out = tb.call(_tc("run", command="lint"))
+    assert out.startswith("lỗi") and "quá 1s" in out
+
+
+def test_run_tu_choi_paths_la_co_thay_vi_duong_dan(tmp_path):
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    wt = WorkspaceTools(ws)
+    with pytest.raises(ToolError, match="không nhận tuỳ chọn"):
+        wt.run("lint", paths=["--exclude=x"])
 
 
 def test_read_only_toolbox_has_no_write(tmp_path):
@@ -350,6 +410,40 @@ def test_eval_record_then_replay_without_model(tmp_path, monkeypatch, capsys):
     assert evals_main(["reviewer", "--replay"]) == 1
 
 
+def test_eval_main_khong_replay_khong_record_dung_client_that(tmp_path, monkeypatch, capsys):
+    """Không `--replay` cũng không `--record`: `main` phải tự tạo client qua `make_client()` (nhánh `else`)."""
+    monkeypatch.setattr(evals_mod, "RECORDINGS_DIR", tmp_path)
+    import company.llm as llm_mod
+
+    fake = FakeClient(handler=_reviewer_handler, tokens_per_call=(500, 40))
+    monkeypatch.setattr(llm_mod, "make_client", lambda: fake)
+    assert evals_main(["reviewer"]) == 0
+    out = capsys.readouterr().out
+    assert "reviewer" in out and "đã ghi" not in out, "không --record thì không lưu file"
+
+    # --record: dùng RecordingClient bọc client thật, rồi lưu và in đường dẫn (dòng 255-256, 261)
+    fake2 = FakeClient(handler=_reviewer_handler, tokens_per_call=(500, 40))
+    monkeypatch.setattr(llm_mod, "make_client", lambda: fake2)
+    assert evals_main(["reviewer", "--record"]) == 0
+    out = capsys.readouterr().out
+    assert "đã ghi" in out and (tmp_path / "reviewer.json").exists()
+
+
+def test_get_tra_ve_none_khi_duong_dan_di_qua_gia_tri_vo_huong():
+    """`_get` phải trả None (không ném lỗi) khi dotted path còn phần mà giá trị hiện tại không phải list/dict."""
+    from company.evals import _get
+
+    assert _get({"a": "chuoi"}, "a.b") is None
+    assert _get({"a": 5}, "a.b.c") is None
+
+
+def test_check_max_len_bao_loi_khi_vuot_han_muc():
+    from company.evals import check
+
+    fails = check({"findings": [1, 2, 3]}, {"max_len": {"findings": 2}})
+    assert fails and "len(findings) ≤ 2" in fails[0] and "thực tế 3" in fails[0]
+
+
 def test_committed_recordings_match_current_prompts():
     """CI: mọi bản ghi trong evals/recordings/ phải khớp prompt/skill/ca eval hiện tại. Lệch → ghi lại bằng model thật."""
     stale = stale_recordings()
@@ -398,6 +492,69 @@ def test_openai_compat_tool_calls_roundtrip():
     assert req2["messages"][3] == {"role": "tool", "tool_call_id": "call_1", "content": "1\tx"}
 
 
+class _ContentFilterSrv(BaseHTTPRequestHandler):
+    def do_POST(self):
+        self.rfile.read(int(self.headers["Content-Length"]))
+        out = {"model": "local", "choices": [{"message": {"role": "assistant", "content": ""}, "finish_reason": "content_filter"}],
+               "usage": {"prompt_tokens": 5, "completion_tokens": 0}}
+        data = json.dumps(out).encode(); self.send_response(200); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    def log_message(self, *a): pass
+
+
+def test_openai_compat_content_filter_nem_refused():
+    srv = HTTPServer(("127.0.0.1", 0), _ContentFilterSrv); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        cfg = LLMConfig(provider="openai", models={"strong": "m", "standard": "m"}, base_url=f"http://127.0.0.1:{srv.server_port}/v1", api_key="k")
+        with pytest.raises(Refused, match="content_filter"):
+            OpenAICompatClient(cfg).complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+    finally:
+        srv.shutdown()
+
+
+class _BadToolArgsSrv(BaseHTTPRequestHandler):
+    def do_POST(self):
+        self.rfile.read(int(self.headers["Content-Length"]))
+        msg = {"role": "assistant", "content": None, "tool_calls": [{"id": "call_1", "type": "function",
+               "function": {"name": "read_file", "arguments": "{khong phai json hop le"}}]}
+        out = {"model": "local", "choices": [{"message": msg, "finish_reason": "tool_calls"}],
+               "usage": {"prompt_tokens": 5, "completion_tokens": 1}}
+        data = json.dumps(out).encode(); self.send_response(200); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    def log_message(self, *a): pass
+
+
+def test_openai_compat_tool_call_arguments_hong_van_tra_ve_raw():
+    """`function.arguments` không phải JSON hợp lệ (model lỗi định dạng) — vẫn phải trả ToolCall, không sập, giữ dữ
+    liệu thô qua `_raw` để runner còn thấy được lỗi thay vì mất luôn lời gọi."""
+    tools = [ToolSpec("read_file", "đọc", {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]})]
+    srv = HTTPServer(("127.0.0.1", 0), _BadToolArgsSrv); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        cfg = LLMConfig(provider="openai", models={"strong": "m", "standard": "m"}, base_url=f"http://127.0.0.1:{srv.server_port}/v1", api_key="k")
+        c = OpenAICompatClient(cfg).complete(system="s", user="u", schema={"type": "object"}, model_tier="strong", tools=tools)
+        assert c.tool_calls[0].args["_raw"] == "{khong phai json hop le"
+    finally:
+        srv.shutdown()
+
+
+def test_anthropic_client_khoi_tao_that_khi_co_sdk(monkeypatch):
+    """`AnthropicClient.__init__` chỉ chạm được khi SDK `anthropic` cài được — máy CI này không cài (ADR không cần),
+    nên tiêm một module giả tối thiểu vào `sys.modules` để đi đúng nhánh khởi tạo thật, không phải nhánh ImportError."""
+    import sys
+    import types
+
+    fake_anthropic = types.ModuleType("anthropic")
+
+    class _FakeAnthropic:
+        def __init__(self, timeout=None):
+            self.timeout = timeout
+
+    fake_anthropic.Anthropic = _FakeAnthropic
+    monkeypatch.setitem(sys.modules, "anthropic", fake_anthropic)
+    c = AnthropicClient(LLMConfig(provider="anthropic", models={"strong": "m", "standard": "m"}), timeout=123.0)
+    assert c._anthropic is fake_anthropic and c._client.timeout == 123.0
+
+
 def test_anthropic_message_conversion_groups_tool_results():
     msgs = [{"role": "user", "content": "u"},
             {"role": "assistant", "content": "đọc đã", "tool_calls": [{"id": "a", "name": "read_file", "args": {"path": "x"}},
@@ -431,6 +588,11 @@ def test_checks_follow_repo_stack_and_never_fake_pass(tmp_path):
     (tmp_path / "node-bare" / "package.json").write_text('{"name": "x"}', encoding="utf-8")
     bare = detect(tmp_path / "node-bare")
     assert bare.name == "node" and bare.lint is None and bare.test is None, "không có script thì không giả vờ chạy được"
+
+    (tmp_path / "node-hong").mkdir()
+    (tmp_path / "node-hong" / "package.json").write_text("{ khong phai json", encoding="utf-8")
+    broken = detect(tmp_path / "node-hong")
+    assert broken.name == "node" and broken.lint is None and broken.test is None, "package.json hỏng thì coi như không có script, không sập"
 
     for marker, name in (("go.mod", "go"), ("Cargo.toml", "rust"), ("pom.xml", "maven"), ("build.gradle", "gradle")):
         d = tmp_path / name; d.mkdir(); (d / marker).write_text("x", encoding="utf-8")

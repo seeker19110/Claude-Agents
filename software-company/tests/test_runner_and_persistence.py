@@ -31,9 +31,10 @@ from company.llm import (
     strict_schema,
 )
 from company.runner import AgentRunner, RunnerError, payload_schema
+from company.runner import main as runner_main
 from company.sqlite_bus import SQLiteBus
 from company.supervisor import Supervisor
-from company.workspace import TicketWorkspace
+from company.workspace import TicketWorkspace, WorkspaceError, exclude_worktrees
 
 
 def _pr_env(tid="TCK-1"):
@@ -42,6 +43,22 @@ def _pr_env(tid="TCK-1"):
 
 
 # ---------- runner ----------
+
+def test_runner_main_chay_mot_agent_that_tren_mot_envelope(tmp_path, monkeypatch, capsys):
+    """`python -m company.runner <agent> <topic_out> <input.json>`: một lượt agent thật trên bus SQLite (dòng 401-414)."""
+    import company.llm as llm_mod
+
+    db = tmp_path / "r.sqlite"
+    inp = tmp_path / "in.json"
+    inp.write_text(_pr_env("TCK-1").model_dump_json(), encoding="utf-8")
+    fake = FakeClient(responses=[{"ticket_id": "TCK-1", "source": "reviewer", "verdict": "pass"}])
+    monkeypatch.setattr(llm_mod, "make_client", lambda: fake)
+    rc = runner_main(["reviewer", "review-results", str(inp), "--db", str(db)])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["topic"] == "review-results" and out["payload"]["verdict"] == "pass"
+    assert list(SQLiteBus(db).replay(topic="review-results")), "phải publish thật lên bus SQLite"
+
 
 def test_runner_publishes_output_and_audit_with_real_tokens():
     bus = InMemoryBus(); bb = Blackboard(bus)
@@ -101,6 +118,91 @@ def test_runner_llm_error_is_audited():
     with pytest.raises(LLMError):
         AgentRunner(bus, FakeClient()).run("reviewer", _pr_env(), "review-results")
     assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["llm_error"]
+
+
+def test_batch_schema_boc_schema_thanh_items():
+    from company.runner import batch_schema
+    inner = {"type": "object", "properties": {"x": {"type": "string"}}}
+    s = batch_schema(inner)
+    assert s["required"] == ["items"] and s["properties"]["items"]
+
+
+def test_payload_schema_bao_loi_khi_topic_khong_co_schema():
+    with pytest.raises(RunnerError, match="không có schema cho topic"):
+        payload_schema("topic-khong-ton-tai")
+
+
+def test_generate_context_only_bao_loi_khi_agent_khong_so_huu_namespace():
+    """`CONTEXT_ONLY` mà agent không có `namespaces_write` nào phải báo lỗi rõ trước khi gọi model."""
+    from company.runner import CONTEXT_ONLY
+    bus = InMemoryBus()
+    client = FakeClient(responses=[{}])
+    with pytest.raises(RunnerError, match="không sở hữu namespace"):
+        AgentRunner(bus, client).generate("reviewer", _pr_env(), CONTEXT_ONLY)
+
+
+def test_generate_bao_loi_khi_dau_ra_khong_phai_list_dict():
+    bus = InMemoryBus()
+    client = FakeClient(responses=[{"items": ["khong-phai-dict"]}])
+    inp = Envelope(topic="approved-specs", key="T1", actor="spec-writer", payload={"ticket_id": "T1"})
+    with pytest.raises(RunnerError, match="object hoặc"):
+        AgentRunner(bus, client).generate("delivery-lead", inp, "tasks", many=True)
+
+
+def test_generate_bao_loi_khi_context_writes_thieu_truong():
+    bus = InMemoryBus()
+    client = FakeClient(responses=[{"payload": {"ticket_id": "T1", "branch": "b", "pr_ref": "#1", "local_checks": {}},
+                                    "context_writes": [{"namespace": "architecture"}]}])
+    inp = Envelope(topic="approved-specs", key="T1", actor="spec-writer", payload={"ticket_id": "T1"})
+    with pytest.raises(RunnerError, match="context_writes phải là"):
+        AgentRunner(bus, client).generate("delivery-lead", inp, "tasks")
+
+
+def test_write_context_bo_qua_namespace_khong_thuoc_agent():
+    """spec-writer chỉ sở hữu namespace `prd`: ghi vào namespace khác phải bị từ chối và audit `context_rejected`."""
+    bus = InMemoryBus(); bb = Blackboard(bus)
+    runner = AgentRunner(bus, FakeClient(), blackboard=bb)
+    done = runner.write_context("spec-writer", _pr_env(),
+                                [{"namespace": "architecture", "content_ref": "x", "summary": "s"}])
+    assert done == []
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "context_rejected" in acts
+
+
+def test_write_context_bo_qua_khi_khong_co_blackboard():
+    bus = InMemoryBus()
+    runner = AgentRunner(bus, FakeClient(), blackboard=None)
+    done = runner.write_context("spec-writer", _pr_env(), [{"namespace": "prd", "content_ref": "x", "summary": "s"}])
+    assert done == []
+    assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["context_rejected"]
+
+
+def test_publish_bao_loi_khi_bus_tu_choi_payload():
+    bus = InMemoryBus()
+    runner = AgentRunner(bus, FakeClient())
+    with pytest.raises(RunnerError, match="đầu ra không hợp lệ"):
+        runner.publish("reviewer", _pr_env(), "review-results", {"khong-hop-le": True})
+    assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["invalid_output"]
+
+
+def test_generate_in_workspace_commit_that_bai_hoa_thanh_runner_error(tmp_path):
+    """`ws.commit_all` ném `WorkspaceError` (vd. index.lock) sau khi checks chạy xong: runner phải bọc lại rõ ràng."""
+    from test_tools_and_agentic import _init_repo, _pr, _inp, _tc, _first_turn
+    repo = _init_repo(tmp_path / "repo")
+    ws = TicketWorkspace(repo, "T1", base="main")
+    th = lambda m, t: [_tc("write_file", path="feature.py", content="F = 1\n")] if _first_turn(m) else []  # noqa: E731
+    client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=th)
+    bus = InMemoryBus()
+    runner = AgentRunner(bus, client)
+
+    def boom(*a, **kw):
+        raise WorkspaceError("git commit: index.lock")
+    monkeypatch_target = ws
+    task = Task(ticket_id="T1", project_id="P", requirement_id="R", assignee="backend", title="x", acceptance=["a"], budget_tokens=1000)
+    inp = Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=task.model_dump())
+    ws.create(); ws.commit_all = boom   # gắn sau create(): tránh chạm git thật lúc khởi tạo worktree
+    with pytest.raises(RunnerError, match="commit thất bại"):
+        runner.generate_in_workspace("backend", inp, ws)
 
 
 def test_payload_schema_and_strict_copy():
@@ -220,6 +322,14 @@ def test_gate_cli_roundtrip(tmp_path, capsys):
     assert PersistentGate(SQLiteBus(db)).is_approved("SPEC-1")
 
 
+def test_gate_cli_request_bao_loi_thieu_subject_id_hoac_checklist(tmp_path, capsys):
+    db = str(tmp_path / "g2.sqlite")
+    assert gate_main(["--db", db, "request", "spec", "  ", "--by", "spec-writer", "--checklist", "prd"]) == 2
+    assert "subject_id không được rỗng" in capsys.readouterr().err
+    assert gate_main(["--db", db, "request", "spec", "SPEC-2", "--by", "spec-writer"]) == 2
+    assert "cần --checklist" in capsys.readouterr().err
+
+
 # ---------- workspace git worktree ----------
 
 def _init_repo(path: Path) -> Path:
@@ -249,6 +359,41 @@ def test_workspace_worktree_checks_and_commit(tmp_path):
     assert ws.create() == p, "idempotent"
     ws.remove(delete_branch=True)
     assert not p.exists()
+
+
+def test_git_loi_nem_workspace_error_voi_stderr(tmp_path):
+    import company.workspace as wsmod
+    repo = _init_repo(tmp_path / "repo")
+    with pytest.raises(WorkspaceError, match="git"):
+        wsmod._git(repo, "khong-phai-lenh-git")
+
+
+def test_exclude_worktrees_bo_qua_khi_khong_doc_duoc_file(tmp_path, monkeypatch):
+    """`exclude_worktrees` không được sập nếu `.git/info/exclude` tồn tại nhưng không đọc được (OSError)."""
+    repo = _init_repo(tmp_path / "repo")
+    from pathlib import Path as _Path
+    orig = _Path.read_text
+
+    def boom(self, *a, **kw):
+        if self.name == "exclude":
+            raise OSError("không đọc được")
+        return orig(self, *a, **kw)
+
+    monkeypatch.setattr(_Path, "exists", lambda self: True if self.name == "exclude" else Path.exists(self))
+    monkeypatch.setattr(_Path, "read_text", boom)
+    exclude_worktrees(repo)   # không ném lỗi
+
+
+def test_create_worktree_da_co_branch_dung_lai_khong_tao_moi(tmp_path):
+    """`create()` khi branch `ticket/<id>` đã tồn tại (vd. worktree cũ bị xoá tay) phải gắn lại vào branch đó,
+    không tạo branch mới từ `base` (dòng `worktree add` không kèm `-b`)."""
+    repo = _init_repo(tmp_path / "repo")
+    ws = TicketWorkspace(repo, "TCK-re", base="main")
+    p = ws.create()
+    ws.remove(delete_branch=False)   # xoá worktree, GIỮ branch
+    assert not p.exists()
+    p2 = ws.create()   # branch đã có từ trước -> nhánh "worktree add" (không -b)
+    assert p2 == p and p2.exists()
 
 
 # ---------- eval ----------

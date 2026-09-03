@@ -220,6 +220,20 @@ def test_model_error_is_audited_and_loop_continues():
 
 # ---------- CLI ----------
 
+def test_cli_run_watch_thoat_em_khi_ctrl_c(tmp_path, capsys, monkeypatch):
+    """`run --watch`: Ctrl+C (KeyboardInterrupt) trong `orch.watch` phải thoát êm mã 0, in status cuối, không traceback."""
+    import company.orchestrator as om
+    db = str(tmp_path / "c.sqlite")
+    monkeypatch.setenv("COMPANY_LLM_PROVIDER", "fake")
+
+    def boom(self, interval=5.0, max_ticks=None):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(om.Orchestrator, "watch", boom)
+    rc = orch_main(["--db", db, "run", "--watch", "5"])
+    assert rc == 0
+    assert '"queue"' in capsys.readouterr().out
+
 def test_cli_publish_and_status(tmp_path, capsys, monkeypatch):
     db = str(tmp_path / "c.sqlite"); f = tmp_path / "req.json"
     f.write_text(json.dumps({"project_id": "P1", "description": "app"}), encoding="utf-8")
@@ -354,6 +368,35 @@ def test_overdue_review_is_reassigned_once():
     orch.tick(now=later)
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert orch.lead.state["T2"] == "merged" and acts.count("review.reassign") == 1 and acts.count("llm_error") == 1
+
+
+def test_spec_bi_reject_thi_khong_lap_plan_va_bi_danh_dau_xong():
+    """Gate spec bị reject: event `approved-specs` đang hoãn phải được đánh dấu xong (không lặp lại mãi), không lập plan."""
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app đặt lịch"})
+    orch.run()
+    _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "a"}]})
+    orch.run()
+    assert "SPEC-P1" in orch.gate.pending
+    orch.gate.decide("SPEC-P1", "reject", by="human:po", reason="không cần nữa")
+    orch.run()
+    assert not orch.deferred and not orch.plans and not orch.lead.tickets
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert not any(a.startswith("plan_") for a in acts)
+
+
+def test_tick_nhac_va_escalate_gate_qua_han():
+    """`tick` phải audit `gate.remind`/`gate.overdue` và giao việc cho supervisor khi gate quá hạn — mỗi cái một lần."""
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    _drive_to_plan(bus, orch)
+    later = datetime.now(UTC) + timedelta(hours=25)   # > timeout mặc định 24h
+    orch.tick(now=later)
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "gate.overdue" in acts
+    assert any(a.action == "escalate" and a.target == "PLAN-P1-1" for a in orch.supervisor.actions)
+    n_before = len(orch.supervisor.actions)
+    orch.tick(now=later)   # lần hai: đã escalate rồi, không lặp lại
+    assert len(orch.supervisor.actions) == n_before
 
 
 def test_incomplete_answers_go_back_to_clarifier_then_spec_writer():
