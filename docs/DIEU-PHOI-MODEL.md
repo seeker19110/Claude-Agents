@@ -9,7 +9,7 @@ Quyết định kiến trúc: `software-company/docs/adr/0019-subscription-routi
 
 | Backend | Cách nối | Model có | Đặc điểm |
 |---|---|---|---|
-| **Claude Pro/Max** | provider `claude-code`: CLI `claude -p` đã `claude login` trên máy | Opus / Sonnet / Haiku theo gói | Suy luận và code tốt nhất; hạn mức theo cửa sổ 5 giờ + tuần; **không tool-use** cho lớp ngoài (khối kỹ thuật cần tool phải đi backend khác). Nhiều tài khoản Claude trên một máy: mỗi tài khoản một backend với `config_dir` riêng (`CLAUDE_CONFIG_DIR`) |
+| **Claude Pro/Max** | provider `claude-code`: CLI `claude -p` đã `claude login` trên máy | Opus / Sonnet / Haiku theo gói | Suy luận và code tốt nhất; hạn mức theo cửa sổ 5 giờ + tuần; tool-use bật bằng `mcp_tools: true` (ADR-0024, tool của công ty qua cầu MCP — giữ nguyên sandbox `tools.py`) hoặc `cli_tools: true` (ADR-0023, CLI tự cầm tool của nó); không bật thì backend này không nhận việc có tool. Nhiều tài khoản Claude trên một máy: mỗi tài khoản một backend với `config_dir` riêng (`CLAUDE_CONFIG_DIR`) |
 | **ChatGPT Plus/Pro** | provider `codex`: Codex CLI `codex exec --json` đã `codex login` (app Codex trên Windows đi kèm CLI, tự tìm trong `%LOCALAPPDATA%/OpenAI/Codex/bin`) | GPT theo gói (vd. `gpt-5.6-terra`); `effort` → `model_reasoning_effort` | Structured output qua `--output-schema`; sandbox read-only trong thư mục rỗng; **không tool-use** của công ty. Nhiều tài khoản ChatGPT: mỗi tài khoản một backend với `config_dir` riêng (`CODEX_HOME`) |
 | **Google Antigravity** | provider `openai` → `../gateway` (`http://127.0.0.1:8100/v1`), xoay vòng nhiều tài khoản Google | `gemini-3.7-flash` (+`-medium`/`-low`), `gemini-3.6-flash`, `gemini-3.1-pro`, `claude-sonnet-4-6` (alias khác map về 4 model upstream này, xem `gateway/README.md`) | Miễn phí theo quota từng tài khoản; gateway tự đổi tài khoản, hết cả pool thì trả 429 kèm "thử lại sau khoảng Ns"; có tool-use |
 | **Model local** | provider `openai` → Ollama / vLLM / LM Studio | qwen3, llama, gemma... | Không bao giờ hết quota; chất lượng thấp hơn — lưới đỡ cuối cho việc nhẹ |
@@ -84,8 +84,9 @@ code kiểm định, agent review khác); (c) độ dài/độ phức tạp đ�
 | Chỉ Antigravity | một backend; gateway tự xoay tài khoản |
 | Có thêm Ollama | để cuối danh sách, không `prefer`; chỉ nhận việc khi mọi gói khác nghỉ |
 
-Khối kỹ thuật của software-company (tool-use) luôn bỏ qua backend `claude-code` và `codex`; nếu muốn code bằng Claude thì cho
-`claude-sonnet-4-6` qua Antigravity hoặc dùng provider `anthropic` có key.
+Khối kỹ thuật của software-company (tool-use) luôn bỏ qua backend `codex`. Với `claude-code` thì tuỳ cấu hình: bật
+`mcp_tools: true` (khuyến nghị) hoặc `cli_tools: true` là nhận việc có tool, không bật thì bị bỏ qua như trước. Muốn code bằng
+model khác thì cho `claude-sonnet-4-6` qua Antigravity hoặc dùng provider `anthropic` có key.
 
 ## 5. Cơ chế xoay (code)
 

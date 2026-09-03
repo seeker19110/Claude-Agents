@@ -14,8 +14,8 @@ Nguyên tắc chung cho mọi công ty:
 
 | Thư mục | Vai trò | Quy mô |
 |---|---|---|
-| [`software-company/`](software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 20 agent, 45 skill, 18 topic, 14 template, 4 human gate (+ gate `escalation`), ADR 0001–0023, 401 test |
-| [`Studio-creators/`](Studio-creators/) | Phòng ban sáng tạo video (YouTube): kế hoạch → kịch bản → fact-check → render (TTS + ảnh + ghép) → sửa từng cảnh → review → đăng → số liệu thật nuôi chiến lược. Approval-first, media trung lập provider | 7 khối, 14 agent, 24 skill, 19 topic, 7 template, 4 human gate, ADR 0001–0008 (0007 tool web, 0008 adapter YouTube thật), 191 test |
+| [`software-company/`](software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 20 agent, 45 skill, 18 topic, 14 template, 4 human gate (+ gate `escalation`), ADR 0001–0024, 410 test |
+| [`Studio-creators/`](Studio-creators/) | Phòng ban sáng tạo video (YouTube): kế hoạch → kịch bản → fact-check → render (TTS + ảnh + ghép) → sửa từng cảnh → review → đăng → số liệu thật nuôi chiến lược. Approval-first, media trung lập provider | 7 khối, 14 agent, 24 skill, 19 topic, 7 template, 4 human gate, ADR 0001–0008 (0007 tool web, 0008 adapter YouTube thật), 192 test |
 | [`gateway/`](gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code | daemon `127.0.0.1:8100/v1`, CLI `python -m gateway start/stop/status/login/logout/reset/setup`, 79 test |
 | [`console/`](console/) | Trực ban hợp nhất: một trang web cục bộ nhìn cả hai công ty — hàng đợi human gate, ticket, dây chuyền video, token và chi phí, gói tài khoản đang xoay — và duyệt gate ngay tại chỗ khi bật `--allow-decide`. Đọc bus SQLite ở chế độ chỉ đọc, quyết định đi qua đúng `HumanGate` của từng công ty | `127.0.0.1:8200`, chỉ thư viện chuẩn (`http.server`), 5 màn hình, chỉ đọc mặc định + token mỗi lần chạy, ADR 0001 |
 | [`docs/HUONG-DAN-VAN-HANH.md`](docs/HUONG-DAN-VAN-HANH.md) | Hướng dẫn cài đặt và vận hành từng bước: cấu hình gói tài khoản, chạy thử, đưa yêu cầu, duyệt gate, theo dõi chi phí, bảo trì | |
@@ -45,11 +45,16 @@ cd ../Studio-creators && uv sync && make test && make demo
 Không có `make` (Windows): mỗi target đều có dạng `uv run` tương đương trong `Makefile`, ví dụ `make test` = `uv run pytest -q`,
 `make demo` = `PYTHONPATH=src uv run python -m company.demo` (PowerShell: `$env:PYTHONPATH='src'; uv run python -m company.demo`).
 
-Chạy model thật: sao chép `llm.example.yaml` → `llm.yaml` trong công ty tương ứng (bị gitignore), hoặc đặt biến môi trường
+Chạy model thật, không API key: mỗi công ty có sẵn hồ sơ **gói Claude + gateway Antigravity** — `make llm` chép
+`llm.claude-gateway.yaml` thành `llm.yaml` là chạy được (cần `claude login` và `cd gateway && make login && make start`).
+Muốn tự khai từ đầu thì sao chép `llm.example.yaml` → `llm.yaml` (bị gitignore), hoặc đặt biến môi trường
 `COMPANY_LLM_*` / `STUDIO_LLM_*` (biến môi trường thắng file và bỏ qua `backends:`). Provider hỗ trợ: `anthropic`, `openai`
 (mọi server OpenAI-compatible: OpenAI, OpenRouter, Ollama, Groq, vLLM, Gemini OpenAI-compat…), `claude-code` (CLI `claude -p`
 đã đăng nhập gói Claude trên máy, không cần key), `codex` (CLI `codex exec --json`, gói ChatGPT Plus/Pro), `fake`.
-`claude-code` và `codex` không có tool-use nên khối kỹ thuật của software-company (cần sửa code) tự bỏ qua hai provider này.
+`codex` không có tool-use nên khối kỹ thuật của software-company (cần sửa code) tự bỏ qua provider này. `claude-code` thì có, qua
+một trong hai chế độ khai trong `llm.yaml`: `mcp_tools: true` (ADR-0024 — tool của công ty vào CLI qua cầu MCP, vẫn chạy trong
+sandbox `tools.py`; khuyến nghị) hoặc `cli_tools: true` (ADR-0023 — CLI tự cầm tool riêng của nó, hàng rào yếu hơn một bậc).
+Nên chạy một mình gói Claude Pro/Max là đủ cả hai công ty.
 
 **Chạy bằng gói tài khoản, không mua token**: khai nhiều `backends:` trong `llm.yaml` (Claude Pro/Max qua `claude-code`,
 ChatGPT qua `codex`, Google Antigravity qua gateway, model local; nhiều tài khoản cùng gói bằng `config_dir` riêng). Mỗi agent có tier `strong` / `standard` / `light`; `routing.prefer` chọn gói

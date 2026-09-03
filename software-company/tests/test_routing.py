@@ -432,3 +432,31 @@ def test_workspace_toolbox_carries_root_so_provider_knows_worktree(tmp_path: Pat
     from company.tools import WorkspaceTools
     (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
     assert WorkspaceTools(tmp_path, allow_write=False, allow_run=False).toolbox().root == str(tmp_path.resolve())
+
+
+# ---------- hồ sơ chạy thật: claude-code + gateway ----------
+
+def test_claude_gateway_profile_loads_and_routes_as_documented(monkeypatch):
+    """`llm.claude-gateway.yaml` phải chạy được thật, không chỉ đọc cho vui: đúng backend, đúng tier, đúng ưu tiên,
+    và backend Claude bật cầu MCP nên khối kỹ thuật có tool."""
+    for v in ("COMPANY_LLM_BACKENDS", "COMPANY_LLM_PROVIDER", "COMPANY_CLAUDE_MCP"):
+        monkeypatch.delenv(v, raising=False)
+    for t in TIERS:
+        monkeypatch.delenv(f"COMPANY_MODEL_{t.upper()}", raising=False)
+    client = make_client(load_config(Path(__file__).resolve().parents[1] / "llm.claude-gateway.yaml"))
+    assert [b.name for b in client.backends] == ["claude-1", "antigravity"]
+    assert client.prefer == {"light": "antigravity", "standard": "antigravity", "strong": "claude-1"}
+    for b in client.backends:
+        assert b.tiers == frozenset(TIERS), b.name
+        assert b.supports_tools, f"{b.name}: khối kỹ thuật sẽ không có backend nào"
+    assert [b.name for b in client.order("strong", needs_tools=True)] == ["claude-1", "antigravity"]
+    assert [b.name for b in client.order("light", needs_tools=True)] == ["antigravity", "claude-1"]
+    inner = client.backends[0].client.inner   # RetryingClient bọc ClaudeCodeClient
+    assert inner.cfg.mcp_tools and not inner.cfg.cli_tools, "hồ sơ dùng cầu MCP (ADR-0024), không hạ hàng rào"
+    assert inner.cfg.model_for("strong") == "claude-opus-5" and inner.cfg.model_for("light") == "claude-haiku-4-5"
+    # mọi model trong hồ sơ đều có giá (kể cả giá 0 của gói subscription) → metrics không đếm `unpriced_calls`
+    pricing = getattr(client, "pricing", None)
+    assert pricing is not None
+    for m in ("claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-sonnet-4-6",
+              "gemini-3.8-flash-medium", "gemini-3.8-flash-low"):
+        assert pricing.rate(m) is not None, m

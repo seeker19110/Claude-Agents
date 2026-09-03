@@ -1,0 +1,74 @@
+# Hồ sơ CHẠY THẬT: gói Claude Pro/Max (CLI `claude -p`) + gateway xoay vòng tài khoản Google Antigravity.
+# Không API key, không trả tiền theo token. Chép thẳng thành `llm.yaml` là chạy được:
+#
+#     make llm PROFILE=claude-gateway        (hoặc: cp llm.claude-gateway.yaml llm.yaml)
+#
+# Chuẩn bị một lần:
+#   1. claude login                                    # gói Claude trên máy này
+#   2. cd ../gateway && make login && make start       # thêm tài khoản Google, bật daemon 127.0.0.1:8100
+#   3. cd ../gateway && uv run python -m gateway models --check ../software-company/llm.yaml
+#                                                      # đối chiếu tên model, tránh 400 lúc đang chạy
+#   4. kiểm tra một lượt gọi thật: mục 3.4 của ../docs/HUONG-DAN-VAN-HANH.md
+#
+# Tài khoản thứ hai trở đi (cộng dồn hạn mức): xem khối `claude-2` bị chú thích ở cuối file.
+# Bảng agent → tier và lý do xếp tier: ../docs/DIEU-PHOI-MODEL.md
+
+backends:
+  # --- Gói Claude: việc nặng (kiến trúc, code, review, security) ---
+  - name: claude-1
+    provider: claude-code            # CLI `claude -p` với tài khoản đang đăng nhập mặc định
+    models:
+      strong: claude-opus-5
+      standard: claude-sonnet-5
+      light: claude-haiku-4-5
+    mcp_tools: true                  # ADR-0024: tool của công ty vào CLI qua cầu MCP — cả vòng tool trong một tiến
+                                     # trình (có prompt cache), nhưng tool vẫn chạy trong sandbox `tools.py`
+    # mcp_max_turns: 24              # trần lượt tool CLI tự chạy trong một lời gọi
+    # cli_tools: true                # ADR-0023: cho CLI dùng tool RIÊNG của nó (Read/Edit/Write). Chỉ là đường dự
+    # cli_bash: ["pytest:*", "ruff:*"]   # phòng cho CLI cũ — hàng rào yếu hơn `tools.py` một bậc
+    # binary: /usr/local/bin/claude  # chỉ cần khi `claude` không có trên PATH
+
+  # --- Gateway Antigravity: việc tầm trung và việc nhẹ, theo quota miễn phí của Google ---
+  - name: antigravity
+    provider: openai                 # gateway nói OpenAI-compatible nên có tool-use gốc
+    base_url: http://127.0.0.1:8100/v1
+    api_key: gateway-local           # gateway chạy cục bộ, chuỗi bất kỳ; đừng để trống
+    models:
+      strong: claude-sonnet-4-6
+      standard: gemini-3.8-flash-medium
+      light: gemini-3.8-flash-low
+
+routing:
+  # Việc nhẹ và tầm trung đi gói miễn phí trước; việc nặng đi gói Claude.
+  prefer: {light: antigravity, standard: antigravity, strong: claude-1}
+  cooldown_s: 3600                   # hết hạn mức → nghỉ 1 giờ (hoặc đúng Retry-After nếu server nói)
+  transient_cooldown_s: 60           # lỗi mạng/5xx → nghỉ 1 phút
+
+# Thứ tự khai báo = thứ tự dự phòng: `claude-1` cạn thì tier strong rơi xuống `antigravity`, và ngược lại.
+# Gói nào cũng cạn → TransientError "thử lại sau Ns", orchestrator hoãn event chứ không tính lỗi agent.
+
+retries: 3
+retry_base: 1.0
+max_input_chars: 120000
+
+# Bảng giá để metrics quy ra tiền. Gói subscription trả theo tháng nên đơn giá mỗi lượt là 0, nhưng vẫn phải khai
+# để không bị đếm vào `unpriced_calls`. Muốn thấy "nếu trả bằng API thì hết bao nhiêu" thì điền giá API thật vào đây.
+prices:
+  claude-opus-5:    {input: 0.0, output: 0.0}
+  claude-sonnet-5:  {input: 0.0, output: 0.0}
+  claude-haiku:     {input: 0.0, output: 0.0}
+  claude-sonnet-4-6: {input: 0.0, output: 0.0}
+  gemini-:          {input: 0.0, output: 0.0}   # khớp theo tiền tố: mọi model gemini-* của gateway
+
+# --- Cộng dồn nhiều tài khoản (tuỳ chọn) ---
+# Mỗi tài khoản là một backend với thư mục đăng nhập riêng. Đăng nhập trước:
+#     CLAUDE_CONFIG_DIR=~/.claude-acc2 claude login
+# rồi bỏ chú thích khối này và đặt nó ngay sau `claude-1` (thứ tự khai báo = thứ tự dự phòng):
+#
+#   - name: claude-2
+#     provider: claude-code
+#     config_dir: ~/.claude-acc2
+#     models: {strong: claude-opus-5, standard: claude-sonnet-5, light: claude-haiku-4-5}
+#
+# Nhiều tài khoản Google thì thêm ở gateway (`cd ../gateway && make login` lần nữa), không thêm backend ở đây —
+# gateway tự xoay vòng và chỉ hiện ra một base_url.
