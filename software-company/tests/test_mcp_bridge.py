@@ -62,8 +62,12 @@ def test_real_subprocess_speaks_mcp_and_reaches_the_parent_toolbox(tmp_path):
     tb = WorkspaceTools(ws).toolbox()
     with ToolBridge(tb) as br, br.config_file() as cfg_path:
         cfg = json.loads(cfg_path.read_text(encoding="utf-8"))["mcpServers"][SERVER_NAME]
+        # env=cfg["env"] NGUYÊN VĂN, không thêm gì: đúng thứ `--mcp-config` hứa với CLI. Trước đây
+        # test thêm `PATH: ""` để chứng minh không cần PATH, nhưng như thế lại giấu mất một yêu cầu
+        # thật — trên Windows thiếu `SystemRoot` thì Winsock không nạp được provider và socket về
+        # tiến trình cha ném WinError 10106. Chạy đúng env đã khai mới bắt được thiếu sót đó.
         proc = subprocess.Popen([cfg["command"], *cfg["args"]], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                text=True, encoding="utf-8", env={**cfg["env"], "PATH": ""})
+                                text=True, encoding="utf-8", env=cfg["env"])
         def rpc(method, params=None, mid=1):
             assert proc.stdin and proc.stdout
             proc.stdin.write(json.dumps({"jsonrpc": "2.0", "id": mid, "method": method, "params": params or {}}) + "\n")
@@ -185,3 +189,60 @@ def test_mcp_needs_binding_and_config_flag(tmp_path):
 def test_bridge_binds_loopback_only():
     with ToolBridge(_box()) as br:
         assert br._server is not None and br._server.server_address[0] == "127.0.0.1"
+
+
+# ---------- bảng mã: kênh stdio phải sống được trên console không phải UTF-8 ----------
+
+def test_ghi_duoc_thong_diep_tieng_viet_ra_stdout_cp1252():
+    """Trên Windows stdio của tiến trình con mặc định là cp1252, mà mọi thông điệp của repo đều là
+    tiếng Việt — nên một lượt trả về chữ có dấu từng giết tiến trình con và kéo sập cả chế độ
+    `mcp_tools: true`. Test này chạy được trên mọi OS vì tự dựng stream cp1252."""
+    import io as _io
+
+    out = _io.TextIOWrapper(_io.BytesIO(), encoding="cp1252", newline="")
+    src = _io.StringIO(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "phuong-thuc-la"}) + "\n")
+
+    ProxyServer(1, "token").run(stdin=src, stdout=out)   # không được ném UnicodeEncodeError
+
+    out.flush()
+    raw = out.buffer.getvalue().decode("ascii")           # thuần ASCII: đó chính là điều cần chứng minh
+    assert json.loads(raw)["error"]["message"] == "method lạ: phuong-thuc-la"
+
+
+def test_khung_tra_loi_khong_co_byte_ngoai_ascii():
+    """Đường dây phải thuần ASCII bất kể nội dung: đó là thứ khiến nó không phụ thuộc bảng mã console."""
+    import io as _io
+
+    out = _io.StringIO()
+    src = _io.StringIO(json.dumps({"jsonrpc": "2.0", "id": 7, "method": "khong-co-đâu"}) + "\n")
+    ProxyServer(1, "token").run(stdin=src, stdout=out)
+    raw = out.getvalue()
+    assert raw.isascii(), raw
+    assert "khong-co-đâu" in json.loads(raw)["error"]["message"]   # vẫn giải mã lại nguyên vẹn
+
+
+# ---------- môi trường tiến trình con ----------
+
+def test_mcp_config_khai_du_moi_thu_tien_trinh_con_can(tmp_path):
+    """`--mcp-config` phải tự đủ: đặc tả MCP không hứa client giữ lại biến môi trường nào."""
+    br = ToolBridge(ToolBox([(ToolSpec("echo", "vọng lại", {"type": "object"}), lambda **kw: "ok")]))
+    with br:
+        env = br.mcp_config()["mcpServers"][SERVER_NAME]["env"]
+    assert env["PYTHONIOENCODING"] == "utf-8"
+    if sys.platform == "win32":
+        # Thiếu SystemRoot thì Winsock ném WinError 10106 và cầu không nối được về tiến trình cha.
+        assert env.get("SystemRoot"), env
+
+
+def test_platform_env_chi_them_bien_tren_windows(monkeypatch):
+    from company import mcp_bridge as mb
+
+    monkeypatch.setattr(mb.sys, "platform", "linux")
+    assert mb.platform_env() == {}
+
+    monkeypatch.setattr(mb.sys, "platform", "win32")
+    monkeypatch.setattr(mb.os, "environ", {"SystemRoot": r"C:\Windows"})
+    assert mb.platform_env() == {"SystemRoot": r"C:\Windows"}
+
+    monkeypatch.setattr(mb.os, "environ", {})       # biến không có thì bỏ qua, không ném KeyError
+    assert mb.platform_env() == {}
