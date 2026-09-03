@@ -2,6 +2,7 @@
 Không cần CLI thật: test nói JSON-RPC trực tiếp với tiến trình MCP con, và thay `claude` bằng hàm giả."""
 from __future__ import annotations
 
+import contextlib
 import json
 import socket
 import subprocess
@@ -259,7 +260,6 @@ def test_force_utf8_stdio_goi_reconfigure_khi_co():
             calls.append(kw)
 
     fake_in, fake_out = FakeStream(), FakeStream()
-    import contextlib
     with contextlib.ExitStack() as stack:
         stack.enter_context(_patched(mb, "stdin", fake_in))
         stack.enter_context(_patched(mb, "stdout", fake_out))
@@ -267,10 +267,7 @@ def test_force_utf8_stdio_goi_reconfigure_khi_co():
     assert calls == [{"encoding": "utf-8", "errors": "replace"}] * 2
 
 
-import contextlib as _contextlib
-
-
-@_contextlib.contextmanager
+@contextlib.contextmanager
 def _patched(mod, attr, value):
     orig = getattr(mod.sys, attr)
     setattr(mod.sys, attr, value)

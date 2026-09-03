@@ -187,7 +187,7 @@ def test_publish_bao_loi_khi_bus_tu_choi_payload():
 
 def test_generate_in_workspace_commit_that_bai_hoa_thanh_runner_error(tmp_path):
     """`ws.commit_all` ném `WorkspaceError` (vd. index.lock) sau khi checks chạy xong: runner phải bọc lại rõ ràng."""
-    from test_tools_and_agentic import _init_repo, _pr, _inp, _tc, _first_turn
+    from test_tools_and_agentic import _first_turn, _init_repo, _inp, _pr, _tc
     repo = _init_repo(tmp_path / "repo")
     ws = TicketWorkspace(repo, "T1", base="main")
     th = lambda m, t: [_tc("write_file", path="feature.py", content="F = 1\n")] if _first_turn(m) else []  # noqa: E731
@@ -197,7 +197,6 @@ def test_generate_in_workspace_commit_that_bai_hoa_thanh_runner_error(tmp_path):
 
     def boom(*a, **kw):
         raise WorkspaceError("git commit: index.lock")
-    monkeypatch_target = ws
     task = Task(ticket_id="T1", project_id="P", requirement_id="R", assignee="backend", title="x", acceptance=["a"], budget_tokens=1000)
     inp = Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=task.model_dump())
     ws.create(); ws.commit_all = boom   # gắn sau create(): tránh chạm git thật lúc khởi tạo worktree

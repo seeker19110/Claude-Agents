@@ -4,8 +4,7 @@ transient/lỗi, _dispatch_plan lỗi khi gate plan approve, _close_acceptance_g
 from __future__ import annotations
 
 import json
-
-import pytest
+from typing import ClassVar
 
 from company.bus import InMemoryBus
 from company.events import Envelope, Task
@@ -13,7 +12,7 @@ from company.gates import GateRequest
 from company.llm import FakeClient, LLMError, TransientError
 from company.orchestrator import Orchestrator, Route, StepResult, _with_diff
 from company.workspace import WorkspaceError
-from test_orchestrator import T1, _drive_to_plan, handler
+from test_orchestrator import T1, handler
 
 
 def _orch(bus=None):
@@ -136,7 +135,7 @@ def test_merge_ticket_conflict_va_fresh_loi(tmp_path, monkeypatch):
     class FakeMerge:
         ok = False
         sha = None
-        conflicts = ["f.py"]
+        conflicts: ClassVar[list] = ["f.py"]
 
     class FakeIntegration:
         branch = "integration"

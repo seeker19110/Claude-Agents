@@ -11,7 +11,16 @@ import pytest
 from company import demo
 from company.events import Envelope
 from company.graph import RESEARCH_ORDER, research_order
-from company.llm import ClaudeCodeClient, Completion, LLMConfig, LLMError, OpenAICompatClient, Refused, RetryingClient, TransientError
+from company.llm import (
+    ClaudeCodeClient,
+    Completion,
+    LLMConfig,
+    LLMError,
+    OpenAICompatClient,
+    Refused,
+    RetryingClient,
+    TransientError,
+)
 from company.registry import load_agents
 from company.sqlite_bus import SQLiteBus
 
@@ -121,8 +130,9 @@ def test_completion_json_rejects_garbage():
 def test_find_codex_binary_fallback_ve_ten_tho_khi_khong_thay(monkeypatch):
     """Không có trên PATH và không có %LOCALAPPDATA% (hoặc không có bản kèm app) thì trả về nguyên tên nhị phân
     (dòng 781) — CLI sẽ tự báo lỗi rõ khi thật sự chạy, không phải lúc tìm đường dẫn."""
-    from company.llm import find_codex_binary
     import shutil as _shutil
+
+    from company.llm import find_codex_binary
     monkeypatch.setattr(_shutil, "which", lambda b: None)
     monkeypatch.delenv("LOCALAPPDATA", raising=False)
     assert find_codex_binary("codex-khong-ton-tai-xyz") == "codex-khong-ton-tai-xyz"
@@ -343,8 +353,9 @@ def test_claude_code_parse_bao_loi_khi_co_ngoac_nhung_json_hong():
 # ---------- find_codex_binary: dò cài đặt Codex CLI trên Windows qua LOCALAPPDATA ----------
 
 def test_find_codex_binary_do_qua_localappdata(tmp_path, monkeypatch):
-    from company.llm import find_codex_binary
     import shutil as sh
+
+    from company.llm import find_codex_binary
 
     monkeypatch.setattr(sh, "which", lambda b: None)   # "codex" không có sẵn trên PATH
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
@@ -352,7 +363,7 @@ def test_find_codex_binary_do_qua_localappdata(tmp_path, monkeypatch):
     newer = tmp_path / "OpenAI" / "Codex" / "bin" / "0.2.0" / "codex.exe"
     older.parent.mkdir(parents=True); older.write_text("x", encoding="utf-8")
     newer.parent.mkdir(parents=True); newer.write_text("x", encoding="utf-8")
-    import os, time
+    import os
     os.utime(older, (1, 1)); os.utime(newer, (2, 2))
     assert find_codex_binary("codex") == str(newer)
     # LOCALAPPDATA có nhưng không cài Codex: lùi về tên binary gốc, không sập

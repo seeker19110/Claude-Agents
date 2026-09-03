@@ -123,7 +123,6 @@ def test_on_release_candidate_bo_qua_version_hong_khong_sap():
     """Log cũ có `version` không phải `X.Y.Z` hợp lệ (vd. rỗng hoặc chữ) thì bỏ qua, không ném lỗi lên trên."""
     bus, gate, lead = _setup(); gate.decide("PLAN", "approve", by="human")
     lead.dispatch(_task(), "PLAN"); _pr(bus); _rev(bus, "reviewer", "pass"); _rev(bus, "qa", "pass")
-    rid = lead.releases[0]
     assert lead.versions.get("P") is None or isinstance(lead.versions.get("P"), tuple)
     bus.publish(Envelope(topic="release-candidates", key="REL-002", actor="delivery-lead",
                          payload={"release_id": "REL-002", "project_id": "P", "tickets": ["T1"], "version": "khong-phai-so"}))

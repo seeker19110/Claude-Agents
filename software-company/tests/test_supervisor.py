@@ -67,8 +67,11 @@ def test_sprint_report_model_khong_xac_dinh_khi_evidence_hong():
 
 def test_du_an_warn_roi_pause_theo_nguong_tien():
     bus = InMemoryBus(); sup = Supervisor(bus, project_budget_usd=10.0)
-    _cost = lambda usd: bus.publish(Envelope(topic="audit-log", key="backend", actor="backend",
-        payload=AuditLog(actor="backend", action="produced:x", project_id="P", cost_usd=usd).model_dump()))
+
+    def _cost(usd):
+        bus.publish(Envelope(topic="audit-log", key="backend", actor="backend",
+            payload=AuditLog(actor="backend", action="produced:x", project_id="P", cost_usd=usd).model_dump()))
+
     _cost(8.5)
     assert sup.actions[-1].action == "warn" and "dự án đã dùng" in sup.actions[-1].reason
     _cost(2.0)
