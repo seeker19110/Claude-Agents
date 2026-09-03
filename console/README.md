@@ -11,6 +11,19 @@ Console **đọc bus SQLite của hai công ty ở chế độ chỉ đọc** v�
 Không framework web, không CDN, không phụ thuộc runtime nào ngoài hai công ty: server là `http.server`
 của thư viện chuẩn, trang là một file HTML tĩnh dùng `fetch`.
 
+**Cập nhật tức thì.** Trang nối `GET /api/stream` (SSE) nên gate mới hiện trong khoảng một giây thay vì
+chờ hết nhịp làm mới — nhãn *trực tiếp* ở thanh trên cùng. Stream đứt thì tự lùi về hỏi lại 10 giây một
+lần (*hỏi lại 10s*) và thử nối lại, nên mất stream chỉ là chậm hơn chứ không hỏng. Đang mở ngăn kéo hoặc
+đã bấm Tạm dừng thì dữ liệu mới được **giữ lại** chứ không vẽ đè, kèm nút *Có dữ liệu mới — xem*.
+
+**Địa chỉ mang chỗ đang đứng.** `#/phan-mem` là một màn, `#/truc-ban/gate/PLAN-1` là màn đó với ngăn kéo
+gate đang mở — F5 không văng về Trực ban, Back đóng ngăn kéo thay vì rời trang, và gửi được link tới đúng
+một gate cho người khác. Link tới thứ đã bị xoá thì tự rút về màn tương ứng.
+
+**Tìm và lọc.** Ô tìm chung (phím `/`) lọc gate, ticket, video, PR, review và audit-log cùng lúc, gấp dấu
+tiếng Việt nên gõ `ong kinh` cũng ra `Ống kính`. Bảng ticket và video có chip lọc theo trạng thái; các bảng
+sắp xếp được bằng cách bấm tiêu đề cột. Phím tắt: `/` tìm, `1`–`6` nhảy màn, `g` về Trực ban, `Esc` đóng.
+
 ## Chạy nhanh
 
 ```bash
