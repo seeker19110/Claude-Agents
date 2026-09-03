@@ -295,6 +295,14 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
 .empty code{font-family:var(--mono);font-size:11.5px}
 .by{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-muted)}
 .by input{flex:1;border:1px solid var(--line);border-radius:5px;padding:6px 9px;background:var(--surface);font-size:12.5px;font-family:var(--mono)}
+/* form giao việc */
+#submit .by{max-width:520px;margin-bottom:6px}
+.form{display:grid;gap:10px;padding:14px 0 18px;border-top:1px solid var(--line-soft)}
+.form .sect-head{flex-direction:column;gap:2px}
+.fld{display:grid;gap:4px;font-size:12px;color:var(--ink-muted);max-width:720px}
+.fld input,.fld textarea{border:1px solid var(--line);border-radius:5px;padding:7px 9px;background:var(--surface);font-size:13px;color:var(--ink);resize:vertical}
+.fld input.mono,.fld textarea{font-family:var(--mono);font-size:12.5px}
+.fld .req{color:var(--warn,#c9822b)}
 </style>
 
 <div class="app">
@@ -310,6 +318,7 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
       <button class="nav" data-v="video">Xưởng video<span class="cnt" id="nav-videos">—</span></button>
       <button class="nav" data-v="chi-phi">Chi phí &amp; hạn mức</button>
       <button class="nav" data-v="nhat-ky">Nhật ký</button>
+      <button class="nav" data-v="giao-viec">Giao việc</button>
       <button class="nav" data-v="cai-dat">Cài đặt model</button>
     </div>
     <div class="rail-foot">
@@ -477,7 +486,18 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
       </div>
     </section>
 
-    <!-- ============ NHẬT KÝ ============ -->
+    <!-- ============ GIAO VIỆC ============ -->
+    <section class="view" id="v-giao-viec">
+      <div class="sect">
+        <div class="sect-head">
+          <h2>Giao việc cho công ty</h2>
+          <p>điền ô thay cho viết JSON tay; event vẫn đi qua bus của công ty và bị kiểm theo schema của topic</p>
+        </div>
+        <div class="panel" id="submit"></div>
+      </div>
+    </section>
+
+    <!-- ============ CÀI ĐẶT MODEL ============ -->
     <section class="view" id="v-cai-dat">
       <div class="sect">
         <div class="sect-head">
@@ -731,6 +751,7 @@ const TITLES={
  "video":()=>["Xưởng video",srcOk(ST)?`${listOf(ST,st().videos).length} video trong dây chuyền`:srcWhy(ST)],
  "chi-phi":()=>["Chi phí & hạn mức",`${vnd(st().tiles.project_cost_usd)} / ${vnd(st().tiles.project_budget_usd)} USD dự án · ${st().backends.length} gói tài khoản`],
  "nhat-ky":()=>["Nhật ký",`audit-log ${num(st().log.length)} bản ghi · lọc theo hành động`],
+ "giao-viec":()=>["Giao việc",CONSOLE.can_submit?"yêu cầu đi thẳng vào bus của công ty, kiểm theo schema của topic":"chỉ xem — chạy lại console với --allow-submit để giao việc"],
  "cai-dat":()=>["Cài đặt model",CFG?(CFG.can_edit?"sửa được — thay đổi ghi thẳng vào llm.yaml, bản cũ để lại .bak":"chỉ xem — chạy lại console với --allow-config để sửa"):"đang đọc cấu hình…"]};
 let view="truc-ban";
 function titles(){const [t,s]=TITLES[view]();$("#vt").textContent=t;$("#vs").textContent=s;}
@@ -741,7 +762,7 @@ function titles(){const [t,s]=TITLES[view]();$("#vt").textContent=t;$("#vs").tex
    ngăn kéo thay vì rời trang, và gửi được link tới đúng một gate cho người khác.
    Dùng hash chứ không `history.pushState`: server chỉ phục vụ một đường `/`, đẩy đường dẫn thật
    vào thanh địa chỉ thì F5 sẽ ăn 404. */
-const VIEWS=["truc-ban","phan-mem","video","chi-phi","nhat-ky","cai-dat"];
+const VIEWS=["truc-ban","phan-mem","video","chi-phi","nhat-ky","giao-viec","cai-dat"];
 const OPENERS={gate:id=>openGate(id),ticket:id=>openTicket(id),video:id=>openVideo(id)};
 let routing=false;                                // chặn vòng lặp hash -> mở -> đặt hash
 
@@ -766,6 +787,7 @@ function showView(v){
   $$(".view").forEach(x=>x.classList.toggle("on",x.id==="v-"+v));
   titles(); window.scrollTo({top:0});
   if(v==="cai-dat") loadSettings();
+  if(v==="giao-viec") renderSubmit();
 }
 function applyRoute(){
   const r=readHash();
@@ -857,6 +879,87 @@ $("#settings").addEventListener("click",async e=>{
     await loadSettings();
   }catch(err){ note.textContent="lỗi: "+err.message; }
   finally{ btn.disabled=!CFG||!CFG.can_edit; }
+});
+
+/* ---------- giao việc ----------
+   Ba form = ba topic mà NGƯỜI được nạp vào bus (`console.submit.FORMS`). Trang chỉ gom trường thành
+   payload đúng hình của schema topic; kiểm tra thật do bus của công ty làm khi publish, lỗi trả về
+   nguyên văn. Danh sách (goals, pillars, boundaries, attachments): mỗi dòng một mục. */
+const SC_X="software-company", ST_X="Studio-creators";
+const FORMS=[
+ {id:"req",xuong:SC_X,topic:"research-requests",title:"Yêu cầu phần mềm",view:"phan-mem",
+  hint:"Một dự án mới cho xưởng phần mềm: researcher tìm hiểu → spec-writer viết đặc tả → gate <b>spec</b> chờ bạn duyệt.",
+  fields:[
+   {k:"project_id",label:"Mã dự án",ph:"P1",req:true,mono:true},
+   {k:"description",label:"Mô tả yêu cầu",ph:"Web bán khoá học tiếng Nhật: catalog, giỏ hàng, thanh toán VNPay, admin quản lý khoá. Mobile-first.",req:true,rows:6},
+   {k:"attachments",label:"Tài liệu đính kèm (đường dẫn/URL, mỗi dòng một mục)",list:true,rows:2}]},
+ {id:"ans",xuong:SC_X,topic:"clarification-answers",title:"Trả lời câu hỏi làm rõ",view:"phan-mem",
+  hint:"Khi spec-writer đặt câu hỏi (topic <code>clarification-questions</code>), trả lời theo <code>question_id</code> để dự án đi tiếp.",
+  fields:[
+   {k:"project_id",label:"Mã dự án",ph:"P1",req:true,mono:true},
+   {k:"answers",label:"Trả lời — mỗi dòng: <code>question_id: nội dung trả lời</code>",qa:true,req:true,rows:5,
+    ph:"Q1: Thanh toán chỉ VNPay, chưa cần Momo\nQ2: Admin dùng chung tài khoản Google Workspace"}]},
+ {id:"brief",xuong:ST_X,topic:"channel-briefs",title:"Brief kênh video",view:"video",
+  hint:"Định hướng một kênh cho xưởng video: trend-researcher → channel-strategist lập kế hoạch → gate <b>plan</b> chờ bạn duyệt.",
+  fields:[
+   {k:"channel_id",label:"Mã kênh",ph:"CH1",req:true,mono:true},
+   {k:"goals",label:"Mục tiêu (mỗi dòng một mục)",ph:"1000 subscriber trong 3 tháng",list:true,req:true,rows:2},
+   {k:"audience",label:"Khán giả",ph:"người mới làm YouTube",req:true},
+   {k:"pillars",label:"Trụ cột nội dung (mỗi dòng một mục)",ph:"hướng dẫn\nso sánh",list:true,req:true,rows:2},
+   {k:"cadence",label:"Nhịp đăng",ph:"2 video/tuần"},
+   {k:"boundaries",label:"Giới hạn (mỗi dòng một mục)",ph:"không hứa thu nhập\nkhông dùng nhạc chưa có license",list:true,rows:2},
+   {k:"language",label:"Ngôn ngữ",ph:"vi"},
+   {k:"tone",label:"Giọng điệu",ph:"gần gũi, thực tế"}]}];
+
+function renderSubmit(){
+  const box=$("#submit"); if(box.dataset.ready) return; box.dataset.ready="1";
+  const can=!!CONSOLE.can_submit;
+  const me=esc(localStorage.getItem(ME_KEY)||"human:owner");
+  const forms=FORMS.map(f=>`
+    <form class="form" data-form="${f.id}" autocomplete="off">
+      <div class="sect-head"><h3>${esc(f.title)}</h3><p>${f.hint} <span class="note">→ topic <code>${esc(f.topic)}</code> · ${esc(f.xuong)}</span></p></div>
+      ${f.fields.map(x=>`<label class="fld"><span>${x.label}${x.req?' <b class="req">*</b>':""}</span>${
+        x.rows?`<textarea name="${x.k}" rows="${x.rows}" placeholder="${esc(x.ph||"")}"${x.req?" required":""}></textarea>`
+              :`<input name="${x.k}" placeholder="${esc(x.ph||"")}"${x.req?" required":""}${x.mono?' class="mono"':""}>`}</label>`).join("")}
+      <div class="filters"><button type="submit"${can?"":" disabled"}>Giao việc</button><span class="note" data-note></span></div>
+    </form>`).join("");
+  box.innerHTML=(can?"":'<div class="note">Đang ở chế độ chỉ xem. Chạy lại: <code>python -m console --allow-submit</code></div>')
+    +`<div class="by">Bạn là <input id="submit-by" value="${me}" placeholder="human:owner"> <span class="note">ghi vào <code>actor</code> của event và audit-log</span></div>`
+    +forms;
+}
+
+function formPayload(f,form){
+  const p={};
+  for(const x of f.fields){
+    const raw=(form.elements[x.k].value||"").trim();
+    if(!raw){ if(x.req) throw new Error(`thiếu ${x.label.replace(/<[^>]+>/g,"")}`); continue; }
+    if(x.qa){
+      p[x.k]=raw.split("\n").map(s=>s.trim()).filter(Boolean).map(line=>{
+        const i=line.indexOf(":"); if(i<1) throw new Error(`dòng "${line}" phải có dạng question_id: trả lời`);
+        return {question_id:line.slice(0,i).trim(),answer:line.slice(i+1).trim()};
+      });
+    }
+    else if(x.list) p[x.k]=raw.split("\n").map(s=>s.trim()).filter(Boolean);
+    else p[x.k]=raw;
+  }
+  return p;
+}
+
+$("#submit").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const form=e.target.closest("form[data-form]"); if(!form) return;
+  const f=FORMS.find(x=>x.id===form.dataset.form), note=$("[data-note]",form), btn=$("button[type=submit]",form);
+  const by=($("#submit-by").value||"").trim(); if(!by){ note.textContent="điền Bạn là"; return; }
+  localStorage.setItem(ME_KEY,by);
+  let payload; try{ payload=formPayload(f,form); }catch(err){ note.textContent=err.message; return; }
+  btn.disabled=true; note.textContent="đang gửi…";
+  try{
+    const r=await api("/api/request",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({xuong:f.xuong,topic:f.topic,payload,actor:by})});
+    note.innerHTML=`đã giao: <code>${esc(r.key)}</code> · event <code>${esc(r.event_id)}</code> · <a href="#/${f.view}">xem xưởng</a>`;
+    form.reset();
+  }catch(err){ note.textContent="lỗi: "+err.message; }
+  finally{ btn.disabled=!CONSOLE.can_submit; }
 });
 
 /* ---------- hàng đợi gate ---------- */

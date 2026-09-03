@@ -105,11 +105,91 @@ def fake_modules(monkeypatch: pytest.MonkeyPatch):
             raise result
         return result
 
+    calls["submit"] = []
+    box["submit_result"] = {"ok": True, "xuong": "software-company", "topic": "research-requests", "key": "P1", "event_id": "e9"}
+
+    def submit(company_db: Any, studio_db: Any, **kw: Any) -> dict[str, Any]:
+        calls["submit"].append((company_db, studio_db, kw))
+        result = box["submit_result"]
+        if isinstance(result, Exception):
+            raise result
+        return result
+
     mod_c = types.ModuleType("console.collect"); mod_c.collect = collect  # type: ignore[attr-defined]
     mod_d = types.ModuleType("console.decide"); mod_d.decide = decide  # type: ignore[attr-defined]
+    mod_s = types.ModuleType("console.submit"); mod_s.submit = submit  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "console.collect", mod_c)
     monkeypatch.setitem(sys.modules, "console.decide", mod_d)
+    monkeypatch.setitem(sys.modules, "console.submit", mod_s)
     return types.SimpleNamespace(calls=calls, state=state, box=box)
+
+
+# --- giao việc: POST /api/request ---------------------------------------------
+
+_REQ = {"xuong": "software-company", "topic": "research-requests", "actor": "human:sales",
+        "payload": {"project_id": "P1", "description": "web bán khoá học"}}
+
+
+def test_request_khoa_khi_khong_co_allow_submit(make_console, fake_modules) -> None:
+    # --allow-decide KHÔNG mở giao việc: ba quyền ghi tách riêng.
+    c = make_console(readonly=False)
+    status, body = c.request("POST", "/api/request", body=_REQ)
+    assert status == 403 and "--allow-submit" in body["error"]
+    assert fake_modules.calls["submit"] == []
+
+
+def test_request_goi_xuyen_toi_submit(make_console, fake_modules, tmp_path: Path) -> None:
+    c = make_console(allow_submit=True, company_db=tmp_path / "c.sqlite", studio_db=tmp_path / "s.sqlite")
+    status, body = c.request("POST", "/api/request", body=_REQ)
+    assert status == 200 and body["ok"] is True and body["event_id"] == "e9"
+    (company_db, studio_db, kw), = fake_modules.calls["submit"]
+    assert company_db == tmp_path / "c.sqlite" and studio_db == tmp_path / "s.sqlite"
+    assert kw == {"xuong": "software-company", "topic": "research-requests", "actor": "human:sales",
+                  "payload": {"project_id": "P1", "description": "web bán khoá học"}}
+
+
+@pytest.mark.parametrize("bad", [
+    {**_REQ, "xuong": 1},                 # sai kiểu
+    {k: v for k, v in _REQ.items() if k != "topic"},   # thiếu topic
+    {**_REQ, "actor": None},
+    {**_REQ, "payload": "P1"},            # payload không phải object
+    {**_REQ, "payload": ["x"]},
+])
+def test_request_thieu_hoac_sai_truong_tra_400_khong_goi_submit(make_console, fake_modules, bad) -> None:
+    c = make_console(allow_submit=True)
+    status, body = c.request("POST", "/api/request", body=bad)
+    assert status == 400 and "error" in body
+    assert fake_modules.calls["submit"] == []
+
+
+class _SubmitError(Exception):
+    def __init__(self, msg: str, http_status: int) -> None:
+        super().__init__(msg); self.http_status = http_status
+
+
+@pytest.mark.parametrize("exc, status", [
+    (ValueError("xưởng lạ"), 400),
+    (PermissionError("không được phép"), 403),
+    (_SubmitError("payload không hợp lệ theo JSON Schema", 400), 400),
+    (_SubmitError("trùng", 409), 409),
+    (RuntimeError("nổ"), 500),
+])
+def test_request_loi_tu_submit_thanh_ma_http(make_console, fake_modules, exc, status) -> None:
+    fake_modules.box["submit_result"] = exc
+    c = make_console(allow_submit=True)
+    got, body = c.request("POST", "/api/request", body=_REQ)
+    assert got == status and "error" in body
+    if status == 500:
+        assert "nổ" not in body["error"]   # lỗi bất ngờ không lộ chi tiết nội bộ
+
+
+def test_index_chen_can_submit_vao_boot(make_console, fake_modules) -> None:
+    c = make_console(allow_submit=True)
+    _, body = c.request("GET", "/", token=None)
+    assert '"can_submit": true' in body
+    c2 = make_console()
+    _, body2 = c2.request("GET", "/", token=None)
+    assert '"can_submit": false' in body2
 
 
 # --- token -----------------------------------------------------------------

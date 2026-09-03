@@ -178,6 +178,7 @@ class ConsoleServer(ThreadingHTTPServer):
         token: str,
         readonly: bool = True,
         allow_config: bool = False,
+        allow_submit: bool = False,
         company_db: Path | None = None,
         studio_db: Path | None = None,
         llm_yaml: dict[str, Path] | None = None,
@@ -190,6 +191,8 @@ class ConsoleServer(ThreadingHTTPServer):
         self.readonly = readonly
         # Sửa llm.yaml là quyền RIÊNG, không đi kèm --allow-decide: duyệt gate và đổi model là hai rủi ro khác nhau.
         self.allow_config = allow_config
+        # Giao việc (publish event vào bus) cũng là quyền RIÊNG: người nhận việc mới không nhất thiết là người được duyệt gate.
+        self.allow_submit = allow_submit
         self.company_db = company_db
         self.studio_db = studio_db
         self.llm_yaml = llm_yaml
@@ -322,7 +325,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._error(HTTPStatus.UNAUTHORIZED, "thiếu hoặc sai X-Console-Token")
             return
-        if path not in {"/api/gate/decide", "/api/settings"}:
+        if path not in {"/api/gate/decide", "/api/settings", "/api/request"}:
             self._error(HTTPStatus.NOT_FOUND, "không có đường dẫn này")
             return
         if path == "/api/gate/decide" and self.server.readonly:
@@ -331,6 +334,9 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         if path == "/api/settings" and not self.server.allow_config:
             self._error(HTTPStatus.FORBIDDEN, "sửa cấu hình model bị khoá; chạy lại với --allow-config")
             return
+        if path == "/api/request" and not self.server.allow_submit:
+            self._error(HTTPStatus.FORBIDDEN, "giao việc bị khoá; chạy lại với --allow-submit")
+            return
         try:
             payload = self._read_json_body()
         except GateHTTPError as e:
@@ -338,6 +344,8 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/settings":
             self._api_settings_post(payload)
+        elif path == "/api/request":
+            self._api_submit(payload)
         else:
             self._api_decide(payload)
 
@@ -458,6 +466,38 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         else:
             self._json(HTTPStatus.OK, result)
 
+    def _api_submit(self, payload: dict[str, Any]) -> None:
+        from console.submit import submit  # nhập trễ, xem _api_state.
+
+        for field in ("xuong", "topic", "actor"):
+            if not isinstance(payload.get(field), str):
+                self._error(HTTPStatus.BAD_REQUEST, f"thiếu hoặc sai trường '{field}'")
+                return
+        if not isinstance(payload.get("payload"), dict):
+            self._error(HTTPStatus.BAD_REQUEST, "thiếu hoặc sai trường 'payload' (phải là object JSON)")
+            return
+        try:
+            result = submit(
+                self.server.company_db,
+                self.server.studio_db,
+                xuong=payload["xuong"],
+                topic=payload["topic"],
+                payload=payload["payload"],
+                actor=payload["actor"],
+            )
+        except ValueError as e:
+            self._error(HTTPStatus.BAD_REQUEST, str(e))
+        except PermissionError as e:
+            self._error(HTTPStatus.FORBIDDEN, str(e))
+        except Exception as e:
+            if type(e).__name__ == "SubmitError" or hasattr(e, "http_status"):
+                self._error(_gate_error_status(e), str(e))
+                return
+            logger.exception("submit() thất bại")
+            self._error(HTTPStatus.INTERNAL_SERVER_ERROR, "lỗi không lường trước khi giao việc")
+        else:
+            self._json(HTTPStatus.OK, result)
+
     def _api_settings_get(self) -> None:
         from console.settings import read_settings  # nhập trễ, xem _api_state.
 
@@ -501,7 +541,10 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             return
         boot = (
             "<script>window.__CONSOLE__="
-            + json.dumps({"token": self.server.token, "readonly": self.server.readonly}, ensure_ascii=False)
+            + json.dumps(
+                {"token": self.server.token, "readonly": self.server.readonly, "can_submit": self.server.allow_submit},
+                ensure_ascii=False,
+            )
             + ";</script>"
         )
         lowered = html.lower()
@@ -534,6 +577,7 @@ def make_server(
     token: str | None = None,
     readonly: bool = True,
     allow_config: bool = False,
+    allow_submit: bool = False,
     company_db: Path | None = None,
     studio_db: Path | None = None,
     llm_yaml: dict[str, Path] | None = None,
@@ -546,6 +590,7 @@ def make_server(
         token=token or generate_token(),
         readonly=readonly,
         allow_config=allow_config,
+        allow_submit=allow_submit,
         company_db=company_db,
         studio_db=studio_db,
         llm_yaml=llm_yaml,

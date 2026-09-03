@@ -323,6 +323,10 @@ Tạo `req.json` (đúng `payload` của topic `research-requests`; bắt buộc
 PYTHONPATH=src uv run python -m company.orchestrator publish research-requests req.json --actor human:sales
 ```
 
+Không muốn viết JSON tay: chạy console với `--allow-submit` (`cd console && uv run python -m console --allow-submit`),
+vào màn **Giao việc** → form *Yêu cầu phần mềm*. Cùng một event, cùng schema — chỉ khác là điền vào ô. Câu hỏi làm rõ
+của spec-writer cũng trả lời được ở form *Trả lời câu hỏi làm rõ* thay cho `publish clarification-answers`.
+
 ### 5.2 Chạy vòng lặp
 
 ```bash
@@ -395,6 +399,8 @@ Nguyên tắc approval-first: **không có gì được lên lịch, đăng hay 
 PYTHONPATH=src uv run python -m studio.orchestrator publish channel-briefs brief.json --actor human:owner
 PYTHONPATH=src uv run python -m studio.orchestrator run --watch 5
 ```
+
+Hoặc điền form *Brief kênh video* ở màn **Giao việc** của console (chạy với `--allow-submit`) — cùng event, cùng schema.
 
 ### 6.2 Bốn gate
 
