@@ -146,6 +146,30 @@ def test_dung_bang_thanh_cong_khong_ctrl_c(monkeypatch: pytest.MonkeyPatch, tmp_
     assert not token_path.exists()
 
 
+@pytest.mark.parametrize("flag, expect", [(["--allow-submit"], True), ([], False)])
+def test_allow_submit_truyen_xuong_make_server_va_in_banner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], flag: list[str], expect: bool
+) -> None:
+    """--allow-submit là quyền riêng: đi thẳng vào make_server(allow_submit=...), không dính --allow-decide/--allow-config."""
+    fake = _FakeServer()
+    seen: dict[str, Any] = {}
+
+    def _make(*a: Any, **k: Any) -> Any:
+        seen.update(k)
+        return fake
+
+    monkeypatch.setattr(cli, "make_server", _make)
+    token_path = tmp_path / "tok6"
+    token_path.write_text("t", encoding="utf-8")
+    monkeypatch.setattr(cli, "write_token_file", lambda token: token_path)
+
+    assert cli.main(flag) == 0
+    assert seen["allow_submit"] is expect
+    assert seen["readonly"] is True and seen["allow_config"] is False
+    out = capsys.readouterr().out
+    assert ("Giao việc:   CHO PHÉP" if expect else "--allow-submit để giao việc") in out
+
+
 def test_dunder_main_goi_main_va_sys_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     """`python -m console --help`: argparse tự thoát bằng SystemExit(0), không chạm make_server."""
     monkeypatch.setattr(sys, "argv", ["console", "--help"])

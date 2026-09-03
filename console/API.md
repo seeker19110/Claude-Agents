@@ -95,10 +95,25 @@ def decide(company_db: Path | None, studio_db: Path | None, *,
 - Trả `{"ok": true, "subject_id": …, "decision": …, "event_id": …}` hoặc ném
   `GateError` với thông điệp tiếng Việt để server đổi thành HTTP 4xx.
 
+## `submit.py`
+
+```python
+def submit(company_db: Path | None, studio_db: Path | None, *,
+           xuong: str, topic: str, payload: dict, actor: str) -> dict
+```
+
+- Giao việc = publish một event do NGƯỜI tạo vào bus SQLite của xưởng. `FORMS` liệt kê topic nạp tay được
+  và trường payload làm `key`: software-company `research-requests` / `clarification-answers` (key `project_id`),
+  Studio-creators `channel-briefs` (key `channel_id`) — cùng quy ước với CLI `publish` của từng công ty.
+- Đi qua đúng `SQLiteBus` + `Envelope` của công ty nên payload được kiểm theo `topics/schemas/<topic>.json`;
+  bus từ chối → `SubmitError` (400) nguyên văn. Sai `xuong`/`topic`/`actor`/thiếu key → `ValueError` (400).
+- File bus chưa có thì tạo (như CLI): yêu cầu đầu tiên của công ty chưa chạy lần nào là chuyện bình thường.
+- Trả `{"ok": true, "xuong", "topic", "key", "event_id"}`.
+
 ## `server.py`
 
 ```
-GET  /                  → static/index.html, chèn <script>window.__CONSOLE__={token,readonly}</script>
+GET  /                  → static/index.html, chèn <script>window.__CONSOLE__={token,readonly,can_submit}</script>
 GET  /static/*          → file tĩnh trong static/
 GET  /sw.js             → static/sw.js — PHẢI ở gốc, service worker chỉ điều khiển được
                           những đường trong thư mục chứa nó, mà nó cần điều khiển "/"
@@ -109,6 +124,9 @@ GET  /api/stream        → SSE: `event: state` mỗi khi bus đổi, `event: er
 GET  /api/settings      → settings.read_settings(...) + {"can_edit": bool}
 POST /api/settings      → body {company, models?, prefer?, enable?, disable?}  (cần --allow-config)
 POST /api/gate/decide   → body {subject_id, xuong, decision, by, reason}      (cần --allow-decide)
+POST /api/request       → body {xuong, topic, payload, actor}                 (cần --allow-submit)
+                          giao việc: submit.submit(...) publish event vào bus của xưởng, chỉ nhận
+                          topic do người nạp (`submit.FORMS`); payload kiểm theo schema của topic
 GET  /healthz           → {"ok": true}
 ```
 
@@ -122,8 +140,9 @@ Bảo mật — bắt buộc, đây là bề mặt đầu tiên cho phép duyệ
 3. Chống DNS rebinding: từ chối request có `Host` không phải loopback (404), và từ chối
    `Origin` khác `http://127.0.0.1:<port>` (403). Token nằm ở header chứ không phải cookie
    nên trang ngoài không giả mạo được POST.
-4. Hai quyền ghi TÁCH RIÊNG, không cái nào mở cái nào: `--allow-decide` cho `/api/gate/decide`,
-   `--allow-config` cho `POST /api/settings`. Duyệt gate và đổi model là hai rủi ro khác nhau.
+4. Ba quyền ghi TÁCH RIÊNG, không cái nào mở cái nào: `--allow-decide` cho `/api/gate/decide`,
+   `--allow-config` cho `POST /api/settings`, `--allow-submit` cho `POST /api/request`. Duyệt gate,
+   đổi model và giao việc mới là ba rủi ro khác nhau.
 5. `--readonly` (mặc định **bật**) chặn mọi POST. Muốn duyệt gate từ trang thì chạy
    `--allow-decide`, và trang hiện rõ đang ở chế độ nào.
 6. Không log token, không log body. Vì `log_message` ghi nguyên dòng request, token **không được**
@@ -163,6 +182,10 @@ Một file, không framework, không bước build. Phần dữ liệu:
 - `sources[x].ok === false`: phần của xưởng đó hiện trạng thái rỗng có lý do, không hiện số 0 giả.
 - Nút quyết định gate gọi `POST /api/gate/decide`; `readonly` thì nút bị khoá kèm giải thích
   cách bật `--allow-decide`.
+- Màn **Giao việc** (`#/giao-viec`): ba form = ba topic trong `submit.FORMS` (yêu cầu phần mềm, trả lời
+  câu hỏi làm rõ, brief kênh video). Trang chỉ gom trường thành payload đúng hình schema (danh sách: mỗi
+  dòng một mục; trả lời: `question_id: nội dung`), gọi `POST /api/request`; `can_submit` false thì nút
+  khoá kèm cách bật `--allow-submit`. Gửi xong hiện key + event id và link sang màn xưởng tương ứng.
 - Không còn dữ liệu mẫu nào trong file.
 
 Vỏ PWA — `manifest.webmanifest` + `sw.js`, để trang cài được thành app có cửa sổ riêng.
