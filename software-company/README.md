@@ -90,6 +90,8 @@ PYTHONPATH=src uv run python -m company.orchestrator publish research-requests r
 PYTHONPATH=src uv run python -m company.orchestrator run --watch 5     # hoặc: make watch (một lượt: make run; --max-steps N giới hạn số bước)
 #   cờ chung đặt trước subcommand: --db company.sqlite --repo --base --integration --artifacts --workers --web --batch-release
 PYTHONPATH=src uv run python -m company.orchestrator run --repo ../khach --base main   # làm THẬT: khối kỹ thuật sửa code
+#   --repo là MẶC ĐỊNH; từng dự án tự chỉ repo riêng bằng `repo`/`base` trong research-requests (ADR-0025) — một tiến
+#   trình phục vụ nhiều khách, mỗi khách một repo; console giao việc kèm "nơi lưu dự án"
                                                                         # trong worktree ticket/<id>, PR mang lint/test thật;
                                                                         # ticket rẽ từ và merge vào company/integration (--integration)
 PYTHONPATH=src uv run python -m company.gate_cli approve SPEC-P1 --by human:po   # gate spec → plan → release → acceptance
@@ -125,7 +127,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-02)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0024; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0025; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),

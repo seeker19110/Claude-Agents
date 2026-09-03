@@ -35,6 +35,14 @@
           "items": {
             "type": "string"
           }
+        },
+        "repo": {
+          "type": "string",
+          "description": "ADR-0025: đường dẫn repo git của khách cho RIÊNG dự án này (tuyệt đối, hoặc tương đối với cwd của orchestrator). Bỏ trống = dùng --repo của tiến trình."
+        },
+        "base": {
+          "type": "string",
+          "description": "nhánh/commit nền để rẽ nhánh tích hợp của dự án (mặc định = --base của tiến trình)"
         }
       },
       "required": [

@@ -74,7 +74,7 @@ def test_rework_after_error_bat_value_error(monkeypatch):
 def test_merge_ticket_khong_co_worktree_thi_skip(tmp_path):
     orch = _orch()
     orch.integration = type("FakeIntegration", (), {"sha": lambda self: "abc", "branch": "integration",
-                                                      "path": tmp_path / "no-such-dir",
+                                                      "path": tmp_path / "no-such-dir", "repo": None,
                                                       "ensure": lambda self: None})()
     res = StepResult("e1", "release-candidates", "R1")
     ok = orch._merge_ticket("T-none", res, release_id="R1")
