@@ -8,11 +8,12 @@ Console **đọc bus SQLite của hai công ty ở chế độ chỉ đọc** v�
 định gate đi qua đúng lớp `HumanGate` của công ty tương ứng, nên four-eyes, allowlist người duyệt và
 `audit-log` vẫn đi đúng đường của repo.
 
-**Giao việc ngay trên trang** (bật `--allow-submit`): màn *Giao việc* có ba form — *Yêu cầu phần mềm*
-(`research-requests`), *Trả lời câu hỏi làm rõ* (`clarification-answers`) cho xưởng phần mềm, và *Brief kênh
-video* (`channel-briefs`) cho xưởng video. Form chỉ gom trường thành payload; event được publish qua đúng
-`SQLiteBus` của công ty nên vẫn bị kiểm theo JSON Schema của topic y như nạp bằng CLI `publish`. Không cần
-tạo file JSON tay nữa; agent nhận việc ở nhịp `run --watch` kế tiếp.
+**Giao việc ngay trên trang** (bật `--allow-submit`), tách theo từng xưởng chứ không gộp: đầu màn *Xưởng phần mềm*
+có form *Yêu cầu phần mềm* (`research-requests`, kèm **nơi lưu dự án** = repo git của khách cho riêng dự án đó,
+ADR-0025) và *Trả lời câu hỏi làm rõ* (`clarification-answers`); đầu màn *Xưởng video* có form *Brief kênh video*
+(`channel-briefs`). Form chỉ gom trường thành payload; event được publish qua đúng `SQLiteBus` của công ty nên vẫn
+bị kiểm theo JSON Schema của topic y như nạp bằng CLI `publish`. Không cần tạo file JSON tay nữa; agent nhận việc
+ở nhịp `run --watch` kế tiếp.
 
 Không framework web, không CDN, không phụ thuộc runtime nào ngoài hai công ty: server là `http.server`
 của thư viện chuẩn, trang là một file HTML tĩnh dùng `fetch`.

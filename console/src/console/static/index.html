@@ -295,8 +295,8 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
 .empty code{font-family:var(--mono);font-size:11.5px}
 .by{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-muted)}
 .by input{flex:1;border:1px solid var(--line);border-radius:5px;padding:6px 9px;background:var(--surface);font-size:12.5px;font-family:var(--mono)}
-/* form giao việc */
-#submit .by{max-width:520px;margin-bottom:6px}
+/* form giao việc (một khối ở đầu màn mỗi xưởng) */
+.submit .by{max-width:520px;margin-bottom:6px}
 .form{display:grid;gap:10px;padding:14px 0 18px;border-top:1px solid var(--line-soft)}
 .form .sect-head{flex-direction:column;gap:2px}
 .fld{display:grid;gap:4px;font-size:12px;color:var(--ink-muted);max-width:720px}
@@ -318,7 +318,6 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
       <button class="nav" data-v="video">Xưởng video<span class="cnt" id="nav-videos">—</span></button>
       <button class="nav" data-v="chi-phi">Chi phí &amp; hạn mức</button>
       <button class="nav" data-v="nhat-ky">Nhật ký</button>
-      <button class="nav" data-v="giao-viec">Giao việc</button>
       <button class="nav" data-v="cai-dat">Cài đặt model</button>
     </div>
     <div class="rail-foot">
@@ -407,6 +406,13 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
 
     <!-- ============ PHẦN MỀM ============ -->
     <section class="view" id="v-phan-mem">
+      <div class="sect submit" data-xuong="software-company">
+        <div class="sect-head">
+          <h2>Giao việc cho xưởng phần mềm</h2>
+          <p>yêu cầu mới và trả lời câu hỏi làm rõ — điền ô thay cho viết JSON tay; event đi qua bus của công ty, kiểm theo schema</p>
+        </div>
+        <div class="panel"></div>
+      </div>
       <div class="sect">
         <div class="sect-head"><h2>Bảng ticket</h2><p>bấm một ticket để xem PR, review và ngân sách</p></div>
         <div class="filters" id="f-tickets"></div>
@@ -436,6 +442,13 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
 
     <!-- ============ VIDEO ============ -->
     <section class="view" id="v-video">
+      <div class="sect submit" data-xuong="Studio-creators">
+        <div class="sect-head">
+          <h2>Giao việc cho xưởng video</h2>
+          <p>brief một kênh — điền ô thay cho viết JSON tay; event đi qua bus của xưởng, kiểm theo schema</p>
+        </div>
+        <div class="panel"></div>
+      </div>
       <div class="sect">
         <div class="sect-head"><h2>Dây chuyền video</h2><p>bấm một video để xem ngân sách token của nó</p></div>
         <div class="filters" id="f-videos"></div>
@@ -483,17 +496,6 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
             <tbody id="sup"></tbody>
           </table>
         </div>
-      </div>
-    </section>
-
-    <!-- ============ GIAO VIỆC ============ -->
-    <section class="view" id="v-giao-viec">
-      <div class="sect">
-        <div class="sect-head">
-          <h2>Giao việc cho công ty</h2>
-          <p>điền ô thay cho viết JSON tay; event vẫn đi qua bus của công ty và bị kiểm theo schema của topic</p>
-        </div>
-        <div class="panel" id="submit"></div>
       </div>
     </section>
 
@@ -751,7 +753,6 @@ const TITLES={
  "video":()=>["Xưởng video",srcOk(ST)?`${listOf(ST,st().videos).length} video trong dây chuyền`:srcWhy(ST)],
  "chi-phi":()=>["Chi phí & hạn mức",`${vnd(st().tiles.project_cost_usd)} / ${vnd(st().tiles.project_budget_usd)} USD dự án · ${st().backends.length} gói tài khoản`],
  "nhat-ky":()=>["Nhật ký",`audit-log ${num(st().log.length)} bản ghi · lọc theo hành động`],
- "giao-viec":()=>["Giao việc",CONSOLE.can_submit?"yêu cầu đi thẳng vào bus của công ty, kiểm theo schema của topic":"chỉ xem — chạy lại console với --allow-submit để giao việc"],
  "cai-dat":()=>["Cài đặt model",CFG?(CFG.can_edit?"sửa được — thay đổi ghi thẳng vào llm.yaml, bản cũ để lại .bak":"chỉ xem — chạy lại console với --allow-config để sửa"):"đang đọc cấu hình…"]};
 let view="truc-ban";
 function titles(){const [t,s]=TITLES[view]();$("#vt").textContent=t;$("#vs").textContent=s;}
@@ -762,7 +763,7 @@ function titles(){const [t,s]=TITLES[view]();$("#vt").textContent=t;$("#vs").tex
    ngăn kéo thay vì rời trang, và gửi được link tới đúng một gate cho người khác.
    Dùng hash chứ không `history.pushState`: server chỉ phục vụ một đường `/`, đẩy đường dẫn thật
    vào thanh địa chỉ thì F5 sẽ ăn 404. */
-const VIEWS=["truc-ban","phan-mem","video","chi-phi","nhat-ky","giao-viec","cai-dat"];
+const VIEWS=["truc-ban","phan-mem","video","chi-phi","nhat-ky","cai-dat"];
 const OPENERS={gate:id=>openGate(id),ticket:id=>openTicket(id),video:id=>openVideo(id)};
 let routing=false;                                // chặn vòng lặp hash -> mở -> đặt hash
 
@@ -787,7 +788,7 @@ function showView(v){
   $$(".view").forEach(x=>x.classList.toggle("on",x.id==="v-"+v));
   titles(); window.scrollTo({top:0});
   if(v==="cai-dat") loadSettings();
-  if(v==="giao-viec") renderSubmit();
+  if(v==="phan-mem"||v==="video") renderSubmit(v);
 }
 function applyRoute(){
   const r=readHash();
@@ -882,9 +883,10 @@ $("#settings").addEventListener("click",async e=>{
 });
 
 /* ---------- giao việc ----------
-   Ba form = ba topic mà NGƯỜI được nạp vào bus (`console.submit.FORMS`). Trang chỉ gom trường thành
-   payload đúng hình của schema topic; kiểm tra thật do bus của công ty làm khi publish, lỗi trả về
-   nguyên văn. Danh sách (goals, pillars, boundaries, attachments): mỗi dòng một mục. */
+   Ba form = ba topic mà NGƯỜI được nạp vào bus (`console.submit.FORMS`), đặt NGAY TRONG màn của xưởng
+   nhận việc (không gộp chung một màn): yêu cầu phần mềm + trả lời làm rõ ở Xưởng phần mềm, brief kênh ở
+   Xưởng video. Trang chỉ gom trường thành payload đúng hình của schema topic; kiểm tra thật do bus của
+   công ty làm khi publish, lỗi trả về nguyên văn. Danh sách (goals, pillars...): mỗi dòng một mục. */
 const SC_X="software-company", ST_X="Studio-creators";
 const FORMS=[
  {id:"req",xuong:SC_X,topic:"research-requests",title:"Yêu cầu phần mềm",view:"phan-mem",
@@ -892,6 +894,8 @@ const FORMS=[
   fields:[
    {k:"project_id",label:"Mã dự án",ph:"P1",req:true,mono:true},
    {k:"description",label:"Mô tả yêu cầu",ph:"Web bán khoá học tiếng Nhật: catalog, giỏ hàng, thanh toán VNPay, admin quản lý khoá. Mobile-first.",req:true,rows:6},
+   {k:"repo",label:"Nơi lưu dự án — repo git của khách trên máy chạy orchestrator (đường dẫn tuyệt đối; bỏ trống = <code>--repo</code> mặc định của tiến trình)",ph:"D:\\khach\\web-khoa-hoc",mono:true},
+   {k:"base",label:"Nhánh nền để rẽ nhánh tích hợp (bỏ trống = <code>--base</code> mặc định)",ph:"main",mono:true},
    {k:"attachments",label:"Tài liệu đính kèm (đường dẫn/URL, mỗi dòng một mục)",list:true,rows:2}]},
  {id:"ans",xuong:SC_X,topic:"clarification-answers",title:"Trả lời câu hỏi làm rõ",view:"phan-mem",
   hint:"Khi spec-writer đặt câu hỏi (topic <code>clarification-questions</code>), trả lời theo <code>question_id</code> để dự án đi tiếp.",
@@ -911,11 +915,12 @@ const FORMS=[
    {k:"language",label:"Ngôn ngữ",ph:"vi"},
    {k:"tone",label:"Giọng điệu",ph:"gần gũi, thực tế"}]}];
 
-function renderSubmit(){
-  const box=$("#submit"); if(box.dataset.ready) return; box.dataset.ready="1";
-  const can=!!CONSOLE.can_submit;
+function renderSubmit(v){
+  const sect=$(`#v-${v} .submit`); if(!sect) return;
+  const box=$(".panel",sect); if(box.dataset.ready) return; box.dataset.ready="1";
+  const xuong=sect.dataset.xuong, can=!!CONSOLE.can_submit;
   const me=esc(localStorage.getItem(ME_KEY)||"human:owner");
-  const forms=FORMS.map(f=>`
+  const forms=FORMS.filter(f=>f.xuong===xuong).map(f=>`
     <form class="form" data-form="${f.id}" autocomplete="off">
       <div class="sect-head"><h3>${esc(f.title)}</h3><p>${f.hint} <span class="note">→ topic <code>${esc(f.topic)}</code> · ${esc(f.xuong)}</span></p></div>
       ${f.fields.map(x=>`<label class="fld"><span>${x.label}${x.req?' <b class="req">*</b>':""}</span>${
@@ -924,7 +929,7 @@ function renderSubmit(){
       <div class="filters"><button type="submit"${can?"":" disabled"}>Giao việc</button><span class="note" data-note></span></div>
     </form>`).join("");
   box.innerHTML=(can?"":'<div class="note">Đang ở chế độ chỉ xem. Chạy lại: <code>python -m console --allow-submit</code></div>')
-    +`<div class="by">Bạn là <input id="submit-by" value="${me}" placeholder="human:owner"> <span class="note">ghi vào <code>actor</code> của event và audit-log</span></div>`
+    +`<div class="by">Bạn là <input class="submit-by" value="${me}" placeholder="human:owner"> <span class="note">ghi vào <code>actor</code> của event và audit-log</span></div>`
     +forms;
 }
 
@@ -945,22 +950,22 @@ function formPayload(f,form){
   return p;
 }
 
-$("#submit").addEventListener("submit",async e=>{
+$$(".submit").forEach(sect=>sect.addEventListener("submit",async e=>{
   e.preventDefault();
   const form=e.target.closest("form[data-form]"); if(!form) return;
   const f=FORMS.find(x=>x.id===form.dataset.form), note=$("[data-note]",form), btn=$("button[type=submit]",form);
-  const by=($("#submit-by").value||"").trim(); if(!by){ note.textContent="điền Bạn là"; return; }
+  const by=($(".submit-by",sect).value||"").trim(); if(!by){ note.textContent="điền Bạn là"; return; }
   localStorage.setItem(ME_KEY,by);
   let payload; try{ payload=formPayload(f,form); }catch(err){ note.textContent=err.message; return; }
   btn.disabled=true; note.textContent="đang gửi…";
   try{
     const r=await api("/api/request",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({xuong:f.xuong,topic:f.topic,payload,actor:by})});
-    note.innerHTML=`đã giao: <code>${esc(r.key)}</code> · event <code>${esc(r.event_id)}</code> · <a href="#/${f.view}">xem xưởng</a>`;
+    note.innerHTML=`đã giao: <code>${esc(r.key)}</code> · event <code>${esc(r.event_id)}</code> — xuất hiện ở bảng bên dưới khi orchestrator xử lý`;
     form.reset();
   }catch(err){ note.textContent="lỗi: "+err.message; }
   finally{ btn.disabled=!CONSOLE.can_submit; }
-});
+}));
 
 /* ---------- hàng đợi gate ---------- */
 const KIND={plan:"kế hoạch",publish:"đăng",escalation:"leo thang",acceptance:"nghiệm thu",replies:"trả lời",spec:"đặc tả",release:"phát hành"};

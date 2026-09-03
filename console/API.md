@@ -182,10 +182,11 @@ Một file, không framework, không bước build. Phần dữ liệu:
 - `sources[x].ok === false`: phần của xưởng đó hiện trạng thái rỗng có lý do, không hiện số 0 giả.
 - Nút quyết định gate gọi `POST /api/gate/decide`; `readonly` thì nút bị khoá kèm giải thích
   cách bật `--allow-decide`.
-- Màn **Giao việc** (`#/giao-viec`): ba form = ba topic trong `submit.FORMS` (yêu cầu phần mềm, trả lời
-  câu hỏi làm rõ, brief kênh video). Trang chỉ gom trường thành payload đúng hình schema (danh sách: mỗi
-  dòng một mục; trả lời: `question_id: nội dung`), gọi `POST /api/request`; `can_submit` false thì nút
-  khoá kèm cách bật `--allow-submit`. Gửi xong hiện key + event id và link sang màn xưởng tương ứng.
+- Khối **Giao việc** ở đầu màn của từng xưởng — KHÔNG gộp chung một màn: *Xưởng phần mềm* có form yêu cầu
+  phần mềm (kèm nơi lưu dự án `repo`/`base`, ADR-0025 của công ty) và trả lời câu hỏi làm rõ; *Xưởng video*
+  có form brief kênh. Ba form = ba topic trong `submit.FORMS`. Trang chỉ gom trường thành payload đúng hình
+  schema (danh sách: mỗi dòng một mục; trả lời: `question_id: nội dung`), gọi `POST /api/request`;
+  `can_submit` false thì nút khoá kèm cách bật `--allow-submit`. Gửi xong hiện key + event id.
 - Không còn dữ liệu mẫu nào trong file.
 
 Vỏ PWA — `manifest.webmanifest` + `sw.js`, để trang cài được thành app có cửa sổ riêng.

@@ -56,6 +56,16 @@ def test_clarification_answers_vao_bus_company(dbs) -> None:
     assert _last(CompanyBus, company_db, "clarification-answers", "P1").payload["answers"][0]["question_id"] == "Q1"
 
 
+def test_research_request_mang_repo_va_base_theo_du_an(dbs) -> None:
+    # ADR-0025 (software-company): `repo`/`base` là trường tuỳ chọn của research-requests — console chỉ chuyển nguyên
+    # chuỗi, orchestrator mới là nơi kiểm repo có .git hay không.
+    company_db, studio_db = dbs
+    payload = {**REQ, "repo": "D:\\khach\\web", "base": "main"}
+    r = sm.submit(company_db, studio_db, xuong=sm.COMPANY, topic="research-requests", payload=payload, actor="human:sales")
+    env = _last(CompanyBus, company_db, "research-requests", r["key"])
+    assert env.payload["repo"] == "D:\\khach\\web" and env.payload["base"] == "main"
+
+
 def test_actor_duoc_strip(dbs) -> None:
     company_db, studio_db = dbs
     sm.submit(company_db, studio_db, xuong=sm.COMPANY, topic="research-requests", payload=REQ, actor="  human:sales ")

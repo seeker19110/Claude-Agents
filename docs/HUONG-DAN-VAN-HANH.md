@@ -315,17 +315,26 @@ Tạo `req.json` (đúng `payload` của topic `research-requests`; bắt buộc
 {
   "project_id": "P1",
   "description": "Web bán khoá học tiếng Nhật: catalog, giỏ hàng, thanh toán VNPay, admin quản lý khoá. Mobile-first.",
-  "attachments": []
+  "attachments": [],
+  "repo": "D:/khach/web-khoa-hoc",
+  "base": "main"
 }
 ```
+
+`repo`/`base` là tuỳ chọn (ADR-0025): **nơi lưu dự án** — repo git của khách cho riêng dự án này, trên máy chạy
+orchestrator (nên dùng đường dẫn tuyệt đối). Bỏ trống thì dự án dùng `--repo`/`--base` của tiến trình `run`; không có
+cả hai thì dự án chạy không repo (PR ghi `local_checks.unverified`). Repo khai sai không dừng dự án: audit
+`project.repo_invalid` một lần, publish lại `research-requests` với đường dẫn đúng là orchestrator cập nhật, không cần
+khởi động lại. Một tiến trình phục vụ được nhiều khách, mỗi khách một repo.
 
 ```bash
 PYTHONPATH=src uv run python -m company.orchestrator publish research-requests req.json --actor human:sales
 ```
 
 Không muốn viết JSON tay: chạy console với `--allow-submit` (`cd console && uv run python -m console --allow-submit`),
-vào màn **Giao việc** → form *Yêu cầu phần mềm*. Cùng một event, cùng schema — chỉ khác là điền vào ô. Câu hỏi làm rõ
-của spec-writer cũng trả lời được ở form *Trả lời câu hỏi làm rõ* thay cho `publish clarification-answers`.
+vào màn **Xưởng phần mềm** → khối *Giao việc* ở đầu màn → form *Yêu cầu phần mềm* (có ô *Nơi lưu dự án* = `repo`).
+Cùng một event, cùng schema — chỉ khác là điền vào ô. Câu hỏi làm rõ của spec-writer cũng trả lời được ở form
+*Trả lời câu hỏi làm rõ* ngay đó, thay cho `publish clarification-answers`.
 
 ### 5.2 Chạy vòng lặp
 
@@ -400,7 +409,8 @@ PYTHONPATH=src uv run python -m studio.orchestrator publish channel-briefs brief
 PYTHONPATH=src uv run python -m studio.orchestrator run --watch 5
 ```
 
-Hoặc điền form *Brief kênh video* ở màn **Giao việc** của console (chạy với `--allow-submit`) — cùng event, cùng schema.
+Hoặc điền form *Brief kênh video* ở khối *Giao việc* đầu màn **Xưởng video** của console (chạy với `--allow-submit`) —
+cùng event, cùng schema.
 
 ### 6.2 Bốn gate
 

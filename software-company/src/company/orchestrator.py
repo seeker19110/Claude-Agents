@@ -260,7 +260,13 @@ class Orchestrator:
         self.partial: dict[str, set[str]] = {}  # event_id → agent đã chạy xong (để không chạy lại khi event bị hoãn transient)
         if self.repo is not None and not (self.repo / ".git").exists():
             raise ValueError(f"repo không phải git repository: {self.repo}")
+        # `--repo` là repo MẶC ĐỊNH của tiến trình. Từng dự án có thể chỉ repo riêng ngay trong `research-requests`
+        # (payload.repo, payload.base — ADR-0025): học từ log lúc mở lại và từ event lúc chạy, ticket của dự án nào
+        # làm trong worktree của repo đó. Repo sai (không có .git) → audit một lần, dự án rơi về mặc định.
         self.integration = Integration(self.repo, integration, base) if self.repo is not None else None
+        self.base, self.integration_branch = base, integration
+        self.project_repos: dict[str, Integration] = {}
+        self.bad_repos: set[str] = set()
         self.void_releases: set[str] = set()
         self.integrated: set[str] = set()  # ticket đã merge vào nhánh tích hợp (khi approved, không đợi RC)
         self.missing_threat_model: set[str] = set()  # spec chưa có threat model vì security-engineer lỗi
@@ -312,9 +318,56 @@ class Orchestrator:
                     self._dispatch_plan(d["subject_id"], replaying=True)
             elif env.topic == "supervisor-actions": self._track_pause(env)
             elif env.topic == "shared-context": self.blackboard._on(env)
-            else: self.lead.replay(env)
+            else:
+                if env.topic == "research-requests": self._learn_repo(env, replaying=True)
+                self.lead.replay(env)
             self.supervisor.replay(env)
         self.queue = [e for e in log if self._actionable(e) and e.event_id not in self.processed]
+
+    # ---------- repo theo từng dự án (ADR-0025) ----------
+
+    def _learn_repo(self, env: Envelope, replaying: bool = False) -> None:
+        """`research-requests` mang `repo` (đường dẫn repo git của khách, tuyệt đối hoặc tương đối với cwd) và tuỳ chọn
+        `base` → nhánh tích hợp riêng cho dự án đó. Không có `repo` thì dự án dùng `--repo` mặc định. Repo không phải git
+        → không dừng dự án (nó vẫn chạy được không repo, PR ghi `unverified`), chỉ audit `project.repo_invalid` một lần."""
+        raw = env.payload.get("repo")
+        if not raw or not isinstance(raw, str): return
+        pid = str(env.payload.get("project_id") or env.key)
+        path = Path(raw).expanduser()
+        if not (path / ".git").exists():
+            if pid not in self.bad_repos:
+                self.bad_repos.add(pid)
+                if not replaying:
+                    self._audit("project.repo_invalid", {"project_id": pid, "repo": raw, "fallback": str(self.repo) if self.repo else None},
+                                project_id=pid)
+            return
+        base = str(env.payload.get("base") or self.base)
+        current = self.project_repos.get(pid)
+        if current is not None and current.repo == path.resolve() and current.base == base: return
+        self.project_repos[pid] = Integration(path.resolve(), self.integration_branch, base)
+        self.bad_repos.discard(pid)
+        self.lead.require_integration = True
+        if not replaying: self._audit("project.repo", {"project_id": pid, "repo": str(path.resolve()), "base": base}, project_id=pid)
+
+    def integration_for(self, project_id: str | None) -> Integration | None:
+        """Nhánh tích hợp của dự án: repo riêng của dự án nếu có, không thì repo mặc định `--repo` (có thể None)."""
+        if project_id and project_id in self.project_repos: return self.project_repos[project_id]
+        return self.integration
+
+    def _project_of_ticket(self, ticket_id: str) -> str | None:
+        t = self.lead.tickets.get(ticket_id)
+        return t.project_id if t is not None else None
+
+    def _integration_of_ticket(self, ticket_id: str) -> Integration | None:
+        return self.integration_for(self._project_of_ticket(ticket_id))
+
+    def _integration_of_release(self, env: Envelope) -> Integration | None:
+        """RC / release-event → dự án qua ticket đầu tiên của nó (mọi ticket một RC cùng dự án)."""
+        tickets = env.payload.get("tickets") or []
+        return self._integration_of_ticket(str(tickets[0])) if tickets else self.integration_for(self.project_for(env))
+
+    def _has_integration(self) -> bool:
+        return self.integration is not None or bool(self.project_repos)
 
     def _actionable(self, env: Envelope) -> bool:
         if env.topic == "audit-log": return env.payload.get("action") == "gate.decide"
@@ -336,10 +389,11 @@ class Orchestrator:
         return self.bus.latest(topic, key)
 
     def workspace(self, ticket_id: str) -> TicketWorkspace | None:
-        """Worktree của ticket, rẽ từ nhánh tích hợp (tạo nhánh tích hợp nếu chưa có)."""
-        if self.repo is None or self.integration is None: return None
-        with self._ws_lock: self.integration.ensure()  # nhiều worker cùng tạo nhánh tích hợp lần đầu → tuần tự
-        return TicketWorkspace(self.repo, ticket_id, base=self.integration.branch)
+        """Worktree của ticket, rẽ từ nhánh tích hợp của DỰ ÁN chứa ticket (tạo nhánh tích hợp nếu chưa có)."""
+        integ = self._integration_of_ticket(ticket_id)
+        if integ is None or integ.repo is None: return None
+        with self._ws_lock: integ.ensure()  # nhiều worker cùng tạo nhánh tích hợp lần đầu → tuần tự
+        return TicketWorkspace(integ.repo, ticket_id, base=integ.branch)
 
     # ---------- vòng lặp ----------
 
@@ -390,7 +444,7 @@ class Orchestrator:
         """Ticket approved mà chưa lên nhánh tích hợp thì merge ngay, không phụ thuộc vào việc có event nào của nó
         được xử lý: review-results cuối cùng có thể bị hoãn (ticket vừa bị supervisor cắt ngân sách) và từ F15 ticket
         phụ thuộc chỉ bắt đầu sau khi merge — không có bước này dự án đứng im."""
-        if self.integration is None: return
+        if not self._has_integration(): return
         res = StepResult("integration", "integration", "-")
         self._integrate_approved(res)
         if res.actions: out.append(res)
@@ -449,6 +503,7 @@ class Orchestrator:
         pid = env.payload.get("project_id")
         if pid and pid in self.paused:  # supervisor pause cả dự án (vượt ngân sách tiền)
             return self._defer(env, res, f"paused:{pid}")
+        if env.topic == "research-requests": self._learn_repo(env)  # repo riêng của dự án (ADR-0025), trước khi intake chạy
         if env.topic in PLAN_INPUTS and PLAN_INPUTS[env.topic](env, self):
             return self._plan(env, res)
         if env.topic == "release-candidates" and not self._integrate(env, res):
@@ -531,7 +586,8 @@ class Orchestrator:
                 if r.tools == "ro":
                     tools = self._read_only_tools(inp)
                 elif r.tools == "research":
-                    tools = research_toolbox(self.repo, self.web)
+                    integ = self.integration_for(self.project_for(env))  # researcher đọc đúng codebase của dự án
+                    tools = research_toolbox(integ.repo if integ is not None else None, self.web)
                 g = self.runner.generate(agent, inp, r.topic_out, tools=tools, max_turns=self.max_turns)
                 if r.tools == "ro" and tools is not None and not g.tool_calls:
                     # Có tool mà không chạy gì: verdict chỉ là lời khai. Không chặn (người đọc review vẫn quyết), nhưng phải hiện.
@@ -601,7 +657,7 @@ class Orchestrator:
         """Ticket vừa approved → merge ngay vào nhánh tích hợp, không đợi RC. Ticket phụ thuộc rẽ nhánh từ nhánh tích hợp,
         nên nếu chỉ merge lúc release (nhất là khi gom release) thì ticket sau không thấy code của ticket trước:
         DHCB-5 import `dhcb.layout` của DHCB-2 và đỏ ngay dù DHCB-2 đã approved."""
-        if self.integration is None: return
+        if not self._has_integration(): return
         for tid, st in list(self.lead.state.items()):
             if st != "approved" or tid in self.integrated: continue
             self._merge_ticket(tid, res, release_id=None)
@@ -609,14 +665,14 @@ class Orchestrator:
     def _merge_ticket(self, tid: str, res: StepResult, release_id: str | None) -> bool:
         """merge --no-ff branch ticket vào nhánh tích hợp. Xung đột → ticket về changes_requested với hint là file xung
         đột, worktree tạo lại từ nền mới; trả về False."""
-        assert self.integration is not None
+        integration = self._integration_of_ticket(tid)
         ws = self.workspace(tid)
-        if ws is None or not ws.path.exists():
+        if integration is None or ws is None or not ws.path.exists():
             self._audit("integration.skipped", {"release_id": release_id, "ticket_id": tid, "reason": "không có worktree"}, ticket_id=tid)
             return True
         t = self.lead.tickets.get(tid)
-        before = self.integration.sha()
-        m = self.integration.merge(ws.branch, f"merge({tid}): {t.title if t else tid}" + (f"\n\nrelease: {release_id}" if release_id else ""))
+        before = integration.sha()
+        m = integration.merge(ws.branch, f"merge({tid}): {t.title if t else tid}" + (f"\n\nrelease: {release_id}" if release_id else ""))
         if m.ok and m.sha == before:
             # Branch không có gì mới so với nhánh tích hợp (vd. vừa `fresh()` sau xung đột, chưa có PR mới): không phải
             # "đã tích hợp" — đánh dấu thế là mất code của lần làm lại về sau.
@@ -624,12 +680,13 @@ class Orchestrator:
             res.actions.append(f"integration_noop:{tid}"); return True
         if m.ok:
             with self._lock: self.integrated.add(tid)
-            self._audit("integration.merged", {"release_id": release_id, "ticket_id": tid, "sha": m.sha, "branch": self.integration.branch}, ticket_id=tid)
+            self._audit("integration.merged", {"release_id": release_id, "ticket_id": tid, "sha": m.sha, "branch": integration.branch,
+                                               "repo": str(integration.repo)}, ticket_id=tid)
             res.actions.append(f"integrated:{tid}@{m.sha}")
             started = self.lead.mark_integrated(tid)  # F15: ticket phụ thuộc bắt đầu trên nền đã có code này
             if started: res.actions.append("dispatch:" + ",".join(started))
             return True
-        hint = f"xung đột với nhánh tích hợp {self.integration.branch} ở: {', '.join(m.conflicts or [])}. Làm lại trên nền mới."
+        hint = f"xung đột với nhánh tích hợp {integration.branch} ở: {', '.join(m.conflicts or [])}. Làm lại trên nền mới."
         self._audit("integration.conflict", {"release_id": release_id, "ticket_id": tid, "conflicts": m.conflicts}, ticket_id=tid)
         try:
             ws.fresh()
@@ -642,7 +699,7 @@ class Orchestrator:
 
     def _integrate(self, rc: Envelope, res: StepResult) -> bool:
         """Mọi ticket của RC phải nằm trên nhánh tích hợp (thường đã merge lúc approved). Trả về False nếu RC bị huỷ."""
-        if self.integration is None: return True
+        if not self._has_integration(): return True
         rid = rc.payload["release_id"]
         if rid in self.void_releases: return False
         for tid in rc.payload.get("tickets", []):
@@ -660,12 +717,13 @@ class Orchestrator:
     def _read_only_tools(self, inp: Envelope) -> ToolBox | None:
         """Tool chỉ đọc cho QA: worktree của ticket (review PR) hoặc worktree tích hợp (hồi quy sau khi deploy staging —
         release không có ticket riêng, nhưng code vừa deploy chính là nhánh tích hợp). Không có repo → không tool."""
-        if self.repo is None or self.integration is None: return None
+        if not self._has_integration(): return None
         tid = inp.payload.get("ticket_id") or (inp.key if inp.topic in {"tasks", "pull-requests"} else None)
         if tid and (ws := self.workspace(str(tid))) is not None and ws.path.exists():
             return WorkspaceTools(ws, allow_write=False).toolbox()
-        if inp.payload.get("release_id") and self.integration.path.exists():
-            return WorkspaceTools(self.integration.path, allow_write=False).toolbox()
+        integ = self._integration_of_release(inp) if inp.payload.get("release_id") else None
+        if integ is not None and integ.path.exists():
+            return WorkspaceTools(integ.path, allow_write=False).toolbox()
         return None
 
     def _engineer(self, agent: str, task: Envelope, r: Route) -> Envelope | None:
@@ -702,7 +760,8 @@ class Orchestrator:
     def _release(self, agent: str, rc: Envelope, r: Route) -> Envelope:
         """release-engineer nhận RC kèm `target_env`; đầu ra phải đúng env và release_id, nếu không thì coi là invalid."""
         rid = rc.payload["release_id"]
-        extra = {"integration_branch": self.integration.branch, "integration_sha": self.integration.sha()} if self.integration else {}
+        integ = self._integration_of_release(rc)
+        extra = {"integration_branch": integ.branch, "integration_sha": integ.sha()} if integ is not None else {}
         inp = rc.model_copy(update={"payload": {**rc.payload, "target_env": r.target_env,
                                                 "gate_release": self.gate.is_approved(rid), **extra}})
         g = self.runner.generate(agent, inp, r.topic_out)
@@ -1009,10 +1068,17 @@ class Orchestrator:
                      evidence=json.dumps(data, ensure_ascii=False), cost_usd=cost)
         self.bus.publish(Envelope(topic="audit-log", key=actor, actor=actor, payload=a.model_dump()))
 
-    def _integration_status(self) -> dict[str, str] | None:
-        if self.integration is None or self.repo is None: return None
-        if not (self.repo / ".worktrees" / "_integration").exists(): return None
-        return {"branch": self.integration.branch, "sha": self.integration.sha()}
+    def _integration_status(self) -> dict[str, Any] | None:
+        """Nhánh tích hợp mặc định (`--repo`) + của từng dự án có repo riêng; None khi chưa có worktree tích hợp nào."""
+        def one(integ: Integration) -> dict[str, str] | None:
+            if not integ.path.exists(): return None
+            return {"branch": integ.branch, "sha": integ.sha(), "repo": str(integ.repo)}
+        default = one(self.integration) if self.integration is not None else None
+        projects = {pid: st for pid, integ in self.project_repos.items() if (st := one(integ)) is not None}
+        if default is None and not projects: return None
+        out: dict[str, Any] = dict(default or {})
+        if projects: out["projects"] = projects
+        return out
 
     def status(self) -> dict[str, Any]:
         return {"queue": len(self.queue), "deferred": {k: v[1] for k, v in self.deferred.items()},
