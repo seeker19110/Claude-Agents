@@ -41,6 +41,33 @@ def test_read_reports_current_state_as_the_default(llm):
     assert entry["prefer"] == {"strong": "claude-sub", "standard": "antigravity"}
 
 
+def test_load_reject_non_mapping_yaml(tmp_path):
+    path = tmp_path / "llm.yaml"
+    path.write_text("- a\n- b\n", encoding="utf-8")
+    with pytest.raises(settings.SettingsError, match="không phải ánh xạ YAML"):
+        settings.update_settings(path)
+
+
+def test_gateway_catalog_doc_duoc_danh_sach_model(monkeypatch):
+    """gateway_catalog() thật, không mock urlopen — giả một response HTTP tối giản."""
+    import io
+
+    class FakeResp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    payload = b'{"data": [{"id": "claude-sonnet-4-6"}, {"id": "x"}, "khong-phai-dict"]}'
+    monkeypatch.setattr(settings.urllib.request, "urlopen", lambda *a, **k: FakeResp(payload))
+    assert settings.gateway_catalog("http://127.0.0.1:1123") == ["claude-sonnet-4-6", "x"]
+
+
+def test_gateway_catalog_gateway_tat_tra_rong():
+    assert settings.gateway_catalog("http://127.0.0.1:9", timeout=0.5) == []
+
+
 def test_read_missing_file_is_a_state_not_an_error(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "gateway_catalog", lambda *a, **k: [])
     snap = settings.read_settings({"c": tmp_path / "khong-co.yaml"})
@@ -101,6 +128,19 @@ def test_prefer_cannot_point_at_a_disabled_backend(llm):
     settings.update_settings(llm, disable=["antigravity"])
     with pytest.raises(settings.SettingsError, match="đang bật"):
         settings.update_settings(llm, prefer={"light": "antigravity"})
+
+
+def test_prefer_tier_la_bi_tu_choi(llm):
+    with pytest.raises(settings.SettingsError, match="không hợp lệ"):
+        settings.update_settings(llm, prefer={"sieu": "claude-sub"})
+
+
+def test_disable_het_backend_dang_duoc_uu_tien_xoa_sach_prefer(llm):
+    """Tắt cả hai backend đang được `prefer` trỏ tới -> prefer_map rỗng -> khoá `prefer` bị bỏ hẳn khỏi routing."""
+    result = settings.update_settings(llm, disable=["claude-sub", "antigravity"])
+    data = yaml.safe_load(llm.read_text(encoding="utf-8"))
+    assert "prefer" not in (data.get("routing") or {})
+    assert any("bỏ ưu tiên" in c for c in result["changes"])
 
 
 def test_no_op_update_does_not_rewrite_the_file(llm):

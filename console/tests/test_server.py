@@ -8,10 +8,12 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import socket
 import stat
 import struct
 import sys
 import threading
+import time
 import types
 from pathlib import Path
 from typing import Any
@@ -604,3 +606,242 @@ def test_loi_that_van_noi_len_nguyen_ven(make_console, fake_modules, capsys) -> 
     except RuntimeError:
         c.server.handle_error(None, ("127.0.0.1", 1234))
     assert "hỏng thật" in capsys.readouterr().err
+
+
+# --- host_header_is_loopback: nhánh đơn vị -----------------------------------
+
+def test_host_header_none_va_rong_duoc_cho_qua() -> None:
+    assert srv.host_header_is_loopback(None) is True
+    assert srv.host_header_is_loopback("") is True
+    assert srv.host_header_is_loopback("   ") is True
+
+
+def test_host_header_ipv6_trong_ngoac_vuong() -> None:
+    assert srv.host_header_is_loopback("[::1]:8200") is True
+    assert srv.host_header_is_loopback("[::1") is True   # thiếu "]" đóng: vẫn cắt được, không ném
+
+
+# --- write_token_file (không phụ thuộc quyền POSIX) --------------------------
+
+def test_write_token_file_tao_va_ghi_de_tren_moi_he_dieu_hanh(tmp_path: Path) -> None:
+    path = tmp_path / "sub" / ".console-token"
+    token = srv.generate_token()
+    out = srv.write_token_file(token, path)
+    assert out == path
+    assert path.read_text(encoding="utf-8").strip() == token
+    token2 = srv.generate_token()
+    srv.write_token_file(token2, path)
+    assert path.read_text(encoding="utf-8").strip() == token2
+
+
+# --- ConsoleServer với host IPv6 không ngoặc ---------------------------------
+
+def test_server_host_ipv6_khong_ngoac_dung_af_inet6(static_dir: Path) -> None:
+    server = srv.make_server("::1", 0, static_dir=static_dir)
+    try:
+        assert server.address_family == socket.AF_INET6
+    finally:
+        server.server_close()
+
+
+# --- _gate_error_status: nhánh mặc định --------------------------------------
+
+def test_gate_error_khong_khop_tu_khoa_nao_thi_400(make_console, fake_modules) -> None:
+    class GateError(Exception): pass
+
+    fake_modules.box["decide_result"] = GateError("lỗi lạ không rơi vào nhóm nào")
+    c = make_console(readonly=False)
+    status, _ = c.request("POST", "/api/gate/decide", body=DECIDE_BODY)
+    assert status == 400
+
+
+# --- Origin: nhánh scheme lạ / thiếu "://" -----------------------------------
+
+def test_origin_scheme_la_bi_tu_choi(make_console, fake_modules) -> None:
+    c = make_console(readonly=False)
+    status, _ = c.request(
+        "POST", "/api/gate/decide",
+        headers={"Origin": "ftp://127.0.0.1"},
+        body=DECIDE_BODY,
+    )
+    assert status == 403
+
+
+def test_origin_khong_co_phan_sau_bi_tu_choi(make_console, fake_modules) -> None:
+    c = make_console(readonly=False)
+    status, _ = c.request(
+        "POST", "/api/gate/decide",
+        headers={"Origin": "http://"},
+        body=DECIDE_BODY,
+    )
+    assert status == 403
+
+
+# --- GET/POST /api/* không khớp route nào ------------------------------------
+
+def test_get_api_khong_khop_route_thieu_token_tra_401(make_console, fake_modules) -> None:
+    c = make_console()
+    status, _ = c.request("GET", "/api/khong-co-duong-nay", token=None)
+    assert status == 401
+
+
+def test_get_api_khong_khop_route_du_token_tra_404(make_console, fake_modules) -> None:
+    c = make_console()
+    status, _ = c.request("GET", "/api/khong-co-duong-nay")
+    assert status == 404
+
+
+def test_post_api_khong_khop_route_tra_404(make_console, fake_modules) -> None:
+    c = make_console(readonly=False)
+    status, _ = c.request("POST", "/api/khong-co-duong-nay", body={})
+    assert status == 404
+
+
+# --- body: Content-Length hỏng / quá lớn / không phải object ----------------
+
+def test_content_length_khong_phai_so_tra_400(make_console, fake_modules) -> None:
+    c = make_console(readonly=False)
+    conn = http.client.HTTPConnection("127.0.0.1", c.port, timeout=5)
+    try:
+        conn.request("POST", "/api/gate/decide", body=b"{}",
+                     headers={"X-Console-Token": c.token, "Content-Length": "khong-phai-so"})
+        assert conn.getresponse().status == 400
+    finally:
+        conn.close()
+
+
+def test_content_length_qua_lon_tra_400(make_console, fake_modules) -> None:
+    c = make_console(readonly=False)
+    conn = http.client.HTTPConnection("127.0.0.1", c.port, timeout=5)
+    try:
+        conn.request("POST", "/api/gate/decide", body=b"{}",
+                     headers={"X-Console-Token": c.token, "Content-Length": str(srv.MAX_BODY_BYTES + 1)})
+        assert conn.getresponse().status == 400
+    finally:
+        conn.close()
+
+
+def test_body_json_khong_phai_object_tra_400(make_console, fake_modules) -> None:
+    c = make_console(readonly=False)
+    status, body = c.request("POST", "/api/gate/decide", body=["khong", "phai", "object"])
+    assert status == 400
+    assert "object JSON" in body["error"]
+
+
+# --- /api/gate/decide: PermissionError và LookupError ------------------------
+
+def test_decide_permissionerror_thanh_403(make_console, fake_modules) -> None:
+    fake_modules.box["decide_result"] = PermissionError("không được phép")
+    c = make_console(readonly=False)
+    status, _ = c.request("POST", "/api/gate/decide", body=DECIDE_BODY)
+    assert status == 403
+
+
+def test_decide_lookuperror_thanh_404(make_console, fake_modules) -> None:
+    fake_modules.box["decide_result"] = LookupError("không tìm thấy subject")
+    c = make_console(readonly=False)
+    status, _ = c.request("POST", "/api/gate/decide", body=DECIDE_BODY)
+    assert status == 404
+
+
+# --- /api/settings POST: OSError khi ghi -------------------------------------
+
+def test_settings_post_oserror_khi_ghi_thanh_500(make_console, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _raise_oserror(*a: Any, **k: Any) -> Any:
+        raise OSError("đĩa đầy")
+
+    mod = types.ModuleType("console.settings")
+    mod.DEFAULT_LLM_YAML = {"software-company": Path("/x/llm.yaml")}  # type: ignore[attr-defined]
+    mod.SettingsError = ValueError  # type: ignore[attr-defined]
+    mod.update_settings = _raise_oserror  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "console.settings", mod)
+
+    c = make_console(allow_config=True)
+    status, body = c.request("POST", "/api/settings", body={"company": "software-company"})
+    assert status == 500
+    assert "đĩa" not in json.dumps(body)
+
+
+# --- trang chủ: thiếu index.html ---------------------------------------------
+
+def test_thieu_index_html_tra_404(make_console, fake_modules, tmp_path: Path) -> None:
+    empty_static = tmp_path / "static-rong"
+    empty_static.mkdir()
+    c = srv.make_server("127.0.0.1", 0, static_dir=empty_static)
+    threading.Thread(target=c.serve_forever, daemon=True).start()
+    try:
+        console = Console(c)
+        status, _ = console.request("GET", "/", token=None)
+        assert status == 404
+    finally:
+        c.shutdown()
+        c.server_close()
+
+
+# --- /static: đường ném OSError khi resolve() --------------------------------
+
+def test_static_resolve_nem_oserror_tra_404(make_console, fake_modules, monkeypatch: pytest.MonkeyPatch) -> None:
+    import pathlib
+
+    real_resolve = pathlib.Path.resolve
+
+    def _boom_resolve(self: pathlib.Path, *a: Any, **k: Any) -> pathlib.Path:
+        if "boom-oserror" in str(self):
+            raise OSError("resolve hỏng")
+        return real_resolve(self, *a, **k)
+
+    monkeypatch.setattr(pathlib.Path, "resolve", _boom_resolve)
+    c = make_console()
+    status, _ = c.request("GET", "/static/boom-oserror.js", token=None)
+    assert status == 404
+
+
+# --- /api/stream: heartbeat và mất kết nối giữa chừng ------------------------
+
+def test_stream_gui_heartbeat_khi_khong_co_gi_doi(make_console, fake_modules, tmp_path: Path,
+                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(srv, "STREAM_HEARTBEAT_SECONDS", 0.05)
+    monkeypatch.setattr(srv, "STREAM_POLL_SECONDS", 0.02)
+    fake_modules.state.clear(); fake_modules.state.update({"n": 1})
+    c = make_console(stream_max_seconds=1.0)
+
+    conn = http.client.HTTPConnection("127.0.0.1", c.port, timeout=5)
+    try:
+        conn.request("GET", "/api/stream", headers={"X-Console-Token": c.token})
+        resp = conn.getresponse()
+        assert resp.status == 200
+        saw_ping = False
+        for _ in range(300):
+            line = resp.fp.readline()
+            if not line:
+                break
+            if line.strip() == b": ping":
+                saw_ping = True
+                break
+        assert saw_ping
+    finally:
+        conn.close()
+
+
+def test_stream_mat_ket_noi_giua_chung_khong_nem(make_console, fake_modules, tmp_path: Path,
+                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    """time.sleep() ném BrokenPipeError giả lập client đã ngắt — vòng lặp phải thoát êm, không traceback."""
+    calls = {"n": 0}
+    real_sleep = srv.time.sleep
+
+    def _sleep_then_break(seconds: float) -> None:
+        calls["n"] += 1
+        if calls["n"] >= 2:
+            raise BrokenPipeError("client đã đóng")
+        real_sleep(seconds)
+
+    monkeypatch.setattr(srv.time, "sleep", _sleep_then_break)
+    c = make_console(stream_max_seconds=5.0)
+    status, _, frames = _read_sse(c.port, c.token, limit=1)
+    assert status == 200
+    assert frames
+
+    deadline = time.monotonic() + 3.0
+    while calls["n"] < 2 and time.monotonic() < deadline:
+        real_sleep(0.02)   # dùng sleep GỐC — srv.time.sleep đã bị vá, gọi nó ở đây sẽ tự ném luôn
+    assert calls["n"] >= 2   # đủ để vòng lặp chạm nhánh sleep() ném BrokenPipeError

@@ -1,9 +1,12 @@
 """collect(): hợp đồng API.md trên DB thật (event publish qua bus của hai công ty)."""
 from __future__ import annotations
 
+import json
 import math
+import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from company.gates import HumanGate as CompanyHumanGate
@@ -125,3 +128,155 @@ def test_doc_khong_ghi_vao_db(company_db: Path, studio_db: Path) -> None:
 def test_token_gateway_khong_bat_buoc(company_db: Path, studio_db: Path, token: Path | None, khong_co_llm_yaml: None) -> None:
     s = collect(company_db, studio_db, gateway_token_file=token, gateway_url=DEAD_GATEWAY)
     assert s["backends"] == []
+
+
+# ---------- các nhánh nhỏ khó chạm tới qua collect() nguyên khối: test trực tiếp hàm/lớp nội bộ ----------
+
+
+def test_envelope_hong_bao_loi_ro_thay_vi_nem_nua_voi(tmp_path: Path) -> None:
+    """Một hàng trong `events` mà body không parse được thành envelope model -> _SourceError rõ ràng."""
+    db = tmp_path / "hong-envelope.sqlite"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE events (seq INTEGER PRIMARY KEY, body TEXT)")
+    con.execute("INSERT INTO events (body) VALUES (?)", ("khong-phai-json-envelope-hop-le",))
+    con.commit()
+    con.close()
+    s = collect(db, None, gateway_url=DEAD_GATEWAY)
+    assert s["sources"][COMPANY]["ok"] is False
+    assert "log hỏng" in s["sources"][COMPANY]["error"]
+
+
+def test_evidence_don_bien_dang_loi() -> None:
+    assert collect_mod._evidence({"evidence": "khong-phai-json"}) == {}
+    assert collect_mod._evidence({"evidence": json.dumps([1, 2])}) == {}
+    assert collect_mod._evidence({"evidence": None}) == {}
+    assert collect_mod._evidence({"evidence": json.dumps({"event_id": "e1"})}) == {"event_id": "e1"}
+
+
+def test_view_read_replay_khong_override_nem_notimplemented() -> None:
+    with pytest.raises(NotImplementedError):
+        collect_mod._View("x", None)
+
+    class _ChiCoRead(collect_mod._View):
+        def _read(self):
+            return []
+
+    with pytest.raises(NotImplementedError):
+        _ChiCoRead("x", None)
+
+
+def test_view_mac_dinh_gate_title_facts_review_note_tiers() -> None:
+    """`_View` cơ sở (không override) dùng cho các test kiểm nhánh mặc định không lớp con nào chạm tới."""
+    v = object.__new__(collect_mod._View)
+    v.name = "x"
+    v.envelopes = []
+    assert v.tiers() == {}
+    assert v.review_note("S1", "src") == ""
+
+    r = SimpleNamespace(kind="plan", subject_id="S1", created_by="u")
+    assert v.gate_title(r) == "plan · S1"
+    assert v.gate_facts(r) == [["kind", "plan"], ["subject_id", "S1"], ["created_by", "u"]]
+
+
+def test_review_note_noi_finding_khi_khong_co_root_cause() -> None:
+    v = object.__new__(collect_mod._View)
+    v.envelopes = [
+        SimpleNamespace(topic="review-results",
+                        payload={"ticket_id": "T1", "source": "revr", "verdict": "block",
+                                 "findings": [{"text": "a"}, {"text": "b"}]}),
+    ]
+    assert v._review_note("ticket_id", "T1", "revr") == "block · a; b"
+    # không khớp nguồn/subject -> rỗng
+    assert v._review_note("ticket_id", "T1", "khac") == ""
+
+
+def test_company_tiers_loi_load_agents_tra_rong(company_db: Path, studio_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(collect_mod, "load_company_agents", lambda **k: (_ for _ in ()).throw(RuntimeError("hong")))
+    s = collect(company_db, studio_db, gateway_url=DEAD_GATEWAY)
+    # tiers() rỗng -> cost_days vẫn chạy được (dùng tier mặc định "standard"), không nổ.
+    assert len(s["cost_days"]["series"]) == 14
+
+
+def test_studio_tiers_loi_load_agents_tra_rong(company_db: Path, studio_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(collect_mod, "load_studio_agents", lambda **k: (_ for _ in ()).throw(RuntimeError("hong")))
+    s = collect(company_db, studio_db, gateway_url=DEAD_GATEWAY)
+    assert len(s["cost_days"]["series"]) == 14
+
+
+def test_retention_rong_khi_khong_co_snapshot_nao_co_curve(tmp_path: Path) -> None:
+    from studio.events import Envelope as SEnv
+    from studio.events import PerformanceSnapshot
+    from studio.sqlite_bus import SQLiteBus as SBus
+
+    db = tmp_path / "studio-no-curve.sqlite"
+    bus = SBus(db)
+    snap = PerformanceSnapshot(video_id="vid-1", channel_id="ch1", views=1, impressions=1, ctr=0.1,
+                               avg_view_duration_s=1.0, retention_curve=[])
+    bus.publish(SEnv(topic="performance-snapshots", key="vid-1", actor="human",
+                     payload=json.loads(snap.model_dump_json())))
+    bus.close()
+    s = collect(None, db, gateway_url=DEAD_GATEWAY)
+    assert s["retention"] == {"video_id": None, "points": []}
+
+
+def test_routing_status_config_loi_bo_qua_va_thu_gateway(company_db: Path, studio_db: Path,
+                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    """`llm.yaml` có tồn tại (giả) nhưng load_config ném lỗi -> _routing_status() bỏ qua, coi như không có, đi hỏi gateway."""
+    import console.collect as cmod
+
+    monkeypatch.setattr(cmod.company_llm, "CONFIG_FILE", "gia-lap.yaml")
+    monkeypatch.setattr(Path, "exists", lambda self: True)
+    monkeypatch.setattr(cmod.company_llm, "load_config", lambda p: (_ for _ in ()).throw(RuntimeError("hong config")))
+    monkeypatch.setattr(cmod.studio_llm, "CONFIG_FILE", None)
+    s = collect(company_db, studio_db, gateway_url=DEAD_GATEWAY)
+    assert s["backends"] == []
+    assert s["sources"]["gateway"]["ok"] is False
+
+
+def test_gateway_status_doc_token_that_bai_van_hoi_duoc(tmp_path: Path, company_db: Path, studio_db: Path,
+                                                         khong_co_llm_yaml: None) -> None:
+    """token_file trỏ tới đường dẫn không đọc được (thư mục) -> OSError bị nuốt, request vẫn không kèm token."""
+    bad_token = tmp_path  # là thư mục, đọc như file sẽ ném OSError
+    s = collect(company_db, studio_db, gateway_token_file=bad_token, gateway_url=DEAD_GATEWAY)
+    assert s["backends"] == []
+    assert s["sources"]["gateway"]["ok"] is False
+
+
+def test_gateway_status_thanh_cong_tra_danh_sach_account(tmp_path: Path, company_db: Path, studio_db: Path,
+                                                          khong_co_llm_yaml: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`GET /auth/status` thành công, kèm token file hợp lệ -> parse ra danh sách account đúng hình dạng."""
+    import io
+    import urllib.request
+
+    token_file = tmp_path / "tok"
+    token_file.write_text("abc123", encoding="utf-8")
+
+    payload = json.dumps({"accounts": [
+        {"email": "a@x.com", "cooldown_remaining": 0, "is_expired": False, "last_failure_status": 0, "source": "s1"},
+        {"email": "b@x.com", "cooldown_remaining": 30, "is_expired": False, "last_failure_status": 429, "source": "s2"},
+        {"email": "c@x.com", "cooldown_remaining": 0, "is_expired": True, "source": "s3"},
+    ]}).encode("utf-8")
+
+    class FakeResp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    captured_headers: dict[str, str] = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured_headers.update(req.headers)
+        return FakeResp(payload)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    s = collect(company_db, studio_db, gateway_token_file=token_file, gateway_url="http://gia-lap")
+    assert s["sources"]["gateway"]["ok"] is True
+    names = {b["n"] for b in s["backends"]}
+    assert names == {"a@x.com", "b@x.com", "c@x.com"}
+    by_name = {b["n"]: b for b in s["backends"]}
+    assert by_name["a@x.com"]["ok"] is True and by_name["a@x.com"]["st"] == "Sẵn sàng"
+    assert by_name["b@x.com"]["ok"] is False and "Nghỉ 30s" in by_name["b@x.com"]["st"]
+    assert by_name["c@x.com"]["ok"] is False and by_name["c@x.com"]["st"] == "Hết hạn token"
+    assert "Authorization" in captured_headers

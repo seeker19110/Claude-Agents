@@ -77,6 +77,21 @@ def test_thieu_db(tmp_path: Path, studio_db: Path) -> None:
         decide(None, studio_db, subject_id="PLAN-1", xuong=COMPANY, decision="approve", by="human:pm", reason="")
 
 
+def test_studio_gate_khong_doc_duoc_media_config_van_chay(
+    company_db: Path, studio_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`load_media_config()` hỏng (file media.yaml sai) không được chặn việc duyệt gate — chỉ mất allowlist tuỳ biến."""
+    import studio.media as media_mod
+
+    def _raise() -> None:
+        raise RuntimeError("media.yaml sai định dạng")
+
+    monkeypatch.setattr(media_mod, "load_media_config", _raise)
+    out = decide(company_db, studio_db, subject_id="PUB-vid-042", xuong=STUDIO, decision="approve",
+                 by="human:owner", reason="ok")
+    assert out["ok"] and out["event_id"]
+
+
 def test_thieu_nguoi_duyet(company_db: Path, studio_db: Path) -> None:
     with pytest.raises(ValueError, match="người duyệt"):
         decide(company_db, studio_db, subject_id="PLAN-1", xuong=COMPANY, decision="approve", by="  ", reason="")
