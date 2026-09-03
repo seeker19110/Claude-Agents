@@ -173,6 +173,28 @@ Hồ sơ đó: tier `strong` đi gói Claude (`claude-opus-5`, bật `mcp_tools`
 gateway (Gemini Flash) cho rẻ, gói nào cạn thì tự rơi sang gói kia. Thêm tài khoản Claude thứ hai: bỏ chú thích khối
 `claude-2` ở cuối file (xem 3.5).
 
+### 3.3c Máy này chạy được chế độ tool nào (chỉ software-company)
+
+Khối kỹ thuật chạy bằng gói Claude cần CLI `claude` làm được một trong hai việc, mà chỉ gọi thật mới biết:
+
+```bash
+cd software-company && make probe          # hoặc: make probe BACKEND=claude-1
+```
+
+Kết luận in ra cho từng backend `claude-code` trong `llm.yaml`:
+
+| | Nghĩa | Việc cần làm |
+|---|---|---|
+| `mcp` | CLI gọi ngược được tool của công ty | Dùng `mcp_tools: true` — tool chạy trong sandbox `tools.py`, audit đầy đủ |
+| `cli` | CLI chạy nhưng không hiểu `--mcp-config` (bản cũ), hoặc model bỏ qua tool | Chỉ còn `cli_tools: true` — hàng rào yếu hơn một bậc; nâng cấp `claude` rồi dò lại |
+| `none` | Không gọi được CLI | Kiểm `claude login`, hạn mức còn không, đường dẫn binary |
+
+Lệnh này gọi model thật một lượt rất ngắn (tier `light`, một tool không chạm file, không chạy lệnh), nên tốn hạn mức
+không đáng kể. Exit code 1 nếu có backend nào chưa đạt `mcp`, dùng được trong script.
+
+Sau khi chạy vài ticket, đọc lại audit để biết lượt nào đã đi chế độ nào — trường `mode` trong `tools_used`
+(`loop` = vòng lặp của runner với provider API, `mcp`, `cli`).
+
 ### 3.4 Kiểm tra cấu hình bằng một lượt gọi thật
 
 ```bash

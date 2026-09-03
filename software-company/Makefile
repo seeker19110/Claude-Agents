@@ -1,7 +1,9 @@
-.PHONY: llm test cov lint types fix demo golden gate eval eval-record eval-replay run watch status report metrics assetscan assetbudget
+.PHONY: llm probe test cov lint types fix demo golden gate eval eval-record eval-replay run watch status report metrics assetscan assetbudget
 llm:           # cài hồ sơ model chạy thật: make llm PROFILE=claude-gateway (không ghi đè llm.yaml đang có)
 	@test -f llm.yaml && echo "llm.yaml đã có, không ghi đè (xoá nó nếu muốn cài lại)" || \
 	 (cp llm.$(or $(PROFILE),claude-gateway).yaml llm.yaml && echo "đã tạo llm.yaml từ llm.$(or $(PROFILE),claude-gateway).yaml")
+probe:         # CLI `claude` trên máy này chạy được chế độ tool nào (mcp | cli | none) — gọi model THẬT một lượt
+	PYTHONPATH=src uv run python -m company.probe $(if $(BACKEND),--backend $(BACKEND),)
 test:
 	uv run pytest -q
 cov:

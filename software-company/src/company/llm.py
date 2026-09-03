@@ -73,6 +73,10 @@ class Completion:
     cached_input_tokens: int = 0  # phần input phục vụ từ cache (đã nằm trong input_tokens)
     cache_write_tokens: int = 0   # phần input ghi vào cache lần đầu (đã nằm trong input_tokens)
     tool_calls: list[ToolCall] = field(default_factory=list)  # model muốn gọi tool (rỗng = trả lời cuối)
+    # Ai đã chạy vòng tool của lượt này: "" = vòng lặp của runner (mọi provider API); "mcp" = CLI chạy, gọi ngược
+    # tool của công ty qua cầu MCP (ADR-0024); "cli" = CLI chạy bằng tool RIÊNG của nó (ADR-0023). Runner ghi vào
+    # audit `tools_used` để người vận hành biết lượt vừa rồi đi hàng rào nào, không phải đoán từ cấu hình.
+    tool_mode: str = ""
 
     @property
     def tokens(self) -> int:
@@ -691,7 +695,7 @@ class ClaudeCodeClient:
         if mcp:
             c = self._complete_mcp(args=args, system=system, stdin=prompt + hint + MCP_TOOL_NOTE, workdir=workdir)
             if c is not None:
-                return self._parse(c, model)
+                return self._parse(c, model, tool_mode="mcp")
             # CLI cũ không biết cờ MCP: `_complete_mcp` đã tắt `mcp_tools` cho phiên này
             cli = bool(tools) and self.cfg.cli_tools
             if not cli:
@@ -714,7 +718,7 @@ class ClaudeCodeClient:
         args += ["--system-prompt", system]
         check_argv(args)
         out = self._run(args, prompt + hint, workdir) if cli else self._run(args, prompt + hint)
-        return self._parse(out, model)
+        return self._parse(out, model, tool_mode="cli" if cli else "")
 
     def _complete_mcp(self, *, args: list[str], system: str, stdin: str, workdir: str | None) -> str | None:
         """MỘT tiến trình `claude -p` cho cả vòng tool, nhưng tool đi qua cầu MCP về `ToolBox` của runner (ADR-0024):
@@ -736,7 +740,7 @@ class ClaudeCodeClient:
                 self.cfg.mcp_tools = False
                 return None
 
-    def _parse(self, out: str, model: str) -> Completion:
+    def _parse(self, out: str, model: str, tool_mode: str = "") -> Completion:
         """JSON của `claude -p` → Completion (dùng chung cho cả ba chế độ tool)."""
         try:
             data = json.loads(out[out.index("{"):]) if "{" in out else {}
@@ -757,7 +761,7 @@ class ClaudeCodeClient:
         return Completion(text=str(data["result"]), input_tokens=int(u.get("input_tokens", 0) or 0) + read + write,
                           output_tokens=int(u.get("output_tokens", 0) or 0), model=used,
                           stop_reason=str(data.get("stop_reason") or "end_turn"), cached_input_tokens=read,
-                          cache_write_tokens=write)
+                          cache_write_tokens=write, tool_mode=tool_mode)
 
 
 # ---------- provider: Codex CLI (gói ChatGPT Plus/Pro đã `codex login` trên máy, không cần API key) ----------

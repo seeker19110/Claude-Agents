@@ -42,7 +42,8 @@ src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, g
                llm (ModelClient + adapter anthropic/openai/claude-code/codex/fake, tool-use, retry, bảng giá), routing (nhiều gói tài
                khoản, chọn theo tier, xoay khi hết quota — ADR-0019), runner (vòng lặp tool, guard, cắt ngữ cảnh),
                orchestrator (vòng lặp tự động, song song, người can thiệp), workspace (worktree), tools (tool có ranh
-               giới tin cậy), web (tool web cho researcher), guard (chống injection), assetscan (quét tài sản prompt), context (hạn mức ngữ cảnh),
+               giới tin cậy), mcp_bridge (cầu MCP đưa tool công ty vào CLI — ADR-0024), probe (CLI chạy được chế độ tool
+               nào), web (tool web cho researcher), guard (chống injection), assetscan (quét tài sản prompt), context (hạn mức ngữ cảnh),
                metrics (từ audit-log), evals (ghi/phát lại), stacks (lint/test theo stack — ADR-0013), demo, graph (cần
                `uv sync --extra graph`, không tính coverage)
 examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--relay/--resume/--auto-escalate), relay_client.py
@@ -73,7 +74,8 @@ uv run pytest -q --cov --cov-report=term  # make cov — ngưỡng 90%
 #   ghi sẵn llm.yaml): COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=http://127.0.0.1:8100/v1 COMPANY_LLM_API_KEY=gateway-local
 #   Gói Claude Pro/Max trên máy (không key): COMPANY_LLM_PROVIDER=claude-code COMPANY_MODEL_STRONG=claude-opus-5
 #     mặc định không tool-use; muốn cả khối kỹ thuật chạy bằng gói này thì đặt `mcp_tools: true` (ADR-0024, giữ nguyên
-#     sandbox tools.py) hoặc `cli_tools: true` (ADR-0023, CLI tự cầm tool) trong llm.yaml. Hồ sơ sẵn: `make llm`
+#     sandbox tools.py) hoặc `cli_tools: true` (ADR-0023, CLI tự cầm tool) trong llm.yaml. Hồ sơ sẵn: `make llm`.
+#     `make probe` gọi CLI thật một lượt và nói máy này dùng được chế độ nào (mcp | cli | none)
 #   Gói ChatGPT Plus/Pro qua Codex CLI (không key, không tool-use): COMPANY_LLM_PROVIDER=codex COMPANY_MODEL_STRONG=gpt-5.6-terra
 #   NHIỀU gói cùng lúc (ADR-0019): `backends:` + `routing.prefer` trong llm.yaml — mẫu ở llm.example.yaml; agent có tier
 #   strong/standard/light, gói hết quota tự nghỉ (routing.cooldown_s, transient_cooldown_s). Mỗi backend: name, provider,
