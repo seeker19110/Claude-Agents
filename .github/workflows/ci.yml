@@ -48,7 +48,7 @@ jobs:
       - run: uv sync --locked
         working-directory: software-company
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
-      - run: uv run pytest -q --cov --cov-report=term
+      - run: uv run pytest -q --cov --cov-report=term-missing
         working-directory: software-company
 
   eval-replay:
@@ -138,7 +138,7 @@ jobs:
       - run: uv sync --locked
         working-directory: Studio-creators
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
-      - run: uv run pytest -q --cov --cov-report=term
+      - run: uv run pytest -q --cov --cov-report=term-missing
         working-directory: Studio-creators
 
   studio-eval-replay:
@@ -228,7 +228,7 @@ jobs:
       - run: uv sync --locked
         working-directory: gateway
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
-      - run: uv run pytest -q --cov --cov-report=term
+      - run: uv run pytest -q --cov --cov-report=term-missing
         working-directory: gateway
 
   # console (trực ban hợp nhất): chỉ stdlib, phụ thuộc hai công ty qua path dependency.
@@ -270,7 +270,7 @@ jobs:
       - run: uv sync --locked
         working-directory: console
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
-      - run: uv run pytest -q --cov --cov-report=term
+      - run: uv run pytest -q --cov --cov-report=term-missing
         working-directory: console
 
   # Tài sản prompt của repo là chuỗi cung ứng (ADR-0022): injection, ký tự ẩn, lệnh nguy hiểm, khóa lộ
