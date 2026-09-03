@@ -16,8 +16,8 @@ Nguyên tắc chung cho mọi công ty:
 |---|---|---|
 | [`software-company/`](software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 20 agent, 45 skill, 18 topic, 14 template, 4 human gate (+ gate `escalation`), ADR 0001–0024, 421 test |
 | [`Studio-creators/`](Studio-creators/) | Phòng ban sáng tạo video (YouTube): kế hoạch → kịch bản → fact-check → render (TTS + ảnh + ghép) → sửa từng cảnh → review → đăng → số liệu thật nuôi chiến lược. Approval-first, media trung lập provider | 7 khối, 14 agent, 24 skill, 19 topic, 7 template, 4 human gate, ADR 0001–0008 (0007 tool web, 0008 adapter YouTube thật), 192 test |
-| [`gateway/`](gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code | daemon `127.0.0.1:8100/v1`, CLI `python -m gateway start/stop/status/login/logout/reset/setup`, 79 test |
-| [`console/`](console/) | Trực ban hợp nhất: một trang web cục bộ nhìn cả hai công ty — hàng đợi human gate, ticket, dây chuyền video, token và chi phí, gói tài khoản đang xoay — và duyệt gate ngay tại chỗ khi bật `--allow-decide`. Đọc bus SQLite ở chế độ chỉ đọc, quyết định đi qua đúng `HumanGate` của từng công ty | `127.0.0.1:8200`, chỉ thư viện chuẩn (`http.server`), 5 màn hình, chỉ đọc mặc định + token mỗi lần chạy, ADR 0001 |
+| [`gateway/`](gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code | daemon `127.0.0.1:8100/v1`, CLI `python -m gateway start/stop/status/login/logout/reset/setup/models`, 79 test |
+| [`console/`](console/) | Trực ban hợp nhất: một trang web cục bộ nhìn cả hai công ty — hàng đợi human gate, ticket, dây chuyền video, token và chi phí, gói tài khoản đang xoay — duyệt gate ngay tại chỗ khi bật `--allow-decide`, đổi model/backend từng công ty khi bật `--allow-config`. Đọc bus SQLite ở chế độ chỉ đọc, quyết định đi qua đúng `HumanGate` của từng công ty | `127.0.0.1:8200`, chỉ thư viện chuẩn (`http.server`), 6 màn hình, chỉ đọc mặc định + token mỗi lần chạy, ADR 0001, 64 test |
 | [`docs/HUONG-DAN-VAN-HANH.md`](docs/HUONG-DAN-VAN-HANH.md) | Hướng dẫn cài đặt và vận hành từng bước: cấu hình gói tài khoản, chạy thử, đưa yêu cầu, duyệt gate, theo dõi chi phí, bảo trì | |
 | [`docs/DIEU-PHOI-MODEL.md`](docs/DIEU-PHOI-MODEL.md) | Điều phối model theo gói tài khoản: backend, 3 tier, bảng agent → tier, cơ chế xoay khi hết quota | |
 | [`docs/QUY-TRINH-GIT.md`](docs/QUY-TRINH-GIT.md) | Quy trình Git chung: nhánh, commit, PR, CI, merge squash | |
@@ -27,8 +27,8 @@ Nguyên tắc chung cho mọi công ty:
 Mỗi công ty tự chứa: `pyproject.toml` + `uv.lock`, `Makefile`, `agents/`, `skills/`, `topics/`, `gates/`, `templates/`,
 `evals/`, `tests/`, `docs/` (kiến trúc + ADR), `llm.example.yaml`; software-company thêm `examples/` (mô phỏng cả công ty,
 relay client), Studio-creators thêm `media.example.yaml`. Không có `[project.scripts]`: mọi lệnh đều là `python -m <package>.<module>`
-(package `company` và `studio`). Đọc README trong từng thư mục để biết luồng và lệnh chi tiết. Thư mục `projects/` ở gốc
-để trống, dành cho repo khách khi chạy `--repo`.
+(package `company` và `studio`). Đọc README trong từng thư mục để biết luồng và lệnh chi tiết. Repo khách nằm ngoài repo này, chỉ ra bằng
+`--repo <đường dẫn>` khi chạy orchestrator.
 
 ## Bắt đầu nhanh
 
@@ -54,6 +54,7 @@ Muốn tự khai từ đầu thì sao chép `llm.example.yaml` → `llm.yaml` (b
 `codex` không có tool-use nên khối kỹ thuật của software-company (cần sửa code) tự bỏ qua provider này. `claude-code` thì có, qua
 một trong hai chế độ khai trong `llm.yaml`: `mcp_tools: true` (ADR-0024 — tool của công ty vào CLI qua cầu MCP, vẫn chạy trong
 sandbox `tools.py`; khuyến nghị) hoặc `cli_tools: true` (ADR-0023 — CLI tự cầm tool riêng của nó, hàng rào yếu hơn một bậc).
+`make probe` gọi model thật một lượt để biết CLI `claude` trên máy này chạy được chế độ nào (`mcp` | `cli` | `none`).
 Nên chạy một mình gói Claude Pro/Max là đủ cả hai công ty.
 
 **Chạy bằng gói tài khoản, không mua token**: khai nhiều `backends:` trong `llm.yaml` (Claude Pro/Max qua `claude-code`,
@@ -76,6 +77,8 @@ Nhìn cả hai công ty trên một màn hình (và duyệt gate tại chỗ):
 cd console && uv sync
 uv run python -m console                 # 127.0.0.1:8200, chỉ đọc; terminal in địa chỉ kèm token phiên
 uv run python -m console --allow-decide  # mở khoá các nút quyết định gate
+uv run python -m console --allow-config  # mở khoá màn "Cài đặt model" (ghi llm.yaml, giữ bản .bak)
+uv run python -m console models          # xem/đổi model từng tier, từng backend bằng CLI
 ```
 
 ## Kiến trúc chung của một công ty
@@ -94,10 +97,12 @@ topic (JSON Schema, có key) ──► registry: agent nào nhận topic nào
 
 ## Phát triển
 
-- CI (`.github/workflows/ci.yml`, Python 3.11 và 3.13): software-company và Studio-creators chạy cùng bộ cổng — ruff + mypy,
-  pytest có ngưỡng coverage (`fail_under` 90 và 84, đặt ở mức đang đạt để chặn tụt lùi), và `evals all --replay --strict`;
-  gateway chạy ruff + pytest; job `golden-check` chạy `make golden` rồi so `git diff --exit-code`; job `audit` chạy
-  `pip-audit --strict` + gitleaks trên cả lịch sử; job `quality` gom kết quả. `pr-policy.yml` kiểm tra quy ước PR.
+- CI (`.github/workflows/ci.yml`, Python 3.11 và 3.13): cả bốn package chạy ruff + mypy + pytest có ngưỡng coverage
+  (`fail_under` 90 / 84 / 73 / 84 cho software-company / Studio-creators / gateway / console, đặt ở mức đang đạt để chặn
+  tụt lùi); hai công ty chạy thêm `evals all --replay --strict`. Job `golden-check` chạy `make golden` rồi so
+  `git diff --exit-code`; `asset-scan` quét tài sản prompt và ngân sách token của cả hai công ty (ADR-0022); `audit` chạy
+  `pip-audit --strict` + gitleaks trên cả lịch sử; `quality` gom kết quả — tên job này là bất biến (required status check
+  của `main`), thêm job con mới thì phải nối vào `needs` của nó. `pr-policy.yml` kiểm tra quy ước PR.
 - Sửa `agents/` hoặc `skills/` → tăng `version`, `make golden`, `make eval-record AGENT=<id>` bằng model thật, commit bản ghi.
   Agent có tên trong `evals/recordings/REQUIRED.txt` mà thiếu bản ghi hoặc bản ghi lệch phiên bản prompt thì CI đỏ.
   Checklist đầy đủ: [`CONTRIBUTING.md`](CONTRIBUTING.md).
