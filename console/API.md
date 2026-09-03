@@ -100,6 +100,9 @@ def decide(company_db: Path | None, studio_db: Path | None, *,
 ```
 GET  /                  → static/index.html, chèn <script>window.__CONSOLE__={token,readonly}</script>
 GET  /static/*          → file tĩnh trong static/
+GET  /sw.js             → static/sw.js — PHẢI ở gốc, service worker chỉ điều khiển được
+                          những đường trong thư mục chứa nó, mà nó cần điều khiển "/"
+GET  /manifest.webmanifest → static/manifest.webmanifest (application/manifest+json)
 GET  /api/state         → collect(...)
 GET  /api/stream        → SSE: `event: state` mỗi khi bus đổi, `event: error` khi collect() ném,
                           `: ping` giữ nhịp 15 giây. Không có Content-Length; đóng kết nối là hết thân bài.
@@ -161,6 +164,11 @@ Một file, không framework, không bước build. Phần dữ liệu:
 - Nút quyết định gate gọi `POST /api/gate/decide`; `readonly` thì nút bị khoá kèm giải thích
   cách bật `--allow-decide`.
 - Không còn dữ liệu mẫu nào trong file.
+
+Vỏ PWA — `manifest.webmanifest` + `sw.js`, để trang cài được thành app có cửa sổ riêng.
+Service worker **không bao giờ** cache `/api/*` (dữ liệu sống; `/api/stream` là luồng không kết thúc,
+cache là treo) và **không bao giờ** cache `/` (HTML mang token phiên, token đổi mỗi lần chạy server).
+Chỉ icon được cache. Icon sinh lại bằng `uv run python tools/make_icons.py` (stdlib, không Pillow).
 
 Điều hướng — địa chỉ là trạng thái:
 

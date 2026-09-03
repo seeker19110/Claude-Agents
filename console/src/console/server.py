@@ -18,6 +18,7 @@ import logging
 import os
 import secrets
 import socket
+import sys
 import time
 from collections.abc import Iterable
 from http import HTTPStatus
@@ -58,8 +59,14 @@ _CONTENT_TYPES = {
     ".webp": "image/webp",
     ".ico": "image/x-icon",
     ".woff2": "font/woff2",
+    ".webmanifest": "application/manifest+json; charset=utf-8",
     ".map": "application/json; charset=utf-8",
 }
+
+
+# Vỏ PWA: đường ở gốc -> tên file trong static/. Không phải dữ liệu, không cần token — giống
+# hệt /static/*, và cả hai đều không nói gì về nội dung bus.
+_ROOT_FILES = {"/sw.js": "sw.js", "/manifest.webmanifest": "manifest.webmanifest"}
 
 
 def is_loopback_host(host: str) -> bool:
@@ -151,6 +158,17 @@ def _gate_error_status(exc: BaseException) -> int:
 class ConsoleServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        """Đóng tab hay tắt máy giữa chừng là chuyện thường của một công cụ cục bộ, nhất là khi
+        `/api/stream` giữ kết nối mở lâu. Mặc định của `socketserver` là in cả traceback ra
+        stderr cho mỗi lần như vậy — nhiễu terminal của người vận hành và làm chìm mất lỗi thật.
+        Chỉ hạ những lỗi *mất kết nối*; mọi lỗi khác vẫn nổi lên nguyên vẹn."""
+        exc = sys.exc_info()[1]
+        if isinstance(exc, ConnectionError | TimeoutError):
+            logger.debug("client %s ngắt kết nối: %s", client_address, exc)
+            return
+        super().handle_error(request, client_address)
 
     def __init__(
         self,
@@ -263,6 +281,11 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             self._serve_index()
         elif path.startswith("/static/"):
             self._serve_static(path[len("/static/") :])
+        elif path in _ROOT_FILES:
+            # Phải phục vụ ở GỐC chứ không phải dưới /static/: service worker chỉ điều khiển
+            # được những đường nằm trong thư mục chứa nó, mà nó cần điều khiển "/". Manifest đi
+            # cùng cho tiện — cả hai đều là vỏ app, không mang dữ liệu nào.
+            self._serve_static(_ROOT_FILES[path])
         elif path == "/api/state":
             if not self._authorized():
                 self._error(HTTPStatus.UNAUTHORIZED, "thiếu hoặc sai X-Console-Token")
