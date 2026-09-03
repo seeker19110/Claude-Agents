@@ -189,6 +189,18 @@ class AgentRunner:
         can_write = any(t.name == "write_file" for t in tools.specs())
         msgs: list[dict[str, Any]] = [{"role": "user", "content": user + "\n\n" + tools_prompt(tools, can_write)}]
         total, turn, usd, c = 0, 0, 0.0, None
+        # ADR-0024: client chạy được vòng tool bên trong provider mà vẫn gọi ngược tool của công ty (claude-code qua
+        # cầu MCP) thì nhận cả ToolBox thật — tool vẫn thực thi ở đây, trong sandbox này; chỉ vòng lặp là của provider.
+        bind = getattr(self.client, "bind_toolbox", None)
+        if bind is not None: bind(tools)
+        try:
+            return self._turns(spec, inp, user, schema, tools, max_turns, budget, msgs, total, turn, usd, c)
+        finally:
+            if bind is not None: bind(None)
+
+    def _turns(self, spec: AgentSpec, inp: Envelope, user: str, schema: dict[str, Any], tools: ToolBox,
+               max_turns: int, budget: int | None, msgs: list[dict[str, Any]], total: int, turn: int,
+               usd: float, c: Completion | None) -> tuple[Completion, int, int, float]:
         while turn < max_turns:
             turn += 1
             c = self._complete(spec, inp, user, schema, messages=msgs, tools=tools, tokens=total, cost=usd)

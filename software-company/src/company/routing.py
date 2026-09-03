@@ -148,6 +148,11 @@ class RoutingClient:
         b.cooldown_reason = f"{kind}: {msg[:120]}"
         self.notes.append(f"backend {b.name} {kind} → nghỉ {int(secs)}s: {msg[:120]}")
 
+    def bind_toolbox(self, toolbox: Any | None) -> None:
+        """ADR-0024: chuyển tiếp ToolBox cho mọi backend hiểu (chưa biết lượt này sẽ đi backend nào)."""
+        for b in self.backends:
+            if (bind := getattr(b.client, "bind_toolbox", None)) is not None: bind(toolbox)
+
     def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
                  cache_key: str | None = None, tools: list[ToolSpec] | None = None,
                  messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion:

@@ -65,8 +65,13 @@ prices:
 #   - name: claude-sub                 # Claude Pro/Max qua CLI `claude -p` (tài khoản đang đăng nhập mặc định)
 #     provider: claude-code            #   không cli_tools → không tool-use, khối kỹ thuật tự đi backend khác
 #     models: {strong: claude-opus-5, standard: claude-sonnet-5, light: claude-haiku-4-5}
-#   - name: claude-sub-tools           # NHƯ TRÊN, nhưng CLI tự cầm tool trong worktree của ticket → khối kỹ thuật
-#     provider: claude-code            #   (backend/frontend/...) và reviewer/QA chạy được bằng gói Claude, không cần API key.
+#   - name: claude-sub-mcp             # KHUYẾN NGHỊ để khối kỹ thuật chạy bằng gói Claude: tool của CÔNG TY vào CLI
+#     provider: claude-code            #   qua cầu MCP (ADR-0024). Cả vòng tool trong một tiến trình (có prompt cache),
+#     mcp_tools: true                  #   nhưng tool vẫn chạy trong sandbox tools.py → allowlist argv, chặn file bí mật
+#     mcp_max_turns: 24                #   và audit `tools_used` không đổi. Hồ sơ chạy sẵn: llm.claude-gateway.yaml
+#     models: {strong: claude-opus-5, standard: claude-sonnet-5, light: claude-haiku-4-5}
+#   - name: claude-sub-tools           # ĐƯỜNG DỰ PHÒNG (CLI cũ không có --mcp-config): CLI tự cầm tool RIÊNG của nó
+#     provider: claude-code            #   trong worktree của ticket.
 #     cli_tools: true                  #   Đánh đổi: allowlist argv + chặn file bí mật của tools.py nhường cho hệ
 #     cli_max_turns: 25                #   permission của CLI (--restricted + --tools hẹp + deny-list qua --settings).
 #     cli_bash:                        #   Mẫu lệnh Bash được phép; để trống thì agent không chạy được test/lint.

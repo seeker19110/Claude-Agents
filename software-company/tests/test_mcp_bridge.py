@@ -1,0 +1,187 @@
+"""ADR-0024: cầu MCP đưa bảng tool của công ty vào CLI `claude -p` mà tool vẫn chạy trong sandbox `tools.py`.
+Không cần CLI thật: test nói JSON-RPC trực tiếp với tiến trình MCP con, và thay `claude` bằng hàm giả."""
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from company.bus import InMemoryBus
+from company.llm import ClaudeCodeClient, LLMConfig, LLMError, cli_lacks_mcp
+from company.mcp_bridge import SERVER_NAME, ProxyServer, ToolBridge, tool_full_name
+from company.runner import AgentRunner
+from company.tools import ToolBox, ToolSpec, WorkspaceTools
+from company.workspace import TicketWorkspace
+from test_tools_and_agentic import _init_repo, _pr, _task_env
+
+
+def _box() -> ToolBox:
+    tb = ToolBox()
+    seen: list[str] = []
+    tb.add(ToolSpec("echo", "Trả lại chữ", {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}),
+           lambda x: (seen.append(x), f"đã nhận {x}")[1])
+    tb.seen = seen  # type: ignore[attr-defined]
+    return tb
+
+
+# ---------- socket phía cha ----------
+
+def test_bridge_serves_tool_list_and_calls_and_rejects_wrong_token():
+    tb = _box()
+    with ToolBridge(tb) as br:
+        px = ProxyServer(br.port, br.token)
+        assert [t["name"] for t in px.ask({"op": "list"})["tools"]] == ["echo"]
+        assert px.ask({"op": "call", "name": "echo", "args": {"x": "A"}}) == {"ok": True, "result": "đã nhận A"}
+        # tool chạy ở tiến trình cha → vết gọi vào đúng ToolBox của runner (audit + metrics)
+        assert tb.summary() == {"echo": 1} and tb.seen == ["A"]  # type: ignore[attr-defined]
+        assert not px.ask({"op": "call", "name": "khong-co", "args": {}})["ok"]   # tool lạ: lỗi, không sập cầu
+        assert px.ask({"op": "lung-tung"})["error"].startswith("op lạ")
+        assert ProxyServer(br.port, "token-sai").ask({"op": "list"}) == {"ok": False, "error": "token sai"}
+        port, token = br.port, br.token
+    # đóng rồi thì không ai gọi được nữa (socket chỉ sống trong lúc CLI chạy)
+    assert not ProxyServer(port, token).ask({"op": "list"}).get("ok")
+
+
+def test_bridge_config_names_tools_and_removes_secret_file_after_use():
+    with ToolBridge(_box()) as br:
+        assert br.allowed_tools() == tool_full_name("echo")
+        with br.config_file() as p:
+            cfg = json.loads(p.read_text(encoding="utf-8"))["mcpServers"][SERVER_NAME]
+            assert cfg["args"][:2] == ["-m", "company.mcp_bridge"] and br.token in cfg["args"]
+            assert Path(cfg["env"]["PYTHONPATH"], "company", "mcp_bridge.py").exists()
+        assert not p.exists(), "file cấu hình mang token phải bị xoá ngay sau lượt gọi"
+
+
+# ---------- tiến trình MCP con thật, nói JSON-RPC qua stdio ----------
+
+def test_real_subprocess_speaks_mcp_and_reaches_the_parent_toolbox(tmp_path):
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    tb = WorkspaceTools(ws).toolbox()
+    with ToolBridge(tb) as br, br.config_file() as cfg_path:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))["mcpServers"][SERVER_NAME]
+        proc = subprocess.Popen([cfg["command"], *cfg["args"]], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                text=True, encoding="utf-8", env={**cfg["env"], "PATH": ""})
+        def rpc(method, params=None, mid=1):
+            assert proc.stdin and proc.stdout
+            proc.stdin.write(json.dumps({"jsonrpc": "2.0", "id": mid, "method": method, "params": params or {}}) + "\n")
+            proc.stdin.flush()
+            return json.loads(proc.stdout.readline())["result"]
+        try:
+            assert rpc("initialize")["serverInfo"]["name"] == SERVER_NAME
+            names = [t["name"] for t in rpc("tools/list", mid=2)["tools"]]
+            assert names == ["read_file", "write_file", "list_files", "search", "run"]
+            r = rpc("tools/call", {"name": "read_file", "arguments": {"path": "mod.py"}}, mid=3)
+            assert "def add" in r["content"][0]["text"] and not r["isError"]
+            # sandbox không đổi: file bí mật vẫn bị chặn, và chặn ở TIẾN TRÌNH CHA
+            r = rpc("tools/call", {"name": "read_file", "arguments": {"path": ".env"}}, mid=4)
+            assert "file bí mật" in r["content"][0]["text"] and "sk_live_secret" not in r["content"][0]["text"]
+            # ghi qua MCP là ghi thật vào worktree
+            rpc("tools/call", {"name": "write_file", "arguments": {"path": "f.py", "content": "F = 1\n"}}, mid=5)
+            assert (ws.path / "f.py").read_text(encoding="utf-8") == "F = 1\n"
+        finally:
+            assert proc.stdin
+            proc.stdin.close(); proc.wait(timeout=10)
+    assert tb.summary() == {"read_file": 2, "write_file": 1}
+
+
+def test_proxy_answers_notifications_and_unknown_methods():
+    px = ProxyServer(1, "t")
+    assert px.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
+    assert px.handle({"jsonrpc": "2.0", "id": 9, "method": "ping"})["result"] == {}
+    assert px.handle({"jsonrpc": "2.0", "id": 9, "method": "la/hoac"})["error"]["code"] == -32601
+    # cha đã đóng: lỗi quay về model như dữ liệu, không làm sập server
+    r = px.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "echo", "arguments": {}}})
+    assert r["result"]["isError"] and "không nối được" in r["result"]["content"][0]["text"]
+
+
+# ---------- adapter: một tiến trình CLI cho cả vòng tool ----------
+
+def _cc(runner, **kw):
+    kw.setdefault("mcp_tools", True)
+    return ClaudeCodeClient(LLMConfig(provider="claude-code", models={"strong": "m", "standard": "m"}, **kw), runner=runner)
+
+
+def test_runner_binds_toolbox_and_cli_runs_the_whole_tool_loop_once(tmp_path):
+    """Cả vòng tool nằm trong MỘT lời gọi CLI (nên có prompt cache), tool vẫn chạy trong sandbox của công ty."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    tb = WorkspaceTools(ws).toolbox()
+    seen: list[list[str]] = []
+
+    def runner(args, stdin, cwd=None):
+        seen.append(args)
+        assert cwd == str(ws.path), "CLI chạy trong worktree của ticket"
+        i = args.index("--mcp-config")
+        cfg = json.loads(Path(args[i + 1]).read_text(encoding="utf-8"))["mcpServers"][SERVER_NAME]
+        px = ProxyServer(int(cfg["args"][cfg["args"].index("--port") + 1]), cfg["args"][cfg["args"].index("--token") + 1])
+        # đóng vai CLI: gọi tool qua cầu rồi mới chốt JSON
+        px.ask({"op": "call", "name": "read_file", "args": {"path": "mod.py"}})
+        px.ask({"op": "call", "name": "write_file", "args": {"path": "feature.py", "content": "F = 1\n"}})
+        return json.dumps({"result": json.dumps(_pr({"ticket_id": "T1"})), "stop_reason": "end_turn",
+                           "usage": {"input_tokens": 20, "cache_read_input_tokens": 15, "output_tokens": 5}})
+
+    bus = InMemoryBus()
+    g = AgentRunner(bus, _cc(runner)).generate("backend", _task_env(), "pull-requests", tools=tb)
+    assert (ws.path / "feature.py").read_text(encoding="utf-8") == "F = 1\n"
+    assert len(seen) == 1 and g.turns == 1, "cả vòng tool chỉ tốn một tiến trình CLI"
+    assert g.tool_calls == {"read_file": 1, "write_file": 1}   # đếm từ ToolBox thật, không từ lời khai của model
+    args = seen[0]
+    assert "--strict-mcp-config" in args, "không mở tool riêng của CLI"
+    assert args[args.index("--allowedTools") + 1] == ",".join(tool_full_name(n) for n in
+                                                              ["read_file", "write_file", "list_files", "search", "run"])
+    assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["tools_used"]
+    ev = json.loads(next(iter(bus.replay(topic="audit-log"))).payload["evidence"])
+    assert ev["calls"] == {"read_file": 1, "write_file": 1}
+
+
+def test_old_cli_falls_back_to_cli_tools_or_says_why(tmp_path):
+    """CLI cũ không biết `--mcp-config`: lùi sang chế độ tool CLI (ADR-0023) nếu backend có bật, không thì báo rõ."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    modes: list[str] = []
+
+    def runner(args, stdin, cwd=None):
+        if "--mcp-config" in args:
+            modes.append("mcp")
+            raise LLMError("claude -p thoát mã 1: error: unknown option '--mcp-config'")
+        modes.append("cli")
+        return json.dumps({"result": json.dumps(_pr({"ticket_id": "T1"})), "stop_reason": "end_turn", "usage": {}})
+
+    tb = WorkspaceTools(ws).toolbox()
+    client = _cc(runner, cli_tools=True)
+    client.bind_toolbox(tb)
+    c = client.complete(system="s", user="u", schema={}, model_tier="strong", tools=tb.specs(), workdir=tb.root)
+    assert modes == ["mcp", "cli"] and client.cfg.mcp_tools is False and c.json()["ticket_id"] == "T1"
+
+    # không bật cli_tools thì không im lặng bỏ tool: lỗi nói đúng việc phải làm
+    only_mcp = _cc(lambda a, s, cwd=None: (_ for _ in ()).throw(LLMError("unknown option '--mcp-config'")))
+    only_mcp.bind_toolbox(tb)
+    with pytest.raises(LLMError, match="không hỗ trợ `--mcp-config`"):
+        only_mcp.complete(system="s", user="u", schema={}, model_tier="strong", tools=tb.specs(), workdir=tb.root)
+    assert cli_lacks_mcp("unknown option '--mcp-config'") and not cli_lacks_mcp("You've hit your usage limit")
+
+
+def test_mcp_needs_binding_and_config_flag(tmp_path):
+    """Không bind ToolBox (gọi ngoài vòng tool) hoặc không bật `mcp_tools` thì không im lặng bỏ qua tool."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    tb = WorkspaceTools(ws).toolbox()
+    ok = json.dumps({"result": "{}", "stop_reason": "end_turn", "usage": {}})
+    unbound = _cc(lambda a, s, cwd=None: ok)
+    with pytest.raises(LLMError, match="chưa bind ToolBox"):
+        unbound.complete(system="s", user="u", schema={}, model_tier="strong", tools=tb.specs(), workdir=tb.root)
+    off = _cc(lambda a, s, cwd=None: ok, mcp_tools=False)
+    off.bind_toolbox(tb)
+    with pytest.raises(LLMError, match="mcp_tools"):
+        off.complete(system="s", user="u", schema={}, model_tier="strong", tools=tb.specs(), workdir=tb.root)
+    # runner gỡ bind sau vòng tool → lượt sau không còn cầu nào mở
+    bound = _cc(lambda a, s, cwd=None: ok)
+    bound.bind_toolbox(tb); bound.bind_toolbox(None)
+    with pytest.raises(LLMError, match="chưa bind ToolBox"):
+        bound.complete(system="s", user="u", schema={}, model_tier="strong", tools=tb.specs(), workdir=tb.root)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="đường dẫn socket khác trên Windows CI")
+def test_bridge_binds_loopback_only():
+    with ToolBridge(_box()) as br:
+        assert br._server is not None and br._server.server_address[0] == "127.0.0.1"

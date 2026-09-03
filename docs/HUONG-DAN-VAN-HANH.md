@@ -138,7 +138,7 @@ Quy tắc cần nhớ:
 - Đặt `COMPANY_LLM_PROVIDER` / `STUDIO_LLM_PROVIDER` bằng biến môi trường thì **bỏ qua `backends:`** (biến môi trường
   thắng file). Test và CI dùng cách này với `fake`.
 - Khoá backend ít dùng: `api_key_env` (tên biến chứa key thay vì ghi key vào file), `binary` (đường dẫn CLI `claude`/`codex`),
-  `supports_tools: true` ép router coi backend CLI là có tool-use (mặc định false cho `claude-code`/`codex`), `max_tokens`,
+  `mcp_tools` + `mcp_max_turns` (ADR-0024) hoặc `cli_tools` + `cli_bash` (ADR-0023) cho backend `claude-code` — bật một trong hai thì khối kỹ thuật chạy được bằng gói Claude; `supports_tools` ép router coi backend CLI là có/không có tool-use (mặc định theo hai cờ trên), `max_tokens`,
   `effort` (theo tier: low|medium|high|xhigh|max), `extra` (tham số riêng của provider, vd. temperature). Retry lỗi mạng:
   `retries` / `retry_base` trong llm.yaml hoặc `COMPANY_LLM_RETRIES`.
 - `gateway setup` ghi `llm.yaml` dạng một provider (không `backends:`); đã có `backends:` thì đừng chạy `setup`, khai backend
@@ -156,6 +156,22 @@ fps, resolution), và `platform` (`provider: fake | youtube`, `tokens:` đườn
 cho cả ba kênh: pipeline vẫn chạy trọn vẹn với file giữ chỗ. `platform` mặc định `fake` (không chạm YouTube); bật thật ở 6.3.
 Biến môi trường tương ứng: `STUDIO_MEDIA_{TTS,IMAGE,VIDEO}_PROVIDER`, `STUDIO_MEDIA_BASE_URL`, `STUDIO_MEDIA_OUTPUT_DIR`,
 `STUDIO_PLATFORM`, `STUDIO_YOUTUBE_TOKENS`.
+
+### 3.3b Đường tắt: hồ sơ gói Claude + gateway có sẵn
+
+Không muốn tự viết `backends:` thì mỗi công ty có sẵn một hồ sơ chạy thật, đã kiểm trong CI:
+
+```bash
+claude login                                   # gói Claude Pro/Max trên máy
+cd gateway && make login && make start         # thêm tài khoản Google, bật daemon 127.0.0.1:8100
+cd ../software-company && make llm             # chép llm.claude-gateway.yaml → llm.yaml (không ghi đè file đang có)
+cd ../Studio-creators   && make llm
+cd ../gateway && make models                   # đối chiếu tên model của cả hai công ty, exit 1 nếu lệch
+```
+
+Hồ sơ đó: tier `strong` đi gói Claude (`claude-opus-5`, bật `mcp_tools` nên khối kỹ thuật có tool), `standard`/`light` đi
+gateway (Gemini Flash) cho rẻ, gói nào cạn thì tự rơi sang gói kia. Thêm tài khoản Claude thứ hai: bỏ chú thích khối
+`claude-2` ở cuối file (xem 3.5).
 
 ### 3.4 Kiểm tra cấu hình bằng một lượt gọi thật
 
@@ -237,8 +253,8 @@ Cách router chọn với cấu hình trên:
 - Tier `strong` đi `claude-1`; khi `claude-1` cạn thì theo thứ tự khai báo: `claude-2` → `claude-3` → `chatgpt-1` → ...
   Tức là **thứ tự trong `backends:` là thứ tự dự phòng**; xếp các tài khoản cùng gói cạnh nhau.
 - Tier `standard` và `light` đi Antigravity trước (miễn phí); gateway cạn cả pool thì mới chạm tới Claude/ChatGPT.
-- Khối kỹ thuật của software-company (cần tool-use) bỏ qua mọi backend `claude-code` và `codex`, chỉ dùng `antigravity`
-  (hoặc provider `anthropic`/`openai` có key nếu bạn thêm).
+- Khối kỹ thuật của software-company (cần tool-use) bỏ qua backend `codex`; `claude-code` thì dùng được khi bật
+  `mcp_tools: true` (ADR-0024) hoặc `cli_tools: true` (ADR-0023), cạnh `antigravity` hoặc provider `anthropic`/`openai` có key.
 - Muốn ChatGPT gánh việc tầm trung thay vì Google: `prefer: {standard: chatgpt-1}`.
 
 Kiểm tra sau khi cấu hình: chạy đoạn ở 3.4. Muốn thử riêng một tài khoản, lọc bằng biến môi trường:
