@@ -80,7 +80,7 @@ codex login status                                # "Logged in using ChatGPT"; c
 # Google Antigravity — thêm tài khoản vào pool của gateway rồi bật daemon
 cd gateway
 PYTHONPATH=src uv run python -m gateway login     # mở trình duyệt; chạy lại để thêm tài khoản 2, 3...
-PYTHONPATH=src uv run python -m gateway start     # daemon tại http://127.0.0.1:8100/v1
+PYTHONPATH=src uv run python -m gateway start     # daemon tại http://127.0.0.1:1123/v1
 PYTHONPATH=src uv run python -m gateway status    # từng tài khoản: sẵn sàng / cooldown / hạn token
 ```
 
@@ -108,7 +108,7 @@ backends:
     # config_dir: ~/.codex-acc2   # tài khoản ChatGPT thứ hai
   - name: antigravity          # gateway xoay vòng tài khoản Google; có tool-use
     provider: openai
-    base_url: http://127.0.0.1:8100/v1
+    base_url: http://127.0.0.1:1123/v1
     api_key: gateway-local     # chuỗi bất kỳ, gateway tự xác thực Google
     models: {strong: claude-sonnet-4-6, standard: gemini-3.7-flash, light: gemini-3.7-flash-low}
 routing:
@@ -163,7 +163,7 @@ Không muốn tự viết `backends:` thì mỗi công ty có sẵn một hồ s
 
 ```bash
 claude login                                   # gói Claude Pro/Max trên máy
-cd gateway && make login && make start         # thêm tài khoản Google, bật daemon 127.0.0.1:8100
+cd gateway && make login && make start         # thêm tài khoản Google, bật daemon 127.0.0.1:1123
 cd ../software-company && make llm             # chép llm.claude-gateway.yaml → llm.yaml (không ghi đè file đang có)
 cd ../Studio-creators   && make llm
 cd ../gateway && make models                   # đối chiếu tên model của cả hai công ty, exit 1 nếu lệch
@@ -230,7 +230,7 @@ Kiểm tra từng chỗ đã đăng nhập chưa:
 ```bash
 CLAUDE_CONFIG_DIR=~/.claude-acc2 claude auth status     # "loggedIn": true
 CODEX_HOME=~/.codex-acc2 codex login status             # "Logged in using ChatGPT"
-curl http://127.0.0.1:8100/auth/status                  # pool Google: total / available
+curl http://127.0.0.1:1123/auth/status                  # pool Google: total / available
 ```
 
 Ví dụ `llm.yaml` đầy đủ với 3 tài khoản Claude, 2 tài khoản ChatGPT và pool Google (Studio-creators; software-company
@@ -261,7 +261,7 @@ backends:
     models: {strong: gpt-5.6-terra, standard: gpt-5.6-terra, light: gpt-5.6-terra}
   - name: antigravity                    # N tài khoản Google nằm trong gateway
     provider: openai
-    base_url: http://127.0.0.1:8100/v1
+    base_url: http://127.0.0.1:1123/v1
     api_key: gateway-local
     models: {strong: claude-sonnet-4-6, standard: gemini-3.7-flash, light: gemini-3.7-flash-low}
 routing:
@@ -470,8 +470,8 @@ PYTHONPATH=src uv run python -m gateway login            # thêm tài khoản (-
 PYTHONPATH=src uv run python -m gateway logout EMAIL
 PYTHONPATH=src uv run python -m gateway reset [EMAIL]    # xoá cooldown
 PYTHONPATH=src uv run python -m gateway setup            # ghi llm.yaml dạng MỘT provider (--target, --strong, --standard); không dùng khi đã có backends:
-curl http://127.0.0.1:8100/auth/status                    # JSON: từng tài khoản, cooldown còn lại
-curl http://127.0.0.1:8100/v1/models
+curl http://127.0.0.1:1123/auth/status                    # JSON: từng tài khoản, cooldown còn lại
+curl http://127.0.0.1:1123/v1/models
 ```
 
 - Token OAuth ở `~/.x-agents/auth/antigravity_tokens.json` (quyền 600); log ở `~/.x-agents/logs/gateway.log`.

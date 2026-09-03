@@ -59,7 +59,7 @@ là kiểm soát *quy trình* trên một máy tin cậy duy nhất, không ph�
 web hoặc dùng chung nhiều người, nó cần xác thực thật (đăng nhập, phiên, audit theo danh tính đã xác minh) trước khi
 tin vào `--by`.
 
-Gateway lắng nghe `127.0.0.1:8100` và **không có xác thực người dùng**. Đừng bind nó ra địa chỉ công khai; muốn
+Gateway lắng nghe `127.0.0.1:1123` và **không có xác thực người dùng**. Đừng bind nó ra địa chỉ công khai; muốn
 dùng từ máy khác thì đi qua SSH tunnel.
 
 ## Chạy code do agent sinh ra

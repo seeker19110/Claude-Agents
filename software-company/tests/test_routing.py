@@ -137,7 +137,7 @@ backends:
     models: {strong: claude-opus-5, standard: claude-sonnet-5}
   - name: antigravity
     provider: fake
-    base_url: http://127.0.0.1:8100/v1
+    base_url: http://127.0.0.1:1123/v1
     api_key: gateway-local
     models: {strong: claude-sonnet-4-6, standard: gemini-3.7-flash, light: gemini-3.7-flash-low}
     effort: {strong: medium}
@@ -156,7 +156,7 @@ def test_load_config_backends_and_make_routing_client(tmp_path: Path, monkeypatc
     assert [b["name"] for b in cfg.backends] == ["claude-sub", "antigravity"] and cfg.routing["cooldown_s"] == 1200
     sub, free = cfg.backend_config(cfg.backends[0]), cfg.backend_config(cfg.backends[1])
     assert sub.name == "claude-sub" and sub.models["light"] == "" and sub.model_for("light") == "claude-sonnet-5"
-    assert free.base_url.endswith("8100/v1") and free.api_key == "gateway-local" and free.extra == {"temperature": 0.2}
+    assert free.base_url.endswith("1123/v1") and free.api_key == "gateway-local" and free.extra == {"temperature": 0.2}
     assert free.effort == {"strong": "medium", "standard": "medium", "light": "low"} and sub.effort["strong"] == "high"
     assert sub.retries == 0 and free.prices == cfg.prices   # khoá dùng chung thừa kế
     client = make_client(cfg)

@@ -16,7 +16,7 @@ backends:
   - {name: claude-sub, provider: claude-code, models: {strong: claude-opus-5, standard: claude-sonnet-5}}
   - name: antigravity
     provider: openai
-    base_url: http://127.0.0.1:8100/v1
+    base_url: http://127.0.0.1:1123/v1
     models: {strong: claude-sonnet-4-6, standard: gemini-3.8-flash-medium, light: gemini-3.8-flash-low}
 routing:
   cooldown_s: 3600

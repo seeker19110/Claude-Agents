@@ -26,7 +26,7 @@ DEFAULT_LLM_YAML = {
     "software-company": REPO_ROOT / "software-company" / "llm.yaml",
     "Studio-creators": REPO_ROOT / "Studio-creators" / "llm.yaml",
 }
-DEFAULT_GATEWAY_URL = "http://127.0.0.1:8100"
+DEFAULT_GATEWAY_URL = "http://127.0.0.1:1123"
 
 
 class SettingsError(ValueError):
