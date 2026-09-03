@@ -1,7 +1,7 @@
 ---
 id: researcher
 block: research
-model_tier: standard
+model_tier: strong
 reads: [research-findings, requirements-draft]
 writes: [research-findings]
 context_namespace_write: [glossary, design]
@@ -11,7 +11,7 @@ skills_core: [accessibility, license-compliance, cost-estimation, ai-feature-eng
 budget_tokens_per_task: 120000
 max_retries: 1
 timeout_minutes: 120
-version: 9
+version: 10
 ---
 # researcher
 

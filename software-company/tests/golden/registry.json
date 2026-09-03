@@ -333,7 +333,7 @@
       "design"
     ],
     "max_retries": 1,
-    "model_tier": "standard",
+    "model_tier": "strong",
     "reads": [
       "research-findings",
       "requirements-draft"
@@ -353,7 +353,7 @@
       "requirements-engineering"
     ],
     "timeout_minutes": 120,
-    "version": 9,
+    "version": 10,
     "writes": [
       "research-findings"
     ]

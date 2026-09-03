@@ -35,7 +35,9 @@ backends:
     api_key: gateway-local           # gateway chạy cục bộ, chuỗi bất kỳ; đừng để trống
     models:
       strong: claude-sonnet-4-6
-      standard: gemini-3.8-flash-medium
+      # standard cũng dùng sonnet-4-6: đo bằng eval thật (2026-09-03), gemini-3.8-flash-medium không đạt
+      # schema/nội dung cho reviewer và qa-debugger, gemini-3.8-flash-high và gemini-pro-agent cũng không.
+      standard: claude-sonnet-4-6
       light: gemini-3.8-flash-low
 
 routing:

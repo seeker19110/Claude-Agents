@@ -47,7 +47,7 @@ code kiểm định, agent review khác); (c) độ dài/độ phức tạp đ�
 | security-engineer | strong | Threat model STRIDE, DAST; hậu quả sai cao, chạy ít lượt |
 | synthesizer, spec-writer | strong | Khử mâu thuẫn yêu cầu, viết PRD + Gherkin làm chuẩn nghiệm thu cho cả vòng đời |
 | risk | strong | Rà khả thi/pháp lý/bảo mật sơ bộ; đầu vào cho `risk_tags` → quyết định có cần security review |
-| researcher | standard *(trước: strong)* | Gom 4 góc nhìn nghiên cứu theo mẫu có sẵn, đầu ra được synthesizer (strong) đọc lại và khử mâu thuẫn; chạy sớm, hay lặp khi có clarification |
+| researcher | strong *(2026-09-03: standard → strong trở lại)* | Gom 4 góc nhìn nghiên cứu; "theo mẫu có sẵn" hoá ra không đủ để hạ tier. Eval đo thật: `de-bai-day-du-phai-ra-4-muc-co-nguon` đòi ≥3 glossary, ≥2 persona, ≥1 flow, ≥1 option kỹ thuật và trích đúng số hiệu văn bản — không model standard nào đạt (gemini-3.8-flash-medium/high, gemini-pro-agent, claude-sonnet-4-6 đều 0/2), trong khi claude-sonnet-5 và opus-5 pass 2/2. Đầu ra mỏng thì synthesizer không cứu được: nó khử mâu thuẫn chứ không đi nghiên cứu lại |
 | release-engineer | standard *(trước: strong)* | Quy trình cố định gộp → build → staging → gate; phần nguy hiểm (merge, deploy) là code, gate 3 người duyệt |
 | account-manager | standard *(trước: strong)* | SOW, UAT, change request theo mẫu; Gherkin dùng nguyên văn từ spec-writer; khách ký nghiệm thu là gate |
 | support-docs | standard | Tài liệu Diátaxis, changelog, phân loại incident theo `root_cause_class` |
