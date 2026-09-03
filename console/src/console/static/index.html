@@ -1,6 +1,10 @@
 <title>Trực ban X-Agents</title>
 <!-- Icon nội tuyến: console chạy cục bộ, không đi lấy file ngoài và không để lại 404 favicon trong log. -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230b6e63'/%3E%3Crect x='4' y='4' width='8' height='2' rx='1' fill='%23fff'/%3E%3Crect x='4' y='7' width='8' height='2' rx='1' fill='%23fab219'/%3E%3Crect x='4' y='10' width='5' height='2' rx='1' fill='%23fff' fill-opacity='.65'/%3E%3C/svg%3E">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0a111c">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
@@ -1269,6 +1273,19 @@ document.addEventListener("keydown",e=>{
   if(e.key>="1"&&e.key<="6"){ writeHash(VIEWS[+e.key-1],null,null,false); applyRoute(); }
   else if(e.key==="g"&&i>=0){ writeHash("truc-ban",null,null,false); applyRoute(); }
 });
+
+/* ---------- cài thành app (PWA) ----------
+   Service worker ở đây chỉ để trang cài được thành app; nó KHÔNG cache `/api/*` (dữ liệu sống)
+   và KHÔNG cache `/` (HTML mang token phiên, mà token đổi mỗi lần chạy server) — xem sw.js.
+   Chỉ đăng ký ở ngữ cảnh an toàn: chạy `--host` ra ngoài loopback bằng `--i-know` thì trình
+   duyệt không cho đăng ký, và im lặng bỏ qua là đúng chứ không phải lỗi. */
+if("serviceWorker" in navigator && window.isSecureContext){
+  addEventListener("load",()=>{navigator.serviceWorker.register("/sw.js").catch(err=>{
+    // Không nuốt im: trang vẫn chạy đủ nếu không đăng ký được, nhưng người dùng bấm mãi
+    // không thấy nút Cài đặt thì phải có chỗ mà tra. Một số webview nhúng chặn hẳn API này.
+    console.warn("Không đăng ký được service worker (trang vẫn chạy bình thường, chỉ là không cài thành app được):",err.message);
+  });});
+}
 
 /* ---------- khởi động ---------- */
 addEventListener("scroll",hideTip,{passive:true});

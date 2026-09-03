@@ -20,6 +20,18 @@ lần (*hỏi lại 10s*) và thử nối lại, nên mất stream chỉ là ch�
 gate đang mở — F5 không văng về Trực ban, Back đóng ngăn kéo thay vì rời trang, và gửi được link tới đúng
 một gate cho người khác. Link tới thứ đã bị xoá thì tự rút về màn tương ứng.
 
+**Cài thành app.** Trang là một PWA: mở trong Chrome/Edge rồi bấm biểu tượng cài đặt ở thanh địa chỉ
+(hoặc menu → *Cài ứng dụng này*) là có cửa sổ riêng, không thanh địa chỉ, kèm icon ở Start Menu và taskbar.
+Vẫn phải chạy `python -m console` trước — PWA chỉ là cái vỏ, dữ liệu vẫn đến từ server cục bộ.
+
+Service worker ở đây **cố ý làm ít nhất có thể**: chỉ cache hai file icon. Nó không bao giờ cache `/api/*`
+(số liệu cũ trên một mặt kính trực ban là đúng thứ tệ nhất) và không bao giờ cache `/` (trang mang token
+phiên, mà token sinh mới mỗi lần chạy server — cache trang là lần sau ăn 401 toàn tập). Console không dùng
+được khi server chưa chạy, nên chạy offline không phải mục tiêu.
+
+Cài đặt chỉ hoạt động ở ngữ cảnh an toàn, tức `127.0.0.1`/`localhost`. Bind ra ngoài loopback bằng
+`--i-know` thì trình duyệt từ chối đăng ký service worker; trang vẫn chạy đủ, chỉ là không cài được.
+
 **Tìm và lọc.** Ô tìm chung (phím `/`) lọc gate, ticket, video, PR, review và audit-log cùng lúc, gấp dấu
 tiếng Việt nên gõ `ong kinh` cũng ra `Ống kính`. Bảng ticket và video có chip lọc theo trạng thái; các bảng
 sắp xếp được bằng cách bấm tiêu đề cột. Phím tắt: `/` tìm, `1`–`6` nhảy màn, `g` về Trực ban, `Esc` đóng.

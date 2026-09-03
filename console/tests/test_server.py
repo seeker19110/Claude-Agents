@@ -9,6 +9,7 @@ import http.client
 import json
 import os
 import stat
+import struct
 import sys
 import threading
 import types
@@ -490,3 +491,116 @@ def test_sse_frame_khong_lam_vo_khung_boi_xuong_dong(tmp_path: Path) -> None:
     raw = srv.sse_frame("state", {"msg": "dòng 1\ndòng 2"})
     assert raw.count(b"\n\n") == 1 and raw.endswith(b"\n\n")
     assert raw.decode("utf-8").count("data: ") == 1
+
+
+# --- vỏ PWA ----------------------------------------------------------------
+
+@pytest.fixture
+def pwa_static(static_dir: Path) -> Path:
+    """static_dir tối giản của các test khác không có vỏ PWA; thêm vào cho nhóm test này."""
+    (static_dir / "sw.js").write_text("// sw", encoding="utf-8")
+    (static_dir / "manifest.webmanifest").write_text('{"name":"x"}', encoding="utf-8")
+    return static_dir
+
+
+def _raw(port: int, path: str, method: str = "GET") -> tuple[int, dict[str, str], str]:
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        conn.request(method, path)
+        resp = conn.getresponse()
+        return resp.status, {k.lower(): v for k, v in resp.getheaders()}, resp.read().decode("utf-8")
+    finally:
+        conn.close()
+
+
+def test_sw_phuc_vu_o_goc_khong_can_token(make_console, fake_modules, pwa_static) -> None:
+    """Service worker chỉ điều khiển được đường trong thư mục chứa nó, mà nó cần điều khiển "/".
+    Phục vụ dưới /static/sw.js là scope hoá thành /static/ và vô dụng."""
+    c = make_console()
+    status, headers, body = _raw(c.port, "/sw.js")
+    assert status == 200
+    assert headers["content-type"].startswith("text/javascript")
+    assert body == "// sw"
+
+
+def test_manifest_phuc_vu_o_goc_dung_content_type(make_console, fake_modules, pwa_static) -> None:
+    c = make_console()
+    status, headers, body = _raw(c.port, "/manifest.webmanifest")
+    assert status == 200
+    assert headers["content-type"].startswith("application/manifest+json")
+    assert json.loads(body) == {"name": "x"}
+
+
+def test_vo_pwa_van_bi_chan_khi_host_la(make_console, fake_modules, pwa_static) -> None:
+    """Chống DNS rebinding áp cho mọi đường, kể cả đường không mang dữ liệu."""
+    c = make_console()
+    status, _ = c.request("GET", "/sw.js", headers={"Host": "ke-tan-cong.example"})
+    assert status == 404
+
+
+def test_thieu_file_vo_pwa_tra_404_khong_no(make_console, fake_modules, static_dir) -> None:
+    """static/ chưa có sw.js (bản cài cũ) thì 404 gọn, không phải 500."""
+    c = make_console()
+    status, _, _ = _raw(c.port, "/sw.js")
+    assert status == 404
+
+
+# --- vỏ PWA thật trong repo (không phải static_dir giả) ----------------------
+
+REAL_STATIC = srv.STATIC_DIR
+
+
+def test_manifest_that_du_dieu_kien_cai_dat() -> None:
+    """Thiếu một trong các trường này thì trình duyệt lặng lẽ không hiện nút Cài đặt."""
+    m = json.loads((REAL_STATIC / "manifest.webmanifest").read_text(encoding="utf-8"))
+    assert m["start_url"] == "/" and m["scope"] == "/"
+    assert m["display"] == "standalone"
+    assert m["name"] and m["short_name"]
+    sizes = {i["sizes"] for i in m["icons"]}
+    assert {"192x192", "512x512"} <= sizes         # Chrome cần ít nhất 192 và 512
+    for icon in m["icons"]:
+        assert (REAL_STATIC / icon["src"].removeprefix("/static/")).is_file(), icon["src"]
+        assert icon["type"] == "image/png"
+
+
+def test_icon_that_dung_kich_thuoc_manifest_khai() -> None:
+    """Đọc IHDR của PNG: manifest khai 192/512 mà file lại khác thì Chrome bỏ qua icon đó."""
+    for size in (192, 512):
+        raw = (REAL_STATIC / f"icon-{size}.png").read_bytes()
+        assert raw[:8] == b"\x89PNG\r\n\x1a\n"
+        width, height = struct.unpack(">II", raw[16:24])
+        assert (width, height) == (size, size)
+
+
+def test_sw_that_khong_bao_gio_cache_du_lieu_song() -> None:
+    """Bảo vệ đúng hai lời hứa của sw.js. Cache /api/* là phục vụ số liệu cũ trên một mặt kính
+    trực ban; cache "/" là phục vụ lại token phiên cũ và ăn 401 ở lần chạy sau."""
+    sw = (REAL_STATIC / "sw.js").read_text(encoding="utf-8")
+    assert 'url.pathname.startsWith("/api/")) return;' in sw
+    assert 'url.pathname === "/") return;' in sw
+    # Danh sách cache chỉ được có icon — không HTML, không API.
+    assets = sw.split("const ASSETS = ")[1].split(";")[0]
+    assert "/api" not in assets and ".html" not in assets
+
+
+# --- ồn khi client ngắt kết nối ---------------------------------------------
+
+def test_client_ngat_ket_noi_khong_in_traceback(make_console, fake_modules, capsys) -> None:
+    """Đóng tab giữa lúc /api/stream đang mở là chuyện thường; in traceback cho mỗi lần như vậy
+    làm chìm mất lỗi thật trong terminal người vận hành."""
+    c = make_console()
+    try:
+        raise ConnectionResetError(10054, "client đóng")
+    except ConnectionResetError:
+        c.server.handle_error(None, ("127.0.0.1", 1234))
+    assert capsys.readouterr().err == ""
+
+
+def test_loi_that_van_noi_len_nguyen_ven(make_console, fake_modules, capsys) -> None:
+    """Chỉ hạ lỗi mất kết nối — bịt luôn mọi lỗi khác thì console hỏng trong im lặng."""
+    c = make_console()
+    try:
+        raise RuntimeError("hỏng thật")
+    except RuntimeError:
+        c.server.handle_error(None, ("127.0.0.1", 1234))
+    assert "hỏng thật" in capsys.readouterr().err
