@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import runpy
 import sys
-import types
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from console import __main__ as cli
-from console import server as srv
 
 
 class _FakeServer:
