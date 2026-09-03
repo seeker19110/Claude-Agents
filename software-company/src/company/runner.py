@@ -226,8 +226,12 @@ class AgentRunner:
             c = self._complete(spec, inp, user, schema, messages=msgs, tokens=total, cost=usd)
             total += c.tokens; usd += self._cost(c)[0]; turn += 1
         urls = [x["args"]["url"] for x in tools.calls if x["name"] == "fetch_url" and x["ok"]]
-        self._audit(spec, "tools_used", inp, evidence=json.dumps({"turns": turn, "calls": tools.summary(), **({"urls": urls} if urls else {})},
-                                                                 ensure_ascii=False))
+        # `mode`: ai đã chạy vòng tool — "loop" (vòng lặp ở đây, mọi provider API), "mcp" (CLI chạy nhưng gọi ngược
+        # tool của công ty, ADR-0024), "cli" (CLI chạy bằng tool riêng của nó, ADR-0023). Người vận hành đọc audit là
+        # biết lượt vừa rồi đi hàng rào nào, thay vì suy từ llm.yaml.
+        self._audit(spec, "tools_used", inp,
+                    evidence=json.dumps({"turns": turn, "mode": c.tool_mode or "loop", "calls": tools.summary(),
+                                         **({"urls": urls} if urls else {})}, ensure_ascii=False))
         return c, total, turn, usd
 
     def _context(self, project_id: str | None = None, spec: AgentSpec | None = None) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
