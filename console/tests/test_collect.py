@@ -233,6 +233,46 @@ def test_routing_status_config_loi_bo_qua_va_thu_gateway(company_db: Path, studi
     assert s["sources"]["gateway"]["ok"] is False
 
 
+def test_routing_status_tu_llm_yaml_that_khong_hoi_gateway(tmp_path: Path, company_db: Path, studio_db: Path,
+                                                            monkeypatch: pytest.MonkeyPatch) -> None:
+    """`llm.yaml` có `backends:` -> backends lấy từ routing.status() thật, gateway KHÔNG được hỏi (sources.gateway ok, error None).
+
+    Trước đây nhánh này chỉ được phủ nhờ máy dev tình cờ có sẵn `software-company/llm.yaml` (bị gitignore) — trên CI
+    không có file nên collect.py 395-408 và 527 chưa bao giờ chạy ở đó. Test tự tạo file để không phụ thuộc máy."""
+    import console.collect as cmod
+
+    llm_yaml = tmp_path / "llm.yaml"
+    llm_yaml.write_text(
+        "backends:\n"
+        "  - name: antigravity\n"
+        "    provider: openai\n"
+        "    base_url: http://127.0.0.1:1123/v1\n"
+        "    api_key: gateway-local\n"
+        "    models: {strong: claude-sonnet-4-6, standard: gemini-3.7-flash, light: gemini-3.7-flash-low}\n"
+        "  - name: local\n"
+        "    provider: openai\n"
+        "    base_url: http://localhost:11434/v1\n"
+        "    models: {strong: qwen3:32b, standard: qwen3:8b}\n"
+        "routing:\n"
+        "  cooldown_s: 120\n"
+        "  transient_cooldown_s: 5\n"
+        "  prefer: {light: antigravity, strong: local}\n",
+        encoding="utf-8",
+    )
+    # load_config ưu tiên biến môi trường: có COMPANY_LLM_PROVIDER thì backends bị xoá, COMPANY_LLM_BACKENDS thì bị lọc.
+    monkeypatch.delenv("COMPANY_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("COMPANY_LLM_BACKENDS", raising=False)
+    monkeypatch.setattr(cmod.company_llm, "CONFIG_FILE", llm_yaml)
+    monkeypatch.setattr(cmod.studio_llm, "CONFIG_FILE", None)
+
+    s = collect(company_db, studio_db, gateway_url=DEAD_GATEWAY)
+
+    assert [b["n"] for b in s["backends"]] == ["antigravity", "local"]
+    assert all(b["ok"] and b["st"] == "Sẵn sàng" and b["tools"] == "có" for b in s["backends"])
+    assert "strong" in s["backends"][0]["tiers"] and "light" in s["backends"][0]["tiers"]
+    assert s["sources"]["gateway"] == {"ok": True, "url": DEAD_GATEWAY, "error": None}  # không hỏi gateway (đã chết)
+
+
 def test_gateway_status_doc_token_that_bai_van_hoi_duoc(tmp_path: Path, company_db: Path, studio_db: Path,
                                                          khong_co_llm_yaml: None) -> None:
     """token_file trỏ tới đường dẫn không đọc được (thư mục) -> OSError bị nuốt, request vẫn không kèm token."""
