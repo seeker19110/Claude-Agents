@@ -10,8 +10,8 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-software-company = { path = "../software-company", editable = true }
-video-creators = { path = "../Studio-creators", editable = true }
+software-company = { workspace = true }
+video-creators = { workspace = true }
 
 [dependency-groups]
 dev = [

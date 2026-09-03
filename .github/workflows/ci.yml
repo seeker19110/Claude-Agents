@@ -22,8 +22,7 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - run: uv sync --locked
-        working-directory: software-company
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       - run: uv run ruff check src tests
         working-directory: software-company
       - run: uv run mypy src/company --ignore-missing-imports
@@ -45,8 +44,7 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python }}
-      - run: uv sync --locked
-        working-directory: software-company
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
       - run: uv run pytest -q --cov --cov-report=term-missing
         working-directory: software-company
@@ -63,8 +61,7 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - run: uv sync --locked
-        working-directory: software-company
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       # Eval từ bản ghi (ADR-0010): không gọi model. `--strict` đỏ khi agent có tên trong
       # evals/recordings/REQUIRED.txt mà thiếu bản ghi, hoặc bản ghi ghi ở phiên bản prompt cũ.
       - run: PYTHONPATH=src uv run python -m company.evals all --replay --strict
@@ -84,19 +81,15 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - name: Phụ thuộc có CVE đã biết (cả bốn package)
+      - name: Phụ thuộc có CVE đã biết (cả bốn package, một uv.lock)
         shell: bash
         run: |
           set -euo pipefail
-          for dir in software-company Studio-creators gateway console; do
-            echo "::group::pip-audit $dir"
-            # Bỏ dòng `-e`: đó là gói cục bộ trong repo (console và hai công ty nó phụ thuộc),
-            # PyPI không có nên pip-audit đỏ. Phụ thuộc bên thứ ba của chúng vẫn nằm trong
-            # cùng bản export nên không mất phạm vi quét.
-            (cd "$dir" && uv export --no-hashes --no-dev | sed '/^-e /d' > /tmp/req-$dir.txt \
-              && uvx pip-audit --strict -r /tmp/req-$dir.txt)
-            echo "::endgroup::"
-          done
+          # Workspace có MỘT uv.lock ở root: export một lần là đủ cả bốn package. Bỏ dòng `-e`
+          # (gói cục bộ trong repo, PyPI không có nên pip-audit đỏ); phụ thuộc bên thứ ba của
+          # chúng vẫn nằm trong cùng bản export nên không mất phạm vi quét.
+          uv export --no-hashes --no-dev --all-packages | sed '/^-e /d' > /tmp/req.txt
+          uvx pip-audit --strict -r /tmp/req.txt
       - name: Bí mật lọt vào lịch sử git
         uses: gitleaks/gitleaks-action@v3
         env:
@@ -115,8 +108,7 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - run: uv sync --locked
-        working-directory: Studio-creators
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       - run: uv run ruff check src tests
         working-directory: Studio-creators
       - run: uv run mypy src/studio --ignore-missing-imports
@@ -135,8 +127,7 @@ jobs:
           enable-cache: true
           python-version: "3.13"
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg   # test ghép video thật; thiếu thì test tự bỏ qua
-      - run: uv sync --locked
-        working-directory: Studio-creators
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
       - run: uv run pytest -q --cov --cov-report=term-missing
         working-directory: Studio-creators
@@ -153,8 +144,7 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - run: uv sync --locked
-        working-directory: Studio-creators
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       # Eval từ bản ghi (không gọi model). `--strict` đỏ khi agent có tên trong
       # evals/recordings/REQUIRED.txt mà thiếu bản ghi, hoặc bản ghi ghi ở phiên bản prompt cũ.
       - run: PYTHONPATH=src uv run python -m studio.evals all --replay --strict
@@ -179,8 +169,7 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - run: uv sync --locked
-        working-directory: ${{ matrix.dir }}
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       - run: UPDATE_GOLDEN=1 uv run pytest -q tests/test_golden_agents.py
         working-directory: ${{ matrix.dir }}
       - name: Golden đã commit có khớp không
@@ -202,8 +191,7 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - run: uv sync --locked
-        working-directory: gateway
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       - run: uv run ruff check src tests
         working-directory: gateway
       - run: uv run mypy src/gateway --ignore-missing-imports
@@ -225,8 +213,7 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python }}
-      - run: uv sync --locked
-        working-directory: gateway
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
       - run: uv run pytest -q --cov --cov-report=term-missing
         working-directory: gateway
@@ -244,8 +231,7 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - run: uv sync --locked
-        working-directory: console
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       - run: uv run ruff check src tests
         working-directory: console
       - run: uv run mypy src/console --ignore-missing-imports
@@ -267,8 +253,7 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python }}
-      - run: uv sync --locked
-        working-directory: console
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
       - run: uv run pytest -q --cov --cov-report=term-missing
         working-directory: console
@@ -287,8 +272,7 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - run: uv sync --locked
-        working-directory: software-company
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       - run: PYTHONPATH=src uv run python -m company.assetscan scan . ../Studio-creators
         working-directory: software-company
       # Prompt tĩnh không được ăn quá nửa ngân sách token của chính agent đó, và skill khai phải tồn tại.
