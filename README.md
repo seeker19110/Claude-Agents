@@ -24,11 +24,12 @@ Nguyên tắc chung cho mọi công ty:
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Cài đặt từng package, cổng chất lượng, checklist bắt buộc khi sửa agent/skill, quy tắc ADR | |
 | [`SECURITY.md`](SECURITY.md) | Cách báo lỗi bảo mật, phạm vi, mô hình bí mật, các lớp phòng thủ đang có | |
 
-Mỗi công ty tự chứa: `pyproject.toml` + `uv.lock`, `Makefile`, `agents/`, `skills/`, `topics/`, `gates/`, `templates/`,
-`evals/`, `tests/`, `docs/` (kiến trúc + ADR), `llm.example.yaml`; software-company thêm `examples/` (mô phỏng cả công ty,
-relay client), Studio-creators thêm `media.example.yaml`. Không có `[project.scripts]`: mọi lệnh đều là `python -m <package>.<module>`
-(package `company` và `studio`). Đọc README trong từng thư mục để biết luồng và lệnh chi tiết. Repo khách nằm ngoài repo này, chỉ ra bằng
-`--repo <đường dẫn>` khi chạy orchestrator.
+Cả repo là **một project** ([uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/)): `pyproject.toml` + `uv.lock`
+ở gốc, bốn thư mục là bốn package thành viên dùng chung một `.venv`. Mỗi công ty tự chứa: `pyproject.toml`, `Makefile`, `agents/`,
+`skills/`, `topics/`, `gates/`, `templates/`, `evals/`, `tests/`, `docs/` (kiến trúc + ADR), `llm.example.yaml`; software-company thêm
+`examples/` (mô phỏng cả công ty, relay client), Studio-creators thêm `media.example.yaml`. Không có `[project.scripts]`: mọi lệnh đều là
+`python -m <package>.<module>` (package `company` và `studio`). Đọc README trong từng thư mục để biết luồng và lệnh chi tiết. Repo khách
+nằm ngoài repo này, chỉ ra bằng `--repo <đường dẫn>` khi chạy orchestrator.
 
 ## Bắt đầu nhanh
 
@@ -37,13 +38,17 @@ Hướng dẫn đầy đủ từng bước: [`docs/HUONG-DAN-VAN-HANH.md`](docs/
 Yêu cầu: Python 3.11+, [`uv`](https://docs.astral.sh/uv/). `ffmpeg` nếu muốn render video thật ở `Studio-creators`.
 
 ```bash
+uv sync            # một lần ở gốc repo: một .venv cho cả bốn package
+make test          # pytest cả bốn (hoặc make lint / make cov / make build)
+
 # Chạy offline (client giả), không cần key
-cd software-company && uv sync && make test && make demo
-cd ../Studio-creators && uv sync && make test && make demo
+cd software-company && make test && make demo
+cd ../Studio-creators && make test && make demo
 ```
 
 Không có `make` (Windows): mỗi target đều có dạng `uv run` tương đương trong `Makefile`, ví dụ `make test` = `uv run pytest -q`,
 `make demo` = `PYTHONPATH=src uv run python -m company.demo` (PowerShell: `$env:PYTHONPATH='src'; uv run python -m company.demo`).
+`uv run` trong bất kỳ thư mục con nào cũng dùng `.venv` chung ở gốc.
 
 Chạy model thật, không API key: mỗi công ty có sẵn hồ sơ **gói Claude + gateway Antigravity** — `make llm` chép
 `llm.claude-gateway.yaml` thành `llm.yaml` là chạy được (cần `claude login` và `cd gateway && make login && make start`).
@@ -65,7 +70,7 @@ Bảng agent → tier, lý do và chiến lược ưu tiên: [`docs/DIEU-PHOI-MO
 Bật gateway xoay vòng tài khoản Google (miễn phí theo quota Antigravity):
 
 ```bash
-cd gateway && uv sync
+cd gateway
 make login      # đăng nhập Google; chạy lại để thêm tài khoản   (= PYTHONPATH=src uv run python -m gateway login)
 make start      # daemon tại 127.0.0.1:1123
 make setup      # ghi ../software-company/llm.yaml dạng một provider trỏ vào gateway (không dùng khi llm.yaml đã có `backends:`)
@@ -74,7 +79,7 @@ make setup      # ghi ../software-company/llm.yaml dạng một provider trỏ v
 Nhìn cả hai công ty trên một màn hình (và duyệt gate tại chỗ):
 
 ```bash
-cd console && uv sync
+cd console
 uv run python -m console                 # 127.0.0.1:8200, chỉ đọc; terminal in địa chỉ kèm token phiên
 uv run python -m console --allow-decide  # mở khoá các nút quyết định gate
 uv run python -m console --allow-config  # mở khoá màn "Cài đặt model" (ghi llm.yaml, giữ bản .bak)

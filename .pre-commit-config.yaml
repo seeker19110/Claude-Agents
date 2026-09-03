@@ -14,7 +14,7 @@ repos:
   # Chỉ ruff-check, không ruff-format: các package cố ý giữ nhiều lệnh một dòng (ignore E701/E702),
   # ruff format sẽ viết lại hàng chục file. Mỗi file lấy cấu hình từ pyproject.toml của package chứa nó.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.5   # cùng bản ruff với uv.lock của các package
+    rev: v0.16.6   # cùng bản ruff với uv.lock ở gốc workspace
     hooks:
       - id: ruff-check
 
