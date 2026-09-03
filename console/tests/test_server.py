@@ -339,3 +339,154 @@ def test_cli_mac_dinh_la_readonly() -> None:
     assert build_parser().parse_args([]).readonly is True
     assert build_parser().parse_args(["--allow-decide"]).readonly is False
     assert build_parser().parse_args([]).port == 8200
+
+
+# --- /api/stream (SSE) ------------------------------------------------------
+
+def _read_sse(port: int, token: str | None, *, path: str = "/api/stream", limit: int = 1,
+              timeout: float = 8.0) -> tuple[int, dict[str, str], list[tuple[str, Any]]]:
+    """Đọc stream cho tới khi gom đủ `limit` khung `event:` rồi đóng kết nối.
+
+    Đọc từng dòng chứ không `resp.read()`: thân bài của SSE không có `Content-Length` và chỉ kết
+    thúc khi server đóng, nên `read()` sẽ treo tới hết `stream_max_seconds`.
+    """
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
+    try:
+        conn.request("GET", path, headers=({"X-Console-Token": token} if token else {}))
+        resp = conn.getresponse()
+        headers = {k.lower(): v for k, v in resp.getheaders()}
+        if resp.status != 200:
+            resp.read()
+            return resp.status, headers, []
+        frames: list[tuple[str, Any]] = []
+        event = None
+        while len(frames) < limit:
+            line = resp.fp.readline()
+            if not line:
+                break
+            text = line.decode("utf-8").rstrip("\r\n")
+            if text.startswith("event: "):
+                event = text[len("event: "):]
+            elif text.startswith("data: "):
+                frames.append((event or "", json.loads(text[len("data: "):])))
+                event = None
+        return resp.status, headers, frames
+    finally:
+        conn.close()
+
+
+def test_stream_khong_token_tra_401(make_console, fake_modules) -> None:
+    c = make_console(stream_max_seconds=2.0)
+    status, _, frames = _read_sse(c.port, None)
+    assert status == 401
+    assert frames == []
+    assert fake_modules.calls["collect"] == []
+
+
+def test_stream_sai_token_tra_401(make_console, fake_modules) -> None:
+    c = make_console(stream_max_seconds=2.0)
+    status, _, _ = _read_sse(c.port, "sai-token")
+    assert status == 401
+
+
+def test_stream_day_ngay_trang_thai_dau_tien(make_console, fake_modules, tmp_path: Path) -> None:
+    """Khung đầu tiên đi ngay khi kết nối, không phải chờ bus đổi — nếu không, trang mới mở sẽ trắng."""
+    fake_modules.state.clear()
+    fake_modules.state.update({"generated_at": "2026-09-03T08:41:12+07:00", "tiles": {"events": 7}})
+    db = tmp_path / "company.sqlite"
+    db.write_bytes(b"x")
+    c = make_console(company_db=db, stream_max_seconds=4.0)
+
+    status, headers, frames = _read_sse(c.port, c.token)
+
+    assert status == 200
+    assert headers["content-type"].startswith("text/event-stream")
+    assert headers["cache-control"] == "no-store"
+    assert frames == [("state", {"generated_at": "2026-09-03T08:41:12+07:00", "tiles": {"events": 7}})]
+
+
+def test_stream_day_khung_moi_khi_bus_doi(make_console, fake_modules, tmp_path: Path) -> None:
+    """Ghi thêm vào file bus → khung thứ hai. Đây là cả lý do tồn tại của /api/stream."""
+    db = tmp_path / "company.sqlite"
+    db.write_bytes(b"x")
+    fake_modules.state.clear(); fake_modules.state.update({"n": 1})
+    c = make_console(company_db=db, stream_max_seconds=8.0)
+
+    conn = http.client.HTTPConnection("127.0.0.1", c.port, timeout=10)
+    try:
+        conn.request("GET", "/api/stream", headers={"X-Console-Token": c.token})
+        resp = conn.getresponse()
+        assert resp.status == 200
+
+        def next_state() -> Any:
+            while True:
+                line = resp.fp.readline()
+                assert line, "stream đóng sớm"
+                text = line.decode("utf-8").rstrip("\r\n")
+                if text.startswith("data: "):
+                    return json.loads(text[len("data: "):])
+
+        assert next_state() == {"n": 1}
+        fake_modules.state.clear(); fake_modules.state.update({"n": 2})
+        db.write_bytes(b"xy")            # bus đổi → dấu vân tay đổi
+        assert next_state() == {"n": 2}
+    finally:
+        conn.close()
+
+
+def test_stream_collect_loi_tra_khung_error_khong_dut_stream(make_console, fake_modules, tmp_path: Path) -> None:
+    db = tmp_path / "company.sqlite"
+    db.write_bytes(b"x")
+    fake_modules.state["__raise__"] = RuntimeError("bus hỏng")
+    c = make_console(company_db=db, stream_max_seconds=4.0)
+
+    status, _, frames = _read_sse(c.port, c.token)
+
+    assert status == 200
+    assert frames == [("error", {"error": "không đọc được trạng thái"})]
+
+
+def test_stream_host_la_bi_tu_choi(make_console, fake_modules) -> None:
+    """Chống DNS rebinding phải áp cho cả stream, không chỉ /api/state."""
+    c = make_console(stream_max_seconds=2.0)
+    status, _ = c.request("GET", "/api/stream", headers={"Host": "ke-tan-cong.example"})
+    assert status == 404
+    assert fake_modules.calls["collect"] == []
+
+
+def test_stream_head_khong_treo(make_console, fake_modules) -> None:
+    """do_HEAD gọi thẳng do_GET; nếu không chặn thì HEAD /api/stream sẽ ngồi trong vòng lặp đẩy."""
+    c = make_console(stream_max_seconds=30.0)
+    status, _ = c.request("HEAD", "/api/stream")
+    assert status == 200
+
+
+# --- dấu vân tay bus --------------------------------------------------------
+
+def test_db_fingerprint_doi_khi_file_doi(tmp_path: Path) -> None:
+    a, b = tmp_path / "a.sqlite", tmp_path / "b.sqlite"
+    a.write_bytes(b"1"); b.write_bytes(b"1")
+    first = srv.db_fingerprint([a, b])
+    assert srv.db_fingerprint([a, b]) == first      # không đổi thì không đẩy lại
+    b.write_bytes(b"12")
+    assert srv.db_fingerprint([a, b]) != first
+
+
+def test_db_fingerprint_chap_nhan_file_chua_co(tmp_path: Path) -> None:
+    """Công ty chưa chạy lần nào là trạng thái hợp lệ; lúc file xuất hiện thì vân tay phải đổi."""
+    missing = tmp_path / "chua-co.sqlite"
+    before = srv.db_fingerprint([missing, None])
+    assert before == "-|-"
+    missing.write_bytes(b"x")
+    assert srv.db_fingerprint([missing, None]) != before
+
+
+def test_sse_frame_dung_dinh_dang() -> None:
+    assert srv.sse_frame("state", {"a": 1}) == b'event: state\ndata: {"a": 1}\n\n'
+
+
+def test_sse_frame_khong_lam_vo_khung_boi_xuong_dong(tmp_path: Path) -> None:
+    """Chuỗi có \n trong dữ liệu không được cắt khung SSE làm đôi — JSON đã thoát sẵn."""
+    raw = srv.sse_frame("state", {"msg": "dòng 1\ndòng 2"})
+    assert raw.count(b"\n\n") == 1 and raw.endswith(b"\n\n")
+    assert raw.decode("utf-8").count("data: ") == 1

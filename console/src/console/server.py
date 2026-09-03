@@ -18,6 +18,8 @@ import logging
 import os
 import secrets
 import socket
+import time
+from collections.abc import Iterable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -37,6 +39,12 @@ DEFAULT_COMPANY_DB = REPO_ROOT / "software-company" / "company.sqlite"
 DEFAULT_STUDIO_DB = REPO_ROOT / "Studio-creators" / "studio.sqlite"
 
 MAX_BODY_BYTES = 1 << 20  # 1 MiB: body của /api/gate/decide chỉ là vài trường ngắn.
+
+# `/api/stream`: đẩy trạng thái mới ngay khi bus đổi, thay cho việc trang tự hỏi 10 giây một lần.
+# Nhịp dò rẻ (chỉ `stat()` hai file), nên để ngắn; nhịp tim giữ kết nối sống qua proxy và cho
+# client biết server còn đó ngay cả khi chẳng có gì đổi.
+STREAM_POLL_SECONDS = 1.0
+STREAM_HEARTBEAT_SECONDS = 15.0
 
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -92,6 +100,30 @@ def write_token_file(token: str, path: Path = TOKEN_FILE) -> Path:
     return path
 
 
+def db_fingerprint(paths: Iterable[Path | None]) -> str:
+    """Dấu vân tay rẻ tiền của các file bus: đổi thì nghĩa là có event mới đáng đọc lại.
+
+    Dùng `st_mtime_ns` chứ không phải `st_mtime`: đồng hồ giây của một số filesystem quá thô,
+    hai lần ghi sát nhau sẽ trùng dấu vân tay và trang đứng im dù bus đã đổi. Kèm `st_size` để
+    bắt cả trường hợp hiếm là ghi đè đúng bằng nano-giây cũ. File chưa có (công ty chưa chạy lần
+    nào) là một trạng thái hợp lệ, không phải lỗi — nó có dấu vân tay riêng nên lúc file xuất
+    hiện, trang tự cập nhật."""
+    parts: list[str] = []
+    for path in paths:
+        try:
+            stat = path.stat() if path is not None else None
+        except OSError:
+            stat = None
+        parts.append("-" if stat is None else f"{stat.st_mtime_ns}:{stat.st_size}")
+    return "|".join(parts)
+
+
+def sse_frame(event: str, payload: dict[str, Any]) -> bytes:
+    """Một khung Server-Sent Events. `data` luôn một dòng vì JSON đã thoát sẵn xuống dòng."""
+    data = json.dumps(payload, ensure_ascii=False, default=str)
+    return f"event: {event}\ndata: {data}\n\n".encode()
+
+
 class GateHTTPError(Exception):
     """Lỗi đã biết, kèm mã HTTP muốn trả về."""
 
@@ -132,6 +164,7 @@ class ConsoleServer(ThreadingHTTPServer):
         studio_db: Path | None = None,
         llm_yaml: dict[str, Path] | None = None,
         static_dir: Path = STATIC_DIR,
+        stream_max_seconds: float | None = None,
     ) -> None:
         if ":" in host and not host.startswith("["):
             self.address_family = socket.AF_INET6
@@ -143,6 +176,9 @@ class ConsoleServer(ThreadingHTTPServer):
         self.studio_db = studio_db
         self.llm_yaml = llm_yaml
         self.static_dir = Path(static_dir)
+        # None = stream sống tới khi client đóng (chế độ chạy thật). Test đặt một giá trị nhỏ
+        # để vòng lặp tự kết thúc thay vì phải giết thread.
+        self.stream_max_seconds = stream_max_seconds
         super().__init__((host.strip("[]"), port), ConsoleHandler)
 
     @property
@@ -237,6 +273,11 @@ class ConsoleHandler(BaseHTTPRequestHandler):
                 self._error(HTTPStatus.UNAUTHORIZED, "thiếu hoặc sai X-Console-Token")
                 return
             self._api_settings_get()
+        elif path == "/api/stream":
+            if not self._authorized():
+                self._error(HTTPStatus.UNAUTHORIZED, "thiếu hoặc sai X-Console-Token")
+                return
+            self._api_stream()
         elif path.startswith("/api/"):
             if not self._authorized():
                 self._error(HTTPStatus.UNAUTHORIZED, "thiếu hoặc sai X-Console-Token")
@@ -305,6 +346,58 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.INTERNAL_SERVER_ERROR, "không đọc được trạng thái")
             return
         self._json(HTTPStatus.OK, state)
+
+    def _api_stream(self) -> None:
+        """SSE: đẩy `/api/state` mỗi khi bus của một trong hai công ty đổi.
+
+        Token đi ở header `X-Console-Token` như mọi `/api/*`, nên client dùng `fetch` +
+        `ReadableStream` chứ không phải `EventSource` (`EventSource` không đặt được header, đẩy
+        token vào query string thì `log_message` ghi thẳng token ra log).
+
+        Không đặt `Content-Length` và đóng kết nối khi xong: thân bài kết thúc bằng chính việc
+        đóng, đúng HTTP/1.1. Trang vẫn giữ nguyên đường `/api/state` để tự hỏi lại khi stream
+        đứt, nên mất stream chỉ là chậm hơn, không phải hỏng.
+        """
+        from console.collect import collect  # nhập trễ, xem _api_state.
+
+        self.close_connection = True
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        if self.command == "HEAD":
+            return
+
+        dbs = (self.server.company_db, self.server.studio_db)
+        fingerprint: str | None = None
+        last_beat = 0.0
+        deadline = None if self.server.stream_max_seconds is None else time.monotonic() + self.server.stream_max_seconds
+        try:
+            while deadline is None or time.monotonic() < deadline:
+                current = db_fingerprint(dbs)
+                if current != fingerprint:
+                    fingerprint = current
+                    try:
+                        state = collect(self.server.company_db, self.server.studio_db)
+                    except Exception:
+                        logger.exception("collect() thất bại trong /api/stream")
+                        self.wfile.write(sse_frame("error", {"error": "không đọc được trạng thái"}))
+                    else:
+                        self.wfile.write(sse_frame("state", state))
+                    self.wfile.flush()
+                    last_beat = time.monotonic()
+                elif time.monotonic() - last_beat >= STREAM_HEARTBEAT_SECONDS:
+                    # Dòng bình luận SSE: client bỏ qua nội dung, nhưng việc ghi được là bằng
+                    # chứng kết nối còn sống — và là chỗ duy nhất phát hiện client đã đóng.
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                    last_beat = time.monotonic()
+                time.sleep(STREAM_POLL_SECONDS)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass  # trang đã đóng tab hoặc tải lại — không có gì để dọn, thread tự kết thúc.
 
     def _api_decide(self, payload: dict[str, Any]) -> None:
         from console.decide import decide  # nhập trễ, xem _api_state.
@@ -422,6 +515,7 @@ def make_server(
     studio_db: Path | None = None,
     llm_yaml: dict[str, Path] | None = None,
     static_dir: Path = STATIC_DIR,
+    stream_max_seconds: float | None = None,
 ) -> ConsoleServer:
     return ConsoleServer(
         host,
@@ -433,4 +527,5 @@ def make_server(
         studio_db=studio_db,
         llm_yaml=llm_yaml,
         static_dir=static_dir,
+        stream_max_seconds=stream_max_seconds,
     )

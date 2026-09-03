@@ -101,6 +101,8 @@ def decide(company_db: Path | None, studio_db: Path | None, *,
 GET  /                  → static/index.html, chèn <script>window.__CONSOLE__={token,readonly}</script>
 GET  /static/*          → file tĩnh trong static/
 GET  /api/state         → collect(...)
+GET  /api/stream        → SSE: `event: state` mỗi khi bus đổi, `event: error` khi collect() ném,
+                          `: ping` giữ nhịp 15 giây. Không có Content-Length; đóng kết nối là hết thân bài.
 GET  /api/settings      → settings.read_settings(...) + {"can_edit": bool}
 POST /api/settings      → body {company, models?, prefer?, enable?, disable?}  (cần --allow-config)
 POST /api/gate/decide   → body {subject_id, xuong, decision, by, reason}      (cần --allow-decide)
@@ -121,7 +123,9 @@ Bảo mật — bắt buộc, đây là bề mặt đầu tiên cho phép duyệ
    `--allow-config` cho `POST /api/settings`. Duyệt gate và đổi model là hai rủi ro khác nhau.
 5. `--readonly` (mặc định **bật**) chặn mọi POST. Muốn duyệt gate từ trang thì chạy
    `--allow-decide`, và trang hiện rõ đang ở chế độ nào.
-5. Không log token, không log body.
+6. Không log token, không log body. Vì `log_message` ghi nguyên dòng request, token **không được**
+   đi qua query string — đó là lý do trang đọc `/api/stream` bằng `fetch` + `ReadableStream`
+   (đặt được header) chứ không phải `EventSource` (không đặt được).
 
 Lỗi trả `{"error": "…"}` kèm mã HTTP đúng nghĩa: 400 sai tham số, 401 sai token,
 403 bị chặn, 404 không có, 409 gate đã quyết rồi, 500 lỗi không lường trước.
@@ -144,12 +148,38 @@ def update_settings(path: Path, *, models=None, prefer=None, enable=None, disabl
 
 ## `static/index.html`
 
-Giữ nguyên thiết kế đang có. Đổi phần dữ liệu:
+Một file, không framework, không bước build. Phần dữ liệu:
 
-- Khi tải: gọi `GET /api/state`, hiện khung xám trong lúc chờ.
+- Khi tải: hiện khung xám, rồi nối `GET /api/stream`.
+- **Đẩy trước, hỏi sau.** Có stream thì trạng thái mới về trong khoảng một giây (nhãn *trực tiếp*).
+  Stream đứt → lùi về `GET /api/state` mỗi 10 giây (nhãn *hỏi lại 10s*) và thử nối lại với backoff
+  gấp đôi, trần 60 giây. Mất stream chỉ là chậm hơn, không phải hỏng.
+- **Không vẽ đè dưới tay người đang đọc.** Ngăn kéo đang mở hoặc đã bấm Tạm dừng thì trạng thái mới
+  được giữ lại và hiện nút *Có dữ liệu mới — xem*; bấm mới vẽ.
 - Lỗi mạng hoặc 5xx: hiện dải cảnh báo trên cùng, giữ dữ liệu lần cuối đọc được.
 - `sources[x].ok === false`: phần của xưởng đó hiện trạng thái rỗng có lý do, không hiện số 0 giả.
-- Tự làm mới mỗi 10 giây, có nút tạm dừng; không làm mới khi ngăn kéo đang mở.
 - Nút quyết định gate gọi `POST /api/gate/decide`; `readonly` thì nút bị khoá kèm giải thích
   cách bật `--allow-decide`.
 - Không còn dữ liệu mẫu nào trong file.
+
+Điều hướng — địa chỉ là trạng thái:
+
+```
+#/<màn>                     truc-ban | phan-mem | video | chi-phi | nhat-ky | cai-dat
+#/<màn>/gate/<id>           màn đó, ngăn kéo gate đang mở
+#/<màn>/ticket/<id>         ngăn kéo ticket
+#/<màn>/video/<id>          ngăn kéo video
+```
+
+Dùng hash chứ không `history.pushState`: server chỉ phục vụ một đường `/`, đẩy đường dẫn thật vào
+thanh địa chỉ thì F5 ăn 404. Back đóng ngăn kéo thay vì rời trang; địa chỉ trỏ tới id không còn tồn
+tại thì tự rút về màn tương ứng, không để thanh địa chỉ nói dối.
+
+Lọc, tìm, sắp xếp — hoàn toàn phía client trên dữ liệu đã có, không thêm vòng gọi server nào:
+
+- Ô tìm chung (phím `/`) lọc gate, ticket, video, PR, review, số liệu và audit-log cùng lúc.
+  Gấp dấu tiếng Việt bằng NFD nên gõ `ong kinh` ra `Ống kính`; chỗ khớp được tô khi gõ có dấu.
+- Bảng ticket và video có chip lọc theo trạng thái kèm số đếm; chọn một trạng thái thì thu về một cột.
+- `<th data-k>` trong `<tr data-sort>` sắp xếp được, `data-t="n"` là cột số. Trạng thái sắp xếp nằm
+  ở `aria-sort` nên đọc màn hình cũng biết.
+- Phím tắt: `/` vào ô tìm, `1`–`6` nhảy màn, `g` về Trực ban, `Esc` xoá ô tìm hoặc đóng ngăn kéo.

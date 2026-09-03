@@ -21,28 +21,30 @@
   --rail:236px;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --ground:#0e1413; --surface:#161e1d; --surface-2:#1b2422; --surface-sunk:#111817;
-  --line:#2a3634; --line-soft:#222d2b;
-  --ink:#eaf0ee; --ink-2:#a8b6b3; --ink-muted:#7d8a87;
-  --accent:#3fa495; --accent-ink:#5fbcae; --accent-wash:#14322e;
-  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
-  --warn-ink:#f0bd52; --good-ink:#5cc45c; --crit-ink:#e88484;
-  --warn-wash:#33280d; --good-wash:#16301a; --crit-wash:#34191a;
-  --s1:#3987e5; --s2:#d95926; --s3:#199e70;
-  --chart-surface:#1a1a19; --grid:#2c3634; --axis:#898781;
-  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -14px rgba(0,0,0,.7);
+  /* Nền xanh navy (slate), điểm nhấn xanh lá — cùng tông với các mặt kính khác của hệ. */
+  --ground:#0a111c; --surface:#101a28; --surface-2:#162234; --surface-sunk:#0c1420;
+  --line:#1f2d42; --line-soft:#182334;
+  --ink:#e6edf6; --ink-2:#a3b3c9; --ink-muted:#7185a0;
+  --accent:#10b981; --accent-ink:#34d399; --accent-wash:#0e2f28;
+  --good:#22c55e; --warn:#f0b429; --serious:#f97362; --crit:#ef4d4d;
+  --warn-ink:#f5c451; --good-ink:#4ade80; --crit-ink:#fb8080;
+  --warn-wash:#33280d; --good-wash:#0f2e1e; --crit-wash:#331a1d;
+  --s1:#3b82f6; --s2:#f97316; --s3:#10b981;
+  --chart-surface:#101a28; --grid:#1c2a3d; --axis:#6b7f99;
+  --shadow:0 1px 2px rgba(3,7,18,.5),0 10px 28px -14px rgba(3,7,18,.85);
 }}
 :root[data-theme="dark"]{
-  --ground:#0e1413; --surface:#161e1d; --surface-2:#1b2422; --surface-sunk:#111817;
-  --line:#2a3634; --line-soft:#222d2b;
-  --ink:#eaf0ee; --ink-2:#a8b6b3; --ink-muted:#7d8a87;
-  --accent:#3fa495; --accent-ink:#5fbcae; --accent-wash:#14322e;
-  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
-  --warn-ink:#f0bd52; --good-ink:#5cc45c; --crit-ink:#e88484;
-  --warn-wash:#33280d; --good-wash:#16301a; --crit-wash:#34191a;
-  --s1:#3987e5; --s2:#d95926; --s3:#199e70;
-  --chart-surface:#1a1a19; --grid:#2c3634; --axis:#898781;
-  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -14px rgba(0,0,0,.7);
+  /* Nền xanh navy (slate), điểm nhấn xanh lá — cùng tông với các mặt kính khác của hệ. */
+  --ground:#0a111c; --surface:#101a28; --surface-2:#162234; --surface-sunk:#0c1420;
+  --line:#1f2d42; --line-soft:#182334;
+  --ink:#e6edf6; --ink-2:#a3b3c9; --ink-muted:#7185a0;
+  --accent:#10b981; --accent-ink:#34d399; --accent-wash:#0e2f28;
+  --good:#22c55e; --warn:#f0b429; --serious:#f97362; --crit:#ef4d4d;
+  --warn-ink:#f5c451; --good-ink:#4ade80; --crit-ink:#fb8080;
+  --warn-wash:#33280d; --good-wash:#0f2e1e; --crit-wash:#331a1d;
+  --s1:#3b82f6; --s2:#f97316; --s3:#10b981;
+  --chart-surface:#101a28; --grid:#1c2a3d; --axis:#6b7f99;
+  --shadow:0 1px 2px rgba(3,7,18,.5),0 10px 28px -14px rgba(3,7,18,.85);
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
@@ -240,6 +242,41 @@ svg{display:block;overflow:visible}
 .banner.on{display:flex}
 .banner b{font-weight:600}
 .banner .note{color:var(--crit-ink);opacity:.85}
+/* ---------- tìm kiếm ---------- */
+.search{display:flex;align-items:center;gap:7px;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:999px;padding:4px 8px 4px 11px;min-width:230px;transition:border-color .12s,box-shadow .12s}
+.search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+.search svg{width:14px;height:14px;flex:none;fill:none;stroke:var(--ink-muted);stroke-width:1.6;stroke-linecap:round}
+.search input{flex:1;min-width:0;border:0;background:transparent;outline:none;font-size:13px;padding:2px 0}
+.search input::-webkit-search-cancel-button{display:none}
+.search kbd{font-family:var(--mono);font-size:10.5px;color:var(--ink-muted);background:var(--surface);
+  border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;line-height:16px}
+.search:focus-within kbd{visibility:hidden}
+mark{background:color-mix(in srgb,var(--warn) 38%,transparent);color:inherit;border-radius:2px;padding:0 1px}
+
+/* ---------- cột sắp xếp được ---------- */
+thead th[data-k]{cursor:pointer;user-select:none;white-space:nowrap}
+thead th[data-k]:hover{color:var(--accent-ink)}
+thead th[data-k]::after{content:"";display:inline-block;width:0;height:0;margin-left:5px;vertical-align:middle;
+  border-left:3.5px solid transparent;border-right:3.5px solid transparent;border-bottom:4px solid var(--ink-muted);opacity:0}
+thead th[data-k]:hover::after{opacity:.4}
+thead th[aria-sort]{color:var(--accent-ink)}
+thead th[aria-sort]::after{opacity:1;border-bottom-color:var(--accent)}
+thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var(--accent)}
+
+/* ---------- chỉ báo realtime ---------- */
+#live{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;letter-spacing:.02em}
+#live::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+#live.on{color:var(--good-ink)}
+#live.on::before{animation:pulse 2.4s ease-in-out infinite}
+#live.poll{color:var(--warn-ink)}
+#live.off{color:var(--ink-muted)}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
+.newdata{background:var(--accent);color:#fff;border:0;border-radius:999px;padding:3px 11px;font-size:12px;
+  font-weight:600;cursor:pointer}
+.view{animation:rise .16s ease-out}
+@keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
 .refresh{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-muted)}
 .refresh button{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px 11px;font-size:12px;color:var(--ink-2);cursor:pointer}
 .refresh button:hover{border-color:var(--accent);color:var(--accent-ink)}
@@ -291,10 +328,16 @@ svg{display:block;overflow:visible}
         <div class="chip">Token <b id="chip-tokens">—</b></div>
         <div class="chip">Ticket kẹt <b id="chip-stuck">—</b></div>
       </div>
+      <div class="search">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+        <input id="q" type="search" placeholder="Tìm gate, ticket, video, PR…" aria-label="Tìm trong mọi bảng" autocomplete="off" spellcheck="false">
+        <kbd>/</kbd>
+      </div>
       <div class="refresh">
         <span id="mode-pill"></span>
+        <span id="live"></span>
         <span id="fresh">—</span>
-        <button id="pause" aria-pressed="false" title="Tạm dừng tự làm mới 10 giây một lần">Tạm dừng</button>
+        <button id="pause" aria-pressed="false" title="Ngưng nhận cập nhật; dữ liệu mới sẽ được giữ lại">Tạm dừng</button>
       </div>
     </div>
 
@@ -336,7 +379,8 @@ svg{display:block;overflow:visible}
         <div class="sect-head"><h2>Gói tài khoản đang xoay</h2><p>tier nào đi gói nào, gói nào đang nghỉ</p></div>
         <div class="tablewrap">
           <table>
-            <thead><tr><th>Backend</th><th>Tier</th><th>Tool</th><th>Trạng thái</th><th class="r">Lời gọi</th><th class="r">Lỗi</th></tr></thead>
+            <thead><tr data-sort="backends"><th data-k="n">Backend</th><th data-k="tiers">Tier</th><th data-k="tools">Tool</th>
+              <th data-k="st">Trạng thái</th><th class="r" data-k="calls" data-t="n">Lời gọi</th><th class="r" data-k="fail" data-t="n">Lỗi</th></tr></thead>
             <tbody id="backends"></tbody>
           </table>
         </div>
@@ -352,13 +396,15 @@ svg{display:block;overflow:visible}
     <section class="view" id="v-phan-mem">
       <div class="sect">
         <div class="sect-head"><h2>Bảng ticket</h2><p>bấm một ticket để xem PR, review và ngân sách</p></div>
+        <div class="filters" id="f-tickets"></div>
         <div class="board" id="board-tickets"></div>
       </div>
       <div class="sect">
         <div class="sect-head"><h2>Pull request chờ review</h2><p>lint và test do code chạy thật trên worktree, không phải model tự khai</p></div>
         <div class="tablewrap">
           <table>
-            <thead><tr><th>Ticket</th><th>Nhánh</th><th>Tóm tắt</th><th>lint</th><th>tests</th><th>Xác minh</th></tr></thead>
+            <thead><tr data-sort="prs"><th data-k="id">Ticket</th><th data-k="br">Nhánh</th><th data-k="s">Tóm tắt</th>
+              <th data-k="lint">lint</th><th data-k="tests">tests</th><th data-k="v">Xác minh</th></tr></thead>
             <tbody id="prs"></tbody>
           </table>
         </div>
@@ -367,7 +413,8 @@ svg{display:block;overflow:visible}
         <div class="sect-head"><h2>Kết quả review</h2><p>reviewer, qa và security cùng chấm một PR</p></div>
         <div class="tablewrap">
           <table>
-            <thead><tr><th>Ticket</th><th>Nguồn</th><th>Kết luận</th><th>Phát hiện</th></tr></thead>
+            <thead><tr data-sort="reviews"><th data-k="id">Ticket</th><th data-k="src">Nguồn</th><th data-k="v">Kết luận</th>
+              <th data-k="f">Phát hiện</th></tr></thead>
             <tbody id="reviews"></tbody>
           </table>
         </div>
@@ -378,13 +425,16 @@ svg{display:block;overflow:visible}
     <section class="view" id="v-video">
       <div class="sect">
         <div class="sect-head"><h2>Dây chuyền video</h2><p>bấm một video để xem ngân sách token của nó</p></div>
+        <div class="filters" id="f-videos"></div>
         <div class="board" id="board-videos"></div>
       </div>
       <div class="sect">
         <div class="sect-head"><h2>Số liệu sau khi đăng</h2><p>kéo về từ YouTube Analytics, nuôi lại chiến lược kênh</p></div>
         <div class="tablewrap">
           <table>
-            <thead><tr><th>Video</th><th class="r">Hiển thị</th><th class="r">Lượt xem</th><th class="r">CTR</th><th class="r">Xem TB</th><th>Giữ chân</th></tr></thead>
+            <thead><tr data-sort="perf"><th data-k="id">Video</th><th class="r" data-k="imp" data-t="n">Hiển thị</th>
+              <th class="r" data-k="views" data-t="n">Lượt xem</th><th class="r" data-k="ctr" data-t="n">CTR</th>
+              <th class="r" data-k="avd" data-t="n">Xem TB</th><th>Giữ chân</th></tr></thead>
             <tbody id="perf"></tbody>
           </table>
         </div>
@@ -415,7 +465,8 @@ svg{display:block;overflow:visible}
         <div class="sect-head"><h2>Can thiệp của supervisor</h2><p>mỗi lần chạm ngưỡng đều ghi lý do và bằng chứng</p></div>
         <div class="tablewrap">
           <table>
-            <thead><tr><th>Mục tiêu</th><th>Hành động</th><th>Lý do</th><th>Lúc</th></tr></thead>
+            <thead><tr data-sort="sup"><th data-k="t">Mục tiêu</th><th data-k="a">Hành động</th><th data-k="r">Lý do</th>
+              <th data-k="w">Lúc</th></tr></thead>
             <tbody id="sup"></tbody>
           </table>
         </div>
@@ -458,6 +509,46 @@ const kb=n=>n>=1000?(n/1000).toLocaleString("vi-VN",{maximumFractionDigits:1})+"
 const pctTxt=n=>(Number(n||0)*100).toFixed(1).replace(".",",")+"%";
 const dec2=n=>Number(n||0).toLocaleString("vi-VN",{minimumFractionDigits:2,maximumFractionDigits:2});
 const mmss=s=>Math.floor(s/60)+":"+String(Math.round(s%60)).padStart(2,"0");
+
+/* ---------- tìm kiếm ----------
+   Gấp dấu tiếng Việt để gõ "ke hoach" cũng ra "kế hoạch". Tách dấu bằng NFD rồi bỏ dải
+   ký tự tổ hợp U+0300–U+036F — cách này không cần bảng tra và đúng cho cả chữ hoa. */
+const COMB=new RegExp("["+String.fromCharCode(0x300)+"-"+String.fromCharCode(0x36f)+"]","g");
+const fold=v=>String(v??"").normalize("NFD").replace(COMB,"").toLowerCase();
+let Q="";                                         // đã gấp dấu — dùng để LỌC
+let QRAW="";                                      // nguyên văn, chỉ hạ chữ hoa — dùng để TÔ
+const hay=(...fields)=>!Q||fields.some(f=>fold(f).includes(Q));
+/* Tô chỗ khớp bằng chuỗi nguyên văn chứ không phải chuỗi đã gấp dấu: NFD tách dấu thành ký tự
+   riêng nên chỉ số ký tự lệch, cắt theo đó sẽ tô trượt. Hệ quả: gõ có dấu thì thấy vệt vàng,
+   gõ không dấu vẫn lọc đúng nhưng không tô — hỏng nhẹ, không sai. */
+function hl(text){
+  const raw=String(text??"");
+  if(!QRAW) return esc(raw);
+  const i=raw.toLowerCase().indexOf(QRAW);
+  if(i<0) return esc(raw);
+  return esc(raw.slice(0,i))+"<mark>"+esc(raw.slice(i,i+QRAW.length))+"</mark>"+esc(raw.slice(i+QRAW.length));
+}
+
+/* ---------- sắp xếp bảng ---------- */
+const SORT={};                                  // id bảng -> {k, dir}
+function sortRows(table,rows){
+  const s=SORT[table]; if(!s) return rows;
+  const numeric=s.t==="n";
+  return rows.slice().sort((a,b)=>{
+    const x=a[s.k], y=b[s.k];
+    const c=numeric?Number(x||0)-Number(y||0):fold(x).localeCompare(fold(y),"vi");
+    return s.dir==="desc"?-c:c;
+  });
+}
+document.addEventListener("click",e=>{
+  const th=e.target.closest("thead th[data-k]"); if(!th) return;
+  const head=th.closest("tr[data-sort]"); if(!head) return;
+  const table=head.dataset.sort, k=th.dataset.k, cur=SORT[table];
+  SORT[table]=cur&&cur.k===k&&cur.dir==="asc"?{k,t:th.dataset.t,dir:"desc"}:{k,t:th.dataset.t,dir:"asc"};
+  [...head.children].forEach(c=>c.removeAttribute("aria-sort"));
+  th.setAttribute("aria-sort",SORT[table].dir==="asc"?"ascending":"descending");
+  render();
+});
 
 /* ---------- cầu nối với server cục bộ ---------- */
 const CONSOLE=window.__CONSOLE__||{};
@@ -512,34 +603,121 @@ function skeleton(){
   $("#backends").innerHTML='<tr><td colspan="6"><div class="skel skel-line"></div></td></tr>';
   $("#fresh").textContent="đang đọc…";
 }
+/* Trạng thái mới về trong lúc người dùng đang đọc (ngăn kéo mở, hoặc đã bấm Tạm dừng) thì
+   giữ lại chứ không vẽ đè dưới tay họ — và báo có gì đó mới để họ tự bấm xem. */
+let pending=null;
+
+let routed=false;
+function accept(data){
+  S=data; pending=null; lastOk=new Date(); banner(null);
+  firstLoad=false; document.body.classList.remove("loading"); render();
+  // Ngăn kéo trong địa chỉ chỉ mở được sau khung dữ liệu đầu tiên: trước đó chưa có gate nào để tìm.
+  if(!routed){ routed=true; applyRoute(); }
+}
+function offer(data){
+  if(paused||drawerOpen){ pending=data; freshLabel(); return; }
+  accept(data);
+}
+function applyPending(){ if(pending) accept(pending); else freshLabel(); }
+
+function lostContact(err){
+  banner(S?"Mất liên lạc với server console — số liệu dưới đây là lần đọc cuối.":"Chưa đọc được trạng thái.",
+    err.message+(lastOk?" · lần đọc cuối "+lastOk.toLocaleTimeString("vi-VN"):""));
+  firstLoad=false; document.body.classList.remove("loading"); render();
+}
+
+/* ---------- vòng đọc: đẩy trước, hỏi sau ----------
+   Ưu tiên `/api/stream` (SSE) để gate mới hiện ngay thay vì chờ hết nhịp 10 giây. Đọc bằng
+   `fetch` + ReadableStream chứ không phải `EventSource`: `EventSource` không đặt được header,
+   mà token phiên chỉ được đi ở `X-Console-Token` — nhét vào query string là ghi token ra log
+   server. Stream đứt thì tự lùi về hỏi lại 10 giây một lần, nên mất SSE chỉ là chậm hơn. */
+const POLL_MS=10000;
+let mode="off", ctrl=null, retry=null, backoff=1000;
+
 async function load(){
-  try{
-    const data=await api("/api/state");
-    S=data; lastOk=new Date(); banner(null);
-  }catch(err){
-    banner(S?"Mất liên lạc với server console — số liệu dưới đây là lần đọc cuối.":"Chưa đọc được trạng thái.",
-      err.message+(lastOk?" · lần đọc cuối "+lastOk.toLocaleTimeString("vi-VN"):""));
-  }finally{
-    firstLoad=false; document.body.classList.remove("loading"); render();
+  try{ offer(await api("/api/state")); }
+  catch(err){ lostContact(err); }
+}
+
+function parseFrame(chunk){
+  let event="message", data="";
+  for(const line of chunk.split("\n")){
+    if(line.startsWith("event:")) event=line.slice(6).trim();
+    else if(line.startsWith("data:")) data+=line.slice(5).trim();
   }
+  if(!data) return null;                          // ": ping" — nhịp tim, không phải khung dữ liệu
+  try{ return {event,data:JSON.parse(data)}; }catch(_){ return null; }
 }
-function schedule(){
+
+async function stream(){
+  ctrl=new AbortController();
+  const r=await fetch("/api/stream",{cache:"no-store",signal:ctrl.signal,
+    headers:{"X-Console-Token":TOKEN,"Accept":"text/event-stream"}});
+  if(!r.ok||!r.body) throw new Error(httpMsg(r.status));
+  setMode("live"); backoff=1000; clearTimeout(timer);
+  const reader=r.body.getReader(), dec=new TextDecoder();
+  let buf="";
+  for(;;){
+    const {value,done}=await reader.read();
+    if(done) break;
+    buf+=dec.decode(value,{stream:true});
+    let i;
+    while((i=buf.indexOf("\n\n"))>=0){
+      const frame=parseFrame(buf.slice(0,i)); buf=buf.slice(i+2);
+      if(!frame) continue;
+      if(frame.event==="error") banner("Server đọc được stream nhưng không đọc được bus.",frame.data.error||"");
+      else offer(frame.data);
+    }
+  }
+  throw new Error("stream đóng");
+}
+
+function poll(){
   clearTimeout(timer);
-  if(paused||drawerOpen) return;                 // ngăn kéo mở thì không làm mới dưới tay người đang đọc
-  timer=setTimeout(async()=>{await load(); schedule();},10000);
+  if(paused) return;
+  timer=setTimeout(async()=>{ await load(); poll(); },POLL_MS);
 }
+
+function setMode(m){ mode=m; freshLabel(); }
+
+async function connect(){
+  if(paused) return;
+  clearTimeout(retry);
+  try{ await stream(); }
+  catch(err){
+    if(err.name==="AbortError") return;            // chính mình huỷ khi bấm Tạm dừng
+    setMode("poll"); load(); poll();               // vẫn chạy được, chỉ chậm hơn
+    backoff=Math.min(backoff*2,60000);
+    retry=setTimeout(connect,backoff);             // thử lại stream, không quấy server
+    return;
+  }
+  setMode("poll"); poll();
+  retry=setTimeout(connect,backoff);
+}
+
+function stop(){ clearTimeout(timer); clearTimeout(retry); if(ctrl) ctrl.abort(); ctrl=null; setMode("off"); }
+
 $("#pause").addEventListener("click",()=>{
   paused=!paused;
   $("#pause").setAttribute("aria-pressed",String(paused));
   $("#pause").textContent=paused?"Tiếp tục":"Tạm dừng";
-  if(!paused) load().then(schedule); else clearTimeout(timer);
+  if(paused) stop(); else { applyPending(); backoff=1000; connect(); }
   freshLabel();
 });
+
 function freshLabel(){
-  const f=$("#fresh");
+  const f=$("#fresh"), live=$("#live");
+  live.className=mode==="live"?"on":mode==="poll"?"poll":"off";
+  live.textContent=mode==="live"?"trực tiếp":mode==="poll"?"hỏi lại 10s":"đã dừng";
   if(firstLoad){f.textContent="đang đọc…";return;}
   const t=lastOk?lastOk.toLocaleTimeString("vi-VN"):"chưa có";
-  f.textContent=paused?"đã dừng · đọc lúc "+t:drawerOpen?"tạm ngưng khi mở ngăn kéo · "+t:"làm mới 10 giây · "+t;
+  if(pending){
+    f.innerHTML='<button class="newdata" id="apply-new">Có dữ liệu mới — xem</button>';
+    $("#apply-new").addEventListener("click",()=>{ if(paused){paused=false;$("#pause").textContent="Tạm dừng";
+      $("#pause").setAttribute("aria-pressed","false");connect();} applyPending(); });
+    return;
+  }
+  f.textContent=(paused?"đã dừng":drawerOpen?"tạm ngưng khi mở ngăn kéo":"cập nhật")+" · "+t;
 }
 
 /* ---------- điều hướng ---------- */
@@ -552,13 +730,56 @@ const TITLES={
  "cai-dat":()=>["Cài đặt model",CFG?(CFG.can_edit?"sửa được — thay đổi ghi thẳng vào llm.yaml, bản cũ để lại .bak":"chỉ xem — chạy lại console với --allow-config để sửa"):"đang đọc cấu hình…"]};
 let view="truc-ban";
 function titles(){const [t,s]=TITLES[view]();$("#vt").textContent=t;$("#vs").textContent=s;}
+
+/* ---------- định tuyến ----------
+   Địa chỉ mang đúng chỗ đang đứng: `#/phan-mem` là một màn, `#/phan-mem/ticket/SC-12` là màn đó
+   với ngăn kéo ticket đang mở. Nhờ vậy F5 không văng về Trực ban, nút Back của trình duyệt đóng
+   ngăn kéo thay vì rời trang, và gửi được link tới đúng một gate cho người khác.
+   Dùng hash chứ không `history.pushState`: server chỉ phục vụ một đường `/`, đẩy đường dẫn thật
+   vào thanh địa chỉ thì F5 sẽ ăn 404. */
+const VIEWS=["truc-ban","phan-mem","video","chi-phi","nhat-ky","cai-dat"];
+const OPENERS={gate:id=>openGate(id),ticket:id=>openTicket(id),video:id=>openVideo(id)};
+let routing=false;                                // chặn vòng lặp hash -> mở -> đặt hash
+
+function readHash(){
+  const raw=(location.hash||"").replace("#","");
+  const parts=raw.split("/").filter(Boolean).map(decodeURIComponent);
+  const v=VIEWS.includes(parts[0])?parts[0]:"truc-ban";
+  return {view:v,kind:parts[1]||null,id:parts.slice(2).join("/")||null};
+}
+function writeHash(v,kind,id,replace){
+  const parts=["#",v]; if(kind&&id) parts.push(kind,encodeURIComponent(id));
+  const next=parts.join("/").replace("#/","#/");
+  if(location.hash===next) return;
+  routing=true;
+  if(replace) history.replaceState(null,"",next); else location.hash=next;
+  routing=false;
+}
+function showView(v){
+  if(v===view&&$(".view.on")) return;
+  view=v;
+  $$(".nav").forEach(n=>n.setAttribute("aria-current",String(n.dataset.v===v)));
+  $$(".view").forEach(x=>x.classList.toggle("on",x.id==="v-"+v));
+  titles(); window.scrollTo({top:0});
+  if(v==="cai-dat") loadSettings();
+}
+function applyRoute(){
+  const r=readHash();
+  showView(r.view);
+  const opener=r.kind&&OPENERS[r.kind];
+  if(opener&&r.id){
+    if(openId!==r.id) opener(r.id);
+    // Link cũ trỏ tới thứ đã đóng hoặc đã bị xoá: mở không được thì dọn địa chỉ về đúng màn,
+    // đừng để thanh địa chỉ nói dối là đang mở một ticket không còn tồn tại.
+    if(!drawerOpen) writeHash(r.view,null,null,true);
+  }
+  else if(drawerOpen) shut();
+}
+addEventListener("hashchange",()=>{ if(!routing) applyRoute(); });
 $("#nav").addEventListener("click",e=>{
   const b=e.target.closest(".nav"); if(!b) return;
-  view=b.dataset.v;
-  $$(".nav").forEach(n=>n.setAttribute("aria-current",String(n===b)));
-  $$(".view").forEach(v=>v.classList.toggle("on",v.id==="v-"+view));
-  titles(); window.scrollTo({top:0});
-  if(view==="cai-dat") loadSettings();
+  writeHash(b.dataset.v,null,null,false);
+  applyRoute();
 });
 
 /* ---------- cài đặt model ---------- */
@@ -637,8 +858,14 @@ $("#settings").addEventListener("click",async e=>{
 /* ---------- hàng đợi gate ---------- */
 const KIND={plan:"kế hoạch",publish:"đăng",escalation:"leo thang",acceptance:"nghiệm thu",replies:"trả lời",spec:"đặc tả",release:"phát hành"};
 function renderQueue(){
-  const gates=st().gates||[], q=$("#queue");
+  const all=st().gates||[], q=$("#queue");
+  const gates=all.filter(g=>hay(g.id,g.title,g.xuong,g.by,KIND[g.kind]||g.kind));
   const dead=[SC,ST].filter(k=>!srcOk(k));
+  if(!gates.length&&Q&&all.length){
+    q.innerHTML=`<div class="empty"><b>Không có gate nào khớp “${esc($("#q").value.trim())}”</b>${all.length} gate đang chờ, xoá ô tìm để xem hết.</div>`;
+    $("#nav-gates").textContent=all.length; $("#chip-gates").textContent=all.length;
+    return;
+  }
   if(!gates.length){
     q.innerHTML=dead.length===2
       ? `<div class="empty"><b>Chưa đọc được xưởng nào</b>${esc(dead.map(k=>k+": "+srcWhy(k)).join(" · "))}</div>`
@@ -649,29 +876,32 @@ function renderQueue(){
     return `<button class="gate" data-id="${esc(g.id)}" data-sev="${esc(g.sev||"calm")}">
       <span class="stripe"></span>
       <span class="body">
-        <span class="id">${esc(g.id)}</span>
-        <h3>${esc(g.title)}</h3>
+        <span class="id">${hl(g.id)}</span>
+        <h3>${hl(g.title)}</h3>
         <span class="meta"><span>${esc(g.xuong)}</span><span>gate <code>${esc(KIND[g.kind]||g.kind)}</code></span><span>tạo bởi <code>${esc(g.by)}</code></span></span>
         <span class="cl">${(g.cl||[]).map(c=>`<code>${esc(c[0])}</code>`).join("")}</span>
       </span>
       <span class="side">${flag}<span class="age">${h} giờ</span></span>
     </button>`;}).join("");
-  $("#nav-gates").textContent=gates.length; $("#chip-gates").textContent=gates.length;
-  $$(".nav")[0].querySelector(".dot").style.display=gates.length?"":"none";
+  $("#nav-gates").textContent=all.length; $("#chip-gates").textContent=all.length;
+  $$(".nav")[0].querySelector(".dot").style.display=all.length?"":"none";
 }
 $("#queue").addEventListener("click",e=>{const b=e.target.closest(".gate"); if(b) openGate(b.dataset.id);});
 
 /* ---------- ngăn kéo ---------- */
 const drawer=$("#drawer"), scrim=$("#scrim");
+let openId=null;                                  // id đang mở trong ngăn kéo, để route không mở lại chính nó
 function shut(){
   drawer.classList.remove("on");scrim.classList.remove("on");drawer.setAttribute("aria-hidden","true");
-  drawerOpen=false; freshLabel(); schedule();
+  drawerOpen=false; openId=null;
+  writeHash(view,null,null,false);                // Back đóng ngăn kéo; đóng tay cũng phải rời khỏi địa chỉ chi tiết
+  applyPending();                                 // dữ liệu về trong lúc đọc thì giờ mới vẽ
 }
 scrim.addEventListener("click",shut);
 document.addEventListener("keydown",e=>{if(e.key==="Escape")shut();});
 function show(html){
   drawer.innerHTML=html;drawer.classList.add("on");scrim.classList.add("on");drawer.setAttribute("aria-hidden","false");
-  drawerOpen=true; clearTimeout(timer); freshLabel();
+  drawerOpen=true; freshLabel();
   const c=drawer.querySelector(".x"); if(c)c.addEventListener("click",shut);
   const b=drawer.querySelector(".dr-b"); if(b)b.scrollTop=0;
 }
@@ -685,6 +915,7 @@ const RO_NOTE='Chế độ <b>chỉ đọc</b> — nút quyết định bị kho
 
 function openGate(id){
   const g=(st().gates||[]).find(x=>x.id===id); if(!g) return;
+  openId=id; writeHash(view,"gate",id,false);
   const cl=g.cl||[], facts=g.facts||[];
   show(`<div class="dr-h">
       <div><div class="id">${esc(g.id)}</div><h2>${esc(g.title)}</h2></div>
@@ -735,7 +966,7 @@ function openGate(id){
       await api("/api/gate/decide",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({subject_id:g.id,xuong:g.xuong,decision:d,by:by,reason:reason})});
       shut(); toast(VERB[d]+" "+g.id+".");
-      await load(); schedule();
+      await load();
     }catch(err){
       all.forEach(x=>{x.disabled=false;}); sync();
       $("#gnote").textContent="Không ghi được quyết định: "+err.message;
@@ -746,6 +977,7 @@ function openGate(id){
 
 function openTicket(id){
   const t=(st().tickets||[]).find(x=>x.id===id); if(!t) return;
+  openId=id; writeHash(view,"ticket",id,false);
   const pr=(st().prs||[]).find(p=>p.id===id), rv=(st().reviews||[]).filter(r=>r.id===id);
   const pct=t.bud?Math.round(t.used/t.bud*100):0;
   show(`<div class="dr-h"><div><div class="id">${esc(t.id)}</div><h2>${esc(t.t)}</h2></div><button class="x" aria-label="Đóng">✕</button></div>
@@ -762,6 +994,7 @@ function openTicket(id){
 }
 function openVideo(id){
   const v=(st().videos||[]).find(x=>x.id===id); if(!v) return;
+  openId=id; writeHash(view,"video",id,false);
   const p=(st().perf||[]).find(x=>x.id===id);
   show(`<div class="dr-h"><div><div class="id">${esc(v.id)}</div><h2>${esc(v.t)}</h2></div><button class="x" aria-label="Đóng">✕</button></div>
     <div class="dr-b">
@@ -781,7 +1014,7 @@ const TSTATE=[["waiting","Chờ phụ thuộc"],["dispatched","Đã giao"],["in_
 const VSTATE=[["briefed","Đã có đề bài"],["scripted","Đã có kịch bản"],["in_review","Đang review"],["approved","Đã duyệt"],["published","Đã đăng"],["analyzed","Đã phân tích"]];
 
 function renderBackends(){
-  const rows=st().backends||[];
+  const rows=sortRows("backends",st().backends||[]);
   $("#backends").innerHTML=rows.length?rows.map(b=>`<tr>
     <td class="mono">${esc(b.n)}${b.note?`<div class="note">${esc(b.note)}</div>`:""}</td>
     <td class="mono">${esc(b.tiers)}</td><td>${esc(b.tools)}</td>
@@ -800,43 +1033,61 @@ function board(host,states,items,key,tag,fmt){
     const list=items.filter(x=>x.st===k);
     return `<div class="col"><div class="col-h">${label}<span class="n">${list.length}</span></div>
       ${list.map(x=>{const p=x.bud?Math.min(100,Math.round(x.used/x.bud*100)):0;const cls=p>=100?"over":p>=80?"near":"";
-        return `<button class="card" data-${tag}="${esc(x.id)}"><span class="id">${esc(x.id)}</span><span class="t">${esc(x.t)}</span>
+        return `<button class="card" data-${tag}="${esc(x.id)}"><span class="id">${hl(x.id)}</span><span class="t">${hl(x.t)}</span>
           <span class="meter ${cls}"><i style="width:${p}%"></i></span>
           <span class="f">${fmt(x)}</span></button>`;}).join("")
       ||'<div class="note" style="padding:6px 2px">—</div>'}</div>`;}).join("");
 }
+/* Lọc cột: "all" giữ mọi cột, còn lại thu bảng về đúng một cột — nhìn nhanh một trạng thái mà
+   không phải cuộn ngang qua tám cột. */
+const boardFilter={tickets:"all",videos:"all"};
+function chips(host,states,key,items){
+  const counts=Object.fromEntries(states.map(([k])=>[k,items.filter(x=>x.st===k).length]));
+  $(host).innerHTML=[["all","Tất cả",items.length]].concat(states.map(([k,l])=>[k,l,counts[k]]))
+    .map(([k,l,n])=>`<button class="fbtn" data-f="${k}" aria-pressed="${boardFilter[key]===k}">${esc(l)} <b>${n}</b></button>`).join("");
+}
 function renderBoards(){
   const tickets=listOf(SC,st().tickets), videos=listOf(ST,st().videos);
+  const seen=t=>hay(t.id,t.t,t.who,t.st,t.fmt);
+  const cols=(states,key)=>boardFilter[key]==="all"?states:states.filter(([k])=>k===boardFilter[key]);
+  chips("#f-tickets",TSTATE,"tickets",tickets);
+  chips("#f-videos",VSTATE,"videos",videos);
   if(!srcOk(SC)) $("#board-tickets").innerHTML=emptyBox(SC,"Chưa có dữ liệu xưởng phần mềm");
-  else board("#board-tickets",TSTATE,tickets,"st","t",t=>`<span>${esc(t.who)}</span><span>${kb(t.used)}/${kb(t.bud)}</span>${t.retry?`<span>retry ${num(t.retry)}</span>`:""}`);
+  else board("#board-tickets",cols(TSTATE,"tickets"),tickets.filter(seen),"st","t",t=>`<span>${esc(t.who)}</span><span>${kb(t.used)}/${kb(t.bud)}</span>${t.retry?`<span>retry ${num(t.retry)}</span>`:""}`);
   if(!srcOk(ST)) $("#board-videos").innerHTML=emptyBox(ST,"Chưa có dữ liệu xưởng video");
-  else board("#board-videos",VSTATE,videos,"st","vid",v=>`<span>${esc(v.fmt)}</span><span>${kb(v.used)}/${kb(v.bud)}</span>`);
+  else board("#board-videos",cols(VSTATE,"videos"),videos.filter(seen),"st","vid",v=>`<span>${esc(v.fmt)}</span><span>${kb(v.used)}/${kb(v.bud)}</span>`);
   $("#nav-tickets").textContent=srcOk(SC)?tickets.length:"—";
   $("#nav-videos").textContent=srcOk(ST)?videos.length:"—";
 }
+[["#f-tickets","tickets"],["#f-videos","videos"]].forEach(([host,key])=>{
+  $(host).addEventListener("click",e=>{const b=e.target.closest(".fbtn"); if(!b) return;
+    boardFilter[key]=b.dataset.f; renderBoards();});
+});
 $("#board-tickets").addEventListener("click",e=>{const c=e.target.closest(".card");if(c)openTicket(c.dataset.t);});
 $("#board-videos").addEventListener("click",e=>{const c=e.target.closest(".card");if(c)openVideo(c.dataset.vid);});
 $("#prs").addEventListener("click",e=>{const r=e.target.closest("tr");if(r&&r.dataset.t)openTicket(r.dataset.t);});
 
 function renderTables(){
-  const prs=listOf(SC,st().prs), reviews=listOf(SC,st().reviews), perf=listOf(ST,st().perf);
+  const prs=sortRows("prs",listOf(SC,st().prs).filter(p=>hay(p.id,p.br,p.s,p.v))),
+        reviews=sortRows("reviews",listOf(SC,st().reviews).filter(r=>hay(r.id,r.src,r.v,r.f))),
+        perf=sortRows("perf",listOf(ST,st().perf).filter(p=>hay(p.id)));
   const okPill=v=>`<span class="pill ${v==="pass"?"good":v==="fail"?"crit":"calm"}">${esc(v)}</span>`;
-  $("#prs").innerHTML=prs.length?prs.map(p=>`<tr class="tr-click" data-t="${esc(p.id)}"><td class="mono">${esc(p.id)}</td><td class="mono">${esc(p.br)}</td>
-    <td>${esc(p.s)}</td><td>${okPill(p.lint)}</td><td>${okPill(p.tests)}</td><td class="mono">${esc(p.v)}</td></tr>`).join("")
-    :emptyRow(6,SC,srcOk(SC)?"Không có PR nào chờ review":"Chưa có dữ liệu xưởng phần mềm");
-  $("#reviews").innerHTML=reviews.length?reviews.map(r=>`<tr><td class="mono">${esc(r.id)}</td><td class="mono">${esc(r.src)}</td>
-    <td><span class="pill ${r.v==="pass"?"good":"crit"}">${esc(r.v)}</span></td><td>${esc(r.f)}</td></tr>`).join("")
-    :emptyRow(4,SC,srcOk(SC)?"Chưa có kết quả review":"Chưa có dữ liệu xưởng phần mềm");
+  $("#prs").innerHTML=prs.length?prs.map(p=>`<tr class="tr-click" data-t="${esc(p.id)}"><td class="mono">${hl(p.id)}</td><td class="mono">${hl(p.br)}</td>
+    <td>${hl(p.s)}</td><td>${okPill(p.lint)}</td><td>${okPill(p.tests)}</td><td class="mono">${esc(p.v)}</td></tr>`).join("")
+    :emptyRow(6,SC,!srcOk(SC)?"Chưa có dữ liệu xưởng phần mềm":Q?"Không có PR nào khớp ô tìm":"Không có PR nào chờ review");
+  $("#reviews").innerHTML=reviews.length?reviews.map(r=>`<tr><td class="mono">${hl(r.id)}</td><td class="mono">${esc(r.src)}</td>
+    <td><span class="pill ${r.v==="pass"?"good":"crit"}">${esc(r.v)}</span></td><td>${hl(r.f)}</td></tr>`).join("")
+    :emptyRow(4,SC,!srcOk(SC)?"Chưa có dữ liệu xưởng phần mềm":Q?"Không có review nào khớp ô tìm":"Chưa có kết quả review");
   $("#perf").innerHTML=perf.length?perf.map(p=>{const w=Math.round(Math.min(1,(p.ctr||0)/.25)*100);
-    return `<tr><td class="mono">${esc(p.id)}</td><td class="mono r">${num(p.imp)}</td><td class="mono r">${num(p.views)}</td>
+    return `<tr><td class="mono">${hl(p.id)}</td><td class="mono r">${num(p.imp)}</td><td class="mono r">${num(p.views)}</td>
       <td class="mono r">${pctTxt(p.ctr)}</td><td class="mono r">${mmss(p.avd)}</td>
       <td><span class="meter" style="width:88px"><i style="width:${w}%"></i></span></td></tr>`;}).join("")
-    :emptyRow(6,ST,srcOk(ST)?"Chưa có video nào đăng để đo":"Chưa có dữ liệu xưởng video");
-  const sup=st().supervisor||[];
+    :emptyRow(6,ST,!srcOk(ST)?"Chưa có dữ liệu xưởng video":Q?"Không có video nào khớp ô tìm":"Chưa có video nào đăng để đo");
+  const sup=sortRows("sup",(st().supervisor||[]).filter(x=>hay(x.t,x.a,x.r)));
   $("#sup").innerHTML=sup.length?sup.map(s=>{const cls=s.a==="warn"?"warn":s.a==="pause"?"calm":"crit";
     return `<tr><td class="mono">${esc(s.t)}</td><td><span class="pill ${cls}">${esc(s.a)}</span></td><td>${esc(s.r)}</td><td class="mono">${esc(s.w)}</td></tr>`;}).join("")
     :emptyRow(4,SC,"Supervisor chưa phải can thiệp lần nào");
-  const budg=listOf(SC,st().tickets).filter(t=>t.used>0);
+  const budg=listOf(SC,st().tickets).filter(t=>t.used>0&&hay(t.id,t.t));
   $("#budgets").innerHTML=budg.length?budg.map(t=>{
     const p=t.bud?Math.min(100,t.used/t.bud*100):0, e=t.bud?Math.min(100,t.est/t.bud*100):0;
     const cls=t.bud&&t.used>=t.bud?"over":p>=80?"near":"";
@@ -874,16 +1125,17 @@ function renderTiles(){
 /* ---------- nhật ký ---------- */
 let filter="all";
 const FILTERS=[["all","Tất cả"],["produced","Sản phẩm agent"],["gate","Gate"],["supervisor","Supervisor"],["human","Người"],["error","Lỗi & chặn"]];
-const matches=e=>filter==="all"||
+const matchFilter=e=>filter==="all"||
   (filter==="produced"&&String(e.ac).startsWith("produced:"))||
   (filter==="gate"&&String(e.ac).startsWith("gate."))||
   (filter==="supervisor"&&["budget_cut","pause","warn","resume","escalate"].includes(e.ac))||
   (filter==="human"&&String(e.a).startsWith("human:"))||
   (filter==="error"&&["llm_error","publish_denied","injection_sanitized","tick_error","invalid_output"].includes(e.ac));
+const matches=e=>matchFilter(e)&&hay(e.a,e.ac,e.k,e.t);
 function evRow(e){
   const bad=["llm_error","publish_denied","tick_error","invalid_output","budget_cut"].includes(e.ac);
   const soft=["injection_sanitized","warn","pause","review.reassign"].includes(e.ac);
-  return `<div class="ev"><span class="t">${esc(e.t)}</span><span class="a">${esc(e.a)}</span>
+  return `<div class="ev"><span class="t">${esc(e.t)}</span><span class="a">${hl(e.a)}</span>
     <span><code style="${bad?"color:var(--crit-ink)":soft?"color:var(--warn-ink)":""}">${esc(e.ac)}</code> <span style="color:var(--ink-muted)">${esc(e.k)}</span></span>
     <span class="tok">${e.tok?kb(e.tok)+" tok":"—"}${e.c?" · "+vnd(e.c)+" $":""}</span></div>`;
 }
@@ -898,7 +1150,8 @@ function renderStreams(){
 }
 $("#filters").innerHTML=FILTERS.map(f=>`<button class="fbtn" data-f="${f[0]}" aria-pressed="${f[0]==="all"}">${f[1]}</button>`).join("");
 $("#filters").addEventListener("click",e=>{const b=e.target.closest(".fbtn");if(!b)return;
-  filter=b.dataset.f;$$(".fbtn").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));renderStreams();});
+  // Chỉ đụng chip trong chính khối này: bảng ticket và video cũng dùng .fbtn.
+  filter=b.dataset.f;$$(".fbtn",$("#filters")).forEach(x=>x.setAttribute("aria-pressed",String(x===b)));renderStreams();});
 
 /* ---------- biểu đồ ---------- */
 const tip=$("#tip");
@@ -994,8 +1247,33 @@ function render(){
   titles(); freshLabel();
 }
 
+/* ---------- ô tìm ---------- */
+const qEl=$("#q");
+let qTimer=null;
+qEl.addEventListener("input",()=>{
+  clearTimeout(qTimer);
+  // Gõ tới đâu lọc tới đó, nhưng chờ một nhịp ngắn: vẽ lại cả trang mỗi phím là giật.
+  qTimer=setTimeout(()=>{ const v=qEl.value.trim(); Q=fold(v); QRAW=v.toLowerCase(); render(); },120);
+});
+qEl.addEventListener("keydown",e=>{
+  if(e.key==="Escape"){ e.stopPropagation(); qEl.value=""; Q=QRAW=""; qEl.blur(); render(); }
+});
+
+/* ---------- phím tắt ---------- */
+document.addEventListener("keydown",e=>{
+  if(e.ctrlKey||e.metaKey||e.altKey) return;
+  const typing=/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement&&document.activeElement.tagName);
+  if(e.key==="/"&&!typing){ e.preventDefault(); qEl.focus(); qEl.select(); return; }
+  if(typing) return;
+  const i=VIEWS.indexOf(view);
+  if(e.key>="1"&&e.key<="6"){ writeHash(VIEWS[+e.key-1],null,null,false); applyRoute(); }
+  else if(e.key==="g"&&i>=0){ writeHash("truc-ban",null,null,false); applyRoute(); }
+});
+
 /* ---------- khởi động ---------- */
 addEventListener("scroll",hideTip,{passive:true});
+if(!location.hash) writeHash("truc-ban",null,null,true);
+showView(readHash().view);
 skeleton();
-load().then(schedule);
+connect();
 </script>
