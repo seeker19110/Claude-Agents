@@ -1,8 +1,8 @@
 ---
 name: ui-ux-design
-version: 4
+version: 5
 standards: [ISO 9241-210, WCAG 2.2 AA, Nielsen 10 heuristics, Material 3 / HIG, Design tokens W3C]
-sources: [ui-ux-pro-max-skill (MIT) — rule sinh thiết kế, ui-ux-craftsman (dự án Đồng Hành) — quy trình và quy tắc form]
+sources: [ui-ux-pro-max-skill (MIT) — rule sinh thiết kế, ui-ux-craftsman (dự án Đồng Hành) — quy trình và quy tắc form, impeccable (pbakaus, MIT) — danh mục anti-pattern mặc định của AI]
 ---
 # Skill: ui-ux-design
 
@@ -46,6 +46,16 @@ thiếu thì đề xuất bổ sung vào nguồn token, không hard-code và kh�
 - Phong cách và palette suy ra từ ngành và loại sản phẩm, ghi rõ lý do; một phong cách cho toàn sản phẩm.
 - Hiệu ứng (shadow, blur, radius) phải khớp phong cách đã chọn; blur dùng để báo nền bị chặn (modal/sheet), không để trang trí.
 - Ưu tiên control hệ thống; chỉ tùy biến khi thương hiệu yêu cầu.
+
+## Quy tắc — tránh mặc định
+Không có chỉ dẫn thì thiết kế trôi về khuôn landing page SaaS. Các mặc định dưới đây chỉ dùng khi nêu được lý do gắn với ngành trong `design`.
+- Không lấy Inter/Roboto/system-ui làm mặc định; typeface chọn theo ngành và chất giọng. Khác biệt heading/body phải là quyết định, không phải cùng font phóng to.
+- Không gradient tím→xanh, không mặc định `#6366F1`. Màu nhấn dùng ít và có việc (CTA, trạng thái); phần lớn bề mặt là trung tính có nhiệt độ.
+- Cấu trúc trang bám nhiệm vụ người dùng đến để làm, không bám khuôn hero + ba cột feature + bảng giá.
+- Không card lồng card; mỗi tầng phân tách dùng đúng MỘT tín hiệu — ưu tiên khoảng trắng, rồi nền, cuối cùng mới viền.
+- Không bounce/elastic cho UI chức năng: ease-out khi vào, ease-in khi ra, 120–240ms. Không fade-in-on-scroll toàn trang.
+- Không emoji làm icon hay bullet; không copy rỗng ("Nhanh chóng · Mạnh mẽ"); dữ liệu mẫu lấy từ miền của khách, không Lorem ipsum hay "John Doe".
+- Mật độ theo lượng thông tin và tần suất dùng: công cụ nội bộ dày, trang giới thiệu thoáng. Một mật độ cho mọi màn hình là dấu hiệu chưa cân nhắc.
 
 ## Checklist (supervisor và human gate dùng để chấm)
 - [ ] 100% story Must có flow

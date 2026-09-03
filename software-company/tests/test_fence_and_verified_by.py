@@ -17,7 +17,7 @@ from company.events import Envelope
 from company.llm import Completion, LLMError
 from company.supervisor import Supervisor
 
-RECORDINGS = Path(__file__).resolve().parents[1] / "evals" / "recordings"
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def _c(text: str) -> Completion:
@@ -44,10 +44,13 @@ def test_fence_ben_trong_chuoi_khong_bi_cat():
 
 
 def test_recording_researcher_that_parse_duoc():
-    """Đầu ra researcher ĐÃ GHI LẠI (8 lần xuất hiện ```) từng làm json() ném lỗi; giờ phải parse được."""
-    cases = json.loads(RECORDINGS.joinpath("researcher.json").read_text(encoding="utf-8"))["cases"]
-    text = next(iter(cases.values()))["text"]
-    assert text.count("```") > 2, "recording này phải còn fence bên trong thì test mới có nghĩa"
+    """Đầu ra researcher ĐÃ GHI LẠI (8 lần xuất hiện ```) từng làm json() ném lỗi; giờ phải parse được.
+
+    Fixture đóng băng chứ không đọc evals/recordings/: bản ghi sống được ghi lại mỗi lần đổi prompt/skill,
+    và model có thể không sinh fence lồng nữa — test vẫn xanh nhưng không còn kiểm gì.
+    """
+    text = json.loads(FIXTURES.joinpath("researcher_nested_fence.json").read_text(encoding="utf-8"))["text"]
+    assert text.count("```") > 2, "fixture này phải còn fence bên trong thì test mới có nghĩa"
     assert isinstance(_c(text).json(), dict)
 
 
