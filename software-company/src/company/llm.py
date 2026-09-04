@@ -685,6 +685,23 @@ def cli_lacks_mcp(err: str) -> bool:
     return any(x in low for x in _MCP_UNSUPPORTED)
 
 
+# ADR-0026 bước 2: cờ CLI đã có mà adapter chưa dùng. `--json-schema`: CLI tự ép và kiểm đầu ra theo schema, trả
+# `structured_output` đã parse — với gói Claude không còn cần lượt "ép chốt bằng JSON" của runner. Cờ này KHÔNG có
+# đường lùi tự động: CLI không biết nó thì thoát "unknown option" → LLMError nói rõ phải nâng CLI (bản có --restricted
+# đã có --json-schema). `--no-session-persistence`: mỗi lượt `-p` mặc định ghi transcript (chứa nội dung repo khách)
+# ra ~/.claude/projects; agent gọi hàng trăm lượt thì đó là hàng trăm bản sao nằm ngoài worktree — tắt.
+CLI_BASE_FLAGS = ("--no-session-persistence",)
+
+# `subtype` trong JSON của `claude -p` nói vì sao phiên dừng; `result` có thể vắng ở các subtype lỗi. Trước đây adapter
+# chỉ nhìn `result` nên hết lượt bị báo thành "thiếu trường result" — người vận hành không biết phải tăng gì.
+CLI_SUBTYPE_ERRORS = {
+    "error_max_turns": "CLI hết lượt (tăng `cli_max_turns`/`mcp_max_turns` hoặc chia nhỏ việc)",
+    "error_max_budget_usd": "CLI chạm trần chi phí `--max-budget-usd`",
+    "error_max_structured_output_retries": "CLI không ép được đầu ra đúng JSON Schema sau nhiều lần thử",
+    "error_during_execution": "CLI lỗi khi đang chạy",
+}
+
+
 def cli_env(keep_prefixes: tuple[str, ...] = ()) -> dict[str, str]:
     """Env cho tiến trình CLI model (claude/codex): lọc như lệnh con của workspace (`clean_env`), trừ các tiền tố mà
     CLI cần để đăng nhập; khoá `COMPANY_LLM_*`/`STUDIO_LLM_*` của công ty không bao giờ đi theo."""
@@ -706,7 +723,8 @@ def cli_settings_json() -> str:
 
 class ClaudeCodeClient:
     """Gọi `claude -p --output-format json` như một model backend: mỗi lượt là một tiến trình con, không tool của CLI,
-    system prompt qua `--system-prompt`, schema nhúng vào user message (CLI không có structured output).
+    system prompt qua `--system-prompt-file`, schema đi cả hai đường: `--json-schema` để CLI ép và kiểm (ADR-0026,
+    đọc `structured_output`), và nhúng vào user message để model thấy mô tả từng trường.
     Token thật lấy từ `usage` (input + cache read + cache creation, cùng nghĩa với adapter Anthropic).
     `effort` theo tier đi xuống `--effort` (ADR-0026), giá trị ngoài bảng `CLAUDE_EFFORT` là lỗi cứng.
 
@@ -784,8 +802,10 @@ class ClaudeCodeClient:
         hint = "\n\n# JSON Schema bắt buộc cho câu trả lời\n```json\n" + json.dumps(schema, ensure_ascii=False) + "\n```"
         # User prompt đi qua stdin (`claude -p` không có prompt vị trí thì đọc stdin): payload/blackboard dài dễ vượt
         # giới hạn argv (Windows ~32K); system prompt vẫn qua `--system-prompt`, có guard độ dài bên dưới.
-        args = [self.binary, "-p", "--output-format", "json", "--model", model,
-                *cli_effort_args(self.cfg.effort, model_tier)]   # ADR-0026: effort xuống CLI ở cả ba chế độ tool
+        # ADR-0026: effort, structured output và tắt lưu phiên ở cả ba chế độ tool. Schema vẫn được nhúng vào prompt
+        # (`hint`) để model thấy mô tả từng trường; `--json-schema` là lớp ÉP, không phải lớp giải thích.
+        args = [self.binary, "-p", "--output-format", "json", "--model", model, *CLI_BASE_FLAGS,
+                "--json-schema", json.dumps(schema, ensure_ascii=False), *cli_effort_args(self.cfg.effort, model_tier)]
         if mcp:
             c = self._complete_mcp(args=args, system=system, stdin=prompt + hint + MCP_TOOL_NOTE, workdir=workdir)
             if c is not None:
@@ -845,8 +865,13 @@ class ClaudeCodeClient:
             data = json.loads(out[out.index("{"):]) if "{" in out else {}
         except json.JSONDecodeError as e:
             raise LLMError(f"claude -p trả về không phải JSON: {out[:300]}") from e
-        if not isinstance(data, dict) or "result" not in data:
-            raise LLMError(f"claude -p thiếu trường result: {out[:300]}")
+        if not isinstance(data, dict):
+            raise LLMError(f"claude -p trả về không phải object JSON: {out[:300]}")
+        subtype = str(data.get("subtype") or "")
+        if subtype in CLI_SUBTYPE_ERRORS:   # đọc TRƯỚC `result`: các subtype này có thể không có result
+            raise LLMError(f"claude -p {subtype}: {CLI_SUBTYPE_ERRORS[subtype]}; {str(data.get('result') or '')[:200]}")
+        if "result" not in data:
+            raise LLMError(f"claude -p thiếu trường result (subtype={subtype or '?'}): {out[:300]}")
         if data.get("is_error"):
             msg = str(data.get("result"))[:300]
             if any(s in msg.lower() for s in ("limit", "rate", "overloaded", "quota")):
@@ -857,7 +882,10 @@ class ClaudeCodeClient:
         u = data.get("usage") or {}
         read = int(u.get("cache_read_input_tokens", 0) or 0); write = int(u.get("cache_creation_input_tokens", 0) or 0)
         used = reported_model(data.get("modelUsage") or {}, model)
-        return Completion(text=str(data["result"]), input_tokens=int(u.get("input_tokens", 0) or 0) + read + write,
+        # `--json-schema` → `structured_output` đã parse và đã qua kiểm của CLI: ưu tiên nó, `result` chỉ là bản chữ.
+        so = data.get("structured_output")
+        text = json.dumps(so, ensure_ascii=False) if isinstance(so, dict) else str(data["result"])
+        return Completion(text=text, input_tokens=int(u.get("input_tokens", 0) or 0) + read + write,
                           output_tokens=int(u.get("output_tokens", 0) or 0), model=used,
                           stop_reason=str(data.get("stop_reason") or "end_turn"), cached_input_tokens=read,
                           cache_write_tokens=write, tool_mode=tool_mode)

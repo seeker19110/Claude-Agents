@@ -36,10 +36,14 @@ Câu hỏi đặt ra (09/2026): "nâng cấp harness" có cần không? *Harness
    (không tool, `cli_tools`, `mcp_tools`). Bảng `CLAUDE_EFFORT` **đóng**, không có `.get(..., mặc định)`: giá trị CLI không
    nhận (`none`, `minimal` của codex, gõ sai) là `LLMError` nói rõ các mức hợp lệ; tier không khai `effort` thì không thêm
    cờ, CLI dùng mặc định của nó. Test hai chiều trong `tests/test_routing.py`.
-3. **Các bước sau, mỗi bước một PR nhỏ, không cần ADR mới**: (a) `--json-schema` + đọc `structured_output`, bỏ lượt "ép
-   chốt bằng JSON" cho provider này; đọc `subtype` để báo đúng lỗi; thêm `--no-session-persistence`. (b) Đồng bộ adapter
-   của `Studio-creators` theo bản `software-company`. (c) Nối `--max-budget-usd` với `budget_usd`.
-4. **Không dùng `--bare`.** Ghi lại để không ai thử thêm nó "cho nhanh".
+3. **Bước 2 (cùng PR)**: `--json-schema` ở cả ba chế độ, `_parse` ưu tiên `structured_output` (đã qua kiểm của CLI) nên
+   lượt "ép chốt bằng JSON" của runner không còn kích với provider này; schema vẫn nhúng vào prompt để model thấy mô tả
+   trường. `_parse` đọc `subtype` trước `result`: `error_max_turns` / `error_max_budget_usd` /
+   `error_max_structured_output_retries` / `error_during_execution` thành thông báo nói đúng việc phải làm. Thêm
+   `--no-session-persistence`. Không có đường lùi cho CLI thiếu `--json-schema`: bản có `--restricted` đã có nó.
+4. **Các bước sau, mỗi bước một PR nhỏ, không cần ADR mới**: (a) Đồng bộ adapter của `Studio-creators` theo bản
+   `software-company`. (b) Nối `--max-budget-usd` với `budget_usd`.
+5. **Không dùng `--bare`.** Ghi lại để không ai thử thêm nó "cho nhanh".
 
 ## Hệ quả
 - `effort` trong `llm.yaml` có hiệu lực với gói Claude như với hai provider kia; agent tier `strong` chạy `high` thật
