@@ -735,6 +735,12 @@ def test_diagnose_gom_loi_tho_thanh_khuon_va_chi_ra_ticket_quay_vong():
 
     # chữ ký phải bỏ cả mã hex và đường dẫn, nếu không mỗi lần chạy lại là một khuôn mới
     assert chu_ky_loi("loi o deadbeef1234 khi doc /home/u/file.txt") == "loi o <mã> khi doc <đường-dẫn>"
+    # Đường dẫn Windows cũng phải gom: repo chạy trên Windows, mỗi worktree một đường dẫn khác nhau thì cùng
+    # một lỗi sẽ thành mỗi lần một khuôn — hỏng đúng mục đích của hàm. Bản đầu dùng `[\/]` trong lớp ký tự,
+    # mà ở đó `\/` là dấu THOÁT của `/` nên chỉ khớp `/`; phải nhân đôi dấu gạch chéo ngược.
+    bs = chr(92)  # viết bằng chr() để lớp thoát của shell/editor không nuốt mất
+    assert chu_ky_loi(f"loi o C:{bs}Users{bs}u{bs}f.txt") == "loi o <đường-dẫn>"
+    assert chu_ky_loi("ty le 8:30 va khoa a:b") == "ty le <số>:<số> va khoa a:b", "không được dính nhầm văn bản thường"
 
 
 def test_qa_debugger_nhan_lich_su_hong_cua_dung_ticket_minh_dang_cham():

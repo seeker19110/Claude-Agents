@@ -134,7 +134,9 @@ def prometheus(m: dict[str, Any], prefix: str = "company") -> str:
 
 _SO = re.compile(r"\d+")
 _MA = re.compile(r"\b[0-9a-f]{8,}\b")
-_DUONG_DAN = re.compile(r"[A-Za-z]:\[^\s\"']+|/[^\s\"']*/[^\s\"']+")
+_BS = chr(92)  # viết bằng chr() để lớp thoát của shell/editor không nuốt mất dấu gạch chéo ngược
+# `[{_BS}/]` KHÔNG đủ: trong lớp ký tự, `\/` là dấu thoát của `/` nên chỉ khớp `/`. Phải nhân đôi.
+_DUONG_DAN = re.compile(rf"[A-Za-z]:[{_BS}{_BS}/][^\s\"']+|/[^\s\"']*/[^\s\"']+")
 
 
 def chu_ky_loi(msg: str, dai: int = 120) -> str:
@@ -158,7 +160,9 @@ def diagnose(bus: InMemoryBus, top: int = 10) -> dict[str, Any]:
     """
     khuon: dict[str, dict[str, Any]] = {}
     ticket: dict[str, dict[str, int]] = defaultdict(lambda: {"retry": 0, "blocked": 0, "reopen": 0, "review_block": 0})
-    gate = {"mo": 0, "quyet": 0, "qua_han": 0, "dang_cho": []}
+    # Đếm riêng khỏi danh sách `dang_cho`: trộn int với list trong một dict làm mypy suy ra `dict[str, object]`
+    # rồi `+= 1` thành lỗi kiểu. Ghép lại ở `return`.
+    gate_dem: dict[str, int] = {"mo": 0, "quyet": 0, "qua_han": 0}
     mo_gate: dict[str, str] = {}
 
     for env in bus.replay():
@@ -179,15 +183,14 @@ def diagnose(bus: InMemoryBus, top: int = 10) -> dict[str, Any]:
             elif act == "ticket.blocked" and d.get("ticket_id"):
                 ticket[str(d["ticket_id"])]["blocked"] += 1
             elif act == "gate.request":
-                gate["mo"] += 1
+                gate_dem["mo"] += 1
                 if d.get("subject_id"): mo_gate[str(d["subject_id"])] = str(d.get("kind") or "?")
             elif act == "gate.decide":
-                gate["quyet"] += 1; mo_gate.pop(str(d.get("subject_id")), None)
+                gate_dem["quyet"] += 1; mo_gate.pop(str(d.get("subject_id")), None)
                 if d.get("subject_id"): ticket[str(d["subject_id"])]["reopen"] += 1
             elif act == "gate.overdue":
-                gate["qua_han"] += 1
+                gate_dem["qua_han"] += 1
 
-    gate["dang_cho"] = [f"{sid}:{kind}" for sid, kind in sorted(mo_gate.items())]
     xep = sorted(khuon.items(), key=lambda kv: -kv[1]["so_lan"])[:top]
     return {
         "loi_theo_khuon": [{"chu_ky": s, "so_lan": v["so_lan"], "action": v["action"],
@@ -197,5 +200,5 @@ def diagnose(bus: InMemoryBus, top: int = 10) -> dict[str, Any]:
         "so_khuon": len(khuon),
         "ticket_quay_vong": {t: v for t, v in sorted(ticket.items())
                              if v["blocked"] or v["reopen"] or v["review_block"] >= 2},
-        "gate": gate,
+        "gate": {**gate_dem, "dang_cho": [f"{sid}:{kind}" for sid, kind in sorted(mo_gate.items())]},
     }
