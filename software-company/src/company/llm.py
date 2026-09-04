@@ -566,15 +566,21 @@ class OpenAICompatClient:
         usage = data.get("usage") or {}
         msg = choice.get("message") or {}
         if not calls and not (msg.get("content") or "").strip():
-            # Model "thinking" có lượt sinh xong phần suy nghĩ rồi DỪNG mà không viết câu trả lời nào. Trước đây
+            # Thân rỗng mà HTTP 200 là chế độ hỏng không tự khai báo: cả hai bên đều tưởng bình thường. Trước đây
             # lượt này trả `text=""` xuống runner, `json.loads("")` hỏng và báo "đầu ra không phải JSON" — dẫn
-            # người đọc đi sửa schema/prompt. Đo được khi chạy thật (2026-09-04): reviewer và qa-debugger rỗng
-            # liên tiếp trong khi `reasoning_content` có nội dung, `finish_reason` vẫn là "stop".
+            # người đọc đi sửa schema/prompt, trong khi model có thể đã trả lời đủ.
+            #
+            # Nguyên nhân THẬT tìm được khi chạy thật (2026-09-04), sau khi đo bằng phép thử đối chứng: server
+            # OpenAI-compatible không hiện thực `response_format: json_schema` theo chuẩn mà trả JSON qua
+            # `tool_calls` (Google Code Assist hiện thực structured output bằng function call). Client đọc
+            # `message.content` thấy rỗng, còn dữ liệu nằm nguyên trong `tool_calls[0].function.arguments`.
+            # Vì là 200 chứ không phải lỗi, `_json_schema_ok` vẫn True và mọi lượt sau đều hỏng y hệt.
             think = len(str(msg.get("reasoning_content") or ""))
             raise TransientError(
                 f"model không trả về nội dung nào (finish_reason={finish}"
-                + (f", nhưng có {think} ký tự suy nghĩ" if think else ", cũng không có phần suy nghĩ")
-                + "). Model thinking đôi khi nghĩ xong rồi dừng; thử lại thường qua, hoặc hạ `effort` cho tier này."
+                + (f", có {think} ký tự suy nghĩ" if think else "")
+                + "). Hay gặp khi server không hiện thực `response_format: json_schema` đúng chuẩn — kiểm bằng"
+                + " cách gọi lại cùng payload với `json_object`; ra nội dung thì lỗi nằm ở tầng structured output."
             )
         # OpenAI-compatible: `prompt_tokens` ĐÃ gồm phần cache, nên `cached_tokens` chỉ để báo cáo, không cộng thêm.
         cached = int((usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0) or 0)
