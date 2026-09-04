@@ -216,9 +216,11 @@ def _cc(**kw):
 
 def test_claude_code_client_parses_print_json_and_counts_cache_tokens():
     seen: list[list[str]] = []
+    sp_contents: list[str] = []
 
     def runner(args, stdin):
         seen.append((args, stdin))
+        sp_contents.append(Path(args[args.index("--system-prompt-file") + 1]).read_text(encoding="utf-8"))
         return "Warning: no stdin\n" + json.dumps({"result": '{"ticket_id": "T1"}', "stop_reason": "end_turn",
                                                    "usage": {"input_tokens": 100, "cache_read_input_tokens": 40,
                                                              "cache_creation_input_tokens": 10, "output_tokens": 7},
@@ -229,8 +231,9 @@ def test_claude_code_client_parses_print_json_and_counts_cache_tokens():
     assert c.cache_write_tokens == 10 and c.output_tokens == 7 and c.model == "claude-sonnet-5"
     args, stdin = seen[0]
     assert args[1:3] == ["-p", "--output-format"] and args[args.index("--model") + 1] == "claude-sonnet-5"
-    assert args[args.index("--tools") + 1] == "" and args[args.index("--system-prompt") + 1] == "SYS"
-    assert args[-1] == "SYS", "user prompt không đi qua argv"
+    assert args[args.index("--tools") + 1] == ""
+    assert args[-1] == args[args.index("--system-prompt-file") + 1], "user prompt không đi qua argv"
+    assert sp_contents[0] == "SYS", "system prompt đi qua file tạm (--system-prompt-file), không qua argv"
     assert stdin.startswith("USER") and "JSON Schema" in stdin
 
 
