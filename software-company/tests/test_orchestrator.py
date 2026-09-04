@@ -11,7 +11,7 @@ import pytest
 from company.bus import InMemoryBus
 from company.events import Envelope, SupervisorAction
 from company.llm import FakeClient, LLMError
-from company.orchestrator import ENGINEERING, StepResult, PLAN_INPUTS, ROUTES, Orchestrator, check_routes
+from company.orchestrator import ENGINEERING, PLAN_INPUTS, ROUTES, Orchestrator, StepResult, check_routes
 from company.orchestrator import main as orch_main
 from company.registry import load_agents
 from company.sqlite_bus import SQLiteBus
