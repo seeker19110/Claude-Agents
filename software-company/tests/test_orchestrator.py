@@ -273,6 +273,12 @@ def test_lenh_thu_lai_song_sot_qua_restart(tmp_path):
     orch.run(max_steps=1)
     assert any(e.payload.get("action") == "project.retried" for e in bus.replay(topic="audit-log"))
     assert not bus.latest("clarification-questions", "P1"), "chưa kịp chạy lại trước khi chết"
+    # Lệnh chỉ-đọc (`status`, `report`, console) cũng dựng Orchestrator → cũng chạy `_rehydrate`.
+    # Đường đọc TUYỆT ĐỐI không được ghi bus, nếu không mỗi lần xem trạng thái lại thêm một dòng rác.
+    truoc = len(list(SQLiteBus(db).replay()))
+    Orchestrator(SQLiteBus(db), FakeClient(handler=hong_lan_dau))
+    assert len(list(SQLiteBus(db).replay())) == truoc, "dựng Orchestrator (đường đọc) không được ghi bus"
+
     orch2 = Orchestrator(SQLiteBus(db), FakeClient(handler=hong_lan_dau))
     orch2.run()
     assert orch2.bus.latest("clarification-questions", "P1"), "sau restart phải chạy tiếp, không được nằm im"
