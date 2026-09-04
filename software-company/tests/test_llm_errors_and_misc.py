@@ -460,3 +460,23 @@ def test_demo_runs_full_lifecycle(capsys):
     demo.run()
     out = capsys.readouterr().out
     assert "TCK-1" in out and "TCK-2" in out, "demo chạy hết vòng đời hai ticket"
+
+
+def test_codex_effort_none_khong_bi_doi_thanh_medium():
+    """`effort: none` phải xuống CLI đúng là `none` — TẮT HẲN suy nghĩ.
+
+    `_args` dùng `CODEX_EFFORT.get(effort, "medium")`, nên một giá trị hợp lệ mà THIẾU trong bảng sẽ bị âm thầm
+    đổi thành `medium`: cấu hình nói một đằng, CLI chạy một nẻo, và không có lỗi nào báo ra.
+
+    Đo được 2026-09-05 trên gpt-5.6-terra: `none` cho `reasoning_output_tokens: 0` và 18 token đầu ra; còn
+    `minimal` bị model TỪ CHỐI (HTTP 400 `unsupported_value`, chỉ nhận none/low/medium/high/xhigh/max) — nên
+    `minimal` giữ trong bảng cho model cũ, không phải là lựa chọn cho model này."""
+    from company.llm import CODEX_EFFORT, CodexClient
+
+    assert CODEX_EFFORT["none"] == "none", "thiếu `none` là mọi cấu hình tắt-suy-nghĩ bị đổi thành medium"
+
+    cfg = LLMConfig(provider="codex", models={"strong": "m"}, effort={"strong": "none"})
+    c = CodexClient(cfg, runner=lambda a, s: "")
+    assert "model_reasoning_effort=none" in c._args("m", cfg.effort["strong"])
+    # giá trị lạ vẫn rơi về medium (giữ nguyên hành vi cũ, không im lặng hỏng)
+    assert "model_reasoning_effort=medium" in c._args("m", "khong-ton-tai")
