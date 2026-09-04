@@ -395,6 +395,27 @@ def test_status_canh_bao_khi_khong_con_viec_nao_chay_duoc(tmp_path):
     assert w and "T1" in w[0], f"không còn đường nào chạy được thì status phải nói ra, nhận được: {w}"
 
 
+def test_gate_qua_han_phai_vao_audit_du_da_nhac_truoc_do(tmp_path):
+    """`gate.remind` và `gate.overdue` từng dùng CHUNG khoá `once` là `gate:{sid}`.
+
+    Một gate luôn đi qua `remind` (12h) trước rồi mới tới `overdue` (24h). Lần nhắc ghi khoá vào `once`, nên khi
+    gate thật sự quá hạn thì `_audit` thoát sớm và `gate.overdue` KHÔNG BAO GIỜ vào audit-log. Audit-log là bản
+    ghi bền duy nhất của hệ thống, `metrics` đọc "gate chờ" từ đó — một gate bể hạn đọc ra y hệt một gate mới
+    chỉ được nhắc."""
+    from company.gates import GateRequest
+
+    bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient())
+    orch.gate.request(GateRequest(kind="escalation", subject_id="G1", created_by="supervisor",
+                                  checklist=["root_cause", "decision:reopen|close", "hint"]))
+
+    orch.tick(now=datetime.now(UTC) + orch.gate.remind_at + timedelta(minutes=1))
+    orch.tick(now=datetime.now(UTC) + orch.gate.timeout + timedelta(minutes=1))
+
+    actions = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "gate.remind" in actions, "kịch bản phải đi qua nhắc trước thì mới kiểm được va chạm khoá"
+    assert "gate.overdue" in actions, "gate quá hạn phải vào audit-log, không được bị lần nhắc nuốt mất"
+
+
 # Trạng thái chỉ sống trong RAM là nguồn lỗi lặp lại nhiều nhất: nó không hỏng ồn ào, nó chỉ lặng lẽ biến mất
 # khi mở lại bus, rồi dự án đứng im trong khi mọi chỉ số vẫn xanh. Test dưới đây chốt bất biến chung thay vì
 # chạy theo từng ca: chạy hết một vòng đời rồi so TỪNG thuộc tính giữa đối tượng đang sống và đối tượng dựng
