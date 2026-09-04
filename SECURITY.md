@@ -48,6 +48,13 @@ provider trước**, rồi mới dọn lịch sử. Đổi khóa quan trọng h�
   nào. Bốn lỗi làm CI đỏ: mẫu injection, ký tự vô hình/đảo chiều (mắt người không thấy trong diff), lệnh nguy hiểm
   (`curl … | sh`, `rm -rf /`, POST biến môi trường), khóa lộ. Miễn trừ phải có lý do trong `assetscan-waivers.txt`.
 - **Ranh giới ghi**: agent sửa code trong git worktree tách riêng, không ghi thẳng vào cây làm việc.
+- **Lệnh con của repo khách** (lint/test theo stack, `git commit/merge`, CLI model): env đã lọc mọi biến trông như bí
+  mật (`workspace.SECRET_ENV`: khoá API, token, mật khẩu, `*_URL`/`*_DSN`, `AWS_*`/`AZURE_*`/`GOOGLE_*`, `GITHUB_*`,
+  `SSH_AUTH_SOCK`, `COMPANY_LLM_*`…), và git chạy với `core.hooksPath` trỏ vào chỗ không tồn tại nên hook của khách
+  (`.git/hooks`, `.husky/`) không bao giờ chạy dưới quyền orchestrator. **Giới hạn còn lại**: sandbox là *đường dẫn +
+  env*, không phải *tiến trình* — `pytest`/`npm test`/`./gradlew` của khách vẫn là mã của khách chạy bằng quyền người
+  vận hành và thấy `HOME` (`~/.ssh`, `~/.claude`). Chạy orchestrator trong container hoặc user riêng khi repo khách
+  không tin cậy.
 - **Guardrail chi phí**: ước lượng token trước khi dispatch, ngân sách theo việc, supervisor cắt khi vượt hạn mức;
   audit-log ghi token thật và quy ra USD.
 - **Trần quyền theo agent**: mỗi agent chỉ được đọc/ghi những topic đã khai trong registry; ghi sai topic là lỗi

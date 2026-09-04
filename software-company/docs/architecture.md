@@ -86,7 +86,8 @@ account-manager ghi nhận). Timeout 24h, supervisor nhắc ở 12h. Không bao 
   (`<repo>/.worktrees/<id>`); reviewer/security đọc diff thật của branch đó, QA có tool chỉ đọc để tự chạy test.
 - **Tool có ranh giới tin cậy** (ADR-0010, `tools.py`): bảng tool tên cố định (`read_file`, `write_file`,
   `list_files`, `search`, `run`), không có shell; `run` chỉ nhận tên trong allowlist (`lint`, `test`, `git_status`,
-  `git_diff`); đường dẫn khoá trong worktree, không chạm `.git/` hay file bí mật; env lệnh con lọc mọi khoá API.
+  `git_diff`); đường dẫn khoá trong worktree, không chạm `.git/` hay file bí mật; env lệnh con (lint/test, git, CLI model)
+  lọc mọi biến trông như bí mật (`workspace.SECRET_ENV`), git không chạy hook của khách (`NO_HOOKS`).
   Vòng lặp model ↔ tool nằm trong runner (`generate(tools=…)`), dừng khi hết lượt hoặc vượt ngân sách token.
 - **Nhánh tích hợp** (ADR-0011): ticket rẽ từ `company/integration`; RC xuất hiện → `merge --no-ff` vào đó trước khi
   release-engineer chạy; xung đột → RC huỷ, ticket làm lại trên nền mới. `main` của khách không bị chạm.

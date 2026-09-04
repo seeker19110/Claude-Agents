@@ -19,8 +19,14 @@ from .stacks import Stack, detect
 class WorkspaceError(Exception): ...
 
 
-# Biến môi trường trông như khoá/bí mật: không bao giờ đưa vào lệnh con (lint/test của khách, tool của model).
-SECRET_ENV = re.compile(r"(API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)", re.IGNORECASE)
+# Biến môi trường trông như khoá/bí mật: không bao giờ đưa vào lệnh con (lint/test của khách, tool của model, git hook).
+# Không chỉ tên có KEY/TOKEN: chuỗi kết nối (`DATABASE_URL`, `*_DSN`), khoá cloud (`AWS_*`, `AZURE_*`, `GOOGLE_*`),
+# socket ssh-agent, token CI (`GITHUB_*`, `GH_*`, `NPM_*`, `PYPI_*`) đều là bí mật dù tên không nói thế.
+SECRET_ENV = re.compile(
+    r"(API_?KEY|TOKEN|SECRET|PASSW(OR)?D|CREDENTIAL|ACCESS_KEY|PRIVATE_KEY|SESSION_KEY|SIGNING_KEY|AUTH(?!OR)"
+    r"|_URL$|_URI$|_DSN$|DATABASE|CONNECTION_STRING|SSH_AUTH_SOCK|^GITHUB_|^GH_|^NPM_|^PYPI_|^AWS_|^AZURE_|^GOOGLE_"
+    r"|^OPENAI_|^ANTHROPIC_|^COMPANY_LLM|^STUDIO_LLM|^CLAUDE_CONFIG_DIR$|^CODEX_HOME$)",
+    re.IGNORECASE)
 
 
 def clean_env() -> dict[str, str]:
@@ -29,8 +35,16 @@ def clean_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if not SECRET_ENV.search(k)} | {"PYTHONDONTWRITEBYTECODE": "1"}
 
 
+# Hook của repo khách (`.git/hooks`, hay `core.hooksPath=.husky` — thư mục nằm TRONG worktree nên model ghi được)
+# là mã của khách chạy dưới quyền người vận hành lúc commit/merge. Orchestrator không bao giờ chạy hook: trỏ
+# hooksPath vào chỗ không tồn tại. Người muốn hook chạy thì chạy tay khi đưa nhánh tích hợp lên `main`.
+NO_HOOKS: tuple[str, ...] = ("-c", "core.hooksPath=/dev/null")
+
+
 def _git(repo: Path, *args: str, stdin: str | None = None) -> str:
-    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, encoding="utf-8", input=stdin)
+    # env đã lọc khoá (hook/filter/credential helper của khách không thấy secret của công ty), không hook.
+    r = subprocess.run(["git", "-C", str(repo), *NO_HOOKS, *args], capture_output=True, text=True, encoding="utf-8",
+                       input=stdin, env=clean_env())
     if r.returncode != 0:
         raise WorkspaceError(f"git {' '.join(args)}: {r.stderr.strip()}")
     return r.stdout.strip()
@@ -206,13 +220,14 @@ class Integration:
         # `merge -F -` không đọc stdin như `commit`; ghi message ra file UTF-8 để tránh mojibake argv trên Windows
         msg = self.repo / ".worktrees" / "_merge_msg.txt"
         msg.write_text(message, encoding="utf-8", newline="\n")
-        r = subprocess.run(["git", "-C", str(self.path), "-c", "user.name=delivery-lead", "-c", "user.email=lead@company.local",
-                            "merge", "--no-ff", "-F", str(msg), ticket_branch], capture_output=True, text=True, encoding="utf-8")
+        r = subprocess.run(["git", "-C", str(self.path), *NO_HOOKS, "-c", "user.name=delivery-lead",
+                            "-c", "user.email=lead@company.local", "merge", "--no-ff", "-F", str(msg), ticket_branch],
+                           capture_output=True, text=True, encoding="utf-8", env=clean_env())
         msg.unlink(missing_ok=True)
         if r.returncode == 0:
             return MergeResult(ok=True, sha=self.sha())
         conflicts = [x for x in _git(self.path, "diff", "--name-only", "--diff-filter=U").splitlines() if x]
-        subprocess.run(["git", "-C", str(self.path), "merge", "--abort"], capture_output=True)
+        subprocess.run(["git", "-C", str(self.path), *NO_HOOKS, "merge", "--abort"], capture_output=True, env=clean_env())
         return MergeResult(ok=False, conflicts=conflicts or [r.stderr.strip()[:300]])
 
     def files(self) -> list[str]:
