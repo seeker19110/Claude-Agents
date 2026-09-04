@@ -531,7 +531,12 @@ class Orchestrator:
         results = self.run()
         remind, overdue = self.gate.due(now)
         for sid in [*remind, *overdue]:
-            self._audit(f"gate.{'overdue' if sid in overdue else 'remind'}", {"subject_id": sid}, once=f"gate:{sid}")
+            # Khoá `once` phải mang cả GIAI ĐOẠN: một gate luôn đi qua `remind` (12h) trước rồi mới tới `overdue`
+            # (24h), nên dùng chung `gate:{sid}` là lần nhắc nuốt luôn lần quá hạn — `gate.overdue` không bao giờ
+            # vào audit-log. Audit-log là bản ghi bền duy nhất và `metrics` đọc "gate chờ" từ đó, nên một gate bể
+            # hạn đọc ra y hệt một gate mới chỉ được nhắc.
+            pha = "overdue" if sid in overdue else "remind"
+            self._audit(f"gate.{pha}", {"subject_id": sid}, once=f"gate:{sid}:{pha}")
         for sid in overdue:  # quá hạn không tự đi tiếp, nhưng cũng không im lặng: supervisor nhận việc
             self.supervisor.escalate_gate(sid, f"gate quá hạn {self.gate.timeout}", once_key=f"gate.escalate:{sid}")
         for tid, missing in self.lead.overdue_reviews(now).items():
@@ -1217,8 +1222,30 @@ class Orchestrator:
         if projects: out["projects"] = projects
         return out
 
+    def _deadlock_warnings(self) -> list[str]:
+        """Còn ticket chưa xong mà KHÔNG đường nào có thể chạy tiếp → nói thẳng ra.
+
+        Mọi trường trong `status()` đều mô tả trạng thái, không trường nào trả lời "có việc gì chạy được không".
+        Nên một dự án chết vẫn đọc ra hoàn toàn bình thường: `queue: 0`, `stalled: {}`, `gates_pending: {}` —
+        ba chỉ số xanh vì rỗng, mà rỗng ở đây chính là triệu chứng.
+
+        Đo được khi chạy thật (2026-09-04): QLKH-001 `blocked` lúc 13:25 không mở được gate (xem
+        `_check_escalations`), 13 ticket phụ thuộc đứng chờ. `status` không có gì bất thường trong 26 phút; chỉ
+        vì có người ngồi đọc từng finding mới phát hiện. Đây là lớp phòng thủ cuối: kể cả khi một nhánh cụ thể
+        quên mở gate, câu hỏi "còn việc nào chạy được không" vẫn phải được trả lời trung thực.
+
+        `queue` đếm event chưa được đánh dấu `orchestrated`, nên lượt agent đang bay vẫn tính là có việc — cảnh
+        báo này không kêu oan khi hệ thống chỉ đang chờ model trả lời."""
+        live = {t: st for t, st in self.lead.state.items() if st not in DONE_STATES}
+        if not live: return []
+        if self.queue or self.deferred or self.gate.pending or self.stalled or self.paused: return []
+        return [f"khong co viec nao chay duoc: {len(live)} ticket chua xong "
+                f"({', '.join(f'{t}={st}' for t, st in sorted(live.items())[:5])}"
+                f"{', ...' if len(live) > 5 else ''}) ma queue/gate/deferred/stalled deu rong"]
+
     def status(self) -> dict[str, Any]:
-        return {"queue": len(self.queue), "deferred": {k: v[1] for k, v in self.deferred.items()},
+        return {"warnings": self._deadlock_warnings(),
+                "queue": len(self.queue), "deferred": {k: v[1] for k, v in self.deferred.items()},
                 "paused": sorted(self.paused), "tickets": dict(self.lead.state), "waiting": self.lead.waiting(),
                 "blocked": self.lead.blocked(), "releases": self.lead.releases,
                 "stalled": {pid: f"{st['agent']} lỗi trên {st['topic']}: {st['error'][:120]}" for pid, st in self.stalled.items()},
