@@ -257,6 +257,7 @@ class Orchestrator:
         self._lock = threading.RLock()   # trạng thái orchestrator (processed, deferred, once, stats) — KHÔNG publish khi đang giữ
         self._qlock = threading.RLock()  # hàng đợi; _on_event (chạy dưới lock của bus) chỉ chạm lock này
         self._ws_lock = threading.RLock()
+        self._merge_lock = threading.RLock()  # merge vào nhánh tích hợp chạy một mình (ADR-0012 §7), kể cả khi --workers>1
         self.partial: dict[str, set[str]] = {}  # event_id → agent đã chạy xong (để không chạy lại khi event bị hoãn transient)
         if self.repo is not None and not (self.repo / ".git").exists():
             raise ValueError(f"repo không phải git repository: {self.repo}")
@@ -563,7 +564,7 @@ class Orchestrator:
             if (pid := self.project_for(env)) and not env.payload.get("project_id"): extra["project_id"] = pid
             inp = env.model_copy(update={"payload": {**env.payload, **extra}}) if extra else env
             if r.target_env:
-                out = self._release(agent, env, r); res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
+                out = self._release(agent, inp, r); res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
             elif r.tools == "rw":
                 pr = self._engineer(agent, inp, r)
                 res.actions.append(f"{agent}→{r.topic_out}:{pr.key}" if pr is not None else f"{agent}→rework:{inp.key}")
@@ -572,11 +573,11 @@ class Orchestrator:
                 res.actions.append(f"{agent}→blackboard:{','.join(w['namespace'] for w in g.context_writes) or '-'}")
             elif r.many:
                 g = self.runner.generate(agent, inp, r.topic_out, many=True)
-                if g.context_writes: self.runner.write_context(agent, env, g.context_writes)
+                if g.context_writes: self.runner.write_context(agent, inp, g.context_writes)  # inp mang project_id (ADR-0018)
                 if env.topic == "acceptance-results":  # CR từ nghiệm thu conditional phải truy được release (đóng ticket khi quyết)
                     g.payloads = [{**p, "release_id": env.key} for p in g.payloads]
                 for i, p in enumerate(g.payloads):  # token/tiền tính một lần cho cả lượt, không nhân theo số payload
-                    self.runner.publish(agent, env, r.topic_out, p, key=key_for(r.topic_out, p, env.key),
+                    self.runner.publish(agent, inp, r.topic_out, p, key=key_for(r.topic_out, p, env.key),
                                         tokens=g.tokens if i == 0 else 0, model=g.model, generated=g if i == 0 else None)
                 if not g.payloads:
                     self._audit("produced:nothing", {"agent": agent, "topic": r.topic_out, **json.loads(g.evidence())},
@@ -594,7 +595,7 @@ class Orchestrator:
                     # Có tool mà không chạy gì: verdict chỉ là lời khai. Không chặn (người đọc review vẫn quyết), nhưng phải hiện.
                     self._audit("review.no_tool_evidence", {"agent": agent, "topic": env.topic, "key": env.key},
                                 actor=agent, ticket_id=inp.payload.get("ticket_id"), project_id=self.project_for(env))
-                out = self.runner.publish(agent, env, r.topic_out, g.payloads[0], key=key_for(r.topic_out, g.payloads[0], env.key),
+                out = self.runner.publish(agent, inp, r.topic_out, g.payloads[0], key=key_for(r.topic_out, g.payloads[0], env.key),
                                           tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
                 res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
             with self._lock:
@@ -666,6 +667,12 @@ class Orchestrator:
     def _merge_ticket(self, tid: str, res: StepResult, release_id: str | None) -> bool:
         """merge --no-ff branch ticket vào nhánh tích hợp. Xung đột → ticket về changes_requested với hint là file xung
         đột, worktree tạo lại từ nền mới; trả về False."""
+        with self._merge_lock:
+            return self._merge_ticket_locked(tid, res, release_id)
+
+    def _merge_ticket_locked(self, tid: str, res: StepResult, release_id: str | None) -> bool:
+        with self._lock:
+            if tid in self.integrated: return True  # thread khác vừa merge xong trong lúc ta chờ khoá
         integration = self._integration_of_ticket(tid)
         ws = self.workspace(tid)
         if integration is None or ws is None or not ws.path.exists():
