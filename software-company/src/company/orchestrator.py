@@ -50,7 +50,7 @@ from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -353,6 +353,7 @@ class Orchestrator:
         # để nhận lại lệnh thử-lại chưa kịp chạy (xem chú thích ở đó).
         last_done: dict[str, int] = {}
         last_retry: dict[str, tuple[int, dict[str, Any]]] = {}   # event_id → (thứ tự trong log, bản ghi stalled)
+        hen: dict[str, tuple[str, str]] = {}                     # event_id → (mốc hẹn ISO, lý do hoãn)
         for i, env in enumerate(log):
             if env.topic == "audit-log":
                 a = env.payload; d = _evidence(a)
@@ -363,6 +364,8 @@ class Orchestrator:
                 elif a["action"] == "plan.proposed": self.plans[d["plan_id"]] = d
                 elif a["action"] == "release.void": self._void(d["release_id"])
                 elif a["action"] == "ticket.abandoned": self.lead.abandon(d["ticket_id"])
+                elif a["action"] == "defer.until" and d.get("event_id"):
+                    hen[str(d["event_id"])] = (str(d.get("until") or ""), str(d.get("reason") or "transient:?"))
                 elif a["action"] == "ticket.blocked":
                     # xem chú thích ở `DeliveryLead._retry`: không dựng lại `blocked` thì ticket quay về
                     # `dispatched` và người duyệt escalation bấm approve cũng không mở lại được nó.
@@ -405,6 +408,31 @@ class Orchestrator:
         self.processed -= reopened
         self.partial = {k: v for k, v in self.partial.items() if k not in self.processed}
         self.queue = [e for e in log if self._actionable(e) and e.event_id not in self.processed]
+        self._nap_lai_hen(hen)
+
+    def _nap_lai_hen(self, hen: dict[str, tuple[str, str]]) -> None:
+        """Event còn hẹn chờ thì vào `deferred`, KHÔNG vào hàng đợi chạy ngay.
+
+        Không có bước này thì bản ghi `defer.until` chỉ là một dòng log đẹp: `_rehydrate` vẫn đẩy event vào
+        `self.queue` và nhịp chạy đầu tiên gọi thẳng backend đang cạn quota.
+
+        Mốc hẹn lưu theo GIỜ TƯỜNG nên quy được về `monotonic` của tiến trình này; hẹn đã qua thì bỏ, để event
+        chạy bình thường. Event đã xong không nằm trong hàng đợi nên hẹn cũ của nó vô hại."""
+        if not hen: return
+        gio, mono = datetime.now(UTC), time.monotonic()
+        giu: list[Envelope] = []
+        for e in self.queue:
+            moc, ly_do = hen.get(e.event_id, ("", ""))
+            con = 0.0
+            if moc:
+                try: con = (datetime.fromisoformat(moc) - gio).total_seconds()
+                except ValueError: con = 0.0          # mốc hỏng: thà chạy còn hơn kẹt vĩnh viễn
+            if con > 0:
+                self.deferred[e.event_id] = (e, ly_do or "transient:?")
+                self.defer_until[e.event_id] = mono + con
+            else:
+                giu.append(e)
+        self.queue = giu
 
     def _retry_con_can(self, log: list[Envelope], idx: int, rec: dict[str, Any]) -> bool:
         """Lệnh chạy lại còn ý nghĩa không, hay việc đã có người khác làm xong trong lúc chờ?
@@ -1207,6 +1235,21 @@ class Orchestrator:
             if wait_s and wait_s > 0:
                 self.defer_until[env.event_id] = time.monotonic() + float(wait_s)
                 res.deferred = f"{reason} (chờ {int(wait_s)}s)"
+                ghi_hen = True
+            else:
+                ghi_hen = False
+        if ghi_hen:
+            # Mốc hẹn phải BỀN và theo GIỜ TƯỜNG. `defer_until` dùng `time.monotonic()` — vô nghĩa ở tiến trình
+            # khác — và cả `deferred` lẫn nó đều chỉ sống trong RAM, trong khi `_rehydrate` đẩy mọi event chưa
+            # xử lý thẳng vào `self.queue`. Nên restart giữa lúc chờ quota là mất hẹn và đập ngay vào backend
+            # đã cạn: vô ích, bẩn audit-log, và có thể bị phạt nặng hơn.
+            #
+            # Đo được khi chạy thật (2026-09-04 15:46:30): cả hai backend trả 429, hệ thống hoãn 2010s đúng
+            # theo hẹn; nhưng `status` từ tiến trình khác đọc ra `deferred: {}` — mốc hẹn không tồn tại ngoài
+            # RAM của tiến trình đang chạy.
+            self._audit("defer.until", {"event_id": env.event_id, "reason": reason, "wait_s": int(wait_s or 0),
+                                        "until": (datetime.now(UTC) + timedelta(seconds=float(wait_s or 0))).isoformat()},
+                        ticket_id=env.payload.get("ticket_id"), project_id=env.payload.get("project_id"))
         return res
 
     def _retry_deferred(self, only: str | None = None) -> None:

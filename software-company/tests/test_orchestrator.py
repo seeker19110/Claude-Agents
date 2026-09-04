@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import fields, is_dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -10,7 +11,7 @@ import pytest
 from company.bus import InMemoryBus
 from company.events import Envelope, SupervisorAction
 from company.llm import FakeClient, LLMError
-from company.orchestrator import ENGINEERING, PLAN_INPUTS, ROUTES, Orchestrator, check_routes
+from company.orchestrator import ENGINEERING, PLAN_INPUTS, ROUTES, Orchestrator, StepResult, check_routes
 from company.orchestrator import main as orch_main
 from company.registry import load_agents
 from company.sqlite_bus import SQLiteBus
@@ -910,3 +911,39 @@ def test_synthesizer_receives_intake_report_with_researcher_findings():
     _pub(bus, "research-findings", "P1", "researcher", {"project_id": "P1", "kind": "researcher", "data": {"domain": {}}})
     orch.run()
     assert seen["intake"] == {"goals": [{"id": "G-1", "text": "đặt lịch online"}]}
+
+
+def test_hen_cho_backend_song_sot_qua_restart(tmp_path):
+    """Backend hẹn "thử lại sau Ns" → mốc hẹn phải BỀN, không mất khi mở lại bus.
+
+    `defer_until` dùng `time.monotonic()` (vô nghĩa ở tiến trình khác) và cả `deferred` lẫn nó đều chỉ sống
+    trong RAM, trong khi `_rehydrate` đẩy MỌI event chưa xử lý thẳng vào `self.queue`. Nên restart giữa lúc chờ
+    quota là mất hẹn và đập ngay vào backend đã cạn: vô ích, bẩn audit-log, có thể bị phạt nặng hơn.
+
+    Đo được khi chạy thật (2026-09-04 15:46:30): cả hai backend trả 429, hệ thống hoãn đúng 2010s; nhưng
+    `status` từ tiến trình khác đọc ra `deferred: {}` — mốc hẹn không tồn tại ngoài RAM của tiến trình đang chạy."""
+    db = tmp_path / "c.sqlite"
+    bus = SQLiteBus(db)
+    orch = Orchestrator(bus, FakeClient())
+    env = _pub(bus, "tasks", T1["ticket_id"], "delivery-lead", T1)
+
+    orch._defer(env, StepResult(event_id=env.event_id, topic=env.topic, key=env.key), "transient:backend", wait_s=3600)
+    assert env.event_id in orch.defer_until, "tiến trình đang chạy phải giữ mốc hẹn"
+
+    orch2 = Orchestrator(SQLiteBus(db), FakeClient())
+    assert env.event_id in orch2.deferred, "mở lại bus: event còn hẹn phải nằm ở `deferred`"
+    assert env.event_id not in {e.event_id for e in orch2.queue}, \
+        "không được vào hàng đợi chạy ngay — đó chính là cú đập vào backend đã cạn quota"
+    assert orch2.defer_until.get(env.event_id, 0) > time.monotonic(), "hẹn phải quy về mốc của tiến trình này"
+    assert orch2.status()["warnings"] == [], "đang chờ hẹn hợp lệ thì không được kêu bế tắc"
+
+    # hẹn đã qua thì thôi, để event chạy bình thường — không kẹt vĩnh viễn
+    orch3 = Orchestrator(SQLiteBus(db), FakeClient())
+    orch3.deferred.clear(); orch3.defer_until.clear(); orch3.queue = [env]   # dựng lại đúng tình huống cần đo
+    orch3._nap_lai_hen({env.event_id: ((datetime.now(UTC) - timedelta(seconds=1)).isoformat(), "transient:backend")})
+    assert env.event_id not in orch3.deferred and [e.event_id for e in orch3.queue] == [env.event_id]
+
+    # mốc hỏng cũng phải cho chạy, không được kẹt vĩnh viễn vì một dòng log sai định dạng
+    orch3.queue = [env]
+    orch3._nap_lai_hen({env.event_id: ("khong-phai-ngay-thang", "transient:backend")})
+    assert [e.event_id for e in orch3.queue] == [env.event_id]
