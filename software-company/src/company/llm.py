@@ -847,7 +847,11 @@ class ClaudeCodeClient:
 
 # ---------- provider: Codex CLI (gói ChatGPT Plus/Pro đã `codex login` trên máy, không cần API key) ----------
 
-CODEX_EFFORT = {"low": "low", "medium": "medium", "high": "high", "xhigh": "xhigh", "max": "xhigh", "minimal": "minimal"}
+# `none` = TẮT HẲN suy nghĩ (đo được 2026-09-05: `reasoning_output_tokens: 0`). Phải có mặt ở đây, nếu không
+# `.get(effort, "medium")` bên dưới âm thầm đổi `none` thành `medium` — cấu hình nói một đằng, CLI chạy một nẻo.
+# `minimal` giữ lại cho model cũ: gpt-5.6-terra TỪ CHỐI nó (400 unsupported_value, chỉ nhận none/low/medium/high/xhigh/max).
+CODEX_EFFORT = {"none": "none", "low": "low", "medium": "medium", "high": "high", "xhigh": "xhigh",
+                "max": "xhigh", "minimal": "minimal"}
 
 
 def find_codex_binary(binary: str = "codex") -> str:
