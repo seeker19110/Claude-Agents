@@ -541,6 +541,22 @@ class OpenAICompatClient:
         finish = choice.get("finish_reason") or "stop"
         if finish == "content_filter":
             raise Refused("model từ chối (content_filter)")
+        if finish == "length" and not (choice.get("message") or {}).get("tool_calls"):
+            # Hết hạn mức đầu ra là chế độ hỏng RIÊNG, phải nói rõ. Trước đây lượt này lọt xuống dưới với
+            # `text=""` (hoặc JSON cụt), rồi runner báo "đầu ra không phải JSON" — người đọc đi sửa prompt
+            # trong khi việc cần làm chỉ là tăng `max_tokens`. Model "thinking" đặc biệt dễ dính: token suy
+            # nghĩ tính vào cùng hạn mức, có lượt tiêu sạch mà chưa kịp trả lời câu nào.
+            u = data.get("usage") or {}
+            think = int((u.get("completion_tokens_details") or {}).get("reasoning_tokens", 0) or 0)
+            got = len((choice.get("message") or {}).get("content") or "")
+            raise LLMError(
+                f"model hết hạn mức đầu ra (finish_reason=length): max_tokens={self.cfg.max_tokens}, "
+                f"đã sinh {u.get('completion_tokens', '?')} token"
+                + (f" (trong đó {think} token suy nghĩ)" if think else "")
+                + f", nội dung trả về {got} ký tự"
+                + (" — RỖNG, model nghĩ hết hạn mức mà chưa trả lời" if not got else " và bị cắt giữa chừng")
+                + f". Tăng `max_tokens` trong llm.yaml (đang {self.cfg.max_tokens}) hoặc hạ `effort` cho tier này."
+            )
         calls: list[ToolCall] = []
         for tc in (choice.get("message") or {}).get("tool_calls") or []:
             fn = tc.get("function") or {}

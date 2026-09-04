@@ -512,6 +512,56 @@ def test_openai_compat_content_filter_nem_refused():
         srv.shutdown(); srv.server_close()
 
 
+class _LengthSrv(BaseHTTPRequestHandler):
+    """`finish_reason: length` — model thinking tieu het han muc dau ra ma chua tra loi."""
+    content = ""
+    reasoning_tokens = 15_800
+
+    def do_POST(self):
+        self.rfile.read(int(self.headers["Content-Length"]))
+        out = {"model": "local",
+               "choices": [{"message": {"role": "assistant", "content": type(self).content}, "finish_reason": "length"}],
+               "usage": {"prompt_tokens": 5, "completion_tokens": 16_000,
+                         "completion_tokens_details": {"reasoning_tokens": type(self).reasoning_tokens}}}
+        data = json.dumps(out).encode(); self.send_response(200); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    def log_message(self, *a): pass
+
+
+def _length_client():
+    srv = HTTPServer(("127.0.0.1", 0), _LengthSrv); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    cfg = LLMConfig(provider="openai", models={"strong": "m"}, base_url=f"http://127.0.0.1:{srv.server_port}/v1", api_key="k")
+    return srv, OpenAICompatClient(cfg)
+
+
+def test_openai_compat_bao_ro_khi_het_han_muc_dau_ra():
+    """Truoc day lot xuong duoi voi text="" roi runner bao "dau ra khong phai JSON" — nguoi doc di sua
+    prompt trong khi viec can lam la tang max_tokens. Do duoc khi chay that 2026-09-04: reviewer va
+    qa-debugger tra ve RONG, platform bi cat cut giua JSON."""
+    _LengthSrv.content = ""
+    srv, client = _length_client()
+    try:
+        with pytest.raises(LLMError) as exc:
+            client.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+    finally:
+        srv.shutdown(); srv.server_close()
+    msg = str(exc.value)
+    assert "hết hạn mức đầu ra" in msg and "finish_reason=length" in msg
+    assert "15800 token suy nghĩ" in msg, "phai chi ro token suy nghi da an het han muc"
+    assert "RỖNG" in msg and "max_tokens" in msg
+
+
+def test_openai_compat_bao_ro_khi_dau_ra_bi_cat_giua_chung():
+    _LengthSrv.content = '{"ticket_id": "T1", "summ'
+    srv, client = _length_client()
+    try:
+        with pytest.raises(LLMError, match="bị cắt giữa chừng"):
+            client.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+    finally:
+        srv.shutdown(); srv.server_close()
+        _LengthSrv.content = ""
+
+
 class _BadToolArgsSrv(BaseHTTPRequestHandler):
     def do_POST(self):
         self.rfile.read(int(self.headers["Content-Length"]))
