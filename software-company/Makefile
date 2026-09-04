@@ -1,4 +1,4 @@
-.PHONY: llm probe test cov lint types fix demo golden gate eval eval-record eval-replay run watch status report metrics assetscan assetbudget
+.PHONY: llm probe test cov lint types fix demo golden subagents subagents-check gate eval eval-record eval-replay run watch status report metrics assetscan assetbudget
 llm:           # cài hồ sơ model chạy thật: make llm PROFILE=claude-gateway (không ghi đè llm.yaml đang có)
 	@test -f llm.yaml && echo "llm.yaml đã có, không ghi đè (xoá nó nếu muốn cài lại)" || \
 	 (cp llm.$(or $(PROFILE),claude-gateway).yaml llm.yaml && echo "đã tạo llm.yaml từ llm.$(or $(PROFILE),claude-gateway).yaml")
@@ -19,6 +19,10 @@ fix:
 	uv run ruff check --fix src tests
 golden:
 	UPDATE_GOLDEN=1 uv run pytest -q tests/test_golden_agents.py
+subagents:        # sinh .claude/agents/sc-*.md từ agents/ (dẫn xuất một chiều, phải commit lại)
+	uv run python -m company.subagents build
+subagents-check:  # CI: gãy nếu bản dẫn xuất lệch nguồn
+	uv run python -m company.subagents check
 gate:
 	uv run python -m company.gate_cli list
 assetscan:     # quét tài sản prompt của cả hai công ty (ADR-0022); miễn trừ ở assetscan-waivers.txt

@@ -44,16 +44,17 @@ src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, g
                orchestrator (vòng lặp tự động, song song, người can thiệp), workspace (worktree), tools (tool có ranh
                giới tin cậy), mcp_bridge (cầu MCP đưa tool công ty vào CLI — ADR-0024), probe (CLI chạy được chế độ tool
                nào), web (tool web cho researcher), guard (chống injection), assetscan (quét tài sản prompt), context (hạn mức ngữ cảnh),
-               metrics (từ audit-log), evals (ghi/phát lại), stacks (lint/test theo stack — ADR-0013), demo, graph (cần
-               `uv sync --extra graph`, không tính coverage)
+               metrics (từ audit-log), evals (ghi/phát lại), stacks (lint/test theo stack — ADR-0013),
+               subagents (sinh trợ lý kiểm duyệt chỉ-đọc `.claude/agents/sc-*.md` từ agents/ — `make subagents`),
+               demo, graph (cần `uv sync --extra graph`, không tính coverage)
 examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--relay/--resume/--auto-escalate), relay_client.py
                yeu-cau-mau-web-app.json (yêu cầu mẫu để publish vào `research-requests`: đủ mục tiêu, người dùng,
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng intake cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 20 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
-tests/         pytest 566 ca / 30 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+tests/         pytest 584 ca / 31 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan, guard/blackboard,
-               schema consistency, golden 20 agent, rà soát bảo mật); coverage fail_under=98
+               schema consistency, golden 20 agent, bộ sinh subagent, rà soát bảo mật); coverage fail_under=98
 ```
 
 ## Chạy

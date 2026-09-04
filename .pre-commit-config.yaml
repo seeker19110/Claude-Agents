@@ -22,3 +22,14 @@ repos:
     rev: v8.30.1
     hooks:
       - id: gitleaks   # dùng .gitleaks.toml ở gốc repo, cùng cấu hình với job `audit`
+
+  # Bản dẫn xuất trong .claude/agents/ phải khớp agents/. Sửa prompt nguồn mà quên `make subagents` thì
+  # người duyệt gate chấm theo tiêu chuẩn cũ — CI cũng chặn, đây chỉ là vòng phản hồi sớm.
+  - repo: local
+    hooks:
+      - id: subagents-check
+        name: subagent dẫn xuất khớp nguồn
+        entry: uv run --project software-company python -m company.subagents check
+        language: system
+        pass_filenames: false
+        files: ^(software-company/(agents|skills)/|\.claude/agents/sc-)
