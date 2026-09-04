@@ -201,14 +201,29 @@ class AgentRunner:
     def _turns(self, spec: AgentSpec, inp: Envelope, user: str, schema: dict[str, Any], tools: ToolBox,
                max_turns: int, budget: int | None, msgs: list[dict[str, Any]], total: int, turn: int,
                usd: float, c: Completion | None) -> tuple[Completion, int, int, float]:
+        produced = 0   # output token cộng dồn — thước đo cho ngân sách, xem chú thích dưới
         while turn < max_turns:
             turn += 1
             c = self._complete(spec, inp, user, schema, messages=msgs, tools=tools, tokens=total, cost=usd)
-            total += c.tokens; usd += self._cost(c)[0]
-            if budget is not None and total > budget:
+            total += c.tokens; produced += c.output_tokens; usd += self._cost(c)[0]
+            # Ngân sách đo OUTPUT, không đo tổng token. `budget_tokens` do delivery-lead đặt theo ƯỚC LƯỢNG
+            # KHỐI LƯỢNG CÔNG VIỆC của ticket; còn `total` là tổng input cộng dồn qua mọi lượt tool — mỗi lượt
+            # gửi lại cả hội thoại, nên nó phình theo số lượt chứ không theo việc. Hai đại lượng khác hẳn bản chất.
+            #
+            # Đo được khi chạy thật (2026-09-04): agent `platform` viết 21 file thật trong worktree rồi bị giết ở
+            # `956637 > 90000`, và `workspace_reset` xoá sạch. Lặp ba lần, không lần nào ra được PR — ticket dùng
+            # tool để làm việc thật thì KHÔNG BAO GIỜ hoàn thành được.
+            #
+            # Không trừ phần cache đi: đo trên chính hệ thống này, đường gateway báo `cache_hit = 0.000` (Code
+            # Assist không trả `cachedContentTokenCount`), nên trừ cache là vô nghĩa đúng ở ca đang hỏng.
+            #
+            # Input vẫn có trần CỨNG bằng hai hàng rào khác: `max_turns` (số lượt) nhân `max_input_chars` (ngữ
+            # cảnh mỗi lượt). Nên bỏ input khỏi ngân sách KHÔNG mở đường cho chi phí vô hạn.
+            if budget is not None and produced > budget:
                 self._audit(spec, "budget_exhausted", inp, tokens=total, cost=usd,
-                            evidence=f"{total} > {budget} token sau {turn} lượt; tool={dump_calls(tools)}")
-                raise RunnerError(f"{spec.id}: vượt ngân sách {budget} token sau {turn} lượt tool")
+                            evidence=f"output {produced} > {budget} token sau {turn} lượt "
+                                     f"(tổng kể cả input: {total}); tool={dump_calls(tools)}")
+                raise RunnerError(f"{spec.id}: vượt ngân sách {budget} token đầu ra sau {turn} lượt tool")
             if not c.tool_calls: break
             msgs.append({"role": "assistant", "content": c.text,
                          "tool_calls": [{"id": t.id, "name": t.name, "args": t.args} for t in c.tool_calls]})
