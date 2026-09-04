@@ -395,6 +395,31 @@ def test_status_canh_bao_khi_khong_con_viec_nao_chay_duoc(tmp_path):
     assert w and "T1" in w[0], f"không còn đường nào chạy được thì status phải nói ra, nhận được: {w}"
 
 
+def test_du_an_pause_vi_ngan_sach_phai_mo_gate_va_pause_lai_duoc(tmp_path):
+    """Dự án chạm trần ngân sách bị `pause` → mọi event của nó bị hoãn. Ba lỗ hổng trên cùng một đường:
+
+    1. `_check_escalations` lọc `t in self.lead.tickets`, mà ID dự án không phải ticket → không gate nào mở,
+       không ai được hỏi. Đo được: `paused=['P1']` mà `gates_pending={}`.
+    2. Điều kiện mở gate chỉ đếm `escalate`/`budget_cut`, không đếm `pause` → `n=0` cho dự án bị pause.
+    3. `project_paused` không bao giờ được gỡ, nên sau lần resume đầu dự án KHÔNG BAO GIỜ pause lần nữa:
+       chi phí 99 → 9999 (gấp 100 lần trần) mà supervisor chỉ sinh đúng một `pause`.
+
+    Resume = cấp thêm một `project_budget_usd` nữa (đối xứng `budget.extended` của ticket). Không thể chỉ xoá
+    `project_paused`: chi phí chỉ tăng nên tỉ lệ vẫn ≥ CUT_AT và pause bật lại ngay, thành vòng vô tận."""
+    bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient(), project_budget_usd=1.0)
+    orch.lead.state["T1"] = "dispatched"
+
+    orch.supervisor.project_cost["P1"] = 99.0; orch.supervisor._check_project("P1"); orch.run()
+    assert "P1" in orch.paused, "chạm trần thì dự án phải bị pause"
+    assert orch.gate.pending.get("P1"), "dự án bị pause mà không gate nào mở = không ai được hỏi"
+
+    bus.publish(Envelope(topic="supervisor-actions", key="P1", actor="human:lead",
+                         payload={"target": "P1", "action": "resume", "reason": "cấp thêm ngân sách"}))
+    orch.supervisor.project_cost["P1"] = 9999.0; orch.supervisor._check_project("P1")
+    pauses = [a.action for a in orch.supervisor.actions if a.target == "P1" and a.action == "pause"]
+    assert len(pauses) >= 2, f"tiêu vượt trần lần nữa thì phải pause lần nữa, nhận được {pauses}"
+
+
 def test_gate_qua_han_phai_vao_audit_du_da_nhac_truoc_do(tmp_path):
     """`gate.remind` và `gate.overdue` từng dùng CHUNG khoá `once` là `gate:{sid}`.
 
