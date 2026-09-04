@@ -198,13 +198,20 @@ def test_tool_loop_runs_tools_then_final_answer(tmp_path):
 
 
 def test_tool_loop_stops_when_budget_exhausted(tmp_path):
+    """Ngân sách đo OUTPUT, không đo tổng token: `budget_tokens` là ước lượng KHỐI LƯỢNG CÔNG VIỆC, còn tổng
+    token phình theo số lượt tool (mỗi lượt gửi lại cả hội thoại). FakeClient sinh 1000 input + 300 output mỗi
+    lượt, nên ngân sách 3000 phải chịu được 10 lượt rồi mới gãy ở lượt 11 — chứ không gãy ở lượt 3 như khi đếm
+    cả input. Đo được khi chạy thật (2026-09-04): agent viết 21 file rồi bị giết ở `956637 > 90000`, công sức
+    bị `workspace_reset` xoá sạch, lặp ba lần mà không lần nào ra được PR."""
     ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
     client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=lambda m, t: [_tc("read_file", path="mod.py")])
     bus = InMemoryBus()
     with pytest.raises(RunnerError, match="vượt ngân sách"):
         AgentRunner(bus, client).generate("backend", _task_env(), "pull-requests", tools=WorkspaceTools(ws).toolbox(), budget=3_000)
     a = [e.payload for e in bus.replay(topic="audit-log")][-1]
-    assert a["action"] == "budget_exhausted" and a["tokens"] == 3 * 1300 and len(client.calls) == 3
+    assert a["action"] == "budget_exhausted" and len(client.calls) == 11    # 11 * 300 output > 3000
+    assert a["tokens"] == 11 * 1300, "audit vẫn ghi TỔNG token để metrics/chi phí không bị hụt"
+    assert "output 3300 > 3000" in a["evidence"] and "kể cả input: 14300" in a["evidence"]
 
 
 def test_tool_loop_max_turns_forces_final_json(tmp_path):
