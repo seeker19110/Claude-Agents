@@ -9,66 +9,75 @@ Phần điều phối của xưởng đã ở mức tốt: event-driven có sche
 ba review độc lập, human gate approval-first, resume từ SQLite, eval ghi/phát lại. Điểm nghẽn để ra video thật chất lượng
 cao nằm ở **hai lớp cuối**:
 
-1. **Lớp render** (`media.py`, `renderer.py`) hiện là *slideshow ảnh tĩnh + giọng đọc*: mỗi cảnh một ảnh đứng im, cắt cứng,
-   không nhạc, không phụ đề, không chuẩn hoá âm lượng, thời lượng cảnh là số ước lượng chứ không đo từ file. Kèm năm lỗi
-   khiến lượt chạy provider thật đầu tiên hỏng hoặc sai khung (mục 3).
+1. **Lớp render** (`media.py`, `renderer.py`) là *slideshow ảnh tĩnh + giọng đọc*: mỗi cảnh một ảnh đứng im, cắt cứng,
+   không nhạc, không phụ đề, không chuẩn hoá âm lượng (mục 4). Năm lỗi khiến lượt chạy provider thật đầu tiên hỏng hoặc
+   sai khung đã được sửa và kiểm chứng bằng ffmpeg thật (mục 3).
 2. **Lớp "mắt và tai"**: editor, quality-reviewer, rights-checker chỉ nhận JSON đường dẫn file. Không agent nào thấy ảnh
    hay nghe audio, cũng không có bước code nào đo file thật. Vì vậy các quy tắc "ảnh khớp prompt", "narration đọc đúng",
    "hook ≤ 5 giây", "không chữ/khuôn mặt thật trong ảnh" hiện **không kiểm được** ở bất kỳ tầng nào trước gate publish.
 
-Khuyến nghị: sửa lỗi P0 ngay (một hai ngày, không đổi schema), rồi làm ba ADR theo thứ tự: render pipeline v2 + QC bằng
-code → reviewer đa phương thức + preview cho người duyệt → mở rộng provider media và thư viện nhạc/footage có license.
+Khuyến nghị: P0 đã xong; ba ADR còn lại theo thứ tự: render pipeline v2 + QC bằng code → reviewer đa phương thức +
+preview cho người duyệt → thư viện nhạc/footage có license. Việc còn thiếu không cần đổi kiến trúc, chỉ cần thêm bước code
+và một trường tuỳ chọn trong scene manifest.
 
 ## 2. Hiện trạng lớp sản xuất (những gì đã có)
 
 | Thành phần | Có | Thiếu |
 |---|---|---|
 | TTS | `openai`, `gemini`, `elevenlabs`, `azure`, `google`, `command`, `fake` *(5 provider sau thêm ở đợt này)* | provider có timestamps từng từ (phụ đề karaoke); cache audio theo hash narration |
-| Ảnh | `openai`, `gemini` (Gemini Image / Imagen), `stability`, `replicate`, `fake` *(3 provider sau thêm ở đợt này)* | neo phong cách (seed/reference); kích thước hợp lệ theo model ở code mặc định |
-| Ghép video | ffmpeg: ảnh tĩnh + audio từng cảnh → concat | chuyển động, chuyển cảnh, nhạc, phụ đề, loudness, khung 9:16 |
+| Ảnh | `openai`, `gemini` (Gemini Image / Imagen), `stability`, `replicate`, `fake` *(3 provider sau thêm ở đợt này)*; kích thước hợp lệ theo model | neo phong cách (seed/ảnh tham chiếu), ép `brand` vào prompt bằng code |
+| Ghép video | ffmpeg: ảnh tĩnh + audio từng cảnh → concat; khung theo `aspect`, không cắt cụt giọng đọc, `fit: cover` | chuyển động, chuyển cảnh, nhạc, phụ đề, loudness |
 | Sửa cảnh | `apply_cutlist`: sinh lại đúng cảnh, khoá, thay asset, đổi thứ tự, ≤ 3 vòng | kiểm asset còn tồn tại; cache TTS theo nội dung |
-| Thumbnail | 2–3 biến thể, prompt + overlay | chữ do model ảnh vẽ; không resize 1280x720; không kiểm ≤ 2 MB |
+| Thumbnail | 2–3 biến thể; nền do model ảnh vẽ (không chữ), code phủ chữ, 1280x720 JPEG ≤ 2 MB | đo độ đọc được ở 120 px; ảnh nền theo `brand` |
 | Review | 3 agent độc lập, checklist đo được trên giấy | không thấy ảnh/audio; metrics do model đọc manifest, không đo file |
 | QC file | — | ffprobe, LUFS, frame đen, im lặng, đồng bộ, kích thước |
-| Đăng | upload private, thumbnail, publishAt, comments, analytics | `captions.insert`, kiểm file trước upload |
+| Đăng | upload private, thumbnail (chặn > 2 MB trước khi gọi API), publishAt, comments, analytics | `captions.insert`, kiểm video trước upload |
 | Duyệt | gate publish có checklist, đường dẫn file | xem bản nháp/final trong console |
 
-## 3. Lỗi phải sửa ngay (P0) — chặn "video thật" chạy đúng
+## 3. Lỗi phải sửa ngay (P0) — ĐÃ SỬA (đợt 2026-09-04)
 
-**A1. Kích thước ảnh mặc định không hợp lệ với `gpt-image-1`.** `media.py:62` mặc định `1792x1024`, `renderer.py:80`
-fallback `1024x1792`/`1792x1024`, `renderer.py:163` thumbnail `1792x1024`, `media.example.yaml:14`. Tài liệu OpenAI:
-`gpt-image-1` chỉ nhận `1024x1024`, `1536x1024`, `1024x1536` (1792x1024 là của DALL-E 3). Lượt render thật đầu tiên với
-cấu hình mẫu sẽ nhận HTTP 400. Sửa: bảng kích thước theo model (`gpt-image-1` → 1536x1024 / 1024x1536; `dall-e-3` →
-1792x1024 / 1024x1792), hoặc gửi `auto`; ảnh ra luôn qua bước code scale/crop về đúng khung 16:9 hoặc 9:16.
+Năm lỗi này chặn chính việc "ra video thật": với cấu hình mẫu, lượt render thật đầu tiên hoặc là lỗi HTTP, hoặc ra file
+sai khung, cụt tiếng. Tất cả đã sửa và kiểm chứng bằng ffmpeg thật (test đánh dấu `skipif` khi máy không có ffmpeg).
 
-**A2. Thời lượng cảnh là ước lượng, không đo từ file audio.** `media.py:209` trả `estimate_duration(text)` (số từ / 2.5)
-thay cho độ dài mp3 thật; `media.py:264-266` ghép bằng `-t {dur}` cộng `-shortest` → nếu giọng đọc dài hơn ước lượng thì
-**bị cắt giữa câu**, ngắn hơn thì ảnh đứng im lặng. Tiếng Việt đọc theo âm tiết nên sai số lớn. Hệ quả dây chuyền: chapter,
-retention map theo cảnh (`analytics.retention_drops` dùng `duration_s` tích luỹ), metrics của quality-reviewer đều lệch.
-Sửa: đo thời lượng thật sau TTS (ffprobe, hoặc đọc header wav/mp3 bằng thư viện chuẩn), bỏ `-t`, đệm 0,3–0,5 s im lặng
-cuối cảnh, ghi `duration_s` thật vào manifest (renderer đã publish lại manifest sau render, hạ tầng có sẵn).
-*Đã làm một phần ở đợt này:* `media.audio_duration` đo từ file (WAV đọc header; định dạng khác hỏi `ffprobe` khi có trên
-PATH), mọi provider TTS dùng nó; `gemini` trả PCM nên đo chính xác tuyệt đối. Còn lại: bỏ `-t` và đệm im lặng ở assembler.
+**A1. Kích thước ảnh không hợp lệ với `gpt-image-1`.** Mặc định cũ `1792x1024` là kích thước của DALL-E 3; `gpt-image-1`
+chỉ nhận `1024x1024`, `1536x1024`, `1024x1536` → HTTP 400 ngay lượt đầu.
+*Đã sửa:* `media.image_size(cfg, aspect)` tra bảng `MODEL_SIZES` theo model và tỷ lệ khung; cấu hình khai sai được thay
+bằng kích thước hợp lệ **cùng tỷ lệ** thay vì để request chết; provider nhận tỷ lệ (gemini, stability, replicate) giữ
+nguyên cấu hình. `MediaConfig` không còn `size` mặc định, `media.example.yaml` để `size` ở dạng chú thích.
 
-**A3. Shorts 9:16 render sai khung.** `renderer.py:104-106`, `144-146`, `153-155` lấy `resolution` từ cấu hình (mặc định
-1920x1080) bất kể `manifest.aspect`; ảnh dọc bị pad thành khung ngang với hai dải đen lớn. Sửa: khi `aspect == "9:16"`
-dùng 1080x1920 (hoán đổi w/h của cấu hình); thêm test ffmpeg cho short.
+**A2. Thời lượng cảnh là ước lượng, không đo từ file.** TTS trả `số từ / 2,5`, còn assembler cắt cứng `-t <ước lượng>`:
+giọng đọc dài hơn thì **cụt giữa câu**, ngắn hơn thì ảnh đứng im lặng. Sai số lớn với tiếng Việt, và kéo theo chapter,
+retention map theo cảnh, metrics của quality-reviewer đều lệch.
+*Đã sửa:* `media.audio_duration` đo từ file thật (WAV đọc header, định dạng khác hỏi `ffprobe`), mọi provider TTS dùng nó,
+`gemini` trả PCM nên đo tuyệt đối chính xác; assembler bỏ `-t`, để `-shortest` chạy hết giọng đọc rồi `apad` đệm
+`tail_pad_s` (0,35 s) im lặng cuối cảnh. Kiểm chứng: audio thật 5 s truyền vào với thời lượng khai 1 s vẫn ra 5,35 s.
+Còn lại (P2): cache audio theo hash(narration + voice) để sinh lại ảnh không phải trả tiền đọc lại.
 
-**A4. Thumbnail nhờ model ảnh vẽ chữ.** `renderer.py:163` nối `Overlay text: …` vào prompt, trái với skill `visual-direction`
-và `thumbnail-design` ("không chữ trong ảnh sinh, chữ là overlay"); chữ tiếng Việt có dấu do model ảnh vẽ thường sai.
-Kèm: không resize về 1280x720, không kiểm ≤ 2 MB; `platform.py:346-351` gửi nguyên file. Sửa: sinh ảnh nền **không chữ**
-→ code phủ chữ (Pillow, font có dấu, viền/đổ bóng, tránh góc phải dưới nơi YouTube đè thời lượng) → xuất 1280x720
-JPG/PNG ≤ 2 MB → kiểm kích thước và dung lượng trước `set_thumbnail`.
+**A3. Shorts 9:16 render sai khung.** Renderer lấy `resolution` từ cấu hình (1920x1080) bất kể `manifest.aspect`, ảnh dọc
+bị pad thành khung ngang với hai dải đen.
+*Đã sửa:* `media.frame_size(video, aspect)` hoán đổi chiều cho `9:16`; renderer dùng nó ở cả ba chỗ (`render`,
+`apply_cutlist`, `finalize`). Kiểm chứng bằng ffprobe: manifest 16:9 ra 1920x1080, manifest 9:16 ra 1080x1920.
+Kèm theo: `fit: cover` (mặc định) cho ảnh lấp đầy khung, nên ảnh 3:2 hay 1:1 của provider không còn tạo viền đen;
+`fit: contain` giữ hành vi cũ khi muốn giữ trọn ảnh.
 
-**A5. `voice.pace` và `language` bị bỏ qua.** `media.py:206` chỉ gửi `model`, `voice`, `input`. Skill `narration-tts` quy định
-pace medium/fast/slow và YMYL đọc chậm nhưng không có tác dụng. Sửa: map pace → `speed` (≈ 0,9 / 1,0 / 1,15), truyền
-`instructions` (giọng, ngữ điệu, ngôn ngữ) cho model TTS hỗ trợ; cảnh không đổi narration thì dùng lại audio cũ theo
-hash(narration + voice) để không tốn tiền khi chỉ sinh lại ảnh.
-*Đã làm ở đợt này:* `pace` map sang `speed` (openai), `speakingRate` (google), `<prosody rate>` (azure), `voice_settings.speed`
-(elevenlabs), câu dẫn phong cách (gemini); `tts.instructions` cho openai; bảng `tts.voices` dịch `voice_id` của manifest sang
-giọng provider (id giọng khác nhau giữa các nhà). Còn lại: cache audio theo hash.
+**A4. Thumbnail nhờ model ảnh vẽ chữ.** Prompt cũ nối `Overlay text: …`, trái skill `visual-direction`/`thumbnail-design`;
+model ảnh viết sai dấu tiếng Việt. Kèm: không thu về 1280x720, không kiểm ≤ 2 MB.
+*Đã sửa:* model ảnh chỉ vẽ **nền không chữ** (`A_base.png`, prompt kèm điều cấm chữ/logo/watermark); code phủ chữ bằng
+`drawtext` — viết hoa, ngắt ≤ 3 dòng, cỡ chữ tính theo bề rộng khung, viền đen, đặt ở 72% chiều cao để tránh góc phải
+dưới nơi nền tảng đè thời lượng — rồi xuất `A.jpg` 1280x720, hạ chất lượng dần cho tới khi ≤ 2 MB. Chữ và font đi qua
+`textfile=`/`fontfile=` trong thư mục tạm dùng làm cwd nên không phải escape dấu `:`/`'` của đường dẫn hay của tiếng Việt.
+Thiếu font thì ảnh vẫn đúng kích thước, `MediaResult.notes` và audit `thumbnail.finish` nói rõ là không phủ được chữ;
+chữ quá dài bị cắt dòng cũng được ghi lại chứ không âm thầm nuốt. `YouTubePlatform.set_thumbnail` từ chối file > 2 MB
+trước khi gọi API, để evidence nói đúng nguyên nhân thay vì HTTP 400 của Google.
 
-**E1 (đi kèm).** `media.py:263-271` để lại `_seg000.mp4`, `_concat.txt` trong `output/`; dùng thư mục tạm hoặc dọn sau concat.
+**A5. `voice.pace` và `language` bị bỏ qua.** Skill `narration-tts` quy định pace medium/fast/slow (YMYL đọc chậm) nhưng
+lớp TTS chỉ gửi `model`, `voice`, `input`.
+*Đã sửa:* `pace` map sang `speed` (openai), `speakingRate` (google), `<prosody rate>` (azure), `voice_settings.speed`
+(elevenlabs) và câu dẫn phong cách (gemini); `tts.instructions` cho openai; bảng `tts.voices` dịch `voice_id` của manifest
+sang giọng của provider đang dùng, vì production-manager không biết trước nhà cung cấp nào sẽ đọc.
+
+**E1. File trung gian lẫn vào asset.** `_seg000.mp4`, `_concat.txt` nằm cùng `output/<video_id>/`.
+*Đã sửa:* segment và danh sách concat nằm trong thư mục tạm, xoá trong `finally`; `output/<video_id>/` chỉ còn asset thật.
 
 ## 4. Thiếu năng lực cốt lõi cho "chất lượng xuất sắc" (P1)
 
@@ -175,7 +184,7 @@ giây video) → audit `render.*` ghi USD → supervisor áp ngưỡng 80/100 ch
 
 | Giai đoạn | Nội dung | Thay đổi kiến trúc |
 |---|---|---|
-| 0 (1–2 ngày) | A1–A5, E1 | Không đổi schema (field mới đều optional); cập nhật README, `media.example.yaml`, test |
+| 0 — **xong** | A1–A5, E1 (+ 8 provider media) | Không đổi schema; `media.yaml` thêm `video.fit/tail_pad_s/font`; kiểm chứng bằng ffmpeg thật |
 | 1 (≈ 1 tuần) | B1, B2, B4, B5 | **ADR-0009** Render pipeline v2: `Scene += motion, transition, visual_kind`; `AssetKind += music, captions`; topic hoặc payload `qc_report`; `media.yaml += audio.loudness, music, captions`; chapter do code tính |
 | 2 (≈ 1 tuần) | C1, C2, B3 | **ADR-0010** Reviewer đa phương thức có ranh giới: `attachments` trong `ModelClient`, front matter `inputs`, QC code trước model, eval lưu hash ảnh; console preview `output/` |
 | 3 (theo nhu cầu) | D3–D5, E3 (D1–D2 đã xong ở đợt này) | **ADR-0011** Footage/video-gen + thư viện nhạc có license + giá media |

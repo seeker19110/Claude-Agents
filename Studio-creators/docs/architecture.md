@@ -117,6 +117,13 @@ thời lượng audio đo từ file (WAV header, ffprobe nếu có), chỉ ướ
 manifest thành asset có checksum + provenance (provider:model, prompt_ref, license) và publish `media-assets`. Asset nằm trong
 `output/<video_id>/`.
 
+Ba quyết định khung hình nằm ở lớp này vì chúng quyết định video có xem được không: `image_size` chỉ gửi kích thước HỢP LỆ
+theo model (gpt-image-1 không nhận 1792x1024); `frame_size` đổi khung theo `aspect` của manifest (9:16 → 1080x1920);
+assembler không cắt cảnh theo thời lượng ước lượng mà để `-shortest` chạy hết giọng đọc rồi `apad` đệm `tail_pad_s` giây,
+với `fit=cover` để ảnh lấp đầy khung. Thumbnail hoàn thiện bằng code (`finish_thumbnail`): model ảnh vẽ nền không chữ,
+`drawtext` phủ `overlay_text` (viết hoa, ≤ 3 dòng, tránh góc phải dưới), xuất 1280x720 JPEG ≤ 2 MB; `YouTubePlatform`
+từ chối file quá 2 MB trước khi gọi API. Việc code đã làm nằm trong audit `thumbnail.finish` và `MediaResult.notes`.
+
 ## Adapter nền tảng (ADR-0008)
 
 `platform.py`: interface `Platform` — `upload_video(path, metadata, privacy, publish_at, made_for_kids) → UploadResult(platform_ref,

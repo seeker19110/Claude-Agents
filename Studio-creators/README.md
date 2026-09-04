@@ -117,7 +117,8 @@ uv run python -m studio.evals all --replay [--strict]  # make eval-replay — nh
 UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py             # make golden — sau khi cố ý sửa agents/ hoặc skills/
 ```
 
-Asset sinh ra nằm ở `output/<video_id>/` (bị gitignore): `S1.wav`, `S1.png`, `draft_v1.mp4`, `final_v2.mp4`, `thumbnails/A.png`…
+Asset sinh ra nằm ở `output/<video_id>/` (bị gitignore): `S1.wav`, `S1.png`, `draft_v1.mp4`, `final_v2.mp4`,
+`thumbnails/A_base.png` (nền do model ảnh vẽ) và `thumbnails/A.jpg` (bản hoàn thiện 1280x720 có chữ phủ, chính là file đăng).
 
 ## Quy ước bắt buộc
 - Brief phải có `estimate_tokens` trước dispatch; `budget_tokens ≥ estimate × 1.5` (code từ chối kế hoạch nếu không).
@@ -154,6 +155,14 @@ Asset sinh ra nằm ở `output/<video_id>/` (bị gitignore): `S1.wav`, `S1.png
   thuần, khóa theo kênh (`api_key_env`), bảng `tts.voices` dịch voice_id của manifest, `pace` map sang tốc độ từng provider,
   thời lượng audio đo từ file (WAV header / ffprobe) thay cho ước lượng theo số từ. **Renderer** biến scene manifest thành
   asset có checksum + provenance.
+- **Khung hình và thời lượng đúng ngay lượt render thật đầu tiên**: kích thước ảnh chọn theo model (`gpt-image-1` không
+  nhận 1792x1024 — khai sai được thay bằng kích thước hợp lệ cùng tỷ lệ), khung video theo `aspect` của manifest (short
+  9:16 ra 1080x1920, không phải khung ngang kèm hai dải đen), cảnh dài đúng bằng giọng đọc (`-shortest` + `apad`, không
+  cắt theo số từ chia 2,5) và ảnh lấp đầy khung (`fit: cover`). File trung gian của ffmpeg nằm trong thư mục tạm.
+- **Thumbnail do CODE hoàn thiện**: model ảnh chỉ vẽ nền không chữ (nó viết sai dấu tiếng Việt), code phủ `overlay_text`
+  bằng `drawtext` (viết hoa, ngắt ≤ 3 dòng, viền đen, tránh góc phải dưới nơi nền tảng đè thời lượng), thu về 1280x720,
+  nén JPEG ≤ 2 MB; adapter YouTube từ chối trước khi gọi API nếu file vẫn quá nặng. Không có font thì vẫn ra ảnh đúng
+  kích thước và audit `thumbnail.finish` nói rõ là thiếu chữ.
 - **Scene repair** (`renderer.apply_cutlist`, ADR-0004): sinh lại đúng cảnh, khoá cảnh, thay asset, đổi thứ tự, ≤ 3 vòng.
 - **Preflight** (`preflight.py`, ADR-0005): giới hạn nền tảng (block: tiêu đề ≤ 100, mô tả ≤ 5000, tag ≤ 500 ký tự, cụm cấm)
   + quy tắc chất lượng (warn: tiêu đề ≤ 70, mô tả ≥ 200, ≥ 3 chapter bắt đầu 00:00 mỗi chapter ≥ 10s), seo-optimizer sửa block

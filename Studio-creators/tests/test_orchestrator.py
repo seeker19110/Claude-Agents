@@ -134,7 +134,7 @@ def test_publish_gate_approve_uploads_once_with_real_file_thumbnail_and_schedule
     final = next(a for a in reversed([e.payload for e in bus.replay("media-assets", "CH1-V1")]) if a["kind"] == "final_video")
     up = o.platform.calls[0][1]
     assert up["path"] == final["path"] and up["title"].startswith("AI dựng video") and up["privacy"] == "private" and up["publish_at"] is None
-    assert o.platform.calls[1][1]["path"].endswith("A.png")  # thumbnail `chosen: A` của thumbnail-designer
+    assert o.platform.calls[1][1]["path"].endswith("A.jpg")  # thumbnail `chosen: A` đã hoàn thiện (nền + chữ do code phủ)
     assert o.platform.calls[2][1] == {"platform_ref": "fake-0001", "publish_at": "2026-09-05T12:00:00Z"}
     ev = [e.payload for e in bus.replay("publish-events", "CH1-V1")]
     assert len(ev) == 1 and ev[0]["status"] == "scheduled" and ev[0]["platform_ref"] == "fake-0001"  # model khai yt:abc123 → code ghi đè
@@ -316,7 +316,7 @@ def test_publish_checklist_shows_final_video_thumbnail_title_and_cli_full(tmp_pa
     bus, o = _to_publish_gate(tmp_path)
     req = o.gate.pending["PUB-CH1-V1"]
     final = next(a for a in reversed([e.payload for e in bus.replay("media-assets", "CH1-V1")]) if a["kind"] == "final_video")
-    assert f"final_video:{final['path']}" in req.checklist and any(c.startswith("thumbnail:") and c.endswith("A.png") for c in req.checklist)
+    assert f"final_video:{final['path']}" in req.checklist and any(c.startswith("thumbnail:") and c.endswith("A.jpg") for c in req.checklist)
     assert any(c.startswith("title:AI dựng video") for c in req.checklist) and req.triggered_by == "human:owner"  # người duyệt plan
     # reply: checklist giữ nguyên văn; `list` cắt 80 ký tự trừ khi --full
     long = "x" * 100

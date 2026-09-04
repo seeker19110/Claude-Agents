@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from .events import MetadataPackage, PerformanceSnapshot, RetentionPoint
-from .media import MediaConfig, load_media_config
+from .media import THUMBNAIL_MAX_BYTES, MediaConfig, load_media_config
 
 UPLOAD_URL = "https://www.googleapis.com/upload/youtube/v3/videos"
 API_URL = "https://www.googleapis.com/youtube/v3"
@@ -345,6 +345,11 @@ class YouTubePlatform:
 
     def set_thumbnail(self, platform_ref: str, path: Path) -> str:
         path = Path(path); data = path.read_bytes()
+        # Giới hạn nền tảng: ảnh > 2 MB bị API từ chối. Bắt tại đây để evidence nói đúng nguyên nhân và người duyệt
+        # thấy ngay phải làm gì, thay vì đọc HTTP 400 của Google.
+        if len(data) > THUMBNAIL_MAX_BYTES:
+            raise PlatformError(f"thumbnail {path.name} nặng {len(data) / 1_000_000:.1f} MB, YouTube chỉ nhận "
+                                f"≤ {THUMBNAIL_MAX_BYTES // 1_000_000} MB (renderer nén lại, hoặc dùng file nhẹ hơn)")
         ctype = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
         st, _, _ = self._call("POST", f"{UPLOAD_URL.replace('/videos', '/thumbnails/set')}?videoId={urllib.parse.quote(platform_ref)}&uploadType=media",
                                 data, {"Content-Type": ctype, "Content-Length": str(len(data))})
