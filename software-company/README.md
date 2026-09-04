@@ -31,7 +31,7 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0021); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0025); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
 agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
@@ -49,8 +49,9 @@ src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, g
 examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--relay/--resume/--auto-escalate), relay_client.py
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 20 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
-tests/         pytest 314 ca / 16 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh tích
-               hợp, routing, runner/persistence, tools/agentic, schema consistency, golden 20 agent); coverage fail_under=90
+tests/         pytest 566 ca / 30 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+               tích hợp, repo theo dự án, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan, guard/blackboard,
+               schema consistency, golden 20 agent, rà soát bảo mật); coverage fail_under=98
 ```
 
 ## Chạy
@@ -59,8 +60,8 @@ tests/         pytest 314 ca / 16 file (bus, registry↔events, delivery+gates, 
 cd software-company
 uv sync                                   # tạo .venv từ pyproject.toml
 uv run pytest -q                          # hoặc: make test
-PYTHONPATH=src uv run python -m company.demo   # hoặc: make demo
-PYTHONPATH=src uv run python examples/donghanhcungban_demo.py --out sim-out   # mô phỏng cả công ty làm web demo
+uv run python -m company.demo   # hoặc: make demo
+uv run python examples/donghanhcungban_demo.py --out sim-out   # mô phỏng cả công ty làm web demo
                                           # donghanhcungban.com trên repo khách tạo tạm (báo cáo: docs/reports/)
                                           # --real: gọi model thật theo tier (llm.yaml / COMPANY_*); --relay DIR: model là một
                                           # phiên Claude Code khác trả lời qua file; --resume: chạy tiếp từ sim-out; --auto-escalate
@@ -83,34 +84,34 @@ uv run pytest -q --cov --cov-report=term  # make cov — ngưỡng 90%
 #   khoản cùng gói), binary, effort, max_tokens, extra, supports_tools. COMPANY_LLM_BACKENDS=a,b lọc và sắp lại backend.
 #   Biến môi trường khác: COMPANY_LLM_RETRIES, COMPANY_MAX_INPUT_CHARS, COMPANY_BUDGET_USD, COMPANY_SEARCH_URL.
 #   Bảng agent → tier: ../docs/DIEU-PHOI-MODEL.md
-PYTHONPATH=src uv run python -m company.runner reviewer review-results input.json --db company.sqlite [--artifacts DIR]
+uv run python -m company.runner reviewer review-results input.json --db company.sqlite [--artifacts DIR]
 
 # Chạy tự động cả công ty (ADR-0007): orchestrator nối topic → agent → topic, dừng ở human gate / supervisor / khách
-PYTHONPATH=src uv run python -m company.orchestrator publish research-requests req.json --actor human:sales
-PYTHONPATH=src uv run python -m company.orchestrator run --watch 5     # hoặc: make watch (một lượt: make run; --max-steps N giới hạn số bước)
+uv run python -m company.orchestrator publish research-requests req.json --actor human:sales
+uv run python -m company.orchestrator run --watch 5     # hoặc: make watch (một lượt: make run; --max-steps N giới hạn số bước)
 #   cờ chung đặt trước subcommand: --db company.sqlite --repo --base --integration --artifacts --workers --web --batch-release
-PYTHONPATH=src uv run python -m company.orchestrator run --repo ../khach --base main   # làm THẬT: khối kỹ thuật sửa code
+uv run python -m company.orchestrator run --repo ../khach --base main   # làm THẬT: khối kỹ thuật sửa code
 #   --repo là MẶC ĐỊNH; từng dự án tự chỉ repo riêng bằng `repo`/`base` trong research-requests (ADR-0025) — một tiến
 #   trình phục vụ nhiều khách, mỗi khách một repo; console giao việc kèm "nơi lưu dự án"
                                                                         # trong worktree ticket/<id>, PR mang lint/test thật;
                                                                         # ticket rẽ từ và merge vào company/integration (--integration)
-PYTHONPATH=src uv run python -m company.gate_cli approve SPEC-P1 --by human:po   # gate spec → plan → release → acceptance
+uv run python -m company.gate_cli approve SPEC-P1 --by human:po   # gate spec → plan → release → acceptance
 #   quyết định: approve | request_changes | reject | hold | rollback; `request KIND SUBJECT --by --checklist` mở gate tay
-PYTHONPATH=src uv run python -m company.orchestrator publish clarification-answers ans.json --actor human:po
-PYTHONPATH=src uv run python -m company.orchestrator decide-change CR-1 accepted --by human:po   # sau khi delivery-lead ước lượng impact
-PYTHONPATH=src uv run python -m company.orchestrator run --workers 4 --web   # ticket khác key chạy song song; researcher có web
-PYTHONPATH=src uv run python -m company.orchestrator run --batch-release   # gom ticket approved của dự án vào một RC (một staging, một gate 3, một UAT)
-PYTHONPATH=src uv run python -m company.orchestrator status              # hàng đợi, hoãn, ticket, gate chờ, blackboard, chi phí,
+uv run python -m company.orchestrator publish clarification-answers ans.json --actor human:po
+uv run python -m company.orchestrator decide-change CR-1 accepted --by human:po   # sau khi delivery-lead ước lượng impact
+uv run python -m company.orchestrator run --workers 4 --web   # ticket khác key chạy song song; researcher có web
+uv run python -m company.orchestrator run --batch-release   # gom ticket approved của dự án vào một RC (một staging, một gate 3, một UAT)
+uv run python -m company.orchestrator status              # hàng đợi, hoãn, ticket, gate chờ, blackboard, chi phí,
                                                                         # backend nào sẵn sàng/đang nghỉ (routing.status) — make status
-PYTHONPATH=src uv run python -m company.orchestrator report              # estimate vs actual, chi phí USD theo agent/model, hành động supervisor — make report
-PYTHONPATH=src uv run python -m company.orchestrator metrics [--prometheus]   # hoặc: make metrics [PROM=1] — gọi/token/USD/thời gian
-PYTHONPATH=src uv run python -m company.orchestrator show prd            # toàn văn artifact mới nhất (mirror ở company.artifacts/)
-PYTHONPATH=src uv run python -m company.orchestrator comment T1 --by human:lead --text "dùng hàm add có sẵn"   # hint giữa vòng, không tính retry
-PYTHONPATH=src uv run python -m company.orchestrator takeover T1 --by human:lead   # người sửa tay trong .worktrees/T1 → lint/test → PR dưới tên người
-PYTHONPATH=src uv run python -m company.gate_cli list          # hoặc: make gate
-PYTHONPATH=src uv run python -m company.evals reviewer         # hoặc: make eval AGENT=reviewer (provider theo llm.yaml / COMPANY_*)
-PYTHONPATH=src uv run python -m company.evals reviewer --record   # make eval-record AGENT=reviewer — sau khi đổi prompt/skill
-PYTHONPATH=src uv run python -m company.evals all --replay --strict   # make eval-replay — như CI, không gọi model; --strict đỏ khi agent trong REQUIRED.txt thiếu bản ghi
+uv run python -m company.orchestrator report              # estimate vs actual, chi phí USD theo agent/model, hành động supervisor — make report
+uv run python -m company.orchestrator metrics [--prometheus]   # hoặc: make metrics [PROM=1] — gọi/token/USD/thời gian
+uv run python -m company.orchestrator show prd            # toàn văn artifact mới nhất (mirror ở company.artifacts/)
+uv run python -m company.orchestrator comment T1 --by human:lead --text "dùng hàm add có sẵn"   # hint giữa vòng, không tính retry
+uv run python -m company.orchestrator takeover T1 --by human:lead   # người sửa tay trong .worktrees/T1 → lint/test → PR dưới tên người
+uv run python -m company.gate_cli list          # hoặc: make gate
+uv run python -m company.evals reviewer         # hoặc: make eval AGENT=reviewer (provider theo llm.yaml / COMPANY_*)
+uv run python -m company.evals reviewer --record   # make eval-record AGENT=reviewer — sau khi đổi prompt/skill
+uv run python -m company.evals all --replay --strict   # make eval-replay — như CI, không gọi model; --strict đỏ khi agent trong REQUIRED.txt thiếu bản ghi
 UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golden — sau khi cố ý sửa agents/ hoặc skills/
 ```
 
@@ -124,7 +125,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 - Agent sở hữu namespace phải ghi TOÀN VĂN artifact vào `context_writes[].content` (schema bắt buộc); chỉ có con trỏ thì audit `context_no_content`.
 - Điền bảng `prices` trong `llm.yaml` cho model đang dùng; lời gọi không có giá bị đếm ở `unpriced_calls`, không được coi là miễn phí.
 
-## Hiện trạng (2026-09-02)
+## Hiện trạng (2026-09-04)
 
 ### Đã có
 - Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0025; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.

@@ -90,6 +90,7 @@ def test_real_subprocess_speaks_mcp_and_reaches_the_parent_toolbox(tmp_path):
         finally:
             assert proc.stdin
             proc.stdin.close(); proc.wait(timeout=10)
+            if proc.stdout: proc.stdout.close()   # ống stdout cũng phải đóng, nếu không rò file descriptor
     assert tb.summary() == {"read_file": 2, "write_file": 1}
 
 

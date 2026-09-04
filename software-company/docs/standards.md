@@ -62,6 +62,8 @@ Các chuẩn ở trên đặt ra cho sản phẩm của khách. Phần dưới l
 - Chưa có: idempotency key ở mức consumer. Orchestrator lọc lặp bằng tập `event_id` đã `orchestrated`
   (khôi phục từ audit-log), nhưng đó là dedupe của một consumer, không phải khoá idempotent do người gửi
   đặt và mọi consumer tôn trọng; tác dụng phụ ra ngoài hệ thống khi replay chưa được bảo vệ.
-- Chưa có: bản ghi eval tạo bằng model thật (ADR-0015), nên cổng eval hiện chưa chặn được ai.
+- Đã có (2026-09-04): bản ghi eval bằng model thật cho đủ 20 agent (`evals/recordings/`, `REQUIRED.txt`); CI
+  `eval-replay --strict` đỏ khi bản ghi thiếu hoặc lệch phiên bản prompt. Điểm chấm từng ca vẫn KHÔNG phải cổng
+  (CONTRIBUTING §3) — `--fail-on-score` bật cổng đó khi cần, và mỗi lần chạy in một dòng tổng kết nếu có ca không đạt.
 
 Không hứa mốc thời gian cho các mục "chưa có"; sửa mục nào thì sửa luôn dòng đó.

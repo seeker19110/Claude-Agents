@@ -7,7 +7,6 @@ from __future__ import annotations
 import json
 import socket
 import threading
-import time
 
 import pytest
 
@@ -79,16 +78,20 @@ def test_hai_chu_namespace_ghi_song_song_khong_mat_ban_ghi(monkeypatch):
     """`api-contract` có hai chủ (delivery-lead, backend). Đánh version là đọc-sửa-ghi nên chạy song song
     (--workers > 1) mà không khoá thì cả hai cùng ra v1 và bản sau bị `_on` bỏ im lặng.
 
-    `scope_of` chạy ngay trước lúc đọc version, nên chèn độ trễ ở đó mở đúng cửa sổ tranh chấp một cách xác định
-    thay vì trông chờ vào lịch chuyển luồng của GIL."""
+    `scope_of` chạy ngay trước lúc đọc version: cho cả hai luồng gặp nhau ở đúng điểm đó bằng Barrier mở đúng cửa
+    sổ tranh chấp một cách xác định — không sleep, nên không phụ thuộc tốc độ máy."""
     import company.blackboard as bbm
     real = bbm.scope_of
-    monkeypatch.setattr(bbm, "scope_of", lambda ns, pid: (time.sleep(0.05), real(ns, pid))[1])
+    inside = threading.Barrier(2, timeout=10)
+
+    def _scope(ns, pid):
+        try: inside.wait()      # cả hai luồng phải cùng ở trong scope_of rồi mới đi tiếp
+        except threading.BrokenBarrierError: pass
+        return real(ns, pid)
+    monkeypatch.setattr(bbm, "scope_of", _scope)
     bus = InMemoryBus(); bb = Blackboard(bus)
-    barrier = threading.Barrier(2)
 
     def w(actor: str) -> None:
-        barrier.wait()
         bb.write(actor, "api-contract", "openapi.yaml", actor, content=actor * 50, project_id="P1")
 
     ts = [threading.Thread(target=w, args=(a,)) for a in ("delivery-lead", "backend")]

@@ -265,7 +265,7 @@ def test_openai_compat_client_falls_back_to_json_object():
         assert [b["response_format"]["type"] for b in _Srv.seen] == ["json_schema", "json_object"]
         assert "JSON Schema bắt buộc" in _Srv.seen[-1]["messages"][-1]["content"]
     finally:
-        srv.shutdown()
+        srv.shutdown(); srv.server_close()
 
 
 # ---------- SQLite bus ----------
@@ -565,7 +565,7 @@ def test_openai_compat_sends_cache_key_and_reports_hit():
         # prompt_tokens của OpenAI ĐÃ gồm phần cache: không được cộng cached_tokens thêm lần nữa
         assert c.input_tokens == 10_000 and c.tokens == 10_300 and c.cache_hit_ratio == 0.9
     finally:
-        srv.shutdown()
+        srv.shutdown(); srv.server_close()
 
 
 def test_openai_compat_drops_cache_key_when_server_rejects_it():
@@ -583,4 +583,4 @@ def test_openai_compat_drops_cache_key_when_server_rejects_it():
         assert c2.json()["verdict"] == "pass"
         assert "prompt_cache_key" not in _CacheSrv.seen[-1], "đã biết server từ chối thì không gửi lại"
     finally:
-        srv.shutdown()
+        srv.shutdown(); srv.server_close()

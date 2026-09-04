@@ -379,3 +379,34 @@ def test_eval_replay_noi_ro_khi_ca_khong_dat_va_co_co_bat_cong(monkeypatch, caps
     assert "ca-hong" in out and "CHÚ Ý" in out and "không phải cổng" in out
     assert ev.main(["reviewer", "--replay", "--fail-on-score"]) == 1
     assert "là cổng vì --fail-on-score" in capsys.readouterr().out
+
+
+# ---------- tài liệu không được nói sai về chính nó ----------
+
+def test_readme_khop_so_lieu_that():
+    """README từng ghi 'ADR 0001–0021' và '314 ca / 16 file' khi thực tế đã khác — số liệu lệch làm người mới
+    mất niềm tin vào phần còn lại. Test đếm lại từ đĩa để nó không lệch lần nữa."""
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    n_files = len(list((root / "tests").glob("*.py")))
+    n_adr = len(list((root / "docs" / "adr").glob("*.md")))
+    last_adr = max(int(p.name[:4]) for p in (root / "docs" / "adr").glob("*.md"))
+    m = re.search(r"pytest (\d+) ca / (\d+) file", readme)
+    assert m, "README phải nói số ca test và số file test"
+    assert int(m.group(2)) == n_files, f"README ghi {m.group(2)} file test, thực tế {n_files}"
+    # Test tham số hoá làm số ca thu thập được LỚN HƠN số hàm test, nên chỉ chặn phía dưới: README không được
+    # ghi ít hơn số hàm hiện có (đó chính là kiểu lệch cũ: ghi 314 khi đã có hơn 450 hàm).
+    n_funcs = _count_cases()
+    assert n_funcs <= int(m.group(1)) <= n_funcs * 2, f"README ghi {m.group(1)} ca, có {n_funcs} hàm test"
+    assert f"0001–{last_adr:04d}" in readme, f"README phải nhắc ADR mới nhất (0001–{last_adr:04d}); có {n_adr} ADR"
+    assert "PYTHONPATH=src" not in readme, "uv workspace không cần PYTHONPATH"
+
+
+def _count_cases() -> int:
+    """Đếm hàm test trong tests/ (xấp xỉ số ca; test tham số hoá tính là một)."""
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "tests"
+    return sum(len(re.findall(r"^def test_", p.read_text(encoding="utf-8"), re.M)) for p in root.glob("*.py"))

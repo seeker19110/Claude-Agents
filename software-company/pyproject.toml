@@ -31,6 +31,13 @@ packages = ["src/company"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+# Cảnh báo là lỗi: DeprecationWarning của thư viện hay ResourceWarning socket/file phải hiện ra trong CI,
+# không trôi qua trong 80 dòng log. Ngoại lệ duy nhất: runpy cảnh báo khi chạy lại một module đã import —
+# đúng thứ ba test `*_main.py` cố ý làm để phủ nhánh `if __name__ == "__main__"`.
+filterwarnings = [
+    "error",
+    "ignore:.*found in sys.modules after import of package.*:RuntimeWarning",
+]
 
 [tool.coverage.run]
 source = ["src/company"]
@@ -42,7 +49,9 @@ concurrency = ["thread"]
 
 [tool.coverage.report]
 # Ngưỡng đặt ở mức đang đạt được: nó chặn tụt lùi, không phải mục tiêu để phấn đấu tới.
-fail_under = 90
+# Thực tế đang 100%; để 90 thì mất 400 dòng phủ vẫn xanh, nên nâng sát mức đạt được (chừa 2% cho nhánh
+# phụ thuộc nền tảng như os.name == "nt").
+fail_under = 98
 show_missing = true
 skip_covered = true
 
