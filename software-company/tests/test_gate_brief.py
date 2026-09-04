@@ -167,7 +167,11 @@ def test_spec_rut_nfr_out_of_scope_pii_va_cau_hoi_mo(tmp_path):
     assert v["spec.pii"] == "unknown" and any("có nhắc phân loại" in f for f in facts["spec.pii"])
     assert v["spec.cau-hoi-mo"] == "ok"
     src = next(it for it in b["self_check"] if it["id"] == "spec.nfr-co-so-do")["sources"][0]
-    assert src["kind"] == "namespace" and src["ref"] == "prd" and src["path"].endswith("prd/latest.md")
+    # So bằng `Path.parts`, không phải `endswith("prd/latest.md")`: đường dẫn mirror do `pathlib` dựng nên trên
+    # Windows là `prd\latest.md` — test cũ xanh trên Linux và đỏ trên Windows, đúng kiểu "test đúng-sai theo nền
+    # tảng" mà repo đã gặp một lần ở `_bo_dau_thoi_gian` (tests/test_orchestrator.py).
+    assert src["kind"] == "namespace" and src["ref"] == "prd"
+    assert Path(src["path"]).parts[-2:] == ("prd", "latest.md")
     # thêm một vòng câu hỏi chưa ai trả lời → gap
     bus.publish(Envelope(topic="clarification-questions", key="P1", actor="clarifier",
                          payload={"project_id": "P1", "round": 2, "questions": [{"id": "Q9", "text": "?", "options": ["a"], "default": "a"}]}))
