@@ -222,6 +222,61 @@ def test_loi_agent_khong_nhanh_nao_nhan_thi_mo_gate_chu_khong_im_lang():
     assert orch.gate.pending.get("T1"), "phải mở gate escalation thay vì chết lặng"
 
 
+def test_cau_tra_loi_tich_luy_khong_phai_gui_lai_toan_bo():
+    """Người trả lời bổ sung MỘT câu ở lượt sau (vd. sau khi security-engineer nêu câu hỏi mở) không phải
+    gửi lại toàn bộ câu cũ. Trước đây `_answers_complete` chỉ đọc event hiện tại, nên lượt bổ sung luôn bị
+    coi là "thiếu hết các câu trước": spec-writer không bao giờ chạy lại, câu trả lời nằm im trong bus,
+    không audit, không báo ai (đo được khi chạy thật 2026-09-04 với OQ-02/OQ-05 của dự án QLKH)."""
+    def hai_cau(system, user):
+        if _agent_of(system) == "clarifier":
+            return {"project_id": "P1", "round": 1,
+                    "questions": [{"id": "Q1", "text": "?", "options": ["a"], "default": "a"},
+                                  {"id": "Q2", "text": "?", "options": ["b"], "default": "b"}]}
+        return handler(system, user)
+
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=hai_cau))
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app"})
+    orch.run()
+    _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "a"}]})
+    orch.run()
+    assert not bus.latest("approved-specs", "P1"), "moi tra loi 1/2 cau thi chua duoc viet spec"
+    # tra loi not cau con lai, KHONG gui lai Q1
+    _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": [{"question_id": "Q2", "answer": "b"}]})
+    orch.run()
+    assert bus.latest("approved-specs", "P1"), "cau tra loi phai tich luy qua cac luot"
+
+
+def test_lenh_thu_lai_song_sot_qua_restart(tmp_path):
+    """`_retry_stalled` bỏ dấu `processed` rồi đẩy vào `self.queue` — cả hai đều trong RAM. Restart giữa lúc
+    đó là mất trắng: event vẫn mang dấu `orchestrated` của LẦN LỖI nên hàng đợi dựng lại loại nó ra, dự án
+    nằm im vĩnh viễn dù người đã bấm duyệt. Đo được khi chạy thật 2026-09-04 (duyệt gate lúc 06:51:31,
+    restart lúc 06:51:45, sau đó không một dòng `orchestrated` nào nữa)."""
+    lan = {"n": 0}
+
+    def hong_lan_dau(system, user):
+        if _agent_of(system) == "researcher":
+            lan["n"] += 1
+            if lan["n"] == 1: raise LLMError("model rớt mạng")
+        return handler(system, user)
+
+    db = tmp_path / "c.sqlite"
+    bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=hong_lan_dau))
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app"})
+    orch.run()
+    assert orch.stalled.get("P1"), "researcher hỏng → dự án stalled, mở gate escalation"
+    orch.gate.decide("P1", "approve", by="human:lead")
+    # Xử lý ĐÚNG event gate.decide: `_retry_stalled` bỏ dấu processed và đẩy event lỗi vào self.queue (trong RAM),
+    # ghi `project.retried` lên bus. `max_steps=1` dừng ngay sau đó — mô phỏng tiến trình chết trước khi kịp
+    # chạy lại event vừa đưa vào hàng đợi. Đây mới là tình huống thật; nếu để `gate.decide` chưa xử lý thì
+    # restart vẫn nhặt được nó và test không bắt được lỗi gì.
+    orch.run(max_steps=1)
+    assert any(e.payload.get("action") == "project.retried" for e in bus.replay(topic="audit-log"))
+    assert not bus.latest("clarification-questions", "P1"), "chưa kịp chạy lại trước khi chết"
+    orch2 = Orchestrator(SQLiteBus(db), FakeClient(handler=hong_lan_dau))
+    orch2.run()
+    assert orch2.bus.latest("clarification-questions", "P1"), "sau restart phải chạy tiếp, không được nằm im"
+
+
 def test_release_engineer_wrong_env_is_invalid_output():
     def sneaky(system, user):
         if _agent_of(system) == "release-engineer":

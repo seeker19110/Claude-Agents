@@ -128,11 +128,22 @@ def _deployed(env_name: str) -> When:
 
 def _answers_complete(e: Envelope, o: Orchestrator) -> bool:
     """Người đã trả lời hết câu hỏi của vòng gần nhất (hoặc clarifier đã hết vòng) → đi thẳng spec-writer.
-    Thiếu câu trả lời mà vẫn viết spec thì spec dựa trên giả định người chưa xác nhận."""
-    q = o.latest("clarification-questions", e.payload.get("project_id") or e.key)
+    Thiếu câu trả lời mà vẫn viết spec thì spec dựa trên giả định người chưa xác nhận.
+
+    Câu trả lời TÍCH LUỸ trong vòng hiện tại, không chỉ tính event này: người trả lời bổ sung một câu ở lượt
+    sau (vd. sau khi security-engineer nêu thêm câu hỏi mở) không phải gửi lại toàn bộ câu cũ. Trước đây chỉ
+    đọc `e.payload`, nên lượt bổ sung luôn bị coi là "thiếu hết các câu trước" và spec-writer không bao giờ
+    chạy lại — câu trả lời nằm im trong bus, không audit, không báo ai (đo được khi chạy thật 2026-09-04)."""
+    pid = str(e.payload.get("project_id") or e.key)
+    q = o.latest("clarification-questions", pid)
     if q is None: return True
     asked = {str(x.get("id")) for x in q.payload.get("questions", [])}
     answered = {str(a.get("question_id")) for a in e.payload.get("answers", [])}
+    for prev in o.bus.replay(topic="clarification-answers", key=pid):
+        # chỉ tính câu trả lời của ĐÚNG vòng này: id có thể trùng giữa các vòng, câu cũ không được
+        # vô tình thoả mãn câu hỏi mới.
+        if prev.ts >= q.ts:
+            answered |= {str(a.get("question_id")) for a in prev.payload.get("answers", [])}
     return not (asked - answered) or int(q.payload.get("round", 1)) >= MAX_CLARIFY_ROUNDS
 
 
@@ -299,10 +310,16 @@ class Orchestrator:
         # Một lần duyệt log, không hai: `replay()` trên bus bền vững parse lại từng envelope, nên quét đôi là nhân đôi
         # thời gian mở lại một dự án đã chạy lâu.
         log = list(self.bus.replay())
-        for env in log:
+        # Thứ tự trong log của lần `orchestrated` / `project.retried` gần nhất cho từng event: dùng ở cuối hàm
+        # để nhận lại lệnh thử-lại chưa kịp chạy (xem chú thích ở đó).
+        last_done: dict[str, int] = {}
+        last_retry: dict[str, int] = {}
+        for i, env in enumerate(log):
             if env.topic == "audit-log":
                 a = env.payload; d = _evidence(a)
-                if a["actor"] == ACTOR and a["action"] == "orchestrated": self.processed.add(d["event_id"])
+                if a["action"] == "project.retried" and d.get("event_id"): last_retry[str(d["event_id"])] = i
+                if a["actor"] == ACTOR and a["action"] == "orchestrated":
+                    self.processed.add(d["event_id"]); last_done[str(d["event_id"])] = i
                 elif a["actor"] == ACTOR and a["action"] == "once": self.once.add(d["key"])
                 elif a["action"] == "plan.proposed": self.plans[d["plan_id"]] = d
                 elif a["action"] == "release.void": self._void(d["release_id"])
@@ -329,6 +346,15 @@ class Orchestrator:
                 # lại khi mở lại — tốn token và sinh PR/review trùng. `partial` được dựng lại từ causation_id.
                 self.partial.setdefault(env.causation_id, set()).add(env.actor)
             self.supervisor.replay(env)
+        # Lệnh thử-lại chỉ sống trong RAM: `_retry_stalled` bỏ dấu `processed` rồi đẩy event vào `self.queue`.
+        # Restart giữa lúc đó là mất trắng — event vẫn mang dấu `orchestrated` của LẦN LỖI, nên hàng đợi dựng lại
+        # loại nó ra và dự án nằm im vĩnh viễn dù người đã bấm duyệt. Đo được khi chạy thật (2026-09-04): duyệt
+        # gate escalation lúc 06:51:31, restart lúc 06:51:45, sau đó không một dòng `orchestrated` nào nữa.
+        # Ai đã bảo "chạy lại" mà event chưa được xử lý lại thì phải bỏ dấu để hàng đợi nhận lại.
+        reopened = {eid for eid, idx in last_retry.items() if idx > last_done.get(eid, -1)}
+        if reopened:
+            self.processed -= reopened
+            self._audit("retry.reopened", {"event_ids": sorted(reopened)})
         self.partial = {k: v for k, v in self.partial.items() if k not in self.processed}
         self.queue = [e for e in log if self._actionable(e) and e.event_id not in self.processed]
 
