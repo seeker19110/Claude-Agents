@@ -23,6 +23,12 @@ Agent ghi blackboard qua `context_writes` trong đầu ra (runner kiểm namespa
 bằng `audit-log` (actor=orchestrator, action=orchestrated) nên mở lại bus SQLite là tiếp tục đúng chỗ; trạng thái
 delivery-lead/supervisor/gate dựng lại từ replay. Không retry lời gọi model vì lỗi nội dung: lỗi ghi audit rồi đi tiếp.
 
+Hai trạng thái dừng KHÁC NHAU về độ bền, rất dễ nhầm khi vận hành:
+- HOÃN (`deferred`, xem `_defer`): KHÔNG gọi `_mark`, nên event không mang dấu `orchestrated`. Mở lại tiến trình
+  là hàng đợi nhận lại nó — an toàn khi restart. Backend hẹn "thử lại sau Ns" thì `defer_until` giữ đúng hẹn.
+- KẸT (`stalled`, xem `_stall`): event ĐÃ bị `_mark`. Lệnh chạy lại (`_retry_stalled`) bỏ dấu đó trong RAM, nên
+  `_rehydrate` phải đối chiếu `project.retried` với `orchestrated` gần nhất mới nhận lại được sau restart.
+
 ADR-0012:
 - Lỗi transport (`TransientError`, sau khi `RetryingClient` đã thử lại) không phải lỗi agent: event được HOÃN
   (`transient:<agent>`) và nhịp `tick` sau thử lại; agent đã chạy xong trên cùng event không chạy lại (`partial`).
@@ -56,6 +62,7 @@ from .gate_cli import PersistentGate, trusted_decision
 from .gates import Decision, GateRequest
 from .llm import LLMError, ModelClient, TransientError
 from .registry import AgentSpec, load_agents
+from .routing import retry_after_seconds
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError, artifact_store
 from .supervisor import Supervisor
 from .tools import ToolBox, WorkspaceTools
@@ -299,6 +306,9 @@ class Orchestrator:
         self.plans: dict[str, dict[str, Any]] = {}
         self.queue: list[Envelope] = []
         self.deferred: dict[str, tuple[Envelope, str]] = {}
+        # event_id → mốc monotonic sớm nhất được thử lại. Backend nói rõ "thử lại sau Ns" thì phải chờ đúng
+        # chừng đó; hỏi lại sớm hơn vừa vô ích vừa làm bẩn audit-log (xem `_retry_deferred`).
+        self.defer_until: dict[str, float] = {}
         self.once: set[str] = set()  # nhắc nhở / hành động chỉ làm một lần (gate.remind, review.reassign, lesson...)
         self.stats: Counter[str] = Counter()
         self._rehydrate()
@@ -563,7 +573,10 @@ class Orchestrator:
         self._note_closed()
         if res.transient:  # một agent chưa chạy được vì transport: giữ event lại, nhịp sau thử tiếp (agent xong rồi không chạy lại)
             stuck = next((a for a in res.actions if a.startswith("transient:")), "transient:?")
-            return self._defer(env, res, ":".join(stuck.split(":")[:2]))
+            # Backend đã nói rõ phải chờ bao lâu ("mọi backend đều đang nghỉ, thử lại sau 1515s") — tôn trọng nó.
+            # Trước đây mọi nhịp tick đều hỏi lại: đo được 60 bản ghi `llm_error`/phút liên tục trong lúc pool
+            # hết quota (2026-09-04), và `_rehydrate` replay TOÀN BỘ log nên bus phình làm mọi lần mở lại chậm dần.
+            return self._defer(env, res, ":".join(stuck.split(":")[:2]), wait_s=retry_after_seconds(stuck))
         self._mark(env, res)
         return res
 
@@ -1108,16 +1121,23 @@ class Orchestrator:
 
     # ---------- hoãn / đánh dấu / audit ----------
 
-    def _defer(self, env: Envelope, res: StepResult, reason: str) -> StepResult:
+    def _defer(self, env: Envelope, res: StepResult, reason: str, wait_s: float | None = None) -> StepResult:
+        """`wait_s`: backend nói rõ phải chờ bao lâu → không thử lại trước mốc đó (xem `_retry_deferred`)."""
         with self._lock:
             self.deferred[env.event_id] = (env, reason); res.deferred = reason; self.stats["deferred"] += 1
+            if wait_s and wait_s > 0:
+                self.defer_until[env.event_id] = time.monotonic() + float(wait_s)
+                res.deferred = f"{reason} (chờ {int(wait_s)}s)"
         return res
 
     def _retry_deferred(self, only: str | None = None) -> None:
-        """Đưa event hoãn về đầu hàng đợi; `only` = tiền tố lý do (vd. "transient:") để chỉ thử lại loại đó."""
+        """Đưa event hoãn về đầu hàng đợi; `only` = tiền tố lý do (vd. "transient:") để chỉ thử lại loại đó.
+        Event nào backend đã hẹn giờ (`defer_until`) thì chờ đúng hẹn — hỏi lại sớm hơn chỉ tốn một dòng lỗi."""
+        now = time.monotonic()
         with self._lock, self._qlock:
-            picked = {k: v for k, v in self.deferred.items() if only is None or v[1].startswith(only)}
-            for k in picked: self.deferred.pop(k)
+            picked = {k: v for k, v in self.deferred.items()
+                      if (only is None or v[1].startswith(only)) and self.defer_until.get(k, 0.0) <= now}
+            for k in picked: self.deferred.pop(k); self.defer_until.pop(k, None)
             self.queue[:0] = [e for e, _ in picked.values()]
 
     def _mark(self, env: Envelope, res: StepResult) -> None:

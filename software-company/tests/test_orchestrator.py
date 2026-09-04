@@ -222,11 +222,11 @@ def test_loi_agent_khong_nhanh_nao_nhan_thi_mo_gate_chu_khong_im_lang():
     assert orch.gate.pending.get("T1"), "phải mở gate escalation thay vì chết lặng"
 
 
-def test_cau_tra_loi_tich_luy_khong_phai_gui_lai_toan_bo():
-    """Người trả lời bổ sung MỘT câu ở lượt sau (vd. sau khi security-engineer nêu câu hỏi mở) không phải
-    gửi lại toàn bộ câu cũ. Trước đây `_answers_complete` chỉ đọc event hiện tại, nên lượt bổ sung luôn bị
-    coi là "thiếu hết các câu trước": spec-writer không bao giờ chạy lại, câu trả lời nằm im trong bus,
-    không audit, không báo ai (đo được khi chạy thật 2026-09-04 với OQ-02/OQ-05 của dự án QLKH)."""
+def test_cau_tra_loi_tich_luy_trong_cung_mot_vong():
+    """Người trả lời bổ sung ở lượt sau (vd. sau khi security-engineer nêu câu hỏi mở) không phải gửi lại
+    toàn bộ câu cũ. Trước đây `_answers_complete` chỉ đọc event HIỆN TẠI, nên lượt bổ sung luôn bị coi là
+    "thiếu hết các câu trước": spec-writer không bao giờ chạy lại, câu trả lời nằm im trong bus, không audit,
+    không báo ai. Đo được khi chạy thật 2026-09-04 với OQ-02/OQ-05 của dự án QLKH."""
     def hai_cau(system, user):
         if _agent_of(system) == "clarifier":
             return {"project_id": "P1", "round": 1,
@@ -237,13 +237,14 @@ def test_cau_tra_loi_tich_luy_khong_phai_gui_lai_toan_bo():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=hai_cau))
     _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app"})
     orch.run()
+    q = bus.latest("clarification-questions", "P1")
+    assert {x["id"] for x in q.payload["questions"]} == {"Q1", "Q2"}
+
+    # Hai lượt trả lời RỜI NHAU trong cùng một vòng hỏi — đúng cách người dùng trả lời bổ sung.
     _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "a"}]})
-    orch.run()
-    assert not bus.latest("approved-specs", "P1"), "moi tra loi 1/2 cau thi chua duoc viet spec"
-    # tra loi not cau con lai, KHONG gui lai Q1
     _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": [{"question_id": "Q2", "answer": "b"}]})
     orch.run()
-    assert bus.latest("approved-specs", "P1"), "cau tra loi phai tich luy qua cac luot"
+    assert bus.latest("approved-specs", "P1"), "câu trả lời phải tích luỹ trong cùng một vòng"
 
 
 def test_lenh_thu_lai_song_sot_qua_restart(tmp_path):
@@ -275,6 +276,35 @@ def test_lenh_thu_lai_song_sot_qua_restart(tmp_path):
     orch2 = Orchestrator(SQLiteBus(db), FakeClient(handler=hong_lan_dau))
     orch2.run()
     assert orch2.bus.latest("clarification-questions", "P1"), "sau restart phải chạy tiếp, không được nằm im"
+
+
+def test_ton_trong_thoi_gian_cho_backend_da_hen():
+    """Backend nói rõ "thử lại sau 1515s" thì không được hỏi lại ở nhịp tick kế. Trước đây mọi tick đều thử
+    lại: đo được 60 bản ghi `llm_error`/phút LIÊN TỤC lúc pool hết quota (2026-09-04). Rẻ về tài nguyên
+    (tầng routing không gọi mạng khi backend đang nghỉ) nhưng làm bẩn audit-log, mà `_rehydrate` replay TOÀN
+    BỘ log nên bus phình khiến mọi lần mở lại dự án chậm dần — lỗi tự nuôi chính nó."""
+    from company.llm import TransientError
+
+    goi = {"n": 0}
+
+    def het_quota(system, user):
+        if _agent_of(system) == "intake":
+            goi["n"] += 1
+            raise TransientError("mọi backend đều đang nghỉ, thử lại sau 1515s")
+        return handler(system, user)
+
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=het_quota))
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app"})
+    orch.run()
+    assert goi["n"] == 1 and orch.deferred, "lần đầu gọi rồi hoãn"
+    for _ in range(5):
+        orch.tick()
+    assert goi["n"] == 1, f"đã hẹn 1515s thì không được hỏi lại ở tick kế (đã gọi {goi['n']} lần)"
+
+    # hết hẹn thì phải thử lại, không được treo luôn
+    for k in orch.defer_until: orch.defer_until[k] = 0.0
+    orch.tick()
+    assert goi["n"] == 2, "hết thời gian hẹn thì phải thử lại"
 
 
 def test_release_engineer_wrong_env_is_invalid_output():
