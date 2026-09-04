@@ -370,6 +370,31 @@ def test_ticket_bi_chan_lan_hai_van_phai_mo_gate(tmp_path):
     assert orch.gate.pending.get("T1"), "chặn lần hai mà không mở gate = dự án đứng im không ai được hỏi"
 
 
+def test_status_canh_bao_khi_khong_con_viec_nao_chay_duoc(tmp_path):
+    """`status` phải trả lời được "còn việc nào chạy được không", không chỉ liệt kê trạng thái.
+
+    Mọi trường của `status()` đều mô tả trạng thái; không trường nào nói lên bế tắc. Nên một dự án chết đọc ra
+    y hệt một dự án khoẻ: `queue: 0`, `stalled: {}`, `gates_pending: {}` — ba chỉ số xanh vì RỖNG, mà rỗng ở
+    đây chính là triệu chứng.
+
+    Đo được khi chạy thật 2026-09-04: QLKH-001 blocked lúc 13:25, gate bị `once` nuốt, 13 ticket phụ thuộc chờ
+    vô hạn, `status` không có gì bất thường trong 26 phút."""
+    def hong_luon(system, user):
+        if _agent_of(system) in ENGINEERING: raise LLMError("agent kỹ thuật hỏng")
+        return handler(system, user)
+
+    bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient(handler=hong_luon))
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+
+    # ticket blocked NHƯNG gate escalation đang mở: người đã được hỏi, không phải bế tắc
+    assert orch.gate.pending, "kịch bản phải có gate mở thì mới kiểm được chiều 'im lặng đúng'"
+    assert orch.status()["warnings"] == [], "đang chờ người quyết thì không được kêu"
+
+    orch.gate.pending.clear()  # tái hiện đúng lỗi thật: ticket blocked mà không cổng nào hỏi ai
+    w = orch.status()["warnings"]
+    assert w and "T1" in w[0], f"không còn đường nào chạy được thì status phải nói ra, nhận được: {w}"
+
+
 # Trạng thái chỉ sống trong RAM là nguồn lỗi lặp lại nhiều nhất: nó không hỏng ồn ào, nó chỉ lặng lẽ biến mất
 # khi mở lại bus, rồi dự án đứng im trong khi mọi chỉ số vẫn xanh. Test dưới đây chốt bất biến chung thay vì
 # chạy theo từng ca: chạy hết một vòng đời rồi so TỪNG thuộc tính giữa đối tượng đang sống và đối tượng dựng
