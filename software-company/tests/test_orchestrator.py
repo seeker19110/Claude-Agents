@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import fields, is_dataclass
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -339,6 +340,98 @@ def test_trang_thai_blocked_song_sot_qua_restart(tmp_path):
     orch2.run()
     tasks = [e for e in orch2.bus.replay(topic="tasks", key="T1")]
     assert len(tasks) >= 2, "duyệt escalation phải phát task mới"
+
+
+# Trạng thái chỉ sống trong RAM là nguồn lỗi lặp lại nhiều nhất: nó không hỏng ồn ào, nó chỉ lặng lẽ biến mất
+# khi mở lại bus, rồi dự án đứng im trong khi mọi chỉ số vẫn xanh. Test dưới đây chốt bất biến chung thay vì
+# chạy theo từng ca: chạy hết một vòng đời rồi so TỪNG thuộc tính giữa đối tượng đang sống và đối tượng dựng
+# lại từ log. Thêm state mới mà quên đường dựng lại thì test này đỏ ngay.
+#
+# Mỗi mục loại trừ dưới đây là một QUYẾT ĐỊNH có lý do, không phải chỗ giấu state chưa xử lý.
+_CONG_TAC_VIEN = {"bus", "gate", "lead", "supervisor", "runner", "blackboard", "agents", "handlers"}
+_CAU_HINH = {"integration", "repo", "base", "integration_branch", "workers", "web", "max_turns", "max_retries",
+             "batch_releases", "require_integration", "replaying", "ticket_timeout", "review_timeout",
+             "project_budget_usd"}
+_CO_Y_KHONG_DUNG_LAI = {
+    "queue",        # dựng lại bằng công thức riêng (event chưa `orchestrated`), không phải bản sao
+    "deferred",     # KHÔNG `_mark` nên event tự vào lại hàng đợi — xem chú thích ở `_defer`
+    "defer_until",  # đi kèm `deferred`
+    "stats",        # bộ đếm của phiên, không phải trạng thái nghiệp vụ
+    "partial",      # bản dựng lại lọc theo `processed`, chặt hơn bản đang sống (và đúng hơn)
+    "knowledge",    # bài học nằm trên blackboard; `sprint_report` đếm từ `lessons()`
+}
+_BO_QUA = _CONG_TAC_VIEN | _CAU_HINH | _CO_Y_KHONG_DUNG_LAI
+
+
+def _bo_dau_thoi_gian(v):
+    """Bỏ `created_at` khỏi so sánh: bản đang sống đặt nó bằng đồng hồ lúc tạo, bản dựng lại lấy từ `env.ts`.
+    Hai giá trị lệch nhau vài micro giây — đó KHÔNG phải mất trạng thái. Test bản đầu so cả trường này nên
+    xanh trên Windows (đồng hồ thô ~15ms nên tình cờ trùng) mà đỏ trên Linux: một test đúng-sai theo nền tảng
+    còn tệ hơn không có test."""
+    if is_dataclass(v) and not isinstance(v, type):
+        return {f.name: _bo_dau_thoi_gian(getattr(v, f.name)) for f in fields(v) if f.name != "created_at"}
+    if isinstance(v, dict): return {k: _bo_dau_thoi_gian(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)): return [_bo_dau_thoi_gian(x) for x in v]
+    return v
+
+
+def _thuoc_tinh_lech(a, b) -> list[str]:
+    lech = []
+    for k in sorted(vars(a)):
+        if k in _BO_QUA or k.startswith("_"):
+            continue
+        va, vb = getattr(a, k, None), getattr(b, k, None)
+        if callable(va):
+            continue
+        try:
+            if _bo_dau_thoi_gian(va) != _bo_dau_thoi_gian(vb):
+                lech.append(f"{k}: live={va!r:.60} != rebuilt={vb!r:.60}")
+        except Exception:
+            pass
+    return lech
+
+
+def _chay_het_vong_doi(bus, o):
+    _drive_to_plan(bus, o)
+    o.gate.decide("PLAN-P1-1", "approve", by="human:pm"); o.run()
+    o.gate.decide("REL-001", "approve", by="human:release-manager"); o.run()
+    _pub(bus, "acceptance-results", "REL-001", "account-manager",
+         {"release_id": "REL-001", "project_id": "P1", "verdict": "accepted", "signed_by": "customer:po"})
+    o.run()
+
+
+def test_moi_trang_thai_nghiep_vu_song_sot_qua_restart(tmp_path):
+    """Bất biến: mở lại bus phải dựng lại ĐÚNG trạng thái đang có, không mất mục nào.
+
+    Trong một phiên chạy thật (2026-09-04) đã gặp nhiều lỗi cùng khuôn này — lệnh thử-lại và trạng thái
+    `blocked` của ticket đều chỉ sống trong RAM — mỗi lần đều làm dự án đứng im mà `status` vẫn báo xanh.
+    Test này chốt bất biến chung để không phải phát hiện từng cái qua sự cố."""
+    db = tmp_path / "c.sqlite"
+    bus = SQLiteBus(db)
+    o = Orchestrator(bus, FakeClient(handler=handler))
+    _chay_het_vong_doi(bus, o)
+    assert o.lead.state["T1"] == "closed", "vòng đời phải đi hết thì so sánh mới có ý nghĩa"
+
+    o2 = Orchestrator(SQLiteBus(db), FakeClient(handler=handler))
+    for ten, a, b in (("Orchestrator", o, o2), ("DeliveryLead", o.lead, o2.lead),
+                      ("Supervisor", o.supervisor, o2.supervisor), ("PersistentGate", o.gate, o2.gate)):
+        lech = _thuoc_tinh_lech(a, b)
+        assert not lech, f"{ten} mất trạng thái khi mở lại bus: " + " | ".join(lech)
+
+
+def test_bao_cao_dem_bai_hoc_tu_blackboard_khong_tu_ram(tmp_path):
+    """`sprint_report()['lessons']` từng đếm `self.knowledge` — danh sách RAM không dựng lại khi mở lại bus,
+    nên sau restart báo cáo hiện 0 bài học dù chúng vẫn nằm nguyên trên blackboard. Người đọc sẽ tưởng vòng
+    học không chạy."""
+    db = tmp_path / "c.sqlite"
+    bus = SQLiteBus(db)
+    o = Orchestrator(bus, FakeClient(handler=handler))
+    _chay_het_vong_doi(bus, o)
+    truoc = o.supervisor.sprint_report()["lessons"]
+    assert truoc > 0, "vòng đời đầy đủ phải rút được ít nhất một bài học"
+
+    o2 = Orchestrator(SQLiteBus(db), FakeClient(handler=handler))
+    assert o2.supervisor.sprint_report()["lessons"] == truoc, "số bài học không được tụt về 0 sau restart"
 
 
 def test_ton_trong_thoi_gian_cho_backend_da_hen():

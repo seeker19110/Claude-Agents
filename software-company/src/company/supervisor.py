@@ -202,7 +202,10 @@ class Supervisor:
         prs = sum(1 for _ in self.bus.replay(topic="pull-requests"))
         unverified = sum(1 for e in self.bus.replay(topic="pull-requests")
                          if (e.payload.get("local_checks") or {}).get("verified_by") != "workspace")
-        return {"tickets": tickets, "actions": dict(actions), "lessons": len(self.knowledge),
+        # Đếm bài học từ BLACKBOARD, không từ `self.knowledge`: danh sách trong RAM không được dựng lại khi mở
+        # lại bus, nên sau restart báo cáo hiện `lessons: 0` dù bài học vẫn còn nguyên trên blackboard — người
+        # đọc sẽ tưởng vòng học không chạy. `lessons()` đọc thẳng nguồn bền vững.
+        return {"tickets": tickets, "actions": dict(actions), "lessons": len(self.lessons()),
                 "rework_rate": round(sum(1 for r in tickets.values() if r["retry"]) / len(tickets), 2) if tickets else None,
                 "review_catch_rate": round(caught / len(reviews), 2) if reviews else None,
                 "prs": prs, "prs_unverified": unverified, "calibration": self.calibration(),
