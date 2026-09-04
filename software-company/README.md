@@ -31,7 +31,7 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0025); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0026); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
 agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
@@ -131,14 +131,14 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-04)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0025; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0026; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),
   supervisor (warn/cut/escalate, sprint_report), gates, blackboard, demo.
 - **Runner chạy model thật, trung lập provider** (`runner.py`, `llm.py`, ADR-0005): một interface `ModelClient`;
   adapter `anthropic`, `openai` (mọi server OpenAI-compatible: OpenAI, Ollama, Groq, vLLM, LM Studio...), `claude-code`
-  (CLI `claude -p`, gói Claude Pro/Max, `config_dir` → `CLAUDE_CONFIG_DIR`), `codex` (CLI `codex exec --json`, gói ChatGPT
+  (CLI `claude -p`, gói Claude Pro/Max, `config_dir` → `CLAUDE_CONFIG_DIR`, `effort` → `--effort` — ADR-0026), `codex` (CLI `codex exec --json`, gói ChatGPT
   Plus/Pro, `config_dir` → `CODEX_HOME`, `effort` → `model_reasoning_effort`, tự tìm binary trong `%LOCALAPPDATA%/OpenAI/Codex/bin`), `fake`.
   Hai provider CLI không có tool-use nên `supports_tools=false` mặc định: router bỏ qua chúng cho agent cần tool.
   Provider `openai` cũng nhận [`../gateway`](../gateway/README.md): proxy cục bộ xoay vòng nhiều tài khoản Google

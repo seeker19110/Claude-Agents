@@ -18,7 +18,8 @@ base_url: http://localhost:11434/v1
 
 max_tokens: 16000
 
-# chỉ provider anthropic: mức nỗ lực theo tier (low | medium | high | xhigh | max)
+# mức nỗ lực theo tier (low | medium | high | xhigh | max): anthropic (output_config), claude-code (`--effort`, ADR-0026),
+# codex (model_reasoning_effort; thêm none/minimal). Tier không khai → provider dùng mặc định của nó.
 effort:
   strong: high
   standard: medium
