@@ -79,10 +79,13 @@ def test_runner_feeds_supervisor_budget():
     bus = InMemoryBus(); sup = Supervisor(bus)
     t = Task(ticket_id="T1", project_id="P", requirement_id="R", assignee="backend", title="x", acceptance=["a"], budget_tokens=1000)
     bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=t.model_dump()))
+    # Ngân sách ticket đo ĐẦU RA: 1_100 output > budget 1_000 thì supervisor cắt. Input 900 không tính vào
+    # ngưỡng — nó phình theo số lượt tool chứ không theo khối lượng công việc.
     client = FakeClient(responses=[{"ticket_id": "T1", "branch": "ticket/T1", "pr_ref": "#1", "local_checks": {"lint": True}}],
-                        tokens_per_call=(900, 200))
+                        tokens_per_call=(900, 1_100))
     AgentRunner(bus, client).run("backend", Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=t.model_dump()), "pull-requests")
     assert sup.actions[-1].action == "budget_cut"
+    assert sup.budgets["T1"].output_used == 1_100 and sup.budgets["T1"].used == 2_000, "audit ghi cả hai con số"
 
 
 def test_runner_rejects_invalid_output_and_audits_it():

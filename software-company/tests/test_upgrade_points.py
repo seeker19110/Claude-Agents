@@ -134,7 +134,7 @@ def test_supervisor_thresholds_fire_once_until_budget_extended():
     bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=t.model_dump()))
     def audit(tokens, action="produced:x"):
         bus.publish(Envelope(topic="audit-log", key="backend", actor="backend",
-                             payload=AuditLog(actor="backend", action=action, ticket_id="T1", tokens=tokens).model_dump()))
+                             payload=AuditLog(actor="backend", action=action, ticket_id="T1", tokens=tokens, output_tokens=tokens).model_dump()))
     audit(850); audit(0); audit(10)
     assert [a.action for a in sup.actions] == ["warn"]
     audit(200); audit(0); audit(50)
@@ -230,8 +230,11 @@ def test_retry_gets_remaining_budget(tmp_path, monkeypatch):
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler), repo=repo, base="main"); budgets: list[int] = []
     def fake_generate(agent, inp, ws, budget=None, max_turns=25):
         budgets.append(budget)
-        # giả lập vòng tool đã đốt 2_000 token rồi lỗi: runner ghi audit (supervisor cộng dồn) và ném RunnerError
-        orch.runner._audit(orch.runner.agents[agent], "invalid_output", inp, evidence="x", tokens=2_000)
+        # giả lập vòng tool đã sinh 2_000 token ĐẦU RA rồi lỗi: runner ghi audit (supervisor cộng dồn) và ném
+        # RunnerError. Ngân sách ticket đo theo đầu ra, nên phải khai `output_tokens` — khai mỗi `tokens` (tổng)
+        # thì phần đã đốt không được trừ và lần làm lại sau vẫn thấy ngân sách nguyên vẹn.
+        orch.runner._audit(orch.runner.agents[agent], "invalid_output", inp, evidence="x", tokens=2_000,
+                           output_tokens=2_000)
         raise RunnerError("đầu ra hỏng")
     monkeypatch.setattr(orch.runner, "generate_in_workspace", fake_generate)
     _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
