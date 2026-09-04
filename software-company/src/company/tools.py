@@ -164,6 +164,27 @@ class WorkspaceTools:
         p.write_text(str(content), encoding="utf-8", newline="\n")
         return f"đã {'ghi đè' if existed else 'tạo'} {path} ({len(data)} byte)"
 
+    def delete_file(self, path: str) -> str:
+        """Xoá một file trong worktree.
+
+        Không có tool này thì agent KHÔNG XOÁ ĐƯỢC FILE: `write_file` chỉ ghi/ghi đè, và allowlist của `run`
+        chỉ có `git_status`/`git_diff` cùng lệnh test/lint — không có `rm` cũng không có `git rm`.
+
+        Đo được khi chạy thật (2026-09-04): reviewer chặn PR vì tệp rác rỗng `tests/fitness/test_ci_gates.py.tmp`
+        nằm trong cây nguồn. Qua BỐN vòng rework, kể cả vòng cuối khi xoá tệp đó là việc DUY NHẤT còn lại và
+        được nêu tách bạch trong hint, agent vẫn không xoá — nó sửa file khác không ai yêu cầu. Và không lần nào
+        nó nói "tôi không có công cụ xoá": việc bất khả thi không tự khai báo, nên cả người lẫn hệ thống đều
+        tưởng agent bướng, trong khi nó chỉ đang thiếu tay.
+
+        Cùng ranh giới đường dẫn với `write_file`: không ra khỏi worktree, không chạm `.git/`, không file bí mật.
+        Không xoá thư mục — xoá cây thư mục là thao tác quá rộng cho một agent, và chưa có nhu cầu thật."""
+        if not self.allow_write: raise ToolError("tool này chỉ đọc")
+        p = self._path(path)
+        if p.is_dir(): raise ToolError(f"chỉ xoá file, không xoá thư mục: {path!r}")
+        if not p.is_file(): return f"lỗi: không có file {path}"
+        p.unlink()
+        return f"đã xoá {path}"
+
     def list_files(self, path: str = ".", glob: str = "**/*") -> str:
         base = self._path(path)
         if not base.is_dir(): return f"lỗi: không có thư mục {path}"
@@ -216,6 +237,9 @@ class WorkspaceTools:
             tb.add(ToolSpec("write_file", "Ghi toàn bộ nội dung một file (tạo mới hoặc ghi đè). Không ghi file bí mật/nhị phân.",
                             {"type": "object", "properties": {"path": s(), "content": s()}, "required": ["path", "content"]}),
                    self.write_file)
+            tb.add(ToolSpec("delete_file", "Xoá một file trong worktree (ví dụ tệp tạm lỡ commit). Không xoá thư mục.",
+                            {"type": "object", "properties": {"path": s("đường dẫn tương đối")}, "required": ["path"]}),
+                   self.delete_file)
         tb.add(ToolSpec("list_files", "Liệt kê file theo glob (bỏ .git, .venv, node_modules).",
                         {"type": "object", "properties": {"path": s("thư mục, mặc định ."), "glob": s("mặc định **/*")}}),
                self.list_files)

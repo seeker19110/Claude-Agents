@@ -191,7 +191,7 @@ def test_tool_loop_runs_tools_then_final_answer(tmp_path):
     g = AgentRunner(bus, client).generate("backend", _task_env(), "pull-requests", tools=tb)
     assert (ws.path / "feature.py").read_text(encoding="utf-8") == "F = 1\n"
     assert g.turns == 2 and g.tool_calls == {"read_file": 1, "write_file": 1} and g.tokens == 2 * 1300
-    assert [c["tools"] for c in client.calls] == [["read_file", "write_file", "list_files", "search", "run"]] * 2
+    assert [c["tools"] for c in client.calls] == [["read_file", "write_file", "delete_file", "list_files", "search", "run"]] * 2
     assert "# Tool" in client.calls[0]["user"] and "run test" in client.calls[0]["user"]
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert acts == ["tools_used"]
@@ -784,3 +784,36 @@ def test_retry_that_rewrites_identical_files_is_no_change_not_commit_error(tmp_p
     with pytest.raises(RunnerError, match="không sửa file"):
         runner.generate_in_workspace("backend", _task_env(retry=1, hint="test đỏ"), ws)
     assert ws.has_changes() and not ws.dirty()
+
+
+def test_agent_xoa_duoc_file_va_khong_vuot_ranh_gioi(tmp_path):
+    """Agent phải XOÁ được file. Trước đây bộ tool chỉ có `read_file`/`write_file`/`list_files`/`search`/`run`,
+    mà allowlist của `run` chỉ có `git_status`/`git_diff` và lệnh test/lint — không `rm`, không `git rm`.
+
+    Đo được khi chạy thật 2026-09-04: reviewer chặn PR vì tệp rác rỗng `tests/fitness/test_ci_gates.py.tmp`
+    trong cây nguồn. Qua BỐN vòng rework — kể cả vòng cuối khi xoá tệp đó là việc DUY NHẤT còn lại và được nêu
+    tách bạch trong hint — agent không xoá, mà đi sửa file khác không ai yêu cầu. Không lần nào nó nói "tôi
+    không có công cụ xoá": việc bất khả thi không tự khai báo, nên nhìn từ ngoài agent như đang bướng."""
+    from company.tools import ToolError, WorkspaceTools
+
+    repo = _init_repo(tmp_path / "r")
+    (repo / "rac.tmp").write_text("", encoding="utf-8")
+    tools = WorkspaceTools(repo)
+
+    assert "delete_file" in [t.name for t in tools.toolbox().specs()], "tool xoá phải có mặt để agent gọi được"
+    assert "đã xoá" in tools.delete_file("rac.tmp") and not (repo / "rac.tmp").exists()
+
+    assert "không có file" in tools.delete_file("khong-ton-tai.tmp")  # báo rõ, không ném lỗi cứng
+    with pytest.raises(ToolError):
+        tools.delete_file("../ngoai-worktree.txt")   # không thoát khỏi worktree
+    with pytest.raises(ToolError):
+        tools.delete_file(".env")                    # không xoá file bí mật
+    with pytest.raises(ToolError):
+        tools.delete_file(".git/config")             # không chạm .git/
+    with pytest.raises(ToolError):
+        tools.delete_file(".")                       # không xoá thư mục
+
+    ro = WorkspaceTools(repo, allow_write=False)
+    assert "delete_file" not in [t.name for t in ro.toolbox().specs()], "agent chỉ-đọc không được cấp tool xoá"
+    with pytest.raises(ToolError):
+        ro.delete_file("mod.py")

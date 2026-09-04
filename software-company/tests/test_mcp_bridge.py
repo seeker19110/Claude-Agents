@@ -78,7 +78,7 @@ def test_real_subprocess_speaks_mcp_and_reaches_the_parent_toolbox(tmp_path):
         try:
             assert rpc("initialize")["serverInfo"]["name"] == SERVER_NAME
             names = [t["name"] for t in rpc("tools/list", mid=2)["tools"]]
-            assert names == ["read_file", "write_file", "list_files", "search", "run"]
+            assert names == ["read_file", "write_file", "delete_file", "list_files", "search", "run"]
             r = rpc("tools/call", {"name": "read_file", "arguments": {"path": "mod.py"}}, mid=3)
             assert "def add" in r["content"][0]["text"] and not r["isError"]
             # sandbox không đổi: file bí mật vẫn bị chặn, và chặn ở TIẾN TRÌNH CHA
@@ -139,7 +139,7 @@ def test_runner_binds_toolbox_and_cli_runs_the_whole_tool_loop_once(tmp_path):
     assert args[args.index("--tools") + 1] == "", "tắt hẳn tool gốc của CLI: chỉ còn tool MCP của công ty"
     assert "Read(**/.env)" in args[args.index("--settings") + 1], "deny file bí mật là lớp chặn thứ hai"
     assert args[args.index("--allowedTools") + 1] == ",".join(tool_full_name(n) for n in
-                                                              ["read_file", "write_file", "list_files", "search", "run"])
+                                                              ["read_file", "write_file", "delete_file", "list_files", "search", "run"])
     assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["tools_used"]
     ev = json.loads(next(iter(bus.replay(topic="audit-log"))).payload["evidence"])
     assert ev["calls"] == {"read_file": 1, "write_file": 1}
