@@ -47,6 +47,8 @@ src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, g
                metrics (từ audit-log), evals (ghi/phát lại), stacks (lint/test theo stack — ADR-0013), demo, graph (cần
                `uv sync --extra graph`, không tính coverage)
 examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--relay/--resume/--auto-escalate), relay_client.py
+               yeu-cau-mau-web-app.json (yêu cầu mẫu để publish vào `research-requests`: đủ mục tiêu, người dùng,
+               phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng intake cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 20 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
 tests/         pytest 566 ca / 30 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh

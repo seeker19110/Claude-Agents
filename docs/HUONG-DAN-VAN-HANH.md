@@ -332,6 +332,10 @@ khởi động lại. Một tiến trình phục vụ được nhiều khách, m
 uv run python -m company.orchestrator publish research-requests req.json --actor human:sales
 ```
 
+Mẫu đầy đủ hơn (một web app quản lý trung tâm, có đủ tám phần mà `intake` cần để đặt câu hỏi cho cả bốn mảng
+domain/ux/codebase/tech): `software-company/examples/yeu-cau-mau-web-app.json` — chép rồi sửa cho khách của bạn.
+Mô tả càng nêu rõ **ngoài phạm vi** và **yêu cầu phi chức năng có số đo** thì spec càng ít phải hỏi lại ở gate.
+
 Không muốn viết JSON tay: chạy console với `--allow-submit` (`cd console && uv run python -m console --allow-submit`),
 vào màn **Xưởng phần mềm** → khối *Giao việc* ở đầu màn → form *Yêu cầu phần mềm* (có ô *Nơi lưu dự án* = `repo`).
 Cùng một event, cùng schema — chỉ khác là điền vào ô. Câu hỏi làm rõ của spec-writer cũng trả lời được ở form
