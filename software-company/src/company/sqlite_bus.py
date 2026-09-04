@@ -2,13 +2,13 @@
 Mọi envelope append vào bảng `events`; mở lại là replay được theo topic/key. Thay Kafka/Redis sau nếu cần."""
 from __future__ import annotations
 
-import json
+import os
 import sqlite3
 from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 
-from .bus import InMemoryBus
+from .bus import BusError, InMemoryBus
 from .events import Envelope
 
 _DDL = """
@@ -49,20 +49,8 @@ class SQLiteBus(InMemoryBus):
                 self._db.execute("INSERT INTO events(event_id, topic, key, actor, ts, body) VALUES (?,?,?,?,?,?)",
                                  (env.event_id, env.topic, env.key, env.actor, env.ts.isoformat(), env.model_dump_json()))
             self._log.append(env); self._seen.add(env.event_id)
-            self._notify(self._subs, env)
+            self._notify_safely(env, reraise=True)  # như InMemoryBus: mọi subscriber nhận, lỗi ghi audit rồi ném lại
         return env
-
-    def _notify_safely(self, env: Envelope) -> None:
-        """Như `_notify` nhưng một handler ném lỗi không làm mất event cho handler khác: ghi audit rồi đi tiếp."""
-        for fn in list(self._subs.get(env.topic, [])) + list(self._subs.get("*", [])):
-            try:
-                fn(env)
-            except Exception as e:  # mọi lỗi handler đều phải hiện ra audit, không nuốt im lặng
-                self._persist_only(Envelope(topic="audit-log", key="bus", actor="bus", payload={
-                    "actor": "bus", "action": "subscriber_error",
-                    "evidence": json.dumps({"event_id": env.event_id, "topic": env.topic, "key": env.key,
-                                            "handler": getattr(fn, "__qualname__", repr(fn)), "error": str(e)[:300]},
-                                           ensure_ascii=False)}))
 
     def _persist_only(self, env: Envelope) -> Envelope:
         """Ghi đĩa + log nhưng không báo subscriber: audit về handler hỏng không được đi qua chính handler đó."""
@@ -106,3 +94,46 @@ class SQLiteBus(InMemoryBus):
 
     def close(self) -> None:
         self._db.close()
+
+
+class LeaseError(BusError): ...
+
+
+def _alive(pid: int) -> bool:
+    """Tiến trình còn sống? Không dùng os.kill(pid, 0) trên Windows (ở đó nó TerminateProcess)."""
+    if pid <= 0: return False
+    if os.name == "nt":
+        import ctypes
+        k32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h: return False
+        k32.CloseHandle(h); return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+class Lease:
+    """Một tiến trình orchestrator cho một file bus: hai tiến trình `run` trên cùng SQLite sẽ xử lý trùng event (processed
+    chỉ học qua audit sau poll). File `<db>.lock` giữ pid; pid chết → lock cũ, lấy lại được."""
+
+    def __init__(self, db: Path):
+        self.path = Path(str(db) + ".lock")
+        self.held = False
+
+    def acquire(self) -> None:
+        if self.path.exists():
+            try: pid = int(self.path.read_text(encoding="utf-8").strip() or "0")
+            except (ValueError, OSError): pid = 0
+            if pid != os.getpid() and _alive(pid):
+                raise LeaseError(f"orchestrator khác (pid {pid}) đang chạy trên {self.path.with_suffix('')}: "
+                                 f"dừng nó trước, hoặc xoá {self.path} nếu chắc chắn nó đã chết")
+        self.path.write_text(str(os.getpid()), encoding="utf-8"); self.held = True
+
+    def release(self) -> None:
+        if self.held:
+            self.path.unlink(missing_ok=True); self.held = False

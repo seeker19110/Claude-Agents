@@ -170,3 +170,82 @@ def test_ticket_bi_bo_duoc_dung_lai_khi_mo_lai_tu_sqlite(tmp_path):
     assert "ticket.abandoned" in acts
     o2 = Orchestrator(SQLiteBus(db), FakeClient(handler=failing))
     assert "T1" in o2.lead.abandoned and not o2.lead._dep_done("T1") and o2.lead.state.get("T2") == "blocked"
+
+
+# ---------- resume, nhiều thread, một tiến trình mỗi bus ----------
+
+def test_mo_lai_khong_chay_lai_agent_da_xong_cua_event_do_dang(tmp_path):
+    """Crash giữa hai route của một event: agent đã publish đầu ra (causation_id = event) không chạy lại khi mở lại."""
+    from company.sqlite_bus import SQLiteBus
+    db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=handler))
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    pr = next(e for e in bus.replay(topic="pull-requests") if e.key == "T2")   # PR T2: reviewer + qa + security cùng đọc
+    reviews = [e for e in bus.replay(topic="review-results") if e.causation_id == pr.event_id]
+    assert len(reviews) == 3
+    # giả crash: xoá dấu "orchestrated" của PR T2 khỏi log → event coi như chưa xong, nhưng đầu ra 3 agent vẫn còn
+    import sqlite3
+    with sqlite3.connect(db) as con:
+        con.execute("DELETE FROM events WHERE topic='audit-log' AND body LIKE ? AND body LIKE '%\"orchestrated\"%'",
+                    (f"%{pr.event_id}%",))
+    calls_before = len(FakeClient(handler=handler).calls)
+    c2 = FakeClient(handler=handler); o2 = Orchestrator(SQLiteBus(db), c2)
+    assert o2.partial.get(pr.event_id) == {"reviewer", "qa-debugger", "security-engineer"}
+    assert any(e.event_id == pr.event_id for e in o2.queue), "event vẫn được xử lý nốt (đánh dấu xong)"
+    o2.run()
+    reran = [c for c in c2.calls if _agent_of(c["system"]) in {"reviewer", "qa-debugger", "security-engineer"}
+             and _inp(c["user"]).get("ticket_id") == "T2"]
+    assert not reran and len(c2.calls) - calls_before >= 0, "không gọi lại model cho lượt review đã có"
+    assert len([e for e in o2.bus.replay(topic="review-results") if e.causation_id == pr.event_id]) == 3
+
+
+def test_toolbox_va_notes_theo_thread():
+    from company.llm import ClaudeCodeClient, LLMConfig, RetryingClient
+    cc = ClaudeCodeClient(LLMConfig(provider="claude-code"), runner=lambda *a: "")
+    seen = {}
+    def worker(name):
+        cc.bind_toolbox(name); time.sleep(0.02); seen[name] = cc._toolbox; cc.bind_toolbox(None)
+    ts = [threading.Thread(target=worker, args=(n,)) for n in ("A", "B")]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    assert seen == {"A": "A", "B": "B"} and cc._toolbox is None
+    rc = RetryingClient(FakeClient())
+    out = {}
+    def w2(name):
+        rc.notes.append(name); time.sleep(0.02); out[name] = rc.drain_retries()
+    ts = [threading.Thread(target=w2, args=(n,)) for n in ("x", "y")]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    assert out == {"x": ["x"], "y": ["y"]} and rc.drain_retries() == []
+
+
+def test_lease_mot_tien_trinh_moi_bus(tmp_path, capsys, monkeypatch):
+    import os
+
+    from company.orchestrator import main as orch_main
+    from company.sqlite_bus import Lease, LeaseError
+    db = tmp_path / "c.sqlite"; lock = tmp_path / "c.sqlite.lock"
+    monkeypatch.setenv("COMPANY_LLM_PROVIDER", "fake")
+    lock.write_text(str(os.getppid()), encoding="utf-8")   # "tiến trình khác" còn sống (tiến trình cha)
+    import pytest
+    with pytest.raises(LeaseError, match="pid"):
+        Lease(db).acquire()
+    lock.write_text("999999999", encoding="utf-8")        # lock cũ, pid đã chết → lấy lại được
+    ls = Lease(db); ls.acquire(); assert lock.read_text(encoding="utf-8") == str(os.getpid()); ls.release()
+    assert not lock.exists()
+    lock.write_text(str(os.getppid()), encoding="utf-8")
+    assert orch_main(["--db", str(db), "run", "--max-steps", "1"]) == 3 and "đang chạy" in capsys.readouterr().err
+    lock.unlink()
+    assert orch_main(["--db", str(db), "run", "--max-steps", "1"]) == 0 and not lock.exists()
+
+
+def test_publish_bao_du_subscriber_roi_moi_nem_loi():
+    from company.events import Envelope
+    bus = InMemoryBus(); got = []
+    def bad(env): raise ValueError("handler hỏng")
+    bus.subscribe("research-requests", bad); bus.subscribe("research-requests", lambda e: got.append(e.key))
+    import pytest
+    with pytest.raises(ValueError):
+        bus.publish(Envelope(topic="research-requests", key="P1", actor="human:sales", payload={"project_id": "P1", "description": "x"}))
+    assert got == ["P1"], "subscriber sau vẫn nhận event dù handler trước ném"
+    errs = [e for e in bus.replay(topic="audit-log") if e.payload["action"] == "subscriber_error"]
+    assert len(errs) == 1 and "handler hỏng" in errs[0].payload["evidence"]

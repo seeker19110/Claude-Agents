@@ -324,7 +324,12 @@ class Orchestrator:
             else:
                 if env.topic == "research-requests": self._learn_repo(env, replaying=True)
                 self.lead.replay(env)
+            if env.actor in self.agents and env.causation_id:
+                # Đầu ra agent đã publish cho event chưa được đánh dấu xong (crash giữa hai route): agent đó KHÔNG chạy
+                # lại khi mở lại — tốn token và sinh PR/review trùng. `partial` được dựng lại từ causation_id.
+                self.partial.setdefault(env.causation_id, set()).add(env.actor)
             self.supervisor.replay(env)
+        self.partial = {k: v for k, v in self.partial.items() if k not in self.processed}
         self.queue = [e for e in log if self._actionable(e) and e.event_id not in self.processed]
 
     # ---------- repo theo từng dự án (ADR-0025) ----------
@@ -1176,7 +1181,7 @@ def main(argv: list[str] | None = None) -> int:
     ns = ap.parse_args(argv)
     for stream in (sys.stdout, sys.stderr):  # Windows console cp1252
         if hasattr(stream, "reconfigure"): stream.reconfigure(encoding="utf-8")
-    from .sqlite_bus import SQLiteBus
+    from .sqlite_bus import Lease, LeaseError, SQLiteBus
     bus = SQLiteBus(ns.db)
     if ns.cmd == "publish":
         if not is_human(ns.actor):  # CLI là cửa của người; giả danh agent/orchestrator từ đây là vượt quyền producer của bus
@@ -1231,11 +1236,18 @@ def main(argv: list[str] | None = None) -> int:
         except (ValueError, WorkspaceError) as e:
             print(str(e), file=sys.stderr); return 2
         return 0
-    if ns.watch:
-        try: orch.watch(interval=ns.watch)
-        except KeyboardInterrupt: pass
-    else:
-        for r in orch.tick() if ns.max_steps is None else orch.run(ns.max_steps): print(_fmt(r))
+    try:
+        lease = Lease(ns.db); lease.acquire()
+    except LeaseError as e:
+        print(str(e), file=sys.stderr); return 3
+    try:
+        if ns.watch:
+            try: orch.watch(interval=ns.watch)
+            except KeyboardInterrupt: pass
+        else:
+            for r in orch.tick() if ns.max_steps is None else orch.run(ns.max_steps): print(_fmt(r))
+    finally:
+        lease.release()
     print(json.dumps(orch.status(), ensure_ascii=False))
     return 0
 

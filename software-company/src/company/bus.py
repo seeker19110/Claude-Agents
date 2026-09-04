@@ -127,11 +127,34 @@ class InMemoryBus:
         for fn in list(subs.get(env.topic, [])) + list(subs.get("*", [])):
             fn(env)
 
+    def _persist_only(self, env: Envelope) -> Envelope:
+        """Ghi log nhưng không báo subscriber: audit về handler hỏng không được đi qua chính handler đó."""
+        self._check_publish(env)
+        with self._lock: self._log.append(env)
+        return env
+
+    def _notify_safely(self, env: Envelope, reraise: bool = False) -> None:
+        """Báo MỌI subscriber dù một handler ném lỗi: event đã ghi rồi, subscriber sau (supervisor, orchestrator) không
+        được mất nó — nếu không, trạng thái lúc chạy khác trạng thái dựng lại từ log (poll/replay báo đủ). Lỗi ghi
+        audit `subscriber_error`; `reraise=True` (publish) ném lại lỗi đầu tiên cho người phát biết mà xử lý."""
+        first: Exception | None = None
+        for fn in list(self._subs.get(env.topic, [])) + list(self._subs.get("*", [])):
+            try:
+                fn(env)
+            except Exception as e:  # mọi lỗi handler đều phải hiện ra audit, không nuốt im lặng
+                first = first or e
+                self._persist_only(Envelope(topic="audit-log", key="bus", actor="bus", payload={
+                    "actor": "bus", "action": "subscriber_error",
+                    "evidence": json.dumps({"event_id": env.event_id, "topic": env.topic, "key": env.key,
+                                            "handler": getattr(fn, "__qualname__", repr(fn)), "error": str(e)[:300]},
+                                           ensure_ascii=False)}))
+        if reraise and first is not None: raise first
+
     def publish(self, env: Envelope) -> Envelope:
         self._check_publish(env)
         with self._lock:
             self._log.append(env)
-            self._notify(self._subs, env)
+            self._notify_safely(env, reraise=True)
         return env
 
     def subscribe(self, topic: str, fn: Callable[[Envelope], None]) -> None:
