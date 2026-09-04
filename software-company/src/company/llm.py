@@ -166,6 +166,11 @@ class LLMConfig:
     max_input_chars: int = 120_000   # trần ký tự prompt (≈ 37k token); runner cắt payload/blackboard theo context.py
     prices: dict[str, dict[str, float]] = field(default_factory=dict)  # model (tiền tố) → {input, output, cached_input, cache_write} USD/1M
     budget_usd: float | None = None  # trần chi phí mỗi dự án; supervisor pause dự án khi chạm (None = không giới hạn)
+    # Trần USD cho MỘT lượt gọi CLI (`--max-budget-usd`, ADR-0026). Khác bản chất với `budget_usd` (cả dự án): đây là
+    # cái hãm CỨNG bên trong phiên CLI, thứ mà ngân sách của supervisor không với tới được vì nó chỉ đo SAU khi CLI
+    # trả về (đánh đổi đã ghi ở ADR-0023/0024). Không khai thì lấy `budget_usd` làm trần thảm hoạ: một lượt tiêu quá
+    # ngân sách CẢ dự án chắc chắn là hỏng. Suy diễn này chỉ làm chặt thêm, không nới mức nào của cấu hình.
+    cli_max_budget_usd: float | None = None
 
     def model_for(self, tier: str) -> str:
         """light → standard → strong: backend không có model rẻ thì dùng model tầm trung, không bao giờ lùi lên tier cao
@@ -193,6 +198,7 @@ class LLMConfig:
         cfg.cli_bash = [str(x) for x in (data.get("cli_bash") or cfg.cli_bash)]
         cfg.mcp_tools = bool(data.get("mcp_tools", cfg.mcp_tools))
         cfg.mcp_max_turns = int(data.get("mcp_max_turns", cfg.mcp_max_turns))
+        if data.get("cli_max_budget_usd") is not None: cfg.cli_max_budget_usd = float(data["cli_max_budget_usd"])
         if data.get("api_key"): cfg.api_key = str(data["api_key"])
         if data.get("api_key_env"): cfg.api_key = os.environ.get(str(data["api_key_env"]), cfg.api_key)
         return cfg
@@ -223,6 +229,7 @@ def load_config(path: Path | None = None) -> LLMConfig:
         cfg.cli_bash = [str(x) for x in (data.get("cli_bash") or cfg.cli_bash)]
         cfg.mcp_tools = bool(data.get("mcp_tools", cfg.mcp_tools))
         cfg.mcp_max_turns = int(data.get("mcp_max_turns", cfg.mcp_max_turns))
+        if data.get("cli_max_budget_usd") is not None: cfg.cli_max_budget_usd = float(data["cli_max_budget_usd"])
         cfg.backends = [dict(b) for b in (data.get("backends") or []) if isinstance(b, dict)]
         cfg.routing = dict(data.get("routing") or {})
     env = os.environ
@@ -661,6 +668,15 @@ def cli_tool_names(tools: list[ToolSpec], bash: list[str]) -> list[str]:
 CLAUDE_EFFORT = ("low", "medium", "high", "xhigh", "max")
 
 
+def cli_budget_args(cfg: LLMConfig) -> list[str]:
+    """`--max-budget-usd` cho một lượt CLI: `cli_max_budget_usd` nếu khai, không thì `budget_usd` (trần cả dự án) làm
+    trần thảm hoạ. CLI dừng phiên khi chạm và trả `subtype=error_max_budget_usd`, nên đây là cái hãm DUY NHẤT có tác
+    dụng GIỮA phiên — ngân sách của supervisor chỉ đo được sau khi CLI trả về (ADR-0023/0024)."""
+    cap = cfg.cli_max_budget_usd if cfg.cli_max_budget_usd is not None else cfg.budget_usd
+    if cap is None or cap <= 0: return []
+    return ["--max-budget-usd", f"{cap:g}"]
+
+
 def cli_effort_args(effort: dict[str, str], tier: str) -> list[str]:
     """`--effort <mức>` cho tier; không khai tier → không thêm cờ (CLI dùng mặc định của nó); khai sai → lỗi rõ."""
     level = effort.get(tier)
@@ -805,7 +821,8 @@ class ClaudeCodeClient:
         # ADR-0026: effort, structured output và tắt lưu phiên ở cả ba chế độ tool. Schema vẫn được nhúng vào prompt
         # (`hint`) để model thấy mô tả từng trường; `--json-schema` là lớp ÉP, không phải lớp giải thích.
         args = [self.binary, "-p", "--output-format", "json", "--model", model, *CLI_BASE_FLAGS,
-                "--json-schema", json.dumps(schema, ensure_ascii=False), *cli_effort_args(self.cfg.effort, model_tier)]
+                "--json-schema", json.dumps(schema, ensure_ascii=False), *cli_effort_args(self.cfg.effort, model_tier),
+                *cli_budget_args(self.cfg)]
         if mcp:
             c = self._complete_mcp(args=args, system=system, stdin=prompt + hint + MCP_TOOL_NOTE, workdir=workdir)
             if c is not None:

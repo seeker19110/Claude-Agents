@@ -41,8 +41,16 @@ Câu hỏi đặt ra (09/2026): "nâng cấp harness" có cần không? *Harness
    trường. `_parse` đọc `subtype` trước `result`: `error_max_turns` / `error_max_budget_usd` /
    `error_max_structured_output_retries` / `error_during_execution` thành thông báo nói đúng việc phải làm. Thêm
    `--no-session-persistence`. Không có đường lùi cho CLI thiếu `--json-schema`: bản có `--restricted` đã có nó.
-4. **Các bước sau, mỗi bước một PR nhỏ, không cần ADR mới**: (a) Đồng bộ adapter của `Studio-creators` theo bản
-   `software-company`. (b) Nối `--max-budget-usd` với `budget_usd`.
+4. **Bước 3 (cùng PR)**: (a) **Đồng bộ adapter của `Studio-creators`** theo bản `software-company`: system prompt qua
+   `--system-prompt-file` (trần argv Windows), `cli_env` lọc biến bí mật cho cả `claude` và `codex` (trước đây truyền
+   nguyên `os.environ`, nên khoá TTS/ảnh/YouTube đi thẳng vào tiến trình con), `CODEX_EFFORT` có `none`, và cả
+   `--effort` / `--json-schema` / `structured_output` / `subtype` / `--no-session-persistence` của bước 1–2. KHÔNG
+   port `TransientError`: Studio phân loại lỗi bằng regex trong `routing.py`, đổi sang exception là thay đổi kiến
+   trúc, không thuộc phạm vi ADR này.
+   (b) **`--max-budget-usd`**: khoá mới `cli_max_budget_usd` là trần USD cho MỘT lượt CLI. Không khai thì lấy
+   `budget_usd` (trần cả dự án) làm trần thảm hoạ — một lượt tiêu quá ngân sách cả dự án chắc chắn là hỏng; suy diễn
+   này chỉ làm CHẶT thêm, không nới mức nào. Đây là cái hãm duy nhất có tác dụng GIỮA phiên CLI, bịt đúng đánh đổi mà
+   ADR-0023/0024 đã ghi ("ngân sách chỉ kiểm được sau khi CLI trả về").
 5. **Không dùng `--bare`.** Ghi lại để không ai thử thêm nó "cho nhanh".
 
 ## Hệ quả

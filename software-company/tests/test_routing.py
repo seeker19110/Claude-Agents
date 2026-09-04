@@ -442,6 +442,23 @@ def test_claude_code_effort_xuong_cli_o_moi_che_do_va_gia_tri_sai_hong_to(tmp_pa
             system="s", user="u", schema={}, model_tier="strong")
 
 
+def test_claude_code_tran_chi_phi_moi_luot_cli(tmp_path: Path):
+    """ADR-0026: `--max-budget-usd` là cái hãm DUY NHẤT có tác dụng GIỮA phiên CLI — ngân sách của supervisor chỉ đo
+    được sau khi CLI trả về (đánh đổi ADR-0023/0024). Khai riêng thì dùng nó; không khai thì `budget_usd` của dự án
+    làm trần thảm hoạ; không có gì thì không thêm cờ."""
+    seen: list = []
+    def run(a, s, cwd=None): seen.append(a); return _CC_OK
+    base = dict(provider="claude-code", models={"strong": "m"})
+    ClaudeCodeClient(LLMConfig(**base, cli_max_budget_usd=0.5, budget_usd=100.0), runner=run).complete(
+        system="s", user="u", schema={}, model_tier="strong")
+    assert seen[0][seen[0].index("--max-budget-usd") + 1] == "0.5", "khai riêng thì thắng trần dự án"
+    ClaudeCodeClient(LLMConfig(**base, budget_usd=12.0), runner=run).complete(
+        system="s", user="u", schema={}, model_tier="strong")
+    assert seen[1][seen[1].index("--max-budget-usd") + 1] == "12", "không khai riêng → trần dự án làm trần thảm hoạ"
+    ClaudeCodeClient(LLMConfig(**base), runner=run).complete(system="s", user="u", schema={}, model_tier="strong")
+    assert "--max-budget-usd" not in seen[2], "không cấu hình gì thì không bịa ra trần"
+
+
 def test_cli_tools_off_still_refuses_tools_and_keeps_single_turn():
     """Mặc định (cli_tools=False) giữ nguyên hành vi cũ: có tool thì báo lỗi, không tool thì một lượt, không tool CLI."""
     with pytest.raises(LLMError, match="cli_tools"):

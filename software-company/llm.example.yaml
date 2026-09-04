@@ -25,6 +25,10 @@ effort:
   standard: medium
   light: low
 
+# ADR-0026 — trần USD cho MỘT lượt gọi CLI `claude -p` (`--max-budget-usd`), cái hãm duy nhất có tác dụng GIỮA phiên.
+# Bỏ trống thì dùng `budget_usd` (trần cả dự án) làm trần thảm hoạ; không có cả hai thì không đặt cờ.
+# cli_max_budget_usd: 2.0
+
 # tham số provider-specific truyền thẳng vào request (vd. temperature cho openai)
 extra: {}
 
