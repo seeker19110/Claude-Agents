@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import fields, is_dataclass
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -362,6 +363,18 @@ _CO_Y_KHONG_DUNG_LAI = {
 _BO_QUA = _CONG_TAC_VIEN | _CAU_HINH | _CO_Y_KHONG_DUNG_LAI
 
 
+def _bo_dau_thoi_gian(v):
+    """Bỏ `created_at` khỏi so sánh: bản đang sống đặt nó bằng đồng hồ lúc tạo, bản dựng lại lấy từ `env.ts`.
+    Hai giá trị lệch nhau vài micro giây — đó KHÔNG phải mất trạng thái. Test bản đầu so cả trường này nên
+    xanh trên Windows (đồng hồ thô ~15ms nên tình cờ trùng) mà đỏ trên Linux: một test đúng-sai theo nền tảng
+    còn tệ hơn không có test."""
+    if is_dataclass(v) and not isinstance(v, type):
+        return {f.name: _bo_dau_thoi_gian(getattr(v, f.name)) for f in fields(v) if f.name != "created_at"}
+    if isinstance(v, dict): return {k: _bo_dau_thoi_gian(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)): return [_bo_dau_thoi_gian(x) for x in v]
+    return v
+
+
 def _thuoc_tinh_lech(a, b) -> list[str]:
     lech = []
     for k in sorted(vars(a)):
@@ -371,7 +384,7 @@ def _thuoc_tinh_lech(a, b) -> list[str]:
         if callable(va):
             continue
         try:
-            if va != vb:
+            if _bo_dau_thoi_gian(va) != _bo_dau_thoi_gian(vb):
                 lech.append(f"{k}: live={va!r:.60} != rebuilt={vb!r:.60}")
         except Exception:
             pass
