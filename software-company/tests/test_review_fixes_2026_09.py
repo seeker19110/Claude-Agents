@@ -186,7 +186,10 @@ def test_mo_lai_khong_chay_lai_agent_da_xong_cua_event_do_dang(tmp_path):
     assert len(reviews) == 3
     # giả crash: xoá dấu "orchestrated" của PR T2 khỏi log → event coi như chưa xong, nhưng đầu ra 3 agent vẫn còn
     import sqlite3
-    with sqlite3.connect(db) as con:
+    from contextlib import closing
+    # `with sqlite3.connect(...)` chỉ commit chứ KHÔNG đóng kết nối: phải bọc closing(), nếu không ResourceWarning
+    # "unclosed database" nổ ở một test khác về sau (chỗ nào chạy GC), rất khó lần ra.
+    with closing(sqlite3.connect(db)) as con, con:
         con.execute("DELETE FROM events WHERE topic='audit-log' AND body LIKE ? AND body LIKE '%\"orchestrated\"%'",
                     (f"%{pr.event_id}%",))
     calls_before = len(FakeClient(handler=handler).calls)

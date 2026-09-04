@@ -95,6 +95,18 @@ class SQLiteBus(InMemoryBus):
     def close(self) -> None:
         self._db.close()
 
+    def __del__(self) -> None:
+        """Đóng kết nối khi bus bị thu hồi mà người dùng quên `close()`.
+
+        Không có bước này, `sqlite3.Connection` tự cảnh báo `ResourceWarning: unclosed database` lúc GC — trên
+        Python 3.13 và với `filterwarnings = error` thì cảnh báo đó là lỗi test. Đóng ở đây sửa đúng chỗ rò (mỗi
+        lần mở lại bus là một kết nối) thay vì tắt cảnh báo đi. Chạy lúc thông dịch đang tắt thì thuộc tính có thể
+        đã biến mất, nên bọc rộng."""
+        try:
+            self._db.close()
+        except Exception:   # __del__ không được phép ném; mất kết nối lúc thông dịch tắt là chuyện thường
+            pass
+
 
 class LeaseError(BusError): ...
 
