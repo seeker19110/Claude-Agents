@@ -111,6 +111,11 @@ account-manager ghi nhận). Timeout 24h, supervisor nhắc ở 12h. Không bao 
 - **Ngữ cảnh có hạn mức** (`context.py`): `max_input_chars` (mặc định 120 000, `llm.yaml`/`COMPANY_MAX_INPUT_CHARS`).
   Payload ưu tiên trước blackboard; chuỗi dài nhất bị cắt giữa có nhãn khi vượt; blackboard chia water-filling giữa
   các namespace. Audit `context_trimmed` khi có cắt.
+- **Kết quả tool cũng là dữ liệu ngoài** (`guard.sanitize_tool_output`): `read_file`/`search`/`run` trả nội dung repo
+  khách, nên đi qua đúng bộ lọc injection như web trước khi vào ngữ cảnh (cả vòng tool của runner lẫn cầu MCP); đoạn
+  khớp bị thay nhãn và ghi audit `injection_sanitized`.
+- **Tool web** thêm allowlist cổng (80/443, đổi bằng `COMPANY_WEB_PORTS`), tin endpoint tìm kiếm theo `host:port` chứ
+  không theo host trần, và có hạn TỔNG thời gian tải (`TOTAL_TIMEOUT`) để server nhỏ giọt không giữ tool mãi.
 - **Guard injection theo nguồn** (`guard.py`): payload từ agent nội bộ khớp mẫu → từ chối chạy; payload từ khách/người
   dùng/web hoặc trường không tin cậy (`diff`, `text`...) → thay đoạn khớp bằng nhãn, đi tiếp (`injection_sanitized`).
 - **Retry lỗi transport** (`llm.py` `RetryingClient`): adapter phân loại lỗi mạng/429/5xx là `TransientError`, thử lại

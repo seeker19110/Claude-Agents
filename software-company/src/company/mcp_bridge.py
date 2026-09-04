@@ -31,6 +31,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from .guard import sanitize_tool_output
 from .tools import ToolBox, ToolCall
 
 SERVER_NAME = "company"          # tool hiện ra với CLI là `mcp__company__<tên>`
@@ -63,6 +64,7 @@ class ToolBridge:
 
     def __init__(self, toolbox: ToolBox, host: str = "127.0.0.1"):
         self.toolbox = toolbox
+        self.sanitized: list[str] = []  # đoạn nghi injection đã lọc khỏi kết quả tool (runner ghi audit sau lượt)
         self.token = secrets.token_hex(16)
         self.host = host
         self._lock = threading.Lock()   # CLI gọi tuần tự, khoá chỉ để chắc chắn
@@ -121,6 +123,8 @@ class ToolBridge:
                                                      args=args if isinstance(args, dict) else {}))
                 except Exception as e:   # tool không tồn tại: là dữ liệu cho model, không phải sự cố của cầu
                     return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+            out, hits = sanitize_tool_output(out)  # cùng bộ lọc như vòng tool của runner (nội dung repo khách)
+            if hits: self.sanitized.extend(f"{name}: {h}" for h in hits[:5])
             return {"ok": True, "result": out}
         return {"ok": False, "error": f"op lạ: {op}"}
 

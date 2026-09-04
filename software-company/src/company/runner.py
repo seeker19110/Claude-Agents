@@ -32,7 +32,7 @@ from .blackboard import Blackboard
 from .bus import SCHEMA_DIR, BusError, InMemoryBus
 from .context import fit
 from .events import AuditLog, Envelope
-from .guard import guard_payload
+from .guard import guard_payload, sanitize_tool_output
 from .llm import Completion, LLMError, ModelClient
 from .registry import AgentSpec, load_agents
 from .tools import ToolBox, ToolError, WorkspaceTools, dump_calls, tools_prompt
@@ -215,6 +215,9 @@ class AgentRunner:
             for t in c.tool_calls:
                 try: out = tools.call(t)
                 except ToolError as e: out = f"lỗi: {e}"
+                out, hits = sanitize_tool_output(out)  # nội dung repo khách/web là DỮ LIỆU, lọc như payload ngoài
+                if hits:
+                    self._audit(spec, "injection_sanitized", inp, evidence=f"tool {t.name}: " + "; ".join(hits[:5]))
                 msgs.append({"role": "tool", "tool_call_id": t.id, "content": out})
         if c is None or c.tool_calls or not c.text.strip():  # hết lượt hoặc lượt cuối rỗng: chốt bằng một lượt không tool
             if c is not None and c.tool_calls:

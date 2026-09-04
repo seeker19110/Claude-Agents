@@ -127,7 +127,9 @@ class _Resp:
     def __init__(self, status, headers=None, body=b""):
         self.status, self.headers, self.body = status, headers or {}, body
     def getheader(self, k, default=None): return self.headers.get(k, default)
-    def read(self, n=-1): return self.body
+    def read(self, n=-1):   # như HTTPResponse thật: đọc hết rồi trả b"" (fetcher đọc theo khối, có hạn tổng)
+        out, self.body = (self.body if n is None or n < 0 else self.body[:n]), (b"" if n is None or n < 0 else self.body[n:])
+        return out
     def close(self): ...
     def __enter__(self): return self
     def __exit__(self, *a): ...
@@ -188,14 +190,14 @@ def test_search_url_noi_bo_cua_nguoi_van_hanh_duoc_phep_con_url_cua_model_thi_kh
     fetched = []
     def fetcher(url): fetched.append(url); return 200, "application/json", body
     web = web_mod.WebTools(fetcher=fetcher, search_url="http://searx.internal:8080/search?q={q}&format=json")
-    assert web.trusted_hosts == frozenset({"searx.internal"})
+    assert web.trusted_hosts == frozenset({"searx.internal:8080"}), "tin theo host:port, không phải host trần"
     assert "1. t" in web.web_search("abc") and fetched == ["http://searx.internal:8080/search?q=abc&format=json"]
     with pytest.raises(ToolError, match="host bị chặn"):   # cùng host nhưng do model đưa qua fetch_url: vẫn chặn
         web.fetch_url("http://searx.internal:8080/admin")
     with pytest.raises(ToolError, match="http/https"):     # scheme vẫn bị kiểm với URL cấu hình
         web_mod.WebTools(fetcher=fetcher, search_url="file:///etc/passwd?{q}").web_search("abc")
     d = web_mod.WebTools(search_url="http://searx.internal/?q={q}")
-    assert d.fetcher.keywords == {"trusted_hosts": frozenset({"searx.internal"})}   # fetcher mặc định mang danh sách tin cậy
+    assert d.fetcher.keywords == {"trusted_hosts": frozenset({"searx.internal:80"})}   # fetcher mặc định mang danh sách tin cậy
 
 
 def test_check_url_van_chan_o_chang_dau():
