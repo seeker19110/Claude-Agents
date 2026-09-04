@@ -88,13 +88,22 @@ Merge sạch (không xung đột) thì **không** chạy lại toàn bộ cổng
 - Sau merge, kiểm `main` còn xanh; hỏng thì ưu tiên revert rồi điều tra trong PR mới.
 - Tag `vX.Y.Z` khi phát hành mốc (`version` trong `software-company/pyproject.toml`).
 
-## 8. Việc cần bật trên GitHub (một lần)
+## 8. Việc cần bật trên GitHub (một lần) — và cách biết nó CÓ THẬT
 
-Quy trình trên giả định `main` có branch protection. Trong Settings → Branches của
-`seeker19110/X-Agents`, thêm rule cho `main`:
+Quy trình trên giả định `main` có bảo vệ nhánh. Cấu hình này **không nằm trong git**, nên trước đây "đã bật"
+chỉ là lời hứa: PR #29 merge 23 giây sau khi mở, job `quality` xanh **3 phút sau khi đã merge**. Từ nay có hai lớp:
 
-- Require a pull request before merging.
-- Required status checks: `quality`, `metadata`.
-- **Tắt** "Require branches to be up to date before merging" (tránh mỗi PR khác merge là mọi PR
-  đang mở phải gộp `main` rồi chờ CI lại).
-- Bật "Allow auto-merge" và "Automatically delete head branches".
+1. **Ruleset import được** — `.github/rulesets/main.json` là nguồn sự thật, đi qua PR như code.
+   Bật: Settings → Rules → Rulesets → **New ruleset → Import a ruleset** → chọn file đó → Create.
+   Nội dung: bắt buộc PR (**1 approval**, người duyệt ≠ người push, thread review phải resolve, chỉ **squash**) ·
+   required status checks `quality` + `metadata` · cấm xoá và cấm force-push `main` ·
+   **không ai được bypass, kể cả admin** (`bypass_actors` rỗng) · **tắt** "up to date" (`strict: false`) để PR khác
+   merge không bắt mọi PR đang mở gộp `main` rồi chờ CI lại.
+2. **Job `protection-guard` trong CI** đọc rule đang áp lên nhánh mặc định qua API và **đỏ khi thiếu** bất kỳ mục
+   nào ở trên. `quality` cần nó xanh. Nghĩa là: chưa import ruleset thì mọi PR đỏ — đó là chủ đích.
+
+Hai nút vẫn phải bật tay trong Settings → General (không thuộc ruleset): **Allow auto-merge** và
+**Automatically delete head branches**.
+
+Muốn đổi số approval (vd còn một người trực): sửa `required_approving_review_count` trong file JSON qua PR, rồi
+import lại (ruleset cùng tên sẽ được cập nhật). Guard không kiểm số approval, chỉ kiểm có rule `pull_request`.
