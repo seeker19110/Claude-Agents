@@ -214,6 +214,31 @@ def test_tool_loop_stops_when_budget_exhausted(tmp_path):
     assert "output 3300 > 3000" in a["evidence"] and "kể cả input: 14300" in a["evidence"]
 
 
+def test_van_xuoi_o_luot_cuoi_bi_ep_chot_lai_bang_json(tmp_path):
+    """Agent có tool trả VĂN XUÔI ở lượt cuối thì phải bị bắt chốt lại bằng JSON, không được để runner báo
+    "đầu ra không phải JSON" — thông điệp đó dẫn người đọc đi sửa schema trong khi chỉ cần xin model chốt lại.
+
+    Vì sao agent có tool hay dính: `OpenAICompatClient` KHÔNG ép `response_format` khi request có `tools` (ép
+    json_object thì model không gọi tool được nữa), nên lượt cuối không có gì buộc nó trả JSON. Đo được khi
+    chạy thật 2026-09-04: `qa-debugger` (tools="ro") hỏng LẶP LẠI với "...Tôi đã thu thập đủ bằng chứng...",
+    chặn ticket QLKH-001 không qua nổi review."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    luot = {"n": 0}
+
+    def handler_van_xuoi(system, user):
+        luot["n"] += 1
+        if luot["n"] == 1:
+            return "Tôi đã thu thập đủ bằng chứng. Bây giờ tôi sẽ tổng hợp lại."   # văn xuôi, KHÔNG phải JSON
+        return _pr(_inp(user))
+
+    client = FakeClient(handler=handler_van_xuoi, tool_handler=lambda m, t: [])
+    bus = InMemoryBus()
+    g = AgentRunner(bus, client).generate("backend", _task_env(), "pull-requests",
+                                          tools=WorkspaceTools(ws).toolbox())
+    assert luot["n"] == 2, "phải xin model chốt lại thêm một lượt, không được nhận văn xuôi"
+    assert g.payloads[0]["ticket_id"] == "T1"
+
+
 def test_tool_loop_max_turns_forces_final_json(tmp_path):
     ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
     client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=lambda m, t: [_tc("read_file", path="mod.py")])
