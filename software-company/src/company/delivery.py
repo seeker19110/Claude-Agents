@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from .bus import InMemoryBus
-from .events import BUDGET_FACTOR, AcceptanceResult, Envelope, ReviewResult, Task, can_transition
+from .events import BUDGET_FACTOR, AcceptanceResult, AuditLog, Envelope, ReviewResult, Task, can_transition
 from .gates import GateRequest, HumanGate
 
 DONE_STATES = frozenset({"approved", "merged", "released", "closed"})
@@ -187,7 +188,20 @@ class DeliveryLead:
     def _retry(self, tid: str, hint: str | None) -> None:
         t = self.tickets[tid]
         if t.retry + 1 >= self.max_retries:
-            self._set(tid, "blocked"); return
+            self._set(tid, "blocked")
+            # `blocked` phải BỀN, không chỉ nằm trong RAM: nó suy ra từ số lần retry chứ không từ event nào, nên
+            # mở lại bus là mất. Khi đó ticket quay về `dispatched` (theo event `tasks` cuối), và người duyệt
+            # escalation bấm approve thì `_on_escalation_decided` thấy state không phải blocked nên KHÔNG gọi
+            # `reopen()` — không có task mới, không ai làm, mà `status` vẫn báo mọi chỉ số xanh.
+            # Đo được khi chạy thật (2026-09-04): ticket QLKH-001 blocked lúc 11:17, orchestrator restart lúc
+            # 11:29, gate được duyệt cùng lúc đó → `budget.extended` có ghi nhưng không có event `tasks` nào nữa;
+            # dự án đứng im 8 phút với `stalled: -`, `blocked: -`, `queue: 0`.
+            self._emit(Envelope(topic="audit-log", key="delivery-lead", actor="delivery-lead",
+                                payload=AuditLog(actor="delivery-lead", action="ticket.blocked", ticket_id=tid,
+                                                 evidence=json.dumps({"ticket_id": tid, "retry": t.retry + 1,
+                                                                      "max_retries": self.max_retries},
+                                                                     ensure_ascii=False)).model_dump()))
+            return
         nt = t.model_copy(update={"retry": t.retry + 1, "hint": hint})
         self.tickets[tid] = nt; self._publish_task(nt)
 

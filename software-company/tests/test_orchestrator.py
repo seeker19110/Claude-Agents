@@ -314,6 +314,33 @@ def test_khong_chay_lai_viec_da_co_nguoi_lam_xong(tmp_path):
     assert lan["n"] == goi_truoc, "việc đã xong thì không được gọi lại model"
 
 
+def test_trang_thai_blocked_song_sot_qua_restart(tmp_path):
+    """`blocked` suy ra từ SỐ LẦN RETRY chứ không từ event nào, nên trước đây nó chỉ nằm trong RAM. Mở lại bus
+    là ticket quay về `dispatched` (theo event `tasks` cuối), và người duyệt escalation bấm approve thì
+    `_on_escalation_decided` thấy state không phải blocked nên KHÔNG gọi `reopen()` — không có task mới, không
+    ai làm, mà `status` vẫn báo mọi chỉ số xanh.
+
+    Đo được khi chạy thật 2026-09-04: QLKH-001 blocked lúc 11:17, orchestrator restart lúc 11:29, gate duyệt
+    cùng lúc đó → `budget.extended` có ghi nhưng không có event `tasks` nào nữa; đứng im 8 phút."""
+    def hong_luon(system, user):
+        if _agent_of(system) in ENGINEERING: raise LLMError("agent kỹ thuật hỏng")
+        return handler(system, user)
+
+    db = tmp_path / "c.sqlite"
+    bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=hong_luon))
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    assert orch.lead.state["T1"] == "blocked", "hết retry thì ticket phải blocked"
+
+    orch2 = Orchestrator(SQLiteBus(db), FakeClient(handler=hong_luon))
+    assert orch2.lead.state["T1"] == "blocked", "blocked phải sống sót qua restart, nếu không gate duyệt cũng vô ích"
+
+    # và người duyệt escalation phải mở lại được nó
+    orch2.gate.decide("T1", "approve", by="human:lead", reason="thử lại")
+    orch2.run()
+    tasks = [e for e in orch2.bus.replay(topic="tasks", key="T1")]
+    assert len(tasks) >= 2, "duyệt escalation phải phát task mới"
+
+
 def test_ton_trong_thoi_gian_cho_backend_da_hen():
     """Backend nói rõ "thử lại sau 1515s" thì không được hỏi lại ở nhịp tick kế. Trước đây mọi tick đều thử
     lại: đo được 60 bản ghi `llm_error`/phút LIÊN TỤC lúc pool hết quota (2026-09-04). Rẻ về tài nguyên
