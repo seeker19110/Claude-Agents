@@ -54,6 +54,11 @@
         "cost_usd": {
           "type": "number",
           "description": "chi phí USD tính từ bảng giá trong llm.yaml (0 nếu model không có giá)"
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "token đầu ra (ngân sách ticket đo theo đây, không đo tổng)"
         }
       },
       "required": [

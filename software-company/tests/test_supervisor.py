@@ -12,9 +12,9 @@ def _task(retry=0, budget=1000):
 def test_budget_warn_then_cut():
     bus = InMemoryBus(); sup = Supervisor(bus)
     bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=_task().model_dump()))
-    bus.publish(Envelope(topic="audit-log", key="backend", actor="backend", payload=AuditLog(actor="backend", action="x", ticket_id="T1", tokens=850).model_dump()))
+    bus.publish(Envelope(topic="audit-log", key="backend", actor="backend", payload=AuditLog(actor="backend", action="x", ticket_id="T1", tokens=850, output_tokens=850).model_dump()))
     assert sup.actions[-1].action == "warn"
-    bus.publish(Envelope(topic="audit-log", key="backend", actor="backend", payload=AuditLog(actor="backend", action="x", ticket_id="T1", tokens=200).model_dump()))
+    bus.publish(Envelope(topic="audit-log", key="backend", actor="backend", payload=AuditLog(actor="backend", action="x", ticket_id="T1", tokens=200, output_tokens=200).model_dump()))
     assert sup.actions[-1].action == "budget_cut"
 
 def test_retry_escalates():
@@ -80,7 +80,7 @@ def test_du_an_warn_roi_pause_theo_nguong_tien():
 
 def _audit(bus, actor, tokens):
     bus.publish(Envelope(topic="audit-log", key=actor, actor=actor,
-                         payload=AuditLog(actor=actor, action="produced:x", ticket_id="T1", tokens=tokens).model_dump()))
+                         payload=AuditLog(actor=actor, action="produced:x", ticket_id="T1", tokens=tokens, output_tokens=tokens).model_dump()))
 
 def test_review_tokens_do_not_count_against_ticket_budget():
     """F16: 3 lượt review (mỗi lượt mang blackboard) không trừ vào ngân sách ticket của engineer — trước đây

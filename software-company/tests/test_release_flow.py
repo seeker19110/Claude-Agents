@@ -156,9 +156,11 @@ def test_sprint_report_estimate_vs_actual():
     t = _task(estimate_tokens=10_000, budget_tokens=15_000)
     bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=t.model_dump()))
     bus.publish(Envelope(topic="audit-log", key="backend", actor="backend",
-                         payload=AuditLog(actor="backend", action="code", ticket_id="T1", tokens=12_500).model_dump()))
+                         payload=AuditLog(actor="backend", action="code", ticket_id="T1",
+                                          tokens=12_500, output_tokens=12_500).model_dump()))
     r = sup.sprint_report()
     assert r["tickets"]["T1"]["actual_tokens"] == 12_500 and r["tickets"]["T1"]["ratio"] == 1.25
+    # ngưỡng cảnh báo đo theo ĐẦU RA (12_500/15_000 = 83%), còn `actual_tokens` vẫn là tổng cho báo cáo chi phí
     assert r["actions"] == {"warn": 1}
 
 

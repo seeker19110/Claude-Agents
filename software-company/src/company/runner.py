@@ -129,6 +129,7 @@ class Generated:
     payloads: list[dict[str, Any]]
     tokens: int
     model: str
+    output_tokens: int = 0        # phần agent thật sự sinh ra; ngân sách ticket đo theo đây
     context_writes: list[dict[str, Any]] = field(default_factory=list)
     cache_hit_ratio: float = 0.0  # phần input lấy từ prompt cache, để đo hiệu quả cache trong audit-log
     turns: int = 1                # số lượt gọi model (1 = không dùng tool)
@@ -154,8 +155,9 @@ class AgentRunner:
         self.max_input_chars = max_input_chars or getattr(client, "max_input_chars", None) or DEFAULT_MAX_INPUT_CHARS
         self.pricing = getattr(client, "pricing", None)
 
-    def _audit(self, spec: AgentSpec, action: str, inp: Envelope, evidence: str, tokens: int = 0, cost: float = 0.0) -> None:
-        a = AuditLog(actor=spec.id, action=action, tokens=tokens, evidence=evidence, cost_usd=cost,
+    def _audit(self, spec: AgentSpec, action: str, inp: Envelope, evidence: str, tokens: int = 0, cost: float = 0.0,
+               output_tokens: int = 0) -> None:
+        a = AuditLog(actor=spec.id, action=action, tokens=tokens, output_tokens=output_tokens, evidence=evidence, cost_usd=cost,
                      ticket_id=inp.payload.get("ticket_id") or (inp.key if inp.topic == "tasks" else None),
                      project_id=inp.payload.get("project_id"))
         self.bus.publish(Envelope(topic="audit-log", key=spec.id, actor=spec.id, payload=a.model_dump()))
@@ -183,8 +185,9 @@ class AgentRunner:
         return c
 
     def _tool_loop(self, spec: AgentSpec, inp: Envelope, user: str, schema: dict[str, Any], tools: ToolBox,
-                   max_turns: int, budget: int | None) -> tuple[Completion, int, int, float]:
-        """model ↔ tool cho tới khi model trả lời cuối (không gọi tool). Trả về (completion cuối, tổng token, số lượt, USD).
+                   max_turns: int, budget: int | None) -> tuple[Completion, int, int, float, int]:
+        """model ↔ tool cho tới khi model trả lời cuối (không gọi tool). Trả về (completion cuối, tổng token, số lượt,
+        USD, tổng token ĐẦU RA — ngân sách ticket đo theo con số cuối này, xem chú thích ở `_turns`).
         Hết lượt hoặc model trả rỗng → ép chốt một lượt không tool. Vượt ngân sách → audit rồi ném RunnerError."""
         can_write = any(t.name == "write_file" for t in tools.specs())
         msgs: list[dict[str, Any]] = [{"role": "user", "content": user + "\n\n" + tools_prompt(tools, can_write)}]
@@ -200,7 +203,7 @@ class AgentRunner:
 
     def _turns(self, spec: AgentSpec, inp: Envelope, user: str, schema: dict[str, Any], tools: ToolBox,
                max_turns: int, budget: int | None, msgs: list[dict[str, Any]], total: int, turn: int,
-               usd: float, c: Completion | None) -> tuple[Completion, int, int, float]:
+               usd: float, c: Completion | None) -> tuple[Completion, int, int, float, int]:
         produced = 0   # output token cộng dồn — thước đo cho ngân sách, xem chú thích dưới
         while turn < max_turns:
             turn += 1
@@ -242,7 +245,7 @@ class AgentRunner:
                     msgs.append({"role": "tool", "tool_call_id": t.id, "content": "lỗi: hết lượt tool, không chạy"})
             msgs.append({"role": "user", "content": "Hết lượt tool. Trả về DUY NHẤT JSON cuối cùng ngay; phần chưa xong nêu rõ trong summary."})
             c = self._complete(spec, inp, user, schema, messages=msgs, tokens=total, cost=usd)
-            total += c.tokens; usd += self._cost(c)[0]; turn += 1
+            total += c.tokens; produced += c.output_tokens; usd += self._cost(c)[0]; turn += 1
         urls = [x["args"]["url"] for x in tools.calls if x["name"] == "fetch_url" and x["ok"]]
         # `mode`: ai đã chạy vòng tool — "loop" (vòng lặp ở đây, mọi provider API), "mcp" (CLI chạy nhưng gọi ngược
         # tool của công ty, ADR-0024), "cli" (CLI chạy bằng tool riêng của nó, ADR-0023). Người vận hành đọc audit là
@@ -250,7 +253,7 @@ class AgentRunner:
         self._audit(spec, "tools_used", inp,
                     evidence=json.dumps({"turns": turn, "mode": c.tool_mode or "loop", "calls": tools.summary(),
                                          **({"urls": urls} if urls else {})}, ensure_ascii=False))
-        return c, total, turn, usd
+        return c, total, turn, usd, produced
 
     def _context(self, project_id: str | None = None, spec: AgentSpec | None = None) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
         """Ngữ cảnh trong phạm vi một dự án, cộng namespace toàn công ty — agent của dự án B không đọc PRD của A.
@@ -302,9 +305,10 @@ class AgentRunner:
         t0 = time.perf_counter()
         if tools is None:
             c = self._complete(spec, inp, user, out_schema); total, turns = c.tokens, 1
+            out_toks = c.output_tokens
             usd, priced = self._cost(c)
         else:
-            c, total, turns, usd = self._tool_loop(spec, inp, user, out_schema, tools, max_turns, budget)
+            c, total, turns, usd, out_toks = self._tool_loop(spec, inp, user, out_schema, tools, max_turns, budget)
             priced = self._cost(c)[1]
         duration = int((time.perf_counter() - t0) * 1000)
         try:
@@ -326,7 +330,7 @@ class AgentRunner:
         except (LLMError, BusError, KeyError, TypeError) as e:
             self._audit(spec, "invalid_output", inp, evidence=str(e)[:500], tokens=total, cost=usd)
             raise RunnerError(f"{agent_id}: đầu ra không hợp lệ cho {topic_out}: {e}") from e
-        return Generated(payloads=payloads, tokens=total, model=c.model, context_writes=writes,
+        return Generated(payloads=payloads, tokens=total, output_tokens=out_toks, model=c.model, context_writes=writes,
                          cache_hit_ratio=c.cache_hit_ratio, turns=turns, tool_calls=tools.summary() if tools else {},
                          cost_usd=round(usd, 6), priced=priced, duration_ms=duration)
 
@@ -397,7 +401,8 @@ class AgentRunner:
             raise RunnerError(f"{agent_id}: đầu ra không hợp lệ cho {topic_out}: {e}") from e
         if context_writes: self.write_context(agent_id, inp, context_writes)
         g = generated or Generated(payloads=[payload], tokens=tokens, model=model, cache_hit_ratio=cache_hit_ratio)
-        self._audit(spec, f"produced:{topic_out}", inp, evidence=g.evidence(out.event_id), tokens=tokens, cost=g.cost_usd)
+        self._audit(spec, f"produced:{topic_out}", inp, evidence=g.evidence(out.event_id), tokens=tokens,
+                    cost=g.cost_usd, output_tokens=g.output_tokens)
         return out
 
     def run(self, agent_id: str, inp: Envelope, topic_out: str, key: str | None = None) -> RunResult:
@@ -410,7 +415,8 @@ class AgentRunner:
         """Lượt chỉ ghi blackboard (support-docs viết docs, security-engineer viết threat model...)."""
         g = self.generate(agent_id, inp, CONTEXT_ONLY)
         self.write_context(agent_id, inp, g.context_writes)
-        self._audit(self.agents[agent_id], "produced:shared-context", inp, evidence=g.evidence(), tokens=g.tokens, cost=g.cost_usd)
+        self._audit(self.agents[agent_id], "produced:shared-context", inp, evidence=g.evidence(), tokens=g.tokens,
+                    cost=g.cost_usd, output_tokens=g.output_tokens)
         return g
 
 

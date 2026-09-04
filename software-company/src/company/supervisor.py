@@ -20,12 +20,17 @@ REVIEW_ACTORS = frozenset({"reviewer", "qa-debugger", "security-engineer"})
 @dataclass
 class Budget:
     limit: int
-    used: int = 0            # token của agent làm ticket (so với `limit`)
+    used: int = 0            # TỔNG token của agent làm ticket (input + output) — cho báo cáo và chi phí
+    # Token ĐẦU RA, và đây mới là thứ so với `limit`. `used` phình theo số lượt tool (mỗi lượt gửi lại cả hội
+    # thoại) nên nó không đo được khối lượng công việc — thứ mà delivery-lead ước lượng khi đặt `budget_tokens`.
+    # Đo được khi chạy thật (2026-09-04): ticket QLKH-001 có output 18868 nhưng tổng 734862; ngân sách 90000 bị
+    # coi là cạn sạch, ticket bị cắt giữa chừng và công sức bị `workspace_reset` xoá, lặp nhiều lần.
+    output_used: int = 0
     review_used: int = 0     # token của reviewer/QA/security cho ticket — theo dõi, không trừ vào `limit`
     limit_usd: float | None = None  # trần tiền của ticket (Task.budget_usd), ngoài trần token
     cost_usd: float = 0.0
     @property
-    def ratio(self) -> float: return self.used / self.limit if self.limit else 0.0
+    def ratio(self) -> float: return self.output_used / self.limit if self.limit else 0.0
     @property
     def ratio_usd(self) -> float: return self.cost_usd / self.limit_usd if self.limit_usd else 0.0
 
@@ -87,7 +92,7 @@ class Supervisor:
             if a.ticket_id and a.ticket_id in self.budgets:
                 b = self.budgets[a.ticket_id]; b.cost_usd += a.cost_usd
                 if a.actor in REVIEW_ACTORS: b.review_used += a.tokens
-                else: b.used += a.tokens
+                else: b.used += a.tokens; b.output_used += a.output_tokens
                 self._check_ticket(a.ticket_id, b)
             if a.project_id and a.cost_usd:
                 self.project_cost[a.project_id] += a.cost_usd
@@ -105,7 +110,7 @@ class Supervisor:
         """Chạm 100% → budget_cut, 80% → warn; mỗi ngưỡng chỉ báo một lần cho tới khi `budget.extended` (như dự án):
         sau ngưỡng mọi audit của ticket (kể cả 0 token) đều lặp lại hành động thì gate escalation mở đi mở lại."""
         if tid not in self.ticket_cut and b.ratio >= self.CUT_AT:
-            self.ticket_cut.add(tid); self._act(tid, "budget_cut", f"dùng {b.used}/{b.limit} token")
+            self.ticket_cut.add(tid); self._act(tid, "budget_cut", f"đầu ra {b.output_used}/{b.limit} token (tổng kể cả input: {b.used})")
         elif tid not in self.ticket_cut and b.limit_usd and b.ratio_usd >= self.CUT_AT:
             self.ticket_cut.add(tid); self._act(tid, "budget_cut", f"dùng {b.cost_usd:.2f}/{b.limit_usd:.2f} USD")
         elif tid not in self.ticket_warned and b.ratio >= self.WARN_AT:

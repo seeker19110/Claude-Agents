@@ -834,8 +834,10 @@ class Orchestrator:
         tid = task.payload.get("ticket_id") or task.key
         budget = self.lead.tickets[tid].budget_tokens if tid in self.lead.tickets else task.payload.get("budget_tokens")
         if (b := self.supervisor.budgets.get(tid)) is not None:
-            # Lần làm lại chỉ còn phần ngân sách chưa đốt (supervisor cộng dồn theo audit, kể cả phần đã cấp thêm)
-            budget = max(b.limit - b.used, 0)
+            # Lần làm lại chỉ còn phần ngân sách chưa đốt (supervisor cộng dồn theo audit, kể cả phần đã cấp thêm).
+            # Trừ theo ĐẦU RA cho khớp với guard trong `_turns`: trừ theo tổng token thì ticket dùng tool luôn thấy
+            # ngân sách bằng 0 ngay từ lần làm lại đầu tiên (đo được: output 18868 nhưng tổng 734862).
+            budget = max(b.limit - b.output_used, 0)
         ws = self.workspace(tid)
         if ws is not None:
             g = self.runner.generate_in_workspace(agent, task, ws, budget=budget, max_turns=self.max_turns)

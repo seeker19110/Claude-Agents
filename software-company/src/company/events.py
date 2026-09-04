@@ -121,6 +121,9 @@ class AuditLog(BaseModel):
     project_id: str | None = None
     evidence: str | None = None
     tokens: int = 0
+    # Token ĐẦU RA riêng. `tokens` là tổng (input + output) và phình theo số lượt tool vì mỗi lượt gửi lại cả
+    # hội thoại, nên nó không đo được "agent đã làm bao nhiêu việc". Ngân sách ticket dùng trường này.
+    output_tokens: int = 0
     cost_usd: float = 0.0  # từ bảng giá `prices` trong llm.yaml; 0 khi model không có giá (supervisor đếm `unpriced`)
 
 class ChangeRequest(BaseModel):
