@@ -334,6 +334,10 @@ class Orchestrator:
                 elif a["action"] == "plan.proposed": self.plans[d["plan_id"]] = d
                 elif a["action"] == "release.void": self._void(d["release_id"])
                 elif a["action"] == "ticket.abandoned": self.lead.abandon(d["ticket_id"])
+                elif a["action"] == "ticket.blocked":
+                    # xem chú thích ở `DeliveryLead._retry`: không dựng lại `blocked` thì ticket quay về
+                    # `dispatched` và người duyệt escalation bấm approve cũng không mở lại được nó.
+                    self.lead.state[str(d["ticket_id"])] = "blocked"
                 elif a["action"] == "integration.merged":
                     self.integrated.add(d["ticket_id"])
                     prev_r, self.lead.replaying = self.lead.replaying, True
