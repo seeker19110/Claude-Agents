@@ -110,3 +110,63 @@ def test_cli_model_env_khong_mang_khoa_cong_ty(monkeypatch):
     assert "COMPANY_LLM_API_KEY" not in cc.env and cc.env.get("ANTHROPIC_API_KEY") == "sk-ant"
     cx = CodexClient(LLMConfig(provider="codex"), runner=lambda *a: "")
     assert "COMPANY_LLM_API_KEY" not in cx.env and cx.env.get("OPENAI_API_KEY") == "sk-oai" and "ANTHROPIC_API_KEY" not in cx.env
+
+
+# ---------- hai deadlock im lặng: RC huỷ giữ ticket khi gom release; ticket bị bỏ mở khoá ticket phụ thuộc ----------
+
+def _lead(batch=False):
+    from company.delivery import DeliveryLead
+    from company.gates import GateRequest, HumanGate
+    bus = InMemoryBus(); gate = HumanGate(); lead = DeliveryLead(bus, gate, batch_releases=batch)
+    gate.request(GateRequest(kind="plan", subject_id="PLAN", checklist=[], created_by="delivery-lead"))
+    gate.decide("PLAN", "approve", by="human:pm")
+    return bus, lead
+
+
+def _t(tid, **kw):
+    from company.events import Task
+    return Task(ticket_id=tid, project_id="P", requirement_id="R", assignee="backend", title=tid, acceptance=["a"],
+                estimate_tokens=1000, budget_tokens=2000, **kw)
+
+
+def test_rc_huy_khong_giu_ticket_approved_khi_gom_release():
+    _, lead = _lead(batch=True)
+    for tid in ("T1", "T2"): lead.dispatch(_t(tid), "PLAN")
+    for tid in ("T1", "T2"):
+        for st in ("in_progress", "in_review", "approved"): lead._set(tid, st)
+    assert lead.flush_releases("P") == "REL-001" and lead.release_tickets["REL-001"] == ["T1", "T2"]
+    # T2 xung đột lúc merge → RC huỷ, T2 làm lại; T1 vẫn approved nhưng nằm trong RC huỷ
+    lead.void_release("REL-001"); lead._set("T2", "changes_requested")
+    assert lead.unreleased("P") == ["T1"], "T1 không còn 'đã có RC'"
+    assert lead.flush_releases("P") is None, "T2 đang làm lại: chưa gom"
+    for st in ("dispatched", "in_progress", "in_review", "approved"): lead._set("T2", st)
+    assert lead.flush_releases("P") == "REL-002" and lead.release_tickets["REL-002"] == ["T1", "T2"], "trước đây: không RC nào nữa"
+
+
+def test_ticket_bi_bo_khong_mo_khoa_ticket_phu_thuoc():
+    _, lead = _lead()
+    lead.dispatch(_t("T1"), "PLAN"); lead.dispatch(_t("T2", depends_on=["T1"]), "PLAN")
+    assert lead.state == {"T1": "dispatched", "T2": "waiting"}
+    lead._set("T1", "blocked")
+    assert lead.close_escalated("T1") == ["T2"]
+    assert lead.state == {"T1": "closed", "T2": "blocked"} and not lead._dep_done("T1")
+    assert "T2" in lead.blocked(), "người quyết ở gate escalation, không dispatch trên nền thiếu code"
+
+
+def test_ticket_bi_bo_duoc_dung_lai_khi_mo_lai_tu_sqlite(tmp_path):
+    from company.sqlite_bus import SQLiteBus
+    def failing(system, user):
+        if _agent_of(system) == "reviewer":
+            return {"ticket_id": _inp(user)["ticket_id"], "source": "reviewer", "verdict": "block", "findings": [{"level": "block", "text": "sai"}]}
+        return handler(system, user)
+    db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=failing))
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    orch.gate.decide("T1", "approve", by="human:pm", reason="tiếp"); orch.run()
+    assert orch.lead.state["T1"] == "blocked" and orch.lead.state["T2"] == "waiting"
+    orch.gate.decide("T1", "reject", by="human:pm", reason="bỏ"); orch.run()
+    assert orch.lead.state["T1"] == "closed" and orch.lead.state["T2"] == "blocked" and "T1" in orch.lead.abandoned
+    assert orch.gate.pending["T2"].kind == "escalation", "T2 lên gate cho người quyết"
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "ticket.abandoned" in acts
+    o2 = Orchestrator(SQLiteBus(db), FakeClient(handler=failing))
+    assert "T1" in o2.lead.abandoned and not o2.lead._dep_done("T1") and o2.lead.state.get("T2") == "blocked"

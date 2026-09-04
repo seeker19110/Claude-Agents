@@ -305,7 +305,8 @@ class Orchestrator:
                 if a["actor"] == ACTOR and a["action"] == "orchestrated": self.processed.add(d["event_id"])
                 elif a["actor"] == ACTOR and a["action"] == "once": self.once.add(d["key"])
                 elif a["action"] == "plan.proposed": self.plans[d["plan_id"]] = d
-                elif a["action"] == "release.void": self.void_releases.add(d["release_id"])
+                elif a["action"] == "release.void": self._void(d["release_id"])
+                elif a["action"] == "ticket.abandoned": self.lead.abandon(d["ticket_id"])
                 elif a["action"] == "integration.merged":
                     self.integrated.add(d["ticket_id"])
                     prev_r, self.lead.replaying = self.lead.replaying, True
@@ -714,13 +715,17 @@ class Orchestrator:
             if tid in self.integrated: continue
             if self.lead.state.get(tid) not in {"approved", "merged"}:  # đã bị trả về (xung đột lúc approved): RC vô nghĩa
                 self._audit("release.void", {"release_id": rid, "ticket_id": tid, "reason": f"ticket đang {self.lead.state.get(tid)}"}, ticket_id=tid)
-                self.void_releases.add(rid); res.actions.append(f"void:{rid}")
+                self._void(rid); res.actions.append(f"void:{rid}")
                 return False
             if not self._merge_ticket(tid, res, release_id=rid):
                 self._audit("release.void", {"release_id": rid, "ticket_id": tid}, ticket_id=tid)
-                self.void_releases.add(rid)
+                self._void(rid)
                 return False
         return True
+
+    def _void(self, rid: str) -> None:
+        self.void_releases.add(rid)
+        self.lead.void_release(rid)  # gom release: ticket approved trong RC huỷ phải vào RC kế tiếp
 
     def _read_only_tools(self, inp: Envelope) -> ToolBox | None:
         """Tool chỉ đọc cho QA: worktree của ticket (review PR) hoặc worktree tích hợp (hồi quy sau khi deploy staging —
@@ -960,7 +965,10 @@ class Orchestrator:
                                       payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
             res.actions.append(f"reopen:{tid}")
         elif decision in {"reject", "rollback"} and tid in self.lead.tickets:
-            self.lead.close_escalated(tid); res.actions.append(f"closed:{tid}")
+            blocked = self.lead.close_escalated(tid); res.actions.append(f"closed:{tid}")
+            self._audit("ticket.abandoned", {"ticket_id": tid, "by": by, "dependents_blocked": blocked}, ticket_id=tid,
+                        project_id=self.lead.tickets[tid].project_id)
+            if blocked: res.actions.append("blocked:" + ",".join(blocked))
             if self.lead.batch_releases:  # ticket đóng không còn giữ release của các ticket đã approved
                 self.lead.flush_releases(self.lead.tickets[tid].project_id)
 

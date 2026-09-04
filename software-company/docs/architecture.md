@@ -94,8 +94,14 @@ account-manager ghi nhận). Timeout 24h, supervisor nhắc ở 12h. Không bao 
 - **Bằng chứng PR do code điền**: sau vòng tool, runner chạy lint/test thật, commit và ghi đè `branch`, `pr_ref`,
   `local_checks` (`verified_by: workspace`), `impact.files` — model không tự khai được. Không có `--repo` thì
   `local_checks` thành `{"unverified": true}`.
-- **Guardrail review**: `DeliveryLead.max_retries` (mặc định 3) và `Supervisor.max_retries`
-  dùng cùng một giá trị.
+- **Guardrail review**: `DeliveryLead.max_retries` (mặc định 3) là số lần làm một ticket (lần đầu + 2 lần làm lại):
+  lead đặt `blocked` khi `retry + 1 ≥ max_retries` nên `retry` không bao giờ tới 3 qua lead. `Supervisor.max_retries`
+  (cùng giá trị) là lớp chặn *phía sau*: chỉ bắt `tasks` có `retry ≥ 3` đến từ ngoài lead (publish tay, tiếp quản,
+  lead cấu hình khác) — không phải hai guardrail cùng bắt một trường hợp.
+- **Ticket bị bỏ** (người `reject` ở gate escalation): `closed` nhưng vào `DeliveryLead.abandoned`, KHÔNG thoả
+  `depends_on` của ticket khác; ticket đang `waiting` vì nó chuyển `blocked` (mở gate escalation) thay vì được dispatch
+  trên nền thiếu code. Audit `ticket.abandoned`, dựng lại khi mở lại. RC bị huỷ (`release.void`) không giữ ticket:
+  khi gom release, ticket approved của RC huỷ vào RC kế tiếp (`DeliveryLead.void_release`).
 - **Bus**: `InMemoryBus` cho test/demo (RLock, an toàn nhiều thread); đổi sang Redis Streams/Kafka bằng cách giữ nguyên
   interface `publish/subscribe/replay`.
 - **Checkpoint**: LangGraph (tùy chọn, `graph.py`) — checkpointer do người triển khai chọn.
