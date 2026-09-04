@@ -63,6 +63,13 @@ def artifact_store(db: Path) -> Path:
     return db.with_suffix(".artifacts")
 
 
+def _co_ve_la_json(text: str) -> bool:
+    """Đầu ra đã ở dạng JSON object chưa (sau khi bóc code fence)? Chỉ nhìn ký tự đầu — việc kiểm hợp lệ thật
+    là của `Completion.json()`; ở đây chỉ cần biết có nên xin model chốt lại một lượt nữa hay không."""
+    from .llm import _strip_code_fence
+    return _strip_code_fence(text or "").lstrip().startswith("{")
+
+
 def build_user_message(spec: AgentSpec, inp: Envelope, topic_out: str, context: dict[str, Any],
                        many: bool = False) -> str:
     """Phần động của prompt. Nội dung đầu vào được bọc rõ là DỮ LIỆU (chống prompt injection)."""
@@ -237,7 +244,14 @@ class AgentRunner:
                 if hits:
                     self._audit(spec, "injection_sanitized", inp, evidence=f"tool {t.name}: " + "; ".join(hits[:5]))
                 msgs.append({"role": "tool", "tool_call_id": t.id, "content": out})
-        if c is None or c.tool_calls or not c.text.strip():  # hết lượt hoặc lượt cuối rỗng: chốt bằng một lượt không tool
+        # Vòng tool đã có cơ chế "ép chốt bằng JSON", nhưng trước đây chỉ kích hoạt khi hết lượt hoặc lượt cuối
+        # RỖNG. Model trả VĂN XUÔI thì lọt qua và runner báo "đầu ra không phải JSON" — dẫn người đọc đi sửa
+        # schema, trong khi chỉ cần bảo model chốt lại.
+        # Vì sao agent có tool hay dính: `OpenAICompatClient` KHÔNG ép `response_format` khi request có `tools`
+        # (ép json_object thì model không gọi tool được nữa), nên lượt cuối không có gì buộc nó trả JSON.
+        # Đo được khi chạy thật (2026-09-04): `qa-debugger` (tools="ro") hỏng lặp lại với
+        # `...Tôi đã thu thập đủ bằng chứng. Bâ...`, chặn ticket QLKH-001 không qua nổi review.
+        if c is None or c.tool_calls or not _co_ve_la_json(c.text):  # chốt bằng một lượt không tool
             if c is not None and c.tool_calls:
                 msgs.append({"role": "assistant", "content": c.text,
                              "tool_calls": [{"id": t.id, "name": t.name, "args": t.args} for t in c.tool_calls]})
