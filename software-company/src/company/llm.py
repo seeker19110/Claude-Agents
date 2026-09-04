@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -279,10 +280,15 @@ class RetryingClient:
     def __init__(self, inner: ModelClient, retries: int = 3, base: float = 1.0, max_wait: float = 30.0,
                  sleep: Callable[[float], None] = time.sleep):
         self.inner, self.retries, self.base, self.max_wait, self.sleep = inner, retries, base, max_wait, sleep
-        self.notes: list[str] = []
+        self._tls = threading.local()  # ghi chú retry theo THREAD: --workers>1 không gán nhầm retry của agent này cho agent kia
+
+    @property
+    def notes(self) -> list[str]:
+        if not hasattr(self._tls, "notes"): self._tls.notes = []
+        return self._tls.notes
 
     def drain_retries(self) -> list[str]:
-        n, self.notes = self.notes, []
+        n, self._tls.notes = self.notes, []
         return n
 
     def bind_toolbox(self, toolbox: Any | None) -> None:
@@ -613,6 +619,18 @@ def cli_lacks_mcp(err: str) -> bool:
     return any(x in low for x in _MCP_UNSUPPORTED)
 
 
+def cli_env(keep_prefixes: tuple[str, ...] = ()) -> dict[str, str]:
+    """Env cho tiến trình CLI model (claude/codex): lọc như lệnh con của workspace (`clean_env`), trừ các tiền tố mà
+    CLI cần để đăng nhập; khoá `COMPANY_LLM_*`/`STUDIO_LLM_*` của công ty không bao giờ đi theo."""
+    from .workspace import SECRET_ENV
+    out = {}
+    for k, v in os.environ.items():
+        if k.upper().startswith(("COMPANY_LLM", "STUDIO_LLM")): continue
+        if SECRET_ENV.search(k) and not k.upper().startswith(tuple(p.upper() for p in keep_prefixes)): continue
+        out[k] = v
+    return out
+
+
 def cli_settings_json() -> str:
     """Settings tạm cho `claude -p`: chặn đọc/ghi file bí mật. `--restricted` bỏ qua settings user/project nhưng
     vẫn áp `--settings`, nên deny ở đây là lớp chặn thật, không phải lời dặn trong prompt."""
@@ -644,16 +662,24 @@ class ClaudeCodeClient:
         self.cfg = cfg or load_config()
         self.binary = shutil.which(self.cfg.binary or binary) or self.cfg.binary or binary
         self.timeout = timeout
-        self.env = dict(os.environ)
+        # Env cho `claude -p`: bỏ khoá của công ty và mọi biến trông như bí mật (ở chế độ cli_tools + cli_bash, Bash của
+        # CLI kế thừa env này). Giữ ANTHROPIC_*/CLAUDE_* vì CLI có thể cần chúng để đăng nhập/chọn endpoint.
+        self.env = cli_env(keep_prefixes=("ANTHROPIC_", "CLAUDE_"))
         if self.cfg.config_dir:   # nhiều tài khoản Claude trên một máy: mỗi backend một thư mục đăng nhập riêng
             self.env["CLAUDE_CONFIG_DIR"] = str(Path(self.cfg.config_dir).expanduser())
         self._run = runner or self._subprocess  # test thay bằng hàm giả (args, stdin) → stdout
-        self._toolbox: Any | None = None   # ToolBox thật do runner bind (ADR-0024); None → không dùng được cầu MCP
+        self._tls = threading.local()   # ToolBox thật do runner bind (ADR-0024), theo THREAD: mỗi worker một worktree
+
+    @property
+    def _toolbox(self) -> Any | None:
+        """None → không dùng được cầu MCP. Theo thread: với --workers>1 mỗi thread bind worktree ticket của mình; một
+        slot chung sẽ làm thread A chạy CLI trên worktree của thread B (sửa sai chỗ, rework oan)."""
+        return getattr(self._tls, "toolbox", None)
 
     def bind_toolbox(self, toolbox: Any | None) -> None:
         """Runner đưa `ToolBox` trước vòng tool và gỡ sau đó (ADR-0024). Có nó + `mcp_tools` thì tool đi qua cầu MCP,
         tức là vẫn thực thi trong sandbox `tools.py` của công ty chứ không phải bằng tool riêng của CLI."""
-        self._toolbox = toolbox
+        self._tls.toolbox = toolbox
 
     def _subprocess(self, args: list[str], stdin: str, cwd: str | None = None) -> str:
         import subprocess
@@ -729,8 +755,11 @@ class ClaudeCodeClient:
         with ToolBridge(self._toolbox) as bridge, bridge.config_file() as cfg_path:
             # --strict-mcp-config: chỉ server của ta, không kéo MCP server nào của người dùng vào phiên.
             # --allowedTools: đúng bảng tool công ty, nên tool riêng của CLI (Read/Write/Bash) không được gọi.
-            full = [*args, "--mcp-config", str(cfg_path), "--strict-mcp-config",
-                    "--allowedTools", bridge.allowed_tools(),
+            # --tools "": KHÔNG tool gốc nào của CLI (Read/Glob/Grep/Bash…) — chúng đọc được `.env`, `~/.ssh` ngoài
+            # sandbox tools.py và không để dấu trong ToolBox.calls. --allowedTools chỉ liệt kê tool MCP của công ty; deny
+            # file bí mật qua --settings là lớp chặn thứ hai nếu CLI vẫn nạp tool gốc.
+            full = [*args, "--mcp-config", str(cfg_path), "--strict-mcp-config", "--tools", "",
+                    "--allowedTools", bridge.allowed_tools(), "--settings", cli_settings_json(),
                     "--max-turns", str(self.cfg.mcp_max_turns), "--system-prompt", system]
             check_argv(full)
             try:
@@ -798,7 +827,7 @@ class CodexClient:
         self.binary = (shutil.which(explicit) or explicit) if explicit else find_codex_binary()
         self.timeout = timeout
         self.workdir = Path(tempfile.mkdtemp(prefix="codex-empty-"))
-        self.env = dict(os.environ)
+        self.env = cli_env(keep_prefixes=("OPENAI_", "CODEX_"))  # như ClaudeCodeClient: không mang khoá công ty vào CLI
         if self.cfg.config_dir:
             self.env["CODEX_HOME"] = str(Path(self.cfg.config_dir).expanduser())
         self._run = runner or self._subprocess

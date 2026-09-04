@@ -47,7 +47,7 @@ cd ../Studio-creators && make test && make demo
 ```
 
 Không có `make` (Windows): mỗi target đều có dạng `uv run` tương đương trong `Makefile`, ví dụ `make test` = `uv run pytest -q`,
-`make demo` = `PYTHONPATH=src uv run python -m company.demo` (PowerShell: `$env:PYTHONPATH='src'; uv run python -m company.demo`).
+`make demo` = `uv run python -m company.demo` — dùng nguyên văn được cả trong PowerShell.
 `uv run` trong bất kỳ thư mục con nào cũng dùng `.venv` chung ở gốc.
 
 Chạy model thật, không API key: mỗi công ty có sẵn hồ sơ **gói Claude + gateway Antigravity** — `make llm` chép
@@ -71,7 +71,7 @@ Bật gateway xoay vòng tài khoản Google (miễn phí theo quota Antigravity
 
 ```bash
 cd gateway
-make login      # đăng nhập Google; chạy lại để thêm tài khoản   (= PYTHONPATH=src uv run python -m gateway login)
+make login      # đăng nhập Google; chạy lại để thêm tài khoản   (= uv run python -m gateway login)
 make start      # daemon tại 127.0.0.1:1123
 make setup      # ghi ../software-company/llm.yaml dạng một provider trỏ vào gateway (không dùng khi llm.yaml đã có `backends:`)
 ```

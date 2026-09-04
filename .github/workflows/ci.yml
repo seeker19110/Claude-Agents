@@ -30,14 +30,25 @@ jobs:
 
   unit:
     name: unit
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    # Job Windows mới thêm, chưa từng chạy trong CI: cho phép đỏ mà không chặn merge cho tới khi ổn định.
+    # Bỏ `continue-on-error` (và dòng `experimental` dưới) ngay khi nó xanh vài lần liên tiếp.
+    continue-on-error: ${{ matrix.experimental == true }}
     timeout-minutes: 20
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.13"]   # cận dưới của requires-python và bản mới nhất đang dùng
+        # cận dưới của requires-python và bản mới nhất đang dùng
+        os: [ubuntu-latest]
+        python: ["3.11", "3.13"]
+        include:
+          # Code có nhánh riêng cho Windows (bảng mã CLI, SystemRoot của cầu MCP, creationflags, _alive)
+          # mà trước đây không CI nào chạy: một job Windows đủ để chúng không mục đi.
+          - os: windows-latest
+            python: "3.13"
+            experimental: true
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -46,7 +57,13 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
-      - run: uv run pytest -q --cov --cov-report=term-missing
+      # --durations: test git/worktree chậm dần thì thấy ngay trong log, không phải đoán.
+      - run: uv run pytest -q --cov --cov-report=term-missing --durations=10
+        if: runner.os != 'Windows'
+        working-directory: software-company
+      # Windows: chạy test, không đo coverage (nhánh riêng của POSIX không chạy ở đây nên ngưỡng sẽ lệch).
+      - run: uv run pytest -q --durations=10
+        if: runner.os == 'Windows'
         working-directory: software-company
 
   eval-replay:
@@ -64,7 +81,7 @@ jobs:
       - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       # Eval từ bản ghi (ADR-0010): không gọi model. `--strict` đỏ khi agent có tên trong
       # evals/recordings/REQUIRED.txt mà thiếu bản ghi, hoặc bản ghi ghi ở phiên bản prompt cũ.
-      - run: PYTHONPATH=src uv run python -m company.evals all --replay --strict
+      - run: uv run python -m company.evals all --replay --strict
         working-directory: software-company
 
   audit:
@@ -147,7 +164,7 @@ jobs:
       - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       # Eval từ bản ghi (không gọi model). `--strict` đỏ khi agent có tên trong
       # evals/recordings/REQUIRED.txt mà thiếu bản ghi, hoặc bản ghi ghi ở phiên bản prompt cũ.
-      - run: PYTHONPATH=src uv run python -m studio.evals all --replay --strict
+      - run: uv run python -m studio.evals all --replay --strict
         working-directory: Studio-creators
 
   # Golden trong repo phải khớp bản `make golden` sinh ra: chặn "sửa agent rồi quên commit lại golden".
@@ -273,10 +290,10 @@ jobs:
           enable-cache: true
           python-version: "3.13"
       - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
-      - run: PYTHONPATH=src uv run python -m company.assetscan scan . ../Studio-creators
+      - run: uv run python -m company.assetscan scan . ../Studio-creators
         working-directory: software-company
       # Prompt tĩnh không được ăn quá nửa ngân sách token của chính agent đó, và skill khai phải tồn tại.
-      - run: PYTHONPATH=src uv run python -m company.assetscan budget . ../Studio-creators
+      - run: uv run python -m company.assetscan budget . ../Studio-creators
         working-directory: software-company
 
   # Job tổng hợp — TÊN `quality` LÀ BẤT BIẾN (required status check của branch protection `main`).

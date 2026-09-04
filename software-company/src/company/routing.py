@@ -17,6 +17,7 @@ Tên backend không lộ trong `Completion.model` (vẫn là tên model thật �
 from __future__ import annotations
 
 import re
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -97,7 +98,17 @@ class RoutingClient:
     transient_cooldown_s: float = 60.0
     prefer: dict[str, str] = field(default_factory=dict)   # tier → tên backend ưu tiên
     clock: Callable[[], float] = time.time
-    notes: list[str] = field(default_factory=list)
+
+    @property
+    def notes(self) -> list[str]:
+        """Ghi chú xoay backend theo THREAD (--workers>1): audit llm_retry của agent nào là của agent đó."""
+        tls = self.__dict__.setdefault("_tls", threading.local())
+        if not hasattr(tls, "notes"): tls.notes = []
+        return tls.notes
+
+    @notes.setter
+    def notes(self, value: list[str]) -> None:
+        self.__dict__.setdefault("_tls", threading.local()).notes = value
 
     def __post_init__(self) -> None:
         if not self.backends:

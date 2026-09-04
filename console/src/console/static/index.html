@@ -221,6 +221,14 @@ svg{display:block;overflow:visible}
 .vb.danger:hover{border-color:var(--crit);color:var(--crit-ink)}
 .vb:disabled{opacity:.45;cursor:not-allowed}
 .note{font-size:11.5px;color:var(--ink-muted)}
+.guide{padding:16px 20px;display:flex;flex-direction:column;gap:10px;font-size:13px;line-height:1.65;max-width:78ch}
+.guide p{margin:0}
+.guide ol,.guide ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:7px}
+.guide li{margin:0}
+.guide pre{margin:0;overflow-x:auto;background:var(--surface-sunk);border:1px solid var(--line-soft);border-radius:5px;padding:11px 13px}
+.guide pre code{font-family:var(--mono);font-size:12px;color:var(--ink-2);line-height:1.6;background:none;border:0;padding:0}
+.guide code{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+.cap-on{color:var(--good-ink)}.cap-off{color:var(--ink-muted)}
 .empty{padding:26px 16px;text-align:center;color:var(--ink-muted);font-size:13px;border:1px dashed var(--line);border-radius:6px;background:var(--surface)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,14px);background:var(--ink);color:var(--ground);padding:9px 16px;border-radius:6px;font-size:13px;z-index:60;opacity:0;transition:.18s;pointer-events:none;box-shadow:var(--shadow)}
 .toast.on{opacity:1;transform:translate(-50%,0)}
@@ -319,6 +327,8 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
       <button class="nav" data-v="chi-phi">Chi phí &amp; hạn mức</button>
       <button class="nav" data-v="nhat-ky">Nhật ký</button>
       <button class="nav" data-v="cai-dat">Cài đặt model</button>
+      <div class="eyebrow">Trợ giúp</div>
+      <button class="nav" data-v="huong-dan">Hướng dẫn</button>
     </div>
     <div class="rail-foot">
       <div class="eyebrow">Gói tài khoản</div>
@@ -507,6 +517,119 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
           <p>giá trị đang hiện là đúng cái công ty đang chạy (đọc từ <code>llm.yaml</code>); sửa rồi bấm Lưu</p>
         </div>
         <div class="panel" id="settings"></div>
+      </div>
+    </section>
+
+    <!-- ============ HƯỚNG DẪN ============ -->
+    <section class="view" id="v-huong-dan">
+      <div class="sect">
+        <div class="sect-head"><h2>Hệ thống này làm gì</h2><p>một trang duy nhất nhìn cả hai công ty AI đang chạy trên máy bạn</p></div>
+        <div class="panel guide">
+          <p>Hai công ty tự chạy bằng agent: <b>xưởng phần mềm</b> biến một yêu cầu thô thành PRD, ticket, code trên
+          repo thật rồi review và phát hành; <b>xưởng video</b> đi từ kế hoạch kênh tới video đã đăng. Console không
+          tự quyết gì cả — nó <b>đọc bus SQLite của hai công ty</b> và, khi bạn bật quyền tương ứng, gửi quyết định
+          hoặc việc mới đi qua đúng cổng của công ty.</p>
+          <p class="note">Console không sinh ra event nào của riêng nó: mọi thứ bạn thấy đều đã nằm trong bus, và mọi
+          thứ bạn gửi đều được kiểm theo JSON Schema của topic trước khi vào bus.</p>
+        </div>
+      </div>
+
+      <div class="sect">
+        <div class="sect-head"><h2>Ba quyền, bật riêng từng cái</h2><p>mặc định console chỉ đọc — không bật thì không gửi được gì</p></div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Cờ khi chạy</th><th>Cho phép</th><th>Trạng thái phiên này</th></tr></thead>
+            <tbody id="guide-caps"></tbody>
+          </table>
+        </div>
+        <p class="note">Mỗi lần chạy console sinh một token mới nằm trong địa chỉ trình duyệt; đóng console là token hết hiệu lực.</p>
+      </div>
+
+      <div class="sect">
+        <div class="sect-head"><h2>Giao một việc mới</h2><p>điền ô thay cho viết JSON tay — cùng một event, cùng một schema</p></div>
+        <div class="panel guide">
+          <ol>
+            <li>Vào <b>Xưởng phần mềm</b> (hoặc <b>Xưởng video</b>), khối <i>Giao việc</i> ở đầu màn.</li>
+            <li>Điền <b>Mã dự án</b> và <b>Mô tả yêu cầu</b>. Chưa biết viết gì thì bấm <b>Điền yêu cầu mẫu</b> — form
+                sẽ có sẵn một yêu cầu web app thật, sửa lại cho khách của bạn.</li>
+            <li><b>Nơi lưu dự án</b> là repo git của khách <i>trên máy chạy orchestrator</i>. Bỏ trống thì dự án dùng
+                <code>--repo</code> mặc định; không có cả hai thì công ty vẫn chạy nhưng PR chỉ ghi
+                <code>local_checks.unverified</code> vì không có repo thật để chạy lint và test.</li>
+            <li>Bấm <b>Giao việc</b>. Vài giây sau ticket và PR hiện ở bảng ngay bên dưới.</li>
+          </ol>
+          <p>Mô tả càng nêu rõ <b>ngoài phạm vi</b> và <b>yêu cầu phi chức năng có số đo</b> thì càng ít bị hỏi lại ở
+          gate. Yêu cầu mẫu có đủ tám phần mà agent <code>intake</code> cần để đặt câu hỏi cho cả bốn mảng nghiên cứu:
+          domain, ux, codebase, tech.</p>
+        </div>
+      </div>
+
+      <div class="sect">
+        <div class="sect-head"><h2>Bốn điểm dừng chờ người</h2><p>công ty không bao giờ tự đi qua các bước này</p></div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Gate</th><th>Dừng khi nào</th><th>Bạn quyết gì</th></tr></thead>
+            <tbody>
+              <tr><td><code>spec</code></td><td>spec-writer viết xong PRD</td><td>đặc tả đúng ý khách chưa</td></tr>
+              <tr><td><code>plan</code></td><td>delivery-lead chia xong ticket, kèm threat model</td><td>kiến trúc và ước lượng có hợp lý không</td></tr>
+              <tr><td><code>release</code></td><td>QA đã chạy hồi quy trên staging và pass</td><td>có đẩy lên production không</td></tr>
+              <tr><td><code>acceptance</code></td><td>đã lên production</td><td>khách ký nghiệm thu</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">Thêm gate <code>escalation</code> mở ra bất thường: ticket hết lượt làm lại, vượt ngân sách,
+        hoặc chuỗi nghiên cứu bị kẹt. Duyệt là mở lại kèm gợi ý; từ chối là bỏ ticket — khi đó ticket phụ thuộc nó
+        cũng dừng lại chờ bạn, chứ không chạy tiếp trên nền thiếu code.</p>
+      </div>
+
+      <div class="sect">
+        <div class="sect-head"><h2>Duyệt một gate</h2><p>cần <code>--allow-decide</code></p></div>
+        <div class="panel guide">
+          <p>Ở <b>Trực ban</b>, bấm một việc trong hàng đợi để mở ngăn kéo: có checklist của đúng loại gate đó, ai tạo,
+          chờ bao lâu. Năm quyết định: <b>duyệt</b>, <b>trả lại</b> (kèm lý do, ticket làm lại), <b>từ chối</b>,
+          <b>giữ</b> (chờ thêm thông tin), <b>thu hồi</b> (rollback bản đã phát hành).</p>
+          <p>Ô <b>Bạn là</b> ghi vào <code>actor</code> của event và audit-log. Quy tắc bốn mắt: người duyệt phải khác
+          người tạo gate. Lý do là bắt buộc với trả lại, giữ, từ chối và thu hồi.</p>
+          <p class="note">Danh tính này là chuỗi bạn tự gõ, không có đăng nhập — đây là công cụ chạy trên máy tin cậy
+          của chính bạn, không phải cổng web mở ra Internet.</p>
+        </div>
+      </div>
+
+      <div class="sect">
+        <div class="sect-head"><h2>Chạy từ dòng lệnh</h2><p>console chỉ là mặt kính; công ty chạy bằng các lệnh này</p></div>
+        <div class="panel guide">
+          <pre><code># bật console — thêm cờ nào thì mở quyền đó
+cd console
+uv run python -m console --allow-decide --allow-submit
+
+# vòng lặp xưởng phần mềm: nối topic → agent → topic, dừng ở gate
+cd software-company
+uv run python -m company.orchestrator run --watch 5 \
+    --repo /duong/dan/repo-khach
+
+# giao việc không qua console
+uv run python -m company.orchestrator publish research-requests \
+    examples/yeu-cau-mau-web-app.json --actor human:sales
+
+# duyệt gate không qua console
+uv run python -m company.gate_cli list
+uv run python -m company.gate_cli approve SPEC-P1 --by human:po</code></pre>
+          <p class="note">Hướng dẫn vận hành đầy đủ: <code>docs/HUONG-DAN-VAN-HANH.md</code>. Điều phối model theo gói
+          tài khoản: <code>docs/DIEU-PHOI-MODEL.md</code>.</p>
+        </div>
+      </div>
+
+      <div class="sect">
+        <div class="sect-head"><h2>Khi có gì đó không hiện ra</h2><p>ba nguyên nhân hay gặp nhất</p></div>
+        <div class="panel guide">
+          <ul>
+            <li><b>Một xưởng báo không đọc được:</b> công ty đó chưa chạy lần nào nên chưa có file bus, hoặc console
+                đang trỏ sai đường dẫn. Kiểm tra <code>--sc</code> / <code>--st</code> khi chạy console.</li>
+            <li><b>Giao việc xong mà không thấy ticket:</b> event đã vào bus nhưng orchestrator chưa chạy. Cần một
+                tiến trình <code>orchestrator run --watch</code> đang bật.</li>
+            <li><b>PR ghi <code>unverified</code>:</b> dự án không có repo. Publish lại yêu cầu với <b>Nơi lưu dự án</b>
+                đúng — orchestrator cập nhật ngay, không cần khởi động lại.</li>
+          </ul>
+        </div>
       </div>
     </section>
 
@@ -753,7 +876,8 @@ const TITLES={
  "video":()=>["Xưởng video",srcOk(ST)?`${listOf(ST,st().videos).length} video trong dây chuyền`:srcWhy(ST)],
  "chi-phi":()=>["Chi phí & hạn mức",`${vnd(st().tiles.project_cost_usd)} / ${vnd(st().tiles.project_budget_usd)} USD dự án · ${st().backends.length} gói tài khoản`],
  "nhat-ky":()=>["Nhật ký",`audit-log ${num(st().log.length)} bản ghi · lọc theo hành động`],
- "cai-dat":()=>["Cài đặt model",CFG?(CFG.can_edit?"sửa được — thay đổi ghi thẳng vào llm.yaml, bản cũ để lại .bak":"chỉ xem — chạy lại console với --allow-config để sửa"):"đang đọc cấu hình…"]};
+ "cai-dat":()=>["Cài đặt model",CFG?(CFG.can_edit?"sửa được — thay đổi ghi thẳng vào llm.yaml, bản cũ để lại .bak":"chỉ xem — chạy lại console với --allow-config để sửa"):"đang đọc cấu hình…"],
+ "huong-dan":()=>["Hướng dẫn","cách giao việc, duyệt gate và đọc màn hình — không cần rời trang"]};
 let view="truc-ban";
 function titles(){const [t,s]=TITLES[view]();$("#vt").textContent=t;$("#vs").textContent=s;}
 
@@ -763,7 +887,7 @@ function titles(){const [t,s]=TITLES[view]();$("#vt").textContent=t;$("#vs").tex
    ngăn kéo thay vì rời trang, và gửi được link tới đúng một gate cho người khác.
    Dùng hash chứ không `history.pushState`: server chỉ phục vụ một đường `/`, đẩy đường dẫn thật
    vào thanh địa chỉ thì F5 sẽ ăn 404. */
-const VIEWS=["truc-ban","phan-mem","video","chi-phi","nhat-ky","cai-dat"];
+const VIEWS=["truc-ban","phan-mem","video","chi-phi","nhat-ky","cai-dat","huong-dan"];
 const OPENERS={gate:id=>openGate(id),ticket:id=>openTicket(id),video:id=>openVideo(id)};
 let routing=false;                                // chặn vòng lặp hash -> mở -> đặt hash
 
@@ -789,6 +913,7 @@ function showView(v){
   titles(); window.scrollTo({top:0});
   if(v==="cai-dat") loadSettings();
   if(v==="phan-mem"||v==="video") renderSubmit(v);
+  if(v==="huong-dan") renderGuide();
 }
 function applyRoute(){
   const r=readHash();
@@ -889,7 +1014,7 @@ $("#settings").addEventListener("click",async e=>{
    công ty làm khi publish, lỗi trả về nguyên văn. Danh sách (goals, pillars...): mỗi dòng một mục. */
 const SC_X="software-company", ST_X="Studio-creators";
 const FORMS=[
- {id:"req",xuong:SC_X,topic:"research-requests",title:"Yêu cầu phần mềm",view:"phan-mem",
+ {id:"req",xuong:SC_X,topic:"research-requests",title:"Yêu cầu phần mềm",view:"phan-mem",sample:true,
   hint:"Một dự án mới cho xưởng phần mềm: researcher tìm hiểu → spec-writer viết đặc tả → gate <b>spec</b> chờ bạn duyệt.",
   fields:[
    {k:"project_id",label:"Mã dự án",ph:"P1",req:true,mono:true},
@@ -926,11 +1051,26 @@ function renderSubmit(v){
       ${f.fields.map(x=>`<label class="fld"><span>${x.label}${x.req?' <b class="req">*</b>':""}</span>${
         x.rows?`<textarea name="${x.k}" rows="${x.rows}" placeholder="${esc(x.ph||"")}"${x.req?" required":""}></textarea>`
               :`<input name="${x.k}" placeholder="${esc(x.ph||"")}"${x.req?" required":""}${x.mono?' class="mono"':""}>`}</label>`).join("")}
-      <div class="filters"><button type="submit"${can?"":" disabled"}>Giao việc</button><span class="note" data-note></span></div>
+      <div class="filters"><button type="submit"${can?"":" disabled"}>Giao việc</button>${
+        f.sample?`<button type="button" data-sample>Điền yêu cầu mẫu</button>`:""}<span class="note" data-note></span></div>
     </form>`).join("");
   box.innerHTML=(can?"":'<div class="note">Đang ở chế độ chỉ xem. Chạy lại: <code>python -m console --allow-submit</code></div>')
     +`<div class="by">Bạn là <input class="submit-by" value="${me}" placeholder="human:owner"> <span class="note">ghi vào <code>actor</code> của event và audit-log</span></div>`
     +forms;
+}
+
+/* Yêu cầu mẫu: bản rút gọn của software-company/examples/yeu-cau-mau-web-app.json — giữ đủ tám phần mà `intake`
+   cần để đặt câu hỏi cho cả bốn mảng domain/ux/codebase/tech. Người mới bấm một nút là có đề bài thật để sửa,
+   thay vì nhìn ô trống rồi viết hai dòng mô tả mà spec-writer phải hỏi lại năm lần. */
+const REQ_SAMPLE={"project_id": "QLKH", "description": "Khách hàng: Trung tâm Anh ngữ Sao Mai (3 cơ sở, 40 giáo viên, 1200 học viên).\n\nBỐI CẢNH: đang quản lý bằng 6 file Excel dùng chung. Kế toán mất 3 ngày đối soát học phí mỗi tháng, tháng nào cũng có 5-10 học viên bị tính sai. Phụ huynh muốn biết con đi học đủ không phải nhắn Zalo hỏi.\n\nMỤC TIÊU (theo ưu tiên):\n1. Kế toán chốt học phí một tháng dưới 2 giờ thay vì 3 ngày, không sai sót thủ công.\n2. Phụ huynh tự xem điểm danh và lịch học của con.\n3. Giáo viên điểm danh trên điện thoại tại lớp, dưới 30 giây mỗi buổi.\n\nNGƯỜI DÙNG: giáo vụ (4, xếp lớp và đổi lịch), giáo viên (40, điện thoại Android tầm trung), kế toán (2, phiếu thu và công nợ), phụ huynh (~1000, chỉ đọc), quản lý (1, báo cáo tổng hợp).\n\nPHẠM VI BẢN ĐẦU: quản lý học viên/lớp/khoá/lịch tuần; điểm danh 4 trạng thái; học phí theo khoá hoặc buổi, chiết khấu anh chị em, phiếu thu, công nợ; cổng phụ huynh đăng nhập bằng OTP; báo cáo doanh thu, chuyên cần, công nợ quá hạn.\n\nNGOÀI PHẠM VI bản đầu: thi và chấm điểm online, học liệu số, app di động riêng (dùng web responsive), cổng thanh toán trực tuyến, chấm công và tính lương giáo viên.\n\nRÀNG BUỘC: ngân sách 180 triệu VND; 10 tuần tới khai giảng khoá hè; dữ liệu trẻ em phải theo Nghị định 13/2023, phụ huynh chỉ xem được dữ liệu con mình; phải import 6 file Excel hiện có kèm lịch sử học phí 2 năm; trung tâm không có đội IT nên ưu tiên dịch vụ managed; mạng cơ sở 3 chập chờn nên màn điểm danh phải dùng được khi mạng yếu và đồng bộ lại sau.\n\nPHI CHỨC NĂNG: màn điểm danh tải dưới 2 giây trên 3G máy Android tầm trung; chịu 60 giáo viên cùng điểm danh khung 17h30-18h00; sao lưu hằng ngày, khôi phục được trong 30 ngày; giao diện tiếng Việt, dùng được ở màn 360px.\n\nNGHIỆM THU: kế toán chốt được học phí tháng gần nhất bằng hệ thống mới và khớp với Excel cũ; 10 phụ huynh dùng thử xem đúng dữ liệu con mình.", "base": "main"};
+
+function fillSample(form){
+  for(const [k,v] of Object.entries(REQ_SAMPLE)){
+    const el=form.elements[k]; if(el) el.value=v;
+  }
+  const note=$("[data-note]",form);
+  if(note) note.innerHTML='đã điền mẫu — sửa lại cho khách của bạn, nhớ điền <b>Nơi lưu dự án</b> nếu muốn code chạy trên repo thật';
+  const first=form.elements.project_id; if(first) first.focus();
 }
 
 function formPayload(f,form){
@@ -950,6 +1090,11 @@ function formPayload(f,form){
   return p;
 }
 
+$$(".submit").forEach(sect=>sect.addEventListener("click",e=>{
+  const btn=e.target.closest("button[data-sample]"); if(!btn) return;
+  const form=btn.closest("form[data-form]"); if(form) fillSample(form);
+}));
+
 $$(".submit").forEach(sect=>sect.addEventListener("submit",async e=>{
   e.preventDefault();
   const form=e.target.closest("form[data-form]"); if(!form) return;
@@ -966,6 +1111,23 @@ $$(".submit").forEach(sect=>sect.addEventListener("submit",async e=>{
   }catch(err){ note.textContent="lỗi: "+err.message; }
   finally{ btn.disabled=!CONSOLE.can_submit; }
 }));
+
+/* ---------- hướng dẫn ---------- */
+/* Bảng quyền nói đúng phiên NÀY đang mở gì, không phải danh sách cờ trong tài liệu: người mở console mà không
+   bấm được nút nào thì câu trả lời phải nằm ngay trên màn, không phải trong README. */
+const CAPS=[
+ {flag:"--allow-decide",what:"Duyệt gate ngay trong Trực ban (duyệt, trả lại, từ chối, giữ, thu hồi)",on:()=>!READONLY},
+ {flag:"--allow-submit",what:"Giao việc mới cho hai xưởng và trả lời câu hỏi làm rõ",on:()=>!!CONSOLE.can_submit},
+ {flag:"--allow-config",what:"Đổi model và backend của từng công ty ở Cài đặt model",on:()=>!!(CFG&&CFG.can_edit)}];
+
+function renderGuide(){
+  const tb=$("#guide-caps"); if(!tb) return;
+  tb.innerHTML=CAPS.map(c=>{
+    const on=c.on();
+    return `<tr><td><code>${esc(c.flag)}</code></td><td>${esc(c.what)}</td>
+      <td class="${on?"cap-on":"cap-off"}">${on?"đang bật":"đang tắt — chạy lại console kèm cờ này"}</td></tr>`;
+  }).join("");
+}
 
 /* ---------- hàng đợi gate ---------- */
 const KIND={plan:"kế hoạch",publish:"đăng",escalation:"leo thang",acceptance:"nghiệm thu",replies:"trả lời",spec:"đặc tả",release:"phát hành"};
@@ -1378,7 +1540,8 @@ document.addEventListener("keydown",e=>{
   if(e.key==="/"&&!typing){ e.preventDefault(); qEl.focus(); qEl.select(); return; }
   if(typing) return;
   const i=VIEWS.indexOf(view);
-  if(e.key>="1"&&e.key<="6"){ writeHash(VIEWS[+e.key-1],null,null,false); applyRoute(); }
+  // Bám theo VIEWS thay vì chốt "1"–"6": thêm màn mới là có phím ngay, không lệch âm thầm.
+  if(e.key>="1"&&e.key<="9"&&VIEWS[+e.key-1]){ writeHash(VIEWS[+e.key-1],null,null,false); applyRoute(); }
   else if(e.key==="g"&&i>=0){ writeHash("truc-ban",null,null,false); applyRoute(); }
 });
 

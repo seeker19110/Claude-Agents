@@ -90,6 +90,7 @@ def test_real_subprocess_speaks_mcp_and_reaches_the_parent_toolbox(tmp_path):
         finally:
             assert proc.stdin
             proc.stdin.close(); proc.wait(timeout=10)
+            if proc.stdout: proc.stdout.close()   # ống stdout cũng phải đóng, nếu không rò file descriptor
     assert tb.summary() == {"read_file": 2, "write_file": 1}
 
 
@@ -135,6 +136,8 @@ def test_runner_binds_toolbox_and_cli_runs_the_whole_tool_loop_once(tmp_path):
     assert g.tool_calls == {"read_file": 1, "write_file": 1}   # đếm từ ToolBox thật, không từ lời khai của model
     args = seen[0]
     assert "--strict-mcp-config" in args, "không mở tool riêng của CLI"
+    assert args[args.index("--tools") + 1] == "", "tắt hẳn tool gốc của CLI: chỉ còn tool MCP của công ty"
+    assert "Read(**/.env)" in args[args.index("--settings") + 1], "deny file bí mật là lớp chặn thứ hai"
     assert args[args.index("--allowedTools") + 1] == ",".join(tool_full_name(n) for n in
                                                               ["read_file", "write_file", "list_files", "search", "run"])
     assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["tools_used"]

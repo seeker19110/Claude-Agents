@@ -38,6 +38,8 @@ class DeliveryLead:
         self.releases: list[str] = []
         self.versions: dict[str, tuple[int, int, int]] = {}  # project_id → SemVer đã phát hành gần nhất
         self.release_tickets: dict[str, list[str]] = {}
+        self.void_releases: set[str] = set()  # RC bị huỷ (xung đột tích hợp): ticket của nó phải vào RC mới, không "đã có RC"
+        self.abandoned: set[str] = set()  # ticket người từ chối ở gate escalation: KHÔNG thoả depends_on của ticket khác
         self.release_qa: dict[str, ReviewResult] = {}
         self.release_reviews: dict[str, dict[str, ReviewResult]] = defaultdict(dict)
         self.acceptance: dict[str, AcceptanceResult] = {}
@@ -86,6 +88,7 @@ class DeliveryLead:
         return all(self._dep_done(d) for d in task.depends_on)
 
     def _dep_done(self, tid: str) -> bool:
+        if tid in self.abandoned: return False  # đóng vì bị bỏ, không phải vì xong: code của nó không tồn tại
         st = self.state.get(tid)
         if st not in DONE_STATES: return False
         return not self.require_integration or tid in self.integrated or st in {"merged", "released", "closed"}
@@ -229,9 +232,14 @@ class DeliveryLead:
         self.versions[project_id] = nxt
         return ".".join(str(x) for x in nxt)
 
+    def void_release(self, rid: str) -> None:
+        """Orchestrator huỷ RC (xung đột tích hợp, ticket bị trả về). Ticket đã approved trong RC đó không còn được
+        coi là "đã có RC": khi gom release chúng phải vào RC kế tiếp, nếu không dự án đứng im không gate nào mở."""
+        self.void_releases.add(rid)
+
     def unreleased(self, project_id: str) -> list[str]:
-        """Ticket approved của dự án chưa nằm trong RC nào."""
-        in_rc = {t for tids in self.release_tickets.values() for t in tids}
+        """Ticket approved của dự án chưa nằm trong RC nào còn hiệu lực (RC bị huỷ không tính)."""
+        in_rc = {t for rid, tids in self.release_tickets.items() if rid not in self.void_releases for t in tids}
         return [tid for tid, t in self.tickets.items()
                 if t.project_id == project_id and self.state.get(tid) == "approved" and tid not in in_rc]
 
@@ -317,9 +325,20 @@ class DeliveryLead:
         nt = self.tickets[tid].model_copy(update={"retry": 0, "hint": hint}); self.tickets[tid] = nt
         self._publish_task(nt); return nt
 
-    def close_escalated(self, tid: str) -> None:
-        """Người từ chối escalation: ticket đóng không làm nữa."""
+    def close_escalated(self, tid: str) -> list[str]:
+        """Người từ chối escalation: ticket đóng không làm nữa. Trả về ticket phụ thuộc bị block theo (xem `abandon`)."""
         self._set(tid, "escalated"); self._set(tid, "closed")
+        return self.abandon(tid)
+
+    def abandon(self, tid: str) -> list[str]:
+        """Ghi nhận ticket bị bỏ: `closed` nhưng KHÔNG thoả `depends_on` của ai. Ticket đang `waiting` vì nó chuyển
+        sang `blocked` (mở gate escalation cho người quyết: bỏ nốt, hay mở lại với hint) thay vì được dispatch trên nền
+        thiếu code — "hết ngưỡng thì escalate, không âm thầm đi tiếp". Dùng cả khi dựng lại từ log."""
+        self.abandoned.add(tid)
+        blocked = [t.ticket_id for t in self.tickets.values()
+                   if tid in t.depends_on and self.state.get(t.ticket_id) == "waiting"]
+        for dep in blocked: self._set(dep, "blocked")
+        return blocked
 
     def _on_acceptance(self, env: Envelope) -> None:
         a = AcceptanceResult.model_validate(env.payload); self.acceptance[a.release_id] = a

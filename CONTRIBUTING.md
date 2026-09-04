@@ -48,8 +48,8 @@ uv tool install pre-commit && pre-commit install
 
 Cấu hình ở `.pre-commit-config.yaml`; `pre-commit run --all-files` chạy tay trên toàn bộ repo.
 
-Không có `make` (Windows): mở `Makefile` và chạy dòng `uv run` tương ứng. Với target có `PYTHONPATH=src`, trong
-PowerShell viết `$env:PYTHONPATH='src'; uv run python -m studio.demo`.
+Không có `make` (Windows): mở `Makefile` và chạy dòng `uv run` tương ứng — dùng được nguyên văn trong PowerShell
+(vd. `uv run python -m studio.demo`), không cần đặt biến môi trường nào.
 
 CI (`.github/workflows/ci.yml`) chạy đúng những cổng đó, thêm `audit` (pip-audit + gitleaks trên cả lịch sử) và
 `golden-check`. Job tổng hợp tên `quality` là required status check của `main` — **thêm job con mới thì phải nối

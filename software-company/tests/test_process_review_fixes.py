@@ -7,7 +7,6 @@ from __future__ import annotations
 import json
 import socket
 import threading
-import time
 
 import pytest
 
@@ -79,16 +78,20 @@ def test_hai_chu_namespace_ghi_song_song_khong_mat_ban_ghi(monkeypatch):
     """`api-contract` có hai chủ (delivery-lead, backend). Đánh version là đọc-sửa-ghi nên chạy song song
     (--workers > 1) mà không khoá thì cả hai cùng ra v1 và bản sau bị `_on` bỏ im lặng.
 
-    `scope_of` chạy ngay trước lúc đọc version, nên chèn độ trễ ở đó mở đúng cửa sổ tranh chấp một cách xác định
-    thay vì trông chờ vào lịch chuyển luồng của GIL."""
+    `scope_of` chạy ngay trước lúc đọc version: cho cả hai luồng gặp nhau ở đúng điểm đó bằng Barrier mở đúng cửa
+    sổ tranh chấp một cách xác định — không sleep, nên không phụ thuộc tốc độ máy."""
     import company.blackboard as bbm
     real = bbm.scope_of
-    monkeypatch.setattr(bbm, "scope_of", lambda ns, pid: (time.sleep(0.05), real(ns, pid))[1])
+    inside = threading.Barrier(2, timeout=10)
+
+    def _scope(ns, pid):
+        try: inside.wait()      # cả hai luồng phải cùng ở trong scope_of rồi mới đi tiếp
+        except threading.BrokenBarrierError: pass
+        return real(ns, pid)
+    monkeypatch.setattr(bbm, "scope_of", _scope)
     bus = InMemoryBus(); bb = Blackboard(bus)
-    barrier = threading.Barrier(2)
 
     def w(actor: str) -> None:
-        barrier.wait()
         bb.write(actor, "api-contract", "openapi.yaml", actor, content=actor * 50, project_id="P1")
 
     ts = [threading.Thread(target=w, args=(a,)) for a in ("delivery-lead", "backend")]
@@ -127,7 +130,9 @@ class _Resp:
     def __init__(self, status, headers=None, body=b""):
         self.status, self.headers, self.body = status, headers or {}, body
     def getheader(self, k, default=None): return self.headers.get(k, default)
-    def read(self, n=-1): return self.body
+    def read(self, n=-1):   # như HTTPResponse thật: đọc hết rồi trả b"" (fetcher đọc theo khối, có hạn tổng)
+        out, self.body = (self.body if n is None or n < 0 else self.body[:n]), (b"" if n is None or n < 0 else self.body[n:])
+        return out
     def close(self): ...
     def __enter__(self): return self
     def __exit__(self, *a): ...
@@ -188,14 +193,14 @@ def test_search_url_noi_bo_cua_nguoi_van_hanh_duoc_phep_con_url_cua_model_thi_kh
     fetched = []
     def fetcher(url): fetched.append(url); return 200, "application/json", body
     web = web_mod.WebTools(fetcher=fetcher, search_url="http://searx.internal:8080/search?q={q}&format=json")
-    assert web.trusted_hosts == frozenset({"searx.internal"})
+    assert web.trusted_hosts == frozenset({"searx.internal:8080"}), "tin theo host:port, không phải host trần"
     assert "1. t" in web.web_search("abc") and fetched == ["http://searx.internal:8080/search?q=abc&format=json"]
     with pytest.raises(ToolError, match="host bị chặn"):   # cùng host nhưng do model đưa qua fetch_url: vẫn chặn
         web.fetch_url("http://searx.internal:8080/admin")
     with pytest.raises(ToolError, match="http/https"):     # scheme vẫn bị kiểm với URL cấu hình
         web_mod.WebTools(fetcher=fetcher, search_url="file:///etc/passwd?{q}").web_search("abc")
     d = web_mod.WebTools(search_url="http://searx.internal/?q={q}")
-    assert d.fetcher.keywords == {"trusted_hosts": frozenset({"searx.internal"})}   # fetcher mặc định mang danh sách tin cậy
+    assert d.fetcher.keywords == {"trusted_hosts": frozenset({"searx.internal:80"})}   # fetcher mặc định mang danh sách tin cậy
 
 
 def test_check_url_van_chan_o_chang_dau():

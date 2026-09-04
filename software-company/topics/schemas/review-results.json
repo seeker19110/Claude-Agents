@@ -67,22 +67,79 @@
               "level",
               "text"
             ]
-          }
+          },
+          "description": "phát hiện; block = chặn merge, warn/nit = ghi nhận"
         },
         "root_cause": {
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "description": "nguyên nhân gốc khi verdict=fail (qa-debugger)"
         },
         "bug_reports": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "id/liên kết bug đã mở từ review này"
         },
         "metrics": {
-          "type": "object"
+          "type": "object",
+          "description": "số đo tự do kèm theo review (coverage, thời gian chạy…)"
+        },
+        "project_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "dự án của ticket; orchestrator điền nếu model bỏ trống"
+        },
+        "sbom_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "con trỏ SBOM của bản build đã review (reviewer)"
+        },
+        "scan_summary": {
+          "type": [
+            "string",
+            "object",
+            "null"
+          ],
+          "description": "kết quả scan phụ thuộc/secret: câu tóm tắt hoặc object theo từng loại scan (reviewer)"
+        },
+        "test_summary": {
+          "type": [
+            "string",
+            "object",
+            "null"
+          ],
+          "description": "kết quả chạy test: câu tóm tắt hoặc object {total, passed, failed} (qa)"
+        },
+        "mutation_score": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100,
+          "description": "điểm mutation testing của module lõi, %; chuẩn ngành ≥ 70 (qa)"
+        },
+        "perf": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "số đo hiệu năng so NFR, vd {\"p95_ms\": 240, \"nfr_p95_ms\": 300} (qa)"
+        },
+        "a11y": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "kết quả kiểm tiếp cận, vd {\"wcag\": \"AA\", \"violations\": 0} (qa)"
         }
       },
       "required": [

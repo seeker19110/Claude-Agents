@@ -21,3 +21,12 @@ Truy vết nhân quả cũng phải dựa vào `key` và evidence dạng chuỗi
 - Đổi không tương thích ngược thì tăng `SCHEMA_VERSION`.
 - Truy vết dùng `correlation_id`/`causation_id`, không dùng `key` để đoán quan hệ cha–con.
 - Payload cũ vi phạm enum nay bị từ chối ngay tại bus thay vì trôi xuống consumer.
+
+## Bổ sung 2026-09-04 (rà soát)
+- Trường mà prompt đòi phải có mặt trong schema, không sống nhờ `additionalProperties: true`: `review-results` nay khai
+  `sbom_ref`, `scan_summary`, `test_summary`, `mutation_score`, `perf`, `a11y` (kiểu nhận cả câu tóm tắt lẫn object,
+  đúng như đầu ra thật đã ghi trong `evals/recordings/`).
+- `project_id` có mặt ở mọi topic của một ticket (`pull-requests`, `review-results`, `release-events`, `incidents`,
+  `supervisor-actions`): thiếu nó là nguyên nhân gốc của rò rỉ blackboard giữa dự án và chi phí dự án tính thiếu.
+- Front matter `writes:` chỉ được khai topic có schema (`supervisor` từng khai `knowledge-base` không tồn tại; ghi
+  blackboard đã khai riêng ở `context_namespace_write`). Test giữ luật này.

@@ -485,7 +485,7 @@ def test_openai_compat_tool_calls_roundtrip():
         c2 = client.complete(system="s", user="u", schema=schema, model_tier="strong", tools=tools, messages=msgs)
         assert not c2.tool_calls and c2.json()["verdict"] == "pass" and c2.tokens == 15
     finally:
-        srv.shutdown()
+        srv.shutdown(); srv.server_close()
     req1, req2 = _ToolSrv.seen
     assert req1["tools"][0]["function"]["name"] == "read_file" and req1["messages"][-1] == {"role": "user", "content": "u"}
     assert req2["messages"][2]["tool_calls"][0]["function"]["arguments"] == '{"path": "mod.py"}'
@@ -509,7 +509,7 @@ def test_openai_compat_content_filter_nem_refused():
         with pytest.raises(Refused, match="content_filter"):
             OpenAICompatClient(cfg).complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
     finally:
-        srv.shutdown()
+        srv.shutdown(); srv.server_close()
 
 
 class _BadToolArgsSrv(BaseHTTPRequestHandler):
@@ -534,7 +534,7 @@ def test_openai_compat_tool_call_arguments_hong_van_tra_ve_raw():
         c = OpenAICompatClient(cfg).complete(system="s", user="u", schema={"type": "object"}, model_tier="strong", tools=tools)
         assert c.tool_calls[0].args["_raw"] == "{khong phai json hop le"
     finally:
-        srv.shutdown()
+        srv.shutdown(); srv.server_close()
 
 
 def test_anthropic_client_khoi_tao_that_khi_co_sdk(monkeypatch):

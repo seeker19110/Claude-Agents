@@ -8,6 +8,11 @@ Console **đọc bus SQLite của hai công ty ở chế độ chỉ đọc** v�
 định gate đi qua đúng lớp `HumanGate` của công ty tương ứng, nên four-eyes, allowlist người duyệt và
 `audit-log` vẫn đi đúng đường của repo.
 
+**Tab Hướng dẫn** trả lời tại chỗ ba câu người mới hay hỏi: hệ này làm gì, sao nút của tôi bị mờ (bảng quyền đọc
+đúng cờ của phiên đang chạy), và giao một việc mới thế nào. Nút *Điền yêu cầu mẫu* ở form yêu cầu phần mềm đổ sẵn
+một đề bài web app thật (cùng nội dung với `software-company/examples/yeu-cau-mau-web-app.json`) để sửa lại, thay vì
+nhìn ô trống rồi viết hai dòng mà spec-writer phải hỏi lại năm lần.
+
 **Giao việc ngay trên trang** (bật `--allow-submit`), tách theo từng xưởng chứ không gộp: đầu màn *Xưởng phần mềm*
 có form *Yêu cầu phần mềm* (`research-requests`, kèm **nơi lưu dự án** = repo git của khách cho riêng dự án đó,
 ADR-0025) và *Trả lời câu hỏi làm rõ* (`clarification-answers`); đầu màn *Xưởng video* có form *Brief kênh video*
@@ -41,7 +46,8 @@ Cài đặt chỉ hoạt động ở ngữ cảnh an toàn, tức `127.0.0.1`/`l
 
 **Tìm và lọc.** Ô tìm chung (phím `/`) lọc gate, ticket, video, PR, review và audit-log cùng lúc, gấp dấu
 tiếng Việt nên gõ `ong kinh` cũng ra `Ống kính`. Bảng ticket và video có chip lọc theo trạng thái; các bảng
-sắp xếp được bằng cách bấm tiêu đề cột. Phím tắt: `/` tìm, `1`–`6` nhảy màn, `g` về Trực ban, `Esc` đóng.
+sắp xếp được bằng cách bấm tiêu đề cột. Phím tắt: `/` tìm, `1`–`7` nhảy màn (theo thứ tự ở thanh bên), `g` về
+Trực ban, `Esc` đóng.
 
 ## Chạy nhanh
 
@@ -93,6 +99,7 @@ chạy bao giờ (chưa có file DB) cũng không sao — trang báo phần đó
 | **Xưởng video** | Dây chuyền video theo trạng thái, số liệu sau khi đăng kéo từ YouTube Analytics, đường giữ chân người xem |
 | **Chi phí & hạn mức** | Chi phí dự án so với trần, lời gọi chưa có giá (gói thuê bao), hiệu chỉnh ước lượng, ngân sách token từng ticket, chi phí theo agent, mọi lần supervisor can thiệp |
 | **Nhật ký** | Toàn bộ `audit-log` (tối đa 200 bản ghi mới nhất), lọc theo sản phẩm agent / gate / supervisor / người / lỗi |
+| **Hướng dẫn** | Cách dùng ngay trong trang: hệ thống làm gì, ba quyền và **trạng thái thật của phiên đang chạy** (cờ nào đang bật, cờ nào chưa), các bước giao việc, bốn điểm dừng chờ người, cách duyệt gate, lệnh dòng lệnh tương đương, ba lỗi hay gặp |
 
 Bấm vào một gate mở ngăn kéo: hồ sơ, checklist phải tick hết mới duyệt được, ô ghi tên người duyệt và
 lý do (bắt buộc với mọi quyết định không phải `approve`).

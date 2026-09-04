@@ -44,6 +44,13 @@
             "string",
             "null"
           ]
+        },
+        "project_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "dự án bị tác động (pause cả dự án)"
         }
       },
       "required": [

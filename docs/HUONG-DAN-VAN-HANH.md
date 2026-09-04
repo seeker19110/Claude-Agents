@@ -73,9 +73,9 @@ codex login status                                # "Logged in using ChatGPT"; c
 
 # Google Antigravity — thêm tài khoản vào pool của gateway rồi bật daemon
 cd gateway
-PYTHONPATH=src uv run python -m gateway login     # mở trình duyệt; chạy lại để thêm tài khoản 2, 3...
-PYTHONPATH=src uv run python -m gateway start     # daemon tại http://127.0.0.1:1123/v1
-PYTHONPATH=src uv run python -m gateway status    # từng tài khoản: sẵn sàng / cooldown / hạn token
+uv run python -m gateway login     # mở trình duyệt; chạy lại để thêm tài khoản 2, 3...
+uv run python -m gateway start     # daemon tại http://127.0.0.1:1123/v1
+uv run python -m gateway status    # từng tài khoản: sẵn sàng / cooldown / hạn token
 ```
 
 Nhiều tài khoản cho cùng một gói: xem 3.5.
@@ -193,7 +193,7 @@ Sau khi chạy vài ticket, đọc lại audit để biết lượt nào đã đ
 
 ```bash
 cd Studio-creators   # hoặc software-company
-PYTHONIOENCODING=utf-8 PYTHONPATH=src uv run python -c "
+PYTHONIOENCODING=utf-8 uv run python -c "
 from studio.llm import make_client   # software-company: from company.llm import make_client
 c = make_client()
 for tier in ('light','standard','strong'):
@@ -215,7 +215,7 @@ khoản kế; không cần can thiệp tay.
 |---|---|---|---|
 | Claude Pro/Max | thư mục cấu hình `CLAUDE_CONFIG_DIR` | `CLAUDE_CONFIG_DIR=~/.claude-acc2 claude login` | `provider: claude-code`, `config_dir: ~/.claude-acc2` |
 | ChatGPT Plus/Pro | thư mục `CODEX_HOME` | `CODEX_HOME=~/.codex-acc2 codex login` | `provider: codex`, `config_dir: ~/.codex-acc2` |
-| Google Antigravity | pool của gateway (một file token chung) | `cd gateway && PYTHONPATH=src uv run python -m gateway login` (lặp lại N lần) | một backend `antigravity` duy nhất; gateway tự xoay tài khoản bên trong |
+| Google Antigravity | pool của gateway (một file token chung) | `cd gateway && uv run python -m gateway login` (lặp lại N lần) | một backend `antigravity` duy nhất; gateway tự xoay tài khoản bên trong |
 
 Tài khoản mặc định (đã đăng nhập sẵn, không đặt biến) vẫn dùng được: backend không có `config_dir`.
 
@@ -276,7 +276,7 @@ Cách router chọn với cấu hình trên:
 Kiểm tra sau khi cấu hình: chạy đoạn ở 3.4. Muốn thử riêng một tài khoản, lọc bằng biến môi trường:
 
 ```bash
-STUDIO_LLM_BACKENDS=claude-2 PYTHONPATH=src uv run python -c "..."     # software-company: COMPANY_LLM_BACKENDS
+STUDIO_LLM_BACKENDS=claude-2 uv run python -c "..."     # software-company: COMPANY_LLM_BACKENDS
 ```
 
 Lưu ý:
@@ -293,10 +293,10 @@ Lưu ý:
 
 ```bash
 cd software-company
-PYTHONPATH=src uv run python -m company.demo        # cả công ty với client giả, dừng ở human gate rồi tự duyệt
+uv run python -m company.demo        # cả công ty với client giả, dừng ở human gate rồi tự duyệt
 
 cd ../Studio-creators
-PYTHONPATH=src uv run python -m studio.demo         # brief → plan → gate → kịch bản → render giả → gate publish → đăng
+uv run python -m studio.demo         # brief → plan → gate → kịch bản → render giả → gate publish → đăng
 ```
 
 Demo dùng `COMPANY_LLM_PROVIDER=fake` nội bộ, không đọc `llm.yaml`. Đây là cách nhanh nhất để thấy luồng topic, gate và
@@ -304,7 +304,8 @@ audit-log trước khi tiêu hạn mức thật.
 
 ## 5. Vận hành software-company
 
-Mọi lệnh chạy trong `software-company/` với `PYTHONPATH=src`. Trạng thái nằm trong `company.sqlite` (mặc định, đổi bằng
+Mọi lệnh chạy trong `software-company/` (không cần `PYTHONPATH`: cả repo là một uv workspace, `uv run` tự thấy
+package). Trạng thái nằm trong `company.sqlite` (mặc định, đổi bằng
 `--db`). Nhiều tiến trình dùng chung file này được.
 
 ### 5.1 Đưa yêu cầu vào
@@ -328,8 +329,12 @@ cả hai thì dự án chạy không repo (PR ghi `local_checks.unverified`). Re
 khởi động lại. Một tiến trình phục vụ được nhiều khách, mỗi khách một repo.
 
 ```bash
-PYTHONPATH=src uv run python -m company.orchestrator publish research-requests req.json --actor human:sales
+uv run python -m company.orchestrator publish research-requests req.json --actor human:sales
 ```
+
+Mẫu đầy đủ hơn (một web app quản lý trung tâm, có đủ tám phần mà `intake` cần để đặt câu hỏi cho cả bốn mảng
+domain/ux/codebase/tech): `software-company/examples/yeu-cau-mau-web-app.json` — chép rồi sửa cho khách của bạn.
+Mô tả càng nêu rõ **ngoài phạm vi** và **yêu cầu phi chức năng có số đo** thì spec càng ít phải hỏi lại ở gate.
 
 Không muốn viết JSON tay: chạy console với `--allow-submit` (`cd console && uv run python -m console --allow-submit`),
 vào màn **Xưởng phần mềm** → khối *Giao việc* ở đầu màn → form *Yêu cầu phần mềm* (có ô *Nơi lưu dự án* = `repo`).
@@ -339,9 +344,9 @@ Cùng một event, cùng schema — chỉ khác là điền vào ô. Câu hỏi 
 ### 5.2 Chạy vòng lặp
 
 ```bash
-PYTHONPATH=src uv run python -m company.orchestrator run --watch 5      # chạy liên tục, 5 giây một nhịp (Ctrl+C dừng, resume được)
-PYTHONPATH=src uv run python -m company.orchestrator run                # một lượt rồi thoát
-PYTHONPATH=src uv run python -m company.orchestrator run --workers 4 --web   # ticket khác key chạy song song; researcher được đọc web
+uv run python -m company.orchestrator run --watch 5      # chạy liên tục, 5 giây một nhịp (Ctrl+C dừng, resume được)
+uv run python -m company.orchestrator run                # một lượt rồi thoát
+uv run python -m company.orchestrator run --workers 4 --web   # ticket khác key chạy song song; researcher được đọc web
 ```
 
 Làm **code thật** trên repo khách: thêm `--repo ../khach --base main`. Khối kỹ thuật sửa trong worktree `ticket/<id>`,
@@ -353,9 +358,9 @@ ticket approved của dự án vào một RC (một staging, một gate 3, một
 Vòng lặp dừng ở bốn điểm: spec, plan, release, và khách ký nghiệm thu. Xem và quyết định:
 
 ```bash
-PYTHONPATH=src uv run python -m company.gate_cli list
-PYTHONPATH=src uv run python -m company.gate_cli approve SPEC-P1 --by human:po
-PYTHONPATH=src uv run python -m company.gate_cli reject  PLAN-P1 --by human:po --reason "tách ticket thanh toán nhỏ hơn"
+uv run python -m company.gate_cli list
+uv run python -m company.gate_cli approve SPEC-P1 --by human:po
+uv run python -m company.gate_cli reject  PLAN-P1 --by human:po --reason "tách ticket thanh toán nhỏ hơn"
 ```
 
 Năm quyết định: `approve`, `request_changes`, `reject`, `hold`, `rollback` (cùng cú pháp `SUBJECT --by --reason`). Gate có hạn
@@ -365,10 +370,10 @@ lại với hint, reject = đóng).
 Con người trả lời câu hỏi của clarifier, quyết định change request, nhận xét ticket đang chạy, hoặc tiếp quản worktree:
 
 ```bash
-PYTHONPATH=src uv run python -m company.orchestrator publish clarification-answers ans.json --actor human:po
-PYTHONPATH=src uv run python -m company.orchestrator decide-change CR-1 accepted --by human:po
-PYTHONPATH=src uv run python -m company.orchestrator comment  T-12 --by human:lead --text "dùng idempotency key cho webhook"
-PYTHONPATH=src uv run python -m company.orchestrator takeover T-12 --by human:lead      # đã sửa tay trong worktree: chạy lint/test, thay PR của agent
+uv run python -m company.orchestrator publish clarification-answers ans.json --actor human:po
+uv run python -m company.orchestrator decide-change CR-1 accepted --by human:po
+uv run python -m company.orchestrator comment  T-12 --by human:lead --text "dùng idempotency key cho webhook"
+uv run python -m company.orchestrator takeover T-12 --by human:lead      # đã sửa tay trong worktree: chạy lint/test, thay PR của agent
 ```
 
 Sau khi release-engineer deploy staging và QA hồi quy pass, gate 3 mở; approve xong mới lên production. Khách ký
@@ -377,10 +382,10 @@ nghiệm thu bằng `acceptance-results` qua account-manager (gate 4, ADR-0017).
 ### 5.4 Nhìn vào bên trong
 
 ```bash
-PYTHONPATH=src uv run python -m company.orchestrator status            # hàng đợi, event hoãn, ticket, gate chờ, blackboard, chi phí
-PYTHONPATH=src uv run python -m company.orchestrator show architecture # toàn văn artifact mới nhất của một namespace blackboard
-PYTHONPATH=src uv run python -m company.orchestrator report            # estimate vs actual, USD theo agent/model, hành động supervisor
-PYTHONPATH=src uv run python -m company.orchestrator metrics [--prometheus]
+uv run python -m company.orchestrator status            # hàng đợi, event hoãn, ticket, gate chờ, blackboard, chi phí
+uv run python -m company.orchestrator show architecture # toàn văn artifact mới nhất của một namespace blackboard
+uv run python -m company.orchestrator report            # estimate vs actual, USD theo agent/model, hành động supervisor
+uv run python -m company.orchestrator metrics [--prometheus]
 ```
 
 ## 6. Vận hành Studio-creators
@@ -405,8 +410,8 @@ Nguyên tắc approval-first: **không có gì được lên lịch, đăng hay 
 ```
 
 ```bash
-PYTHONPATH=src uv run python -m studio.orchestrator publish channel-briefs brief.json --actor human:owner
-PYTHONPATH=src uv run python -m studio.orchestrator run --watch 5
+uv run python -m studio.orchestrator publish channel-briefs brief.json --actor human:owner
+uv run python -m studio.orchestrator run --watch 5
 ```
 
 Hoặc điền form *Brief kênh video* ở khối *Giao việc* đầu màn **Xưởng video** của console (chạy với `--allow-submit`) —
@@ -422,7 +427,7 @@ cùng event, cùng schema.
 | `escalation` | supervisor thấy lỗi lặp / vượt ngân sách | `gate_cli approve|reject ...` |
 
 ```bash
-PYTHONPATH=src uv run python -m studio.gate_cli list
+uv run python -m studio.gate_cli list
 ```
 
 ### 6.3 Nối với nền tảng thật (YouTube, ADR-0008)
@@ -431,11 +436,11 @@ Mặc định `STUDIO_PLATFORM=fake`: publisher tạo `publish-events` mô tả 
 rồi báo lại; số liệu và bình luận đưa vào bằng file:
 
 ```bash
-PYTHONPATH=src uv run python -m studio.orchestrator publish publish-events published.json        # đã công khai
-PYTHONPATH=src uv run python -m studio.orchestrator publish performance-snapshots stats.json     # số liệu thật → analytics
-PYTHONPATH=src uv run python -m studio.orchestrator publish audience-comments comments.json      # bình luận → nháp trả lời
-PYTHONPATH=src uv run python -m studio.orchestrator status
-PYTHONPATH=src uv run python -m studio.orchestrator report
+uv run python -m studio.orchestrator publish publish-events published.json        # đã công khai
+uv run python -m studio.orchestrator publish performance-snapshots stats.json     # số liệu thật → analytics
+uv run python -m studio.orchestrator publish audience-comments comments.json      # bình luận → nháp trả lời
+uv run python -m studio.orchestrator status
+uv run python -m studio.orchestrator report
 ```
 
 Adapter YouTube thật (`src/studio/platform.py`, `youtube.py`, `urllib` thuần, approval-first): code chỉ chạm YouTube sau khi
@@ -447,8 +452,8 @@ gate `publish` / `replies` được approve. Bật bằng `platform: {provider: 
 
 ```bash
 cd Studio-creators
-PYTHONPATH=src uv run python -m studio.youtube login --client-secrets client_secret.json   # [--port 8765] [--no-browser]
-PYTHONPATH=src uv run python -m studio.youtube status        # có token? hết hạn? scopes? (không in secret)
+uv run python -m studio.youtube login --client-secrets client_secret.json   # [--port 8765] [--no-browser]
+uv run python -m studio.youtube status        # có token? hết hạn? scopes? (không in secret)
 ```
 
 Token lưu `~/.x-agents/auth/youtube_tokens.json` (quyền 600, đổi bằng `STUDIO_YOUTUBE_TOKENS` hoặc `--tokens`), tự refresh
@@ -460,8 +465,8 @@ kể cả khi gặp 401; không bao giờ commit.
 4. Kéo số liệu và bình luận thật lên bus (gọi tay hoặc cron; chưa có lịch tự động):
 
 ```bash
-STUDIO_PLATFORM=youtube PYTHONPATH=src uv run python -m studio.youtube sync-comments CH1-V1 [--ref YT_ID] [--since 2026-09-01T00:00:00Z]
-STUDIO_PLATFORM=youtube PYTHONPATH=src uv run python -m studio.youtube sync-metrics  CH1-V1 --window 7 [--variant A] [--ref YT_ID] [--channel]
+STUDIO_PLATFORM=youtube uv run python -m studio.youtube sync-comments CH1-V1 [--ref YT_ID] [--since 2026-09-01T00:00:00Z]
+STUDIO_PLATFORM=youtube uv run python -m studio.youtube sync-metrics  CH1-V1 --window 7 [--variant A] [--ref YT_ID] [--channel]
 ```
 
 `sync-metrics` lấy views, phút xem, AVD, like, comment và retention theo cảnh từ Analytics; impressions/CTR API không cấp nên
@@ -473,13 +478,13 @@ Schema của từng topic ở `topics/schemas/*.json`; mẫu tài liệu ở `te
 
 ```bash
 cd gateway
-PYTHONPATH=src uv run python -m gateway start            # daemon; --foreground/-f chạy tiền cảnh; --host/--port
-PYTHONPATH=src uv run python -m gateway stop
-PYTHONPATH=src uv run python -m gateway status           # exit 1 nếu server tắt hoặc không còn tài khoản sẵn sàng
-PYTHONPATH=src uv run python -m gateway login            # thêm tài khoản (--no-browser: chỉ in URL, không mở trình duyệt); loopback cổng 51121
-PYTHONPATH=src uv run python -m gateway logout EMAIL
-PYTHONPATH=src uv run python -m gateway reset [EMAIL]    # xoá cooldown
-PYTHONPATH=src uv run python -m gateway setup            # ghi llm.yaml dạng MỘT provider (--target, --strong, --standard); không dùng khi đã có backends:
+uv run python -m gateway start            # daemon; --foreground/-f chạy tiền cảnh; --host/--port
+uv run python -m gateway stop
+uv run python -m gateway status           # exit 1 nếu server tắt hoặc không còn tài khoản sẵn sàng
+uv run python -m gateway login            # thêm tài khoản (--no-browser: chỉ in URL, không mở trình duyệt); loopback cổng 51121
+uv run python -m gateway logout EMAIL
+uv run python -m gateway reset [EMAIL]    # xoá cooldown
+uv run python -m gateway setup            # ghi llm.yaml dạng MỘT provider (--target, --strong, --standard); không dùng khi đã có backends:
 curl http://127.0.0.1:1123/auth/status                    # JSON: từng tài khoản, cooldown còn lại
 curl http://127.0.0.1:1123/v1/models
 ```
@@ -562,7 +567,7 @@ Lệnh kiểm tra chuẩn trước khi mở PR (mỗi thư mục):
 uv run ruff check src tests
 uv run mypy src/company --ignore-missing-imports      # software-company (CI chỉ chạy mypy và coverage ≥ 90% ở đây)
 uv run pytest -q                                      # software-company: 314 ca; Studio: 164; gateway: 54
-PYTHONPATH=src uv run python -m company.evals all --replay --strict   # studio: python -m studio.evals all --replay
+uv run python -m company.evals all --replay --strict   # studio: python -m studio.evals all --replay
 ```
 
 Quy trình Git: [`QUY-TRINH-GIT.md`](QUY-TRINH-GIT.md). Không commit `llm.yaml`, `media.yaml`, `*.sqlite`, `output/`,

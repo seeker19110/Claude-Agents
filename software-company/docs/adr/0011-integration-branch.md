@@ -13,9 +13,13 @@ trạng thái của delivery-lead không tương ứng với một merge git nà
    đưa `company/integration` lên `main` là việc của release-engineer/người ở gate release.
 2. **Ticket rẽ từ nhánh tích hợp** tại thời điểm dispatch (worktree tạo khi agent bắt đầu), nên ticket phụ thuộc
    thấy code của ticket đã tích hợp trước đó.
-3. **Merge xảy ra khi release-candidate xuất hiện** (mọi review bắt buộc pass — chỗ delivery-lead đặt `approved`):
-   orchestrator `merge --no-ff` từng branch ticket của RC vào nhánh tích hợp, audit `integration.merged` kèm sha,
-   rồi mới cho release-engineer nhận RC (đầu vào có `integration_branch`, `integration_sha`).
+3. **Merge xảy ra ngay khi ticket `approved`** (mọi review bắt buộc pass), không đợi release-candidate — sửa F15,
+   mô phỏng donghanhcungban: khi gom release, ticket phụ thuộc rẽ nhánh trước khi RC xuất hiện nên không thấy code
+   của ticket trước. Orchestrator `merge --no-ff` branch ticket vào nhánh tích hợp, audit `integration.merged` kèm
+   sha; ticket phụ thuộc chỉ được dispatch sau bước này (`lead.require_integration`). RC xuất hiện thì merge nốt
+   ticket nào còn sót rồi mới cho release-engineer nhận (đầu vào có `integration_branch`, `integration_sha`).
+   Merge tích hợp luôn chạy một mình (`_merge_lock`), kể cả khi `--workers > 1` và hai event của hai ticket cùng
+   thấy một ticket thứ ba vừa approved.
 4. **Xung đột thì không có merge nửa vời**: `merge --abort`, RC bị huỷ (`release.void`, nhớ qua replay), ticket về
    `changes_requested` với hint là danh sách file xung đột (tính một retry — hết retry thì blocked → gate escalation
    như thường), worktree của ticket xoá và tạo lại từ nền mới. Chuyển trạng thái `approved → changes_requested`

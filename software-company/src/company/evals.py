@@ -228,6 +228,8 @@ def main(argv: list[str] | None = None) -> int:
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--record", action="store_true", help="chạy model thật và lưu evals/recordings/<agent>.json")
     mode.add_argument("--replay", action="store_true", help="chạy từ bản ghi, không gọi model (CI)")
+    ap.add_argument("--fail-on-score", action="store_true",
+                    help="đỏ cả khi ca eval không đạt (mặc định chỉ bản ghi thiếu/lệch mới đỏ — CONTRIBUTING §3)")
     ap.add_argument("--strict", action="store_true",
                     help="với --replay: agent trong evals/recordings/REQUIRED.txt mà thiếu bản ghi hoặc bản ghi lệch "
                          "phiên bản prompt thì tính là fail")
@@ -259,7 +261,13 @@ def main(argv: list[str] | None = None) -> int:
         if any(r.broken_recording for r in res): gate_ok = False
         if ns.record and isinstance(client, RecordingClient):
             print(f"đã ghi {client.save()}")
-    return 0 if gate_ok and (cases_ok or ns.replay) else 1
+    # Điểm chấm KHÔNG phải cổng (CONTRIBUTING §3): bản ghi thật vừa commit mà đỏ ngay thì không ai dám ghi lại.
+    # Nhưng "CI xanh" cũng không được hiểu là "eval đạt": in một dòng tổng kết để đọc log là thấy, và
+    # `--fail-on-score` cho người vận hành bật cổng khi muốn.
+    if not cases_ok:
+        print(f"CHÚ Ý: có ca eval không đạt (xem FAIL ở trên). Mã thoát {'1' if ns.fail_on_score else '0'}: "
+              f"điểm chấm {'là cổng vì --fail-on-score' if ns.fail_on_score else 'không phải cổng, chỉ cổng bản ghi mới đỏ'}.")
+    return 0 if gate_ok and (cases_ok or not ns.fail_on_score) else 1
 
 
 if __name__ == "__main__":  # pragma: no cover

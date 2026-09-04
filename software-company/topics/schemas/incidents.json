@@ -53,6 +53,13 @@
             "external"
           ],
           "description": "requirement → research-requests; design → threat-model/architecture; code/ops → tasks"
+        },
+        "project_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "dự án liên quan (nếu biết)"
         }
       },
       "required": [

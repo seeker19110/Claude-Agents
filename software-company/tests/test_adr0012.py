@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 import urllib.error
 
 import pytest
@@ -346,7 +345,7 @@ def test_resolve_host_va_default_fetcher_tren_server_that(monkeypatch):
         with pytest.raises(ToolError, match="không lấy được"):
             web_mod.default_fetcher(f"http://127.0.0.1:{port + 1}/", trusted)
     finally:
-        srv.shutdown(); t.join(timeout=5)
+        srv.shutdown(); t.join(timeout=5); srv.server_close()
 
 
 def test_research_toolbox_reads_customer_repo_readonly_without_run(tmp_path):
@@ -491,22 +490,29 @@ def test_threat_model_loi_vinh_vien_duoc_ghi_missing_khong_chan_plan():
 
 
 def test_parallel_workers_overlap_independent_tickets_and_keep_lifecycle_correct(tmp_path):
+    # Chồng lượt được chứng minh bằng Barrier chứ không bằng sleep: hai lượt đầu tiên phải CÙNG có mặt thì
+    # barrier mới mở, nên test không phụ thuộc lịch chuyển luồng hay tốc độ máy CI (chỉ 1 core cũng đúng).
     active = {"n": 0, "max": 0}; lock = threading.Lock()
+    overlap = threading.Barrier(2, timeout=10)
     T3 = {**T1, "ticket_id": "T3", "requirement_id": "REQ-3", "title": "GET /users"}
     def h(system, user):
         a, p = _agent_of(system), _inp(user)
         if a == "delivery-lead" and p.get("decision") != "pending":
             return {"items": [T1, T3], "context_writes": [{"namespace": "architecture", "content_ref": "c4.md", "summary": "L2", "content": "# C4"}]}
         with lock: active["n"] += 1; active["max"] = max(active["max"], active["n"])
-        time.sleep(0.03)
-        try: return handler(system, user)
+        try:
+            # chỉ chặn ở đúng pha song song (lượt của hai ticket độc lập); pha tuần tự trước đó đi thẳng
+            if p.get("ticket_id") in {"T1", "T3"} and not overlap.broken:
+                try: overlap.wait()          # lượt đầu chờ lượt thứ hai: chứng minh hai ticket chạy chồng
+                except threading.BrokenBarrierError: pass
+            return handler(system, user)
         finally:
             with lock: active["n"] -= 1
     db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); client = FakeClient(handler=h)
     orch = Orchestrator(bus, client, workers=4, artifacts=tmp_path / "art")
     _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
     assert orch.lead.state["T1"] == "merged" and orch.lead.state["T3"] == "merged" and orch.stats["errors"] == 0
-    assert active["max"] >= 2, "hai ticket độc lập chạy chồng lên nhau"
+    assert active["max"] >= 2 and not overlap.broken, "hai ticket độc lập chạy chồng lên nhau"
     # File mirror nằm dưới tầng dự án vì blackboard phân vùng theo project_id (ADR-0018).
     assert (tmp_path / "art" / "P1" / "architecture" / "latest.md").read_text(encoding="utf-8") == "# C4"
     assert orch.status()["workers"] == 4 and orch.status()["blackboard"]["P1/architecture"]["chars"] == 4

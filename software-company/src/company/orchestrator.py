@@ -49,10 +49,10 @@ from pathlib import Path
 from typing import Any
 
 from .blackboard import Blackboard
-from .bus import InMemoryBus
+from .bus import InMemoryBus, is_human
 from .delivery import DONE_STATES, DeliveryLead
 from .events import BUDGET_FACTOR, AuditLog, Envelope, Task
-from .gate_cli import PersistentGate
+from .gate_cli import PersistentGate, trusted_decision
 from .gates import Decision, GateRequest
 from .llm import LLMError, ModelClient, TransientError
 from .registry import AgentSpec, load_agents
@@ -257,6 +257,7 @@ class Orchestrator:
         self._lock = threading.RLock()   # trạng thái orchestrator (processed, deferred, once, stats) — KHÔNG publish khi đang giữ
         self._qlock = threading.RLock()  # hàng đợi; _on_event (chạy dưới lock của bus) chỉ chạm lock này
         self._ws_lock = threading.RLock()
+        self._merge_lock = threading.RLock()  # merge vào nhánh tích hợp chạy một mình (ADR-0012 §7), kể cả khi --workers>1
         self.partial: dict[str, set[str]] = {}  # event_id → agent đã chạy xong (để không chạy lại khi event bị hoãn transient)
         if self.repo is not None and not (self.repo / ".git").exists():
             raise ValueError(f"repo không phải git repository: {self.repo}")
@@ -304,7 +305,8 @@ class Orchestrator:
                 if a["actor"] == ACTOR and a["action"] == "orchestrated": self.processed.add(d["event_id"])
                 elif a["actor"] == ACTOR and a["action"] == "once": self.once.add(d["key"])
                 elif a["action"] == "plan.proposed": self.plans[d["plan_id"]] = d
-                elif a["action"] == "release.void": self.void_releases.add(d["release_id"])
+                elif a["action"] == "release.void": self._void(d["release_id"])
+                elif a["action"] == "ticket.abandoned": self.lead.abandon(d["ticket_id"])
                 elif a["action"] == "integration.merged":
                     self.integrated.add(d["ticket_id"])
                     prev_r, self.lead.replaying = self.lead.replaying, True
@@ -314,14 +316,20 @@ class Orchestrator:
                 elif a["action"] == "project.stalled":
                     self.stalled[d["project_id"]] = d; self.stall_count[d["event_id"]] += 1
                 elif a["action"] in {"project.retried", "project.closed"}: self.stalled.pop(d["project_id"], None)
-                elif a["action"] == "gate.decide" and d.get("decision") == "approve" and d["subject_id"] in self.plans:
+                elif a["action"] == "gate.decide" and d.get("decision") == "approve" and d.get("subject_id") in self.plans \
+                        and trusted_decision(env) is not None:
                     self._dispatch_plan(d["subject_id"], replaying=True)
             elif env.topic == "supervisor-actions": self._track_pause(env)
             elif env.topic == "shared-context": self.blackboard._on(env)
             else:
                 if env.topic == "research-requests": self._learn_repo(env, replaying=True)
                 self.lead.replay(env)
+            if env.actor in self.agents and env.causation_id:
+                # Đầu ra agent đã publish cho event chưa được đánh dấu xong (crash giữa hai route): agent đó KHÔNG chạy
+                # lại khi mở lại — tốn token và sinh PR/review trùng. `partial` được dựng lại từ causation_id.
+                self.partial.setdefault(env.causation_id, set()).add(env.actor)
             self.supervisor.replay(env)
+        self.partial = {k: v for k, v in self.partial.items() if k not in self.processed}
         self.queue = [e for e in log if self._actionable(e) and e.event_id not in self.processed]
 
     # ---------- repo theo từng dự án (ADR-0025) ----------
@@ -370,7 +378,7 @@ class Orchestrator:
         return self.integration is not None or bool(self.project_repos)
 
     def _actionable(self, env: Envelope) -> bool:
-        if env.topic == "audit-log": return env.payload.get("action") == "gate.decide"
+        if env.topic == "audit-log": return trusted_decision(env) is not None  # gate.decide giả (actor không phải người) không chạy
         return env.topic not in CONTROL_TOPICS
 
     def _track_pause(self, env: Envelope) -> None:
@@ -562,7 +570,7 @@ class Orchestrator:
             if (pid := self.project_for(env)) and not env.payload.get("project_id"): extra["project_id"] = pid
             inp = env.model_copy(update={"payload": {**env.payload, **extra}}) if extra else env
             if r.target_env:
-                out = self._release(agent, env, r); res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
+                out = self._release(agent, inp, r); res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
             elif r.tools == "rw":
                 pr = self._engineer(agent, inp, r)
                 res.actions.append(f"{agent}→{r.topic_out}:{pr.key}" if pr is not None else f"{agent}→rework:{inp.key}")
@@ -571,11 +579,11 @@ class Orchestrator:
                 res.actions.append(f"{agent}→blackboard:{','.join(w['namespace'] for w in g.context_writes) or '-'}")
             elif r.many:
                 g = self.runner.generate(agent, inp, r.topic_out, many=True)
-                if g.context_writes: self.runner.write_context(agent, env, g.context_writes)
+                if g.context_writes: self.runner.write_context(agent, inp, g.context_writes)  # inp mang project_id (ADR-0018)
                 if env.topic == "acceptance-results":  # CR từ nghiệm thu conditional phải truy được release (đóng ticket khi quyết)
                     g.payloads = [{**p, "release_id": env.key} for p in g.payloads]
                 for i, p in enumerate(g.payloads):  # token/tiền tính một lần cho cả lượt, không nhân theo số payload
-                    self.runner.publish(agent, env, r.topic_out, p, key=key_for(r.topic_out, p, env.key),
+                    self.runner.publish(agent, inp, r.topic_out, p, key=key_for(r.topic_out, p, env.key),
                                         tokens=g.tokens if i == 0 else 0, model=g.model, generated=g if i == 0 else None)
                 if not g.payloads:
                     self._audit("produced:nothing", {"agent": agent, "topic": r.topic_out, **json.loads(g.evidence())},
@@ -593,7 +601,7 @@ class Orchestrator:
                     # Có tool mà không chạy gì: verdict chỉ là lời khai. Không chặn (người đọc review vẫn quyết), nhưng phải hiện.
                     self._audit("review.no_tool_evidence", {"agent": agent, "topic": env.topic, "key": env.key},
                                 actor=agent, ticket_id=inp.payload.get("ticket_id"), project_id=self.project_for(env))
-                out = self.runner.publish(agent, env, r.topic_out, g.payloads[0], key=key_for(r.topic_out, g.payloads[0], env.key),
+                out = self.runner.publish(agent, inp, r.topic_out, g.payloads[0], key=key_for(r.topic_out, g.payloads[0], env.key),
                                           tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
                 res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
             with self._lock:
@@ -665,6 +673,12 @@ class Orchestrator:
     def _merge_ticket(self, tid: str, res: StepResult, release_id: str | None) -> bool:
         """merge --no-ff branch ticket vào nhánh tích hợp. Xung đột → ticket về changes_requested với hint là file xung
         đột, worktree tạo lại từ nền mới; trả về False."""
+        with self._merge_lock:
+            return self._merge_ticket_locked(tid, res, release_id)
+
+    def _merge_ticket_locked(self, tid: str, res: StepResult, release_id: str | None) -> bool:
+        with self._lock:
+            if tid in self.integrated: return True  # thread khác vừa merge xong trong lúc ta chờ khoá
         integration = self._integration_of_ticket(tid)
         ws = self.workspace(tid)
         if integration is None or ws is None or not ws.path.exists():
@@ -706,13 +720,17 @@ class Orchestrator:
             if tid in self.integrated: continue
             if self.lead.state.get(tid) not in {"approved", "merged"}:  # đã bị trả về (xung đột lúc approved): RC vô nghĩa
                 self._audit("release.void", {"release_id": rid, "ticket_id": tid, "reason": f"ticket đang {self.lead.state.get(tid)}"}, ticket_id=tid)
-                self.void_releases.add(rid); res.actions.append(f"void:{rid}")
+                self._void(rid); res.actions.append(f"void:{rid}")
                 return False
             if not self._merge_ticket(tid, res, release_id=rid):
                 self._audit("release.void", {"release_id": rid, "ticket_id": tid}, ticket_id=tid)
-                self.void_releases.add(rid)
+                self._void(rid)
                 return False
         return True
+
+    def _void(self, rid: str) -> None:
+        self.void_releases.add(rid)
+        self.lead.void_release(rid)  # gom release: ticket approved trong RC huỷ phải vào RC kế tiếp
 
     def _read_only_tools(self, inp: Envelope) -> ToolBox | None:
         """Tool chỉ đọc cho QA: worktree của ticket (review PR) hoặc worktree tích hợp (hồi quy sau khi deploy staging —
@@ -952,7 +970,10 @@ class Orchestrator:
                                       payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
             res.actions.append(f"reopen:{tid}")
         elif decision in {"reject", "rollback"} and tid in self.lead.tickets:
-            self.lead.close_escalated(tid); res.actions.append(f"closed:{tid}")
+            blocked = self.lead.close_escalated(tid); res.actions.append(f"closed:{tid}")
+            self._audit("ticket.abandoned", {"ticket_id": tid, "by": by, "dependents_blocked": blocked}, ticket_id=tid,
+                        project_id=self.lead.tickets[tid].project_id)
+            if blocked: res.actions.append("blocked:" + ",".join(blocked))
             if self.lead.batch_releases:  # ticket đóng không còn giữ release của các ticket đã approved
                 self.lead.flush_releases(self.lead.tickets[tid].project_id)
 
@@ -977,7 +998,7 @@ class Orchestrator:
         decision: Decision = {"accepted": "approve", "rejected": "reject"}.get(str(verdict), "request_changes")  # type: ignore[assignment]
         by = str(env.payload.get("signed_by") or env.actor)
         try:
-            self.gate.decide(sid, decision, by=by, reason=f"acceptance-results: {verdict}")
+            self.gate.decide(sid, decision, by=by, reason=f"acceptance-results: {verdict}", actor=ACTOR)
             res.actions.append(f"gate:acceptance:{sid}:{decision}")
         except (KeyError, PermissionError) as e:
             self._audit("handler_error", {"agent": "account-manager", "error": str(e)[:300]})
@@ -1160,9 +1181,11 @@ def main(argv: list[str] | None = None) -> int:
     ns = ap.parse_args(argv)
     for stream in (sys.stdout, sys.stderr):  # Windows console cp1252
         if hasattr(stream, "reconfigure"): stream.reconfigure(encoding="utf-8")
-    from .sqlite_bus import SQLiteBus
+    from .sqlite_bus import Lease, LeaseError, SQLiteBus
     bus = SQLiteBus(ns.db)
     if ns.cmd == "publish":
+        if not is_human(ns.actor):  # CLI là cửa của người; giả danh agent/orchestrator từ đây là vượt quyền producer của bus
+            print(f"--actor phải là người (human:<tên>), không phải {ns.actor!r}", file=sys.stderr); return 2
         payload = json.loads(ns.file.read_text(encoding="utf-8"))
         key = ns.key or payload.get("ticket_id") or payload.get("release_id") or payload.get("project_id") or payload.get("change_id")
         if not key: print("cần --key", file=sys.stderr); return 2
@@ -1213,11 +1236,18 @@ def main(argv: list[str] | None = None) -> int:
         except (ValueError, WorkspaceError) as e:
             print(str(e), file=sys.stderr); return 2
         return 0
-    if ns.watch:
-        try: orch.watch(interval=ns.watch)
-        except KeyboardInterrupt: pass
-    else:
-        for r in orch.tick() if ns.max_steps is None else orch.run(ns.max_steps): print(_fmt(r))
+    try:
+        lease = Lease(ns.db); lease.acquire()
+    except LeaseError as e:
+        print(str(e), file=sys.stderr); return 3
+    try:
+        if ns.watch:
+            try: orch.watch(interval=ns.watch)
+            except KeyboardInterrupt: pass
+        else:
+            for r in orch.tick() if ns.max_steps is None else orch.run(ns.max_steps): print(_fmt(r))
+    finally:
+        lease.release()
     print(json.dumps(orch.status(), ensure_ascii=False))
     return 0
 
