@@ -194,7 +194,117 @@ def test_plan_rejected_when_budget_rule_violated():
     _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
-    assert "plan_rejected" in acts and not orch.plans and not orch.gate.pending and not orch.lead.tickets
+    assert "plan_rejected" in acts and not orch.plans and not orch.lead.tickets
+    # Kế hoạch bị từ chối là ngõ cụt: không ticket, không plan, không cơ chế tự lập lại. Phải mở gate
+    # `escalation` cho người quyết — trước đây dự án đứng im ở đây mà `status` vẫn báo mọi chỉ số xanh.
+    assert orch.gate.pending.get("P1") and orch.gate.pending["P1"].kind == "escalation"
+    assert "plan_problems" in orch.gate.pending["P1"].checklist
+
+
+def test_loi_agent_khong_nhanh_nao_nhan_thi_mo_gate_chu_khong_im_lang():
+    """Reviewer lỗi trên `pull-requests`: KHÔNG thuộc RESEARCH_TOPICS (nên `_stall` bỏ qua) và route không
+    phải `tools="rw"` (nên `_rework_after_error` bỏ qua). Trước đây lỗi rơi vào im lặng: event vẫn bị đánh
+    dấu đã xử lý, ticket treo `in_review`, không gate nào mở, `status` báo mọi chỉ số XANH trong khi dự án
+    đã chết. Đo được khi chạy thật 2026-09-04: ba reviewer cùng hỏng, 13 ticket phụ thuộc chờ vĩnh viễn."""
+    def reviewer_hong(system, user):
+        if _agent_of(system) in {"reviewer", "qa-debugger", "security-engineer"}:
+            raise LLMError("model không trả về nội dung nào")
+        return handler(system, user)
+
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=reviewer_hong))
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _pub(bus, "pull-requests", "T1", "backend",
+         {"ticket_id": "T1", "project_id": "P1", "branch": "ticket/T1", "pr_ref": "#1", "summary": "s",
+          "impact": {"files": ["a.py"]}, "local_checks": {"lint": True, "tests": True, "verified_by": "workspace"}})
+    orch.run()
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "agent_error_unhandled" in acts, "lỗi không nhánh nào nhận phải để lại dấu vết"
+    assert orch.gate.pending.get("T1"), "phải mở gate escalation thay vì chết lặng"
+
+
+def test_cau_tra_loi_tich_luy_trong_cung_mot_vong():
+    """Người trả lời bổ sung ở lượt sau (vd. sau khi security-engineer nêu câu hỏi mở) không phải gửi lại
+    toàn bộ câu cũ. Trước đây `_answers_complete` chỉ đọc event HIỆN TẠI, nên lượt bổ sung luôn bị coi là
+    "thiếu hết các câu trước": spec-writer không bao giờ chạy lại, câu trả lời nằm im trong bus, không audit,
+    không báo ai. Đo được khi chạy thật 2026-09-04 với OQ-02/OQ-05 của dự án QLKH."""
+    def hai_cau(system, user):
+        if _agent_of(system) == "clarifier":
+            return {"project_id": "P1", "round": 1,
+                    "questions": [{"id": "Q1", "text": "?", "options": ["a"], "default": "a"},
+                                  {"id": "Q2", "text": "?", "options": ["b"], "default": "b"}]}
+        return handler(system, user)
+
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=hai_cau))
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app"})
+    orch.run()
+    q = bus.latest("clarification-questions", "P1")
+    assert {x["id"] for x in q.payload["questions"]} == {"Q1", "Q2"}
+
+    # Hai lượt trả lời RỜI NHAU trong cùng một vòng hỏi — đúng cách người dùng trả lời bổ sung.
+    _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "a"}]})
+    _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": [{"question_id": "Q2", "answer": "b"}]})
+    orch.run()
+    assert bus.latest("approved-specs", "P1"), "câu trả lời phải tích luỹ trong cùng một vòng"
+
+
+def test_lenh_thu_lai_song_sot_qua_restart(tmp_path):
+    """`_retry_stalled` bỏ dấu `processed` rồi đẩy vào `self.queue` — cả hai đều trong RAM. Restart giữa lúc
+    đó là mất trắng: event vẫn mang dấu `orchestrated` của LẦN LỖI nên hàng đợi dựng lại loại nó ra, dự án
+    nằm im vĩnh viễn dù người đã bấm duyệt. Đo được khi chạy thật 2026-09-04 (duyệt gate lúc 06:51:31,
+    restart lúc 06:51:45, sau đó không một dòng `orchestrated` nào nữa)."""
+    lan = {"n": 0}
+
+    def hong_lan_dau(system, user):
+        if _agent_of(system) == "researcher":
+            lan["n"] += 1
+            if lan["n"] == 1: raise LLMError("model rớt mạng")
+        return handler(system, user)
+
+    db = tmp_path / "c.sqlite"
+    bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=hong_lan_dau))
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app"})
+    orch.run()
+    assert orch.stalled.get("P1"), "researcher hỏng → dự án stalled, mở gate escalation"
+    orch.gate.decide("P1", "approve", by="human:lead")
+    # Xử lý ĐÚNG event gate.decide: `_retry_stalled` bỏ dấu processed và đẩy event lỗi vào self.queue (trong RAM),
+    # ghi `project.retried` lên bus. `max_steps=1` dừng ngay sau đó — mô phỏng tiến trình chết trước khi kịp
+    # chạy lại event vừa đưa vào hàng đợi. Đây mới là tình huống thật; nếu để `gate.decide` chưa xử lý thì
+    # restart vẫn nhặt được nó và test không bắt được lỗi gì.
+    orch.run(max_steps=1)
+    assert any(e.payload.get("action") == "project.retried" for e in bus.replay(topic="audit-log"))
+    assert not bus.latest("clarification-questions", "P1"), "chưa kịp chạy lại trước khi chết"
+    orch2 = Orchestrator(SQLiteBus(db), FakeClient(handler=hong_lan_dau))
+    orch2.run()
+    assert orch2.bus.latest("clarification-questions", "P1"), "sau restart phải chạy tiếp, không được nằm im"
+
+
+def test_ton_trong_thoi_gian_cho_backend_da_hen():
+    """Backend nói rõ "thử lại sau 1515s" thì không được hỏi lại ở nhịp tick kế. Trước đây mọi tick đều thử
+    lại: đo được 60 bản ghi `llm_error`/phút LIÊN TỤC lúc pool hết quota (2026-09-04). Rẻ về tài nguyên
+    (tầng routing không gọi mạng khi backend đang nghỉ) nhưng làm bẩn audit-log, mà `_rehydrate` replay TOÀN
+    BỘ log nên bus phình khiến mọi lần mở lại dự án chậm dần — lỗi tự nuôi chính nó."""
+    from company.llm import TransientError
+
+    goi = {"n": 0}
+
+    def het_quota(system, user):
+        if _agent_of(system) == "intake":
+            goi["n"] += 1
+            raise TransientError("mọi backend đều đang nghỉ, thử lại sau 1515s")
+        return handler(system, user)
+
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=het_quota))
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app"})
+    orch.run()
+    assert goi["n"] == 1 and orch.deferred, "lần đầu gọi rồi hoãn"
+    for _ in range(5):
+        orch.tick()
+    assert goi["n"] == 1, f"đã hẹn 1515s thì không được hỏi lại ở tick kế (đã gọi {goi['n']} lần)"
+
+    # hết hẹn thì phải thử lại, không được treo luôn
+    for k in orch.defer_until: orch.defer_until[k] = 0.0
+    orch.tick()
+    assert goi["n"] == 2, "hết thời gian hẹn thì phải thử lại"
 
 
 def test_release_engineer_wrong_env_is_invalid_output():

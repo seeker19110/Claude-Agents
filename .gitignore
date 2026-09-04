@@ -14,12 +14,21 @@ htmlcov/
 
 # software-company: dữ liệu chạy và cấu hình model cá nhân
 software-company/company.sqlite*
+software-company/company.artifacts/
 software-company/.worktrees/
 software-company/llm.yaml
 software-company/llm.yaml.bak
 
-# đầu ra mô phỏng examples/donghanhcungban_demo.py
+# đầu ra mô phỏng examples/donghanhcungban_demo.py — `--out` đặt tên gì cũng được, nên bắt cả các tên hay dùng.
+# Thiếu mấy dòng này thì PRD/threat model do model sinh nằm dạng untracked và rất dễ bị `git add` diện rộng
+# quét nhầm vào commit (kèm cả repo khách lồng bên trong).
 software-company/sim-out/
+software-company/real-demo/
+software-company/demo-out/
+
+# SQLite tạm do test sinh
+*.sqlite
+*.sqlite-journal
 
 # Studio-creators: dữ liệu chạy, asset sinh ra và cấu hình cá nhân
 Studio-creators/studio.sqlite*

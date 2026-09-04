@@ -23,6 +23,12 @@ Agent ghi blackboard qua `context_writes` trong đầu ra (runner kiểm namespa
 bằng `audit-log` (actor=orchestrator, action=orchestrated) nên mở lại bus SQLite là tiếp tục đúng chỗ; trạng thái
 delivery-lead/supervisor/gate dựng lại từ replay. Không retry lời gọi model vì lỗi nội dung: lỗi ghi audit rồi đi tiếp.
 
+Hai trạng thái dừng KHÁC NHAU về độ bền, rất dễ nhầm khi vận hành:
+- HOÃN (`deferred`, xem `_defer`): KHÔNG gọi `_mark`, nên event không mang dấu `orchestrated`. Mở lại tiến trình
+  là hàng đợi nhận lại nó — an toàn khi restart. Backend hẹn "thử lại sau Ns" thì `defer_until` giữ đúng hẹn.
+- KẸT (`stalled`, xem `_stall`): event ĐÃ bị `_mark`. Lệnh chạy lại (`_retry_stalled`) bỏ dấu đó trong RAM, nên
+  `_rehydrate` phải đối chiếu `project.retried` với `orchestrated` gần nhất mới nhận lại được sau restart.
+
 ADR-0012:
 - Lỗi transport (`TransientError`, sau khi `RetryingClient` đã thử lại) không phải lỗi agent: event được HOÃN
   (`transient:<agent>`) và nhịp `tick` sau thử lại; agent đã chạy xong trên cùng event không chạy lại (`partial`).
@@ -56,6 +62,7 @@ from .gate_cli import PersistentGate, trusted_decision
 from .gates import Decision, GateRequest
 from .llm import LLMError, ModelClient, TransientError
 from .registry import AgentSpec, load_agents
+from .routing import retry_after_seconds
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError, artifact_store
 from .supervisor import Supervisor
 from .tools import ToolBox, WorkspaceTools
@@ -128,11 +135,22 @@ def _deployed(env_name: str) -> When:
 
 def _answers_complete(e: Envelope, o: Orchestrator) -> bool:
     """Người đã trả lời hết câu hỏi của vòng gần nhất (hoặc clarifier đã hết vòng) → đi thẳng spec-writer.
-    Thiếu câu trả lời mà vẫn viết spec thì spec dựa trên giả định người chưa xác nhận."""
-    q = o.latest("clarification-questions", e.payload.get("project_id") or e.key)
+    Thiếu câu trả lời mà vẫn viết spec thì spec dựa trên giả định người chưa xác nhận.
+
+    Câu trả lời TÍCH LUỸ trong vòng hiện tại, không chỉ tính event này: người trả lời bổ sung một câu ở lượt
+    sau (vd. sau khi security-engineer nêu thêm câu hỏi mở) không phải gửi lại toàn bộ câu cũ. Trước đây chỉ
+    đọc `e.payload`, nên lượt bổ sung luôn bị coi là "thiếu hết các câu trước" và spec-writer không bao giờ
+    chạy lại — câu trả lời nằm im trong bus, không audit, không báo ai (đo được khi chạy thật 2026-09-04)."""
+    pid = str(e.payload.get("project_id") or e.key)
+    q = o.latest("clarification-questions", pid)
     if q is None: return True
     asked = {str(x.get("id")) for x in q.payload.get("questions", [])}
     answered = {str(a.get("question_id")) for a in e.payload.get("answers", [])}
+    for prev in o.bus.replay(topic="clarification-answers", key=pid):
+        # chỉ tính câu trả lời của ĐÚNG vòng này: id có thể trùng giữa các vòng, câu cũ không được
+        # vô tình thoả mãn câu hỏi mới.
+        if prev.ts >= q.ts:
+            answered |= {str(a.get("question_id")) for a in prev.payload.get("answers", [])}
     return not (asked - answered) or int(q.payload.get("round", 1)) >= MAX_CLARIFY_ROUNDS
 
 
@@ -288,6 +306,9 @@ class Orchestrator:
         self.plans: dict[str, dict[str, Any]] = {}
         self.queue: list[Envelope] = []
         self.deferred: dict[str, tuple[Envelope, str]] = {}
+        # event_id → mốc monotonic sớm nhất được thử lại. Backend nói rõ "thử lại sau Ns" thì phải chờ đúng
+        # chừng đó; hỏi lại sớm hơn vừa vô ích vừa làm bẩn audit-log (xem `_retry_deferred`).
+        self.defer_until: dict[str, float] = {}
         self.once: set[str] = set()  # nhắc nhở / hành động chỉ làm một lần (gate.remind, review.reassign, lesson...)
         self.stats: Counter[str] = Counter()
         self._rehydrate()
@@ -299,10 +320,16 @@ class Orchestrator:
         # Một lần duyệt log, không hai: `replay()` trên bus bền vững parse lại từng envelope, nên quét đôi là nhân đôi
         # thời gian mở lại một dự án đã chạy lâu.
         log = list(self.bus.replay())
-        for env in log:
+        # Thứ tự trong log của lần `orchestrated` / `project.retried` gần nhất cho từng event: dùng ở cuối hàm
+        # để nhận lại lệnh thử-lại chưa kịp chạy (xem chú thích ở đó).
+        last_done: dict[str, int] = {}
+        last_retry: dict[str, int] = {}
+        for i, env in enumerate(log):
             if env.topic == "audit-log":
                 a = env.payload; d = _evidence(a)
-                if a["actor"] == ACTOR and a["action"] == "orchestrated": self.processed.add(d["event_id"])
+                if a["action"] == "project.retried" and d.get("event_id"): last_retry[str(d["event_id"])] = i
+                if a["actor"] == ACTOR and a["action"] == "orchestrated":
+                    self.processed.add(d["event_id"]); last_done[str(d["event_id"])] = i
                 elif a["actor"] == ACTOR and a["action"] == "once": self.once.add(d["key"])
                 elif a["action"] == "plan.proposed": self.plans[d["plan_id"]] = d
                 elif a["action"] == "release.void": self._void(d["release_id"])
@@ -329,6 +356,15 @@ class Orchestrator:
                 # lại khi mở lại — tốn token và sinh PR/review trùng. `partial` được dựng lại từ causation_id.
                 self.partial.setdefault(env.causation_id, set()).add(env.actor)
             self.supervisor.replay(env)
+        # Lệnh thử-lại chỉ sống trong RAM: `_retry_stalled` bỏ dấu `processed` rồi đẩy event vào `self.queue`.
+        # Restart giữa lúc đó là mất trắng — event vẫn mang dấu `orchestrated` của LẦN LỖI, nên hàng đợi dựng lại
+        # loại nó ra và dự án nằm im vĩnh viễn dù người đã bấm duyệt. Đo được khi chạy thật (2026-09-04): duyệt
+        # gate escalation lúc 06:51:31, restart lúc 06:51:45, sau đó không một dòng `orchestrated` nào nữa.
+        # Ai đã bảo "chạy lại" mà event chưa được xử lý lại thì phải bỏ dấu để hàng đợi nhận lại.
+        reopened = {eid for eid, idx in last_retry.items() if idx > last_done.get(eid, -1)}
+        if reopened:
+            self.processed -= reopened
+            self._audit("retry.reopened", {"event_ids": sorted(reopened)})
         self.partial = {k: v for k, v in self.partial.items() if k not in self.processed}
         self.queue = [e for e in log if self._actionable(e) and e.event_id not in self.processed]
 
@@ -537,7 +573,10 @@ class Orchestrator:
         self._note_closed()
         if res.transient:  # một agent chưa chạy được vì transport: giữ event lại, nhịp sau thử tiếp (agent xong rồi không chạy lại)
             stuck = next((a for a in res.actions if a.startswith("transient:")), "transient:?")
-            return self._defer(env, res, ":".join(stuck.split(":")[:2]))
+            # Backend đã nói rõ phải chờ bao lâu ("mọi backend đều đang nghỉ, thử lại sau 1515s") — tôn trọng nó.
+            # Trước đây mọi nhịp tick đều hỏi lại: đo được 60 bản ghi `llm_error`/phút liên tục trong lúc pool
+            # hết quota (2026-09-04), và `_rehydrate` replay TOÀN BỘ log nên bus phình làm mọi lần mở lại chậm dần.
+            return self._defer(env, res, ":".join(stuck.split(":")[:2]), wait_s=retry_after_seconds(stuck))
         self._mark(env, res)
         return res
 
@@ -612,30 +651,49 @@ class Orchestrator:
         except (RunnerError, LLMError) as e:  # runner đã ghi audit; không retry lời gọi (ADR-0005)
             res.actions.append(f"error:{agent}:{str(e)[:120]}")
             with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
-            self._stall(env, agent, e, res)
-            self._rework_after_error(env, r, e)
+            self._after_error(env, agent, e, r, res)
         except Exception as e:  # handler xác định (delivery-lead) từ chối chuyển trạng thái: event đã ghi đĩa
             self._audit("handler_error", {"agent": agent, "error": str(e)[:300]}, ticket_id=env.payload.get("ticket_id"))
             res.actions.append(f"handler_error:{agent}:{str(e)[:120]}")
             with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
-            self._stall(env, agent, e, res)
-            self._rework_after_error(env, r, e)  # WorkspaceError (git/commit) cũng không được để ticket treo `dispatched`
+            self._after_error(env, agent, e, r, res)
 
-    def _rework_after_error(self, env: Envelope, r: Route, error: Exception) -> None:
+    def _after_error(self, env: Envelope, agent: str, error: Exception, r: Route, res: StepResult) -> None:
+        """Mọi lỗi agent phải có người nhận: `_stall` lo chuỗi nghiên cứu, `_rework_after_error` lo agent sửa code.
+        KHÔNG đường nào nhận thì đây là đường cuối — trước đây lỗi rơi vào im lặng: event vẫn bị `_mark` là đã xử
+        lý, ticket treo nguyên trạng thái cũ, không gate nào mở, và `status` báo mọi chỉ số XANH trong khi dự án
+        đã chết. Đo được khi chạy thật (2026-09-04): ba reviewer của `pull-requests:QLKH-001` cùng lỗi
+        (`env.topic` không thuộc RESEARCH_TOPICS nên `_stall` bỏ qua, `r.tools != "rw"` nên `_rework_after_error`
+        cũng bỏ qua) → 13 ticket phụ thuộc chờ vĩnh viễn mà không có một tín hiệu nào."""
+        handled = self._stall(env, agent, error, res)
+        handled = self._rework_after_error(env, r, error) or handled
+        if handled: return
+        subject = str(env.payload.get("ticket_id") or env.key)
+        self._audit("agent_error_unhandled",
+                    {"agent": agent, "topic": env.topic, "event_id": env.event_id, "error": str(error)[:300]},
+                    ticket_id=env.payload.get("ticket_id"), project_id=self.project_for(env))
+        self.supervisor.escalate_gate(subject, f"{agent} lỗi trên {env.topic}, không nhánh nào xử lý: {str(error)[:200]}",
+                                      once_key=f"unhandled:{env.event_id}:{agent}")
+        res.actions.append(f"unhandled:{subject}:{agent}")
+
+    def _rework_after_error(self, env: Envelope, r: Route, error: Exception) -> bool:
         """Agent kỹ thuật lỗi (không sửa file, JSON hỏng, hết ngân sách lượt...) → ticket không được treo `dispatched`
-        mãi: delivery-lead phát lại task retry+1 với hint là lỗi, hết retry → blocked → gate escalation."""
-        if r.tools != "rw": return
+        mãi: delivery-lead phát lại task retry+1 với hint là lỗi, hết retry → blocked → gate escalation.
+        Trả True nếu nhánh này đã nhận trách nhiệm xử lý lỗi."""
+        if r.tools != "rw": return False
         tid = str(env.payload.get("ticket_id") or env.key)
-        if self.lead.state.get(tid) not in {"dispatched", "in_progress"}: return
+        if self.lead.state.get(tid) not in {"dispatched", "in_progress"}: return False
         try:
             self.lead.rework(tid, f"lần trước lỗi: {str(error)[:500]}")
         except ValueError as ex:
             self._audit("handler_error", {"agent": "delivery-lead", "error": str(ex)[:300]}, ticket_id=tid)
+        return True
 
-    def _stall(self, env: Envelope, agent: str, error: Exception, res: StepResult) -> None:
+    def _stall(self, env: Envelope, agent: str, error: Exception, res: StepResult) -> bool:
         """Agent của chuỗi nghiên cứu lỗi → dự án không có bước kế tiếp. Ghi `project.stalled`, supervisor escalate
-        (dự án bị hoãn mọi event), mở gate `escalation` subject=project_id. Ticket có cơ chế retry/blocked riêng."""
-        if env.topic not in RESEARCH_TOPICS: return
+        (dự án bị hoãn mọi event), mở gate `escalation` subject=project_id. Ticket có cơ chế retry/blocked riêng.
+        Trả True nếu nhánh này đã nhận trách nhiệm xử lý lỗi."""
+        if env.topic not in RESEARCH_TOPICS: return False
         pid = str(env.payload.get("project_id") or env.key)
         with self._lock:
             self.stall_count[env.event_id] += 1; n = self.stall_count[env.event_id]
@@ -648,6 +706,7 @@ class Orchestrator:
             self.gate.request(GateRequest(kind="escalation", subject_id=pid, created_by="supervisor",
                                           checklist=["agent_error", "decision:retry|close"]))
         res.actions.append(f"stalled:{pid}:{agent}")
+        return True
 
     def _retry_stalled(self, pid: str, by: str, reason: str) -> bool:
         """Người duyệt gate escalation của dự án: chạy lại event đã lỗi (bỏ dấu đã xử lý, đưa về đầu hàng đợi)."""
@@ -842,6 +901,14 @@ class Orchestrator:
             self._audit("plan_rejected", plan, actor="delivery-lead", tokens=g.tokens, cost=g.cost_usd, project_id=project)
             res.actions.append(f"plan_rejected:{'; '.join(problems)[:120]}")
             with self._lock: self.stats["errors"] += 1
+            # Kế hoạch bị từ chối là ngõ cụt: không ticket nào được tạo, không gate nào mở, và không có cơ chế
+            # tự lập lại. Trước đây dự án đứng im ở đây mà `status` vẫn báo mọi chỉ số xanh (đo được với dự án
+            # DHCB: `tickets: []` → "kế hoạch rỗng" → im lặng vĩnh viễn). Phải hiện ra cho người quyết.
+            self.supervisor.escalate_gate(project, f"kế hoạch {plan_id} bị từ chối: {'; '.join(problems)[:200]}",
+                                          once_key=f"plan_rejected:{env.event_id}")
+            if project not in self.gate.pending:
+                self.gate.request(GateRequest(kind="escalation", subject_id=project, created_by="delivery-lead",
+                                              checklist=["plan_problems", "decision:retry|close"]))
         else:
             self.plans[plan_id] = plan
             self._audit("plan.proposed", plan, actor="delivery-lead", tokens=g.tokens, cost=g.cost_usd, project_id=project)
@@ -1054,16 +1121,23 @@ class Orchestrator:
 
     # ---------- hoãn / đánh dấu / audit ----------
 
-    def _defer(self, env: Envelope, res: StepResult, reason: str) -> StepResult:
+    def _defer(self, env: Envelope, res: StepResult, reason: str, wait_s: float | None = None) -> StepResult:
+        """`wait_s`: backend nói rõ phải chờ bao lâu → không thử lại trước mốc đó (xem `_retry_deferred`)."""
         with self._lock:
             self.deferred[env.event_id] = (env, reason); res.deferred = reason; self.stats["deferred"] += 1
+            if wait_s and wait_s > 0:
+                self.defer_until[env.event_id] = time.monotonic() + float(wait_s)
+                res.deferred = f"{reason} (chờ {int(wait_s)}s)"
         return res
 
     def _retry_deferred(self, only: str | None = None) -> None:
-        """Đưa event hoãn về đầu hàng đợi; `only` = tiền tố lý do (vd. "transient:") để chỉ thử lại loại đó."""
+        """Đưa event hoãn về đầu hàng đợi; `only` = tiền tố lý do (vd. "transient:") để chỉ thử lại loại đó.
+        Event nào backend đã hẹn giờ (`defer_until`) thì chờ đúng hẹn — hỏi lại sớm hơn chỉ tốn một dòng lỗi."""
+        now = time.monotonic()
         with self._lock, self._qlock:
-            picked = {k: v for k, v in self.deferred.items() if only is None or v[1].startswith(only)}
-            for k in picked: self.deferred.pop(k)
+            picked = {k: v for k, v in self.deferred.items()
+                      if (only is None or v[1].startswith(only)) and self.defer_until.get(k, 0.0) <= now}
+            for k in picked: self.deferred.pop(k); self.defer_until.pop(k, None)
             self.queue[:0] = [e for e, _ in picked.values()]
 
     def _mark(self, env: Envelope, res: StepResult) -> None:

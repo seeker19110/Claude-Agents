@@ -564,9 +564,21 @@ class OpenAICompatClient:
             except json.JSONDecodeError: args = {"_raw": fn.get("arguments")}
             calls.append(ToolCall(id=tc.get("id") or f"call_{len(calls)}", name=fn.get("name", ""), args=args))
         usage = data.get("usage") or {}
+        msg = choice.get("message") or {}
+        if not calls and not (msg.get("content") or "").strip():
+            # Model "thinking" có lượt sinh xong phần suy nghĩ rồi DỪNG mà không viết câu trả lời nào. Trước đây
+            # lượt này trả `text=""` xuống runner, `json.loads("")` hỏng và báo "đầu ra không phải JSON" — dẫn
+            # người đọc đi sửa schema/prompt. Đo được khi chạy thật (2026-09-04): reviewer và qa-debugger rỗng
+            # liên tiếp trong khi `reasoning_content` có nội dung, `finish_reason` vẫn là "stop".
+            think = len(str(msg.get("reasoning_content") or ""))
+            raise TransientError(
+                f"model không trả về nội dung nào (finish_reason={finish}"
+                + (f", nhưng có {think} ký tự suy nghĩ" if think else ", cũng không có phần suy nghĩ")
+                + "). Model thinking đôi khi nghĩ xong rồi dừng; thử lại thường qua, hoặc hạ `effort` cho tier này."
+            )
         # OpenAI-compatible: `prompt_tokens` ĐÃ gồm phần cache, nên `cached_tokens` chỉ để báo cáo, không cộng thêm.
         cached = int((usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0) or 0)
-        return Completion(text=(choice.get("message") or {}).get("content") or "",
+        return Completion(text=msg.get("content") or "",
                           input_tokens=int(usage.get("prompt_tokens", 0)), output_tokens=int(usage.get("completion_tokens", 0)),
                           model=data.get("model", model), stop_reason=finish, cached_input_tokens=cached, tool_calls=calls)
 

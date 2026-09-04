@@ -16,7 +16,7 @@ from company.bus import InMemoryBus
 from company.evals import RecordingClient, ReplayClient, run_eval, stale_recordings
 from company.evals import main as evals_main
 from company.events import Envelope
-from company.llm import AnthropicClient, FakeClient, LLMConfig, LLMError, OpenAICompatClient, Refused
+from company.llm import AnthropicClient, FakeClient, LLMConfig, LLMError, OpenAICompatClient, Refused, TransientError
 from company.orchestrator import Orchestrator, _cycle
 from company.runner import AgentRunner, RunnerError
 from company.tools import ToolBox, ToolCall, ToolError, ToolSpec, WorkspaceTools, _clean_env
@@ -560,6 +560,37 @@ def test_openai_compat_bao_ro_khi_dau_ra_bi_cat_giua_chung():
     finally:
         srv.shutdown(); srv.server_close()
         _LengthSrv.content = ""
+
+
+class _EmptySrv(BaseHTTPRequestHandler):
+    """Model thinking nghi xong roi DUNG, khong viet cau tra loi nao (finish_reason van la "stop")."""
+    reasoning = "nghi rat nhieu nhung khong noi gi"
+
+    def do_POST(self):
+        self.rfile.read(int(self.headers["Content-Length"]))
+        out = {"model": "local", "choices": [{"message": {"role": "assistant", "content": "",
+                                                          "reasoning_content": type(self).reasoning},
+                                              "finish_reason": "stop"}],
+               "usage": {"prompt_tokens": 5, "completion_tokens": 900}}
+        data = json.dumps(out).encode(); self.send_response(200); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    def log_message(self, *a): pass
+
+
+def test_openai_compat_bao_ro_khi_model_khong_tra_loi_gi():
+    """Do duoc khi chay that 2026-09-04: reviewer va qa-debugger tra ve RONG lien tiep trong khi
+    `reasoning_content` co noi dung va `finish_reason` van la "stop". Truoc day runner bao "dau ra khong
+    phai JSON" — dan nguoi doc di sua schema thay vi thu lai."""
+    srv = HTTPServer(("127.0.0.1", 0), _EmptySrv); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        cfg = LLMConfig(provider="openai", models={"strong": "m"}, base_url=f"http://127.0.0.1:{srv.server_port}/v1", api_key="k")
+        with pytest.raises(TransientError) as exc:
+            OpenAICompatClient(cfg).complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+    finally:
+        srv.shutdown(); srv.server_close()
+    msg = str(exc.value)
+    assert "không trả về nội dung nào" in msg and "finish_reason=stop" in msg
+    assert "ký tự suy nghĩ" in msg, "phải nói rõ model có nghĩ mà không trả lời"
 
 
 class _BadToolArgsSrv(BaseHTTPRequestHandler):
