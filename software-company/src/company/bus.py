@@ -109,6 +109,11 @@ class InMemoryBus:
         self.validate(env.topic, env.payload)
         self.validate_envelope(env)
         if not self.enforce_owners: return
+        if env.topic == "audit-log" and env.payload.get("action") == "gate.decide" \
+                and not (is_human(env.actor) or env.actor == "orchestrator"):
+            # audit-log mở cho mọi actor, nhưng quyết định gate là của người: agent không được ghi `gate.decide`
+            # (orchestrator chỉ ghi khi đóng gate nghiệm thu từ chữ ký khách — gate_cli.trusted_decision kiểm tiếp)
+            self._deny(env, f"agent {env.actor} không được ghi quyết định gate (gate.decide) — chỉ người (human:*)")
         if env.topic == "shared-context":
             ns = env.payload["namespace"]
             if env.actor not in NAMESPACE_OWNERS.get(ns, set()):

@@ -49,10 +49,10 @@ from pathlib import Path
 from typing import Any
 
 from .blackboard import Blackboard
-from .bus import InMemoryBus
+from .bus import InMemoryBus, is_human
 from .delivery import DONE_STATES, DeliveryLead
 from .events import BUDGET_FACTOR, AuditLog, Envelope, Task
-from .gate_cli import PersistentGate
+from .gate_cli import PersistentGate, trusted_decision
 from .gates import Decision, GateRequest
 from .llm import LLMError, ModelClient, TransientError
 from .registry import AgentSpec, load_agents
@@ -314,7 +314,8 @@ class Orchestrator:
                 elif a["action"] == "project.stalled":
                     self.stalled[d["project_id"]] = d; self.stall_count[d["event_id"]] += 1
                 elif a["action"] in {"project.retried", "project.closed"}: self.stalled.pop(d["project_id"], None)
-                elif a["action"] == "gate.decide" and d.get("decision") == "approve" and d["subject_id"] in self.plans:
+                elif a["action"] == "gate.decide" and d.get("decision") == "approve" and d.get("subject_id") in self.plans \
+                        and trusted_decision(env) is not None:
                     self._dispatch_plan(d["subject_id"], replaying=True)
             elif env.topic == "supervisor-actions": self._track_pause(env)
             elif env.topic == "shared-context": self.blackboard._on(env)
@@ -370,7 +371,7 @@ class Orchestrator:
         return self.integration is not None or bool(self.project_repos)
 
     def _actionable(self, env: Envelope) -> bool:
-        if env.topic == "audit-log": return env.payload.get("action") == "gate.decide"
+        if env.topic == "audit-log": return trusted_decision(env) is not None  # gate.decide giả (actor không phải người) không chạy
         return env.topic not in CONTROL_TOPICS
 
     def _track_pause(self, env: Envelope) -> None:
@@ -977,7 +978,7 @@ class Orchestrator:
         decision: Decision = {"accepted": "approve", "rejected": "reject"}.get(str(verdict), "request_changes")  # type: ignore[assignment]
         by = str(env.payload.get("signed_by") or env.actor)
         try:
-            self.gate.decide(sid, decision, by=by, reason=f"acceptance-results: {verdict}")
+            self.gate.decide(sid, decision, by=by, reason=f"acceptance-results: {verdict}", actor=ACTOR)
             res.actions.append(f"gate:acceptance:{sid}:{decision}")
         except (KeyError, PermissionError) as e:
             self._audit("handler_error", {"agent": "account-manager", "error": str(e)[:300]})
@@ -1163,6 +1164,8 @@ def main(argv: list[str] | None = None) -> int:
     from .sqlite_bus import SQLiteBus
     bus = SQLiteBus(ns.db)
     if ns.cmd == "publish":
+        if not is_human(ns.actor):  # CLI là cửa của người; giả danh agent/orchestrator từ đây là vượt quyền producer của bus
+            print(f"--actor phải là người (human:<tên>), không phải {ns.actor!r}", file=sys.stderr); return 2
         payload = json.loads(ns.file.read_text(encoding="utf-8"))
         key = ns.key or payload.get("ticket_id") or payload.get("release_id") or payload.get("project_id") or payload.get("change_id")
         if not key: print("cần --key", file=sys.stderr); return 2

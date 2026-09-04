@@ -15,11 +15,30 @@ import sys
 from pathlib import Path
 from typing import get_args
 
-from .bus import InMemoryBus
+from .bus import InMemoryBus, is_human
 from .events import AuditLog, Envelope
 from .gates import Decision, GateKind, GateRequest, HumanGate
 
 DECISIONS: tuple[str, ...] = ("approve", "request_changes", "reject", "hold", "rollback")
+
+# Actor hệ thống duy nhất được ghi `gate.decide` thay người: orchestrator đóng gate nghiệm thu (`UAT-*`) bằng chính
+# chữ ký khách trong `acceptance-results` (`signed_by` là chữ tự do, không phải id actor).
+SYSTEM_GATE_ACTOR = "orchestrator"
+
+
+def trusted_decision(env: Envelope) -> dict | None:
+    """Đọc một quyết định gate từ envelope `audit-log` — chỉ tin khi actor của envelope là người và trùng `by` trong
+    evidence, hoặc là orchestrator đóng gate nghiệm thu. `audit-log` là topic mở (ai cũng ghi), nên nếu chỉ tin
+    `evidence.by` thì một agent (hay một lệnh publish với --actor bất kỳ) phát được quyết định thay người."""
+    if env.topic != "audit-log" or env.payload.get("action") != "gate.decide": return None
+    try: d = json.loads(env.payload.get("evidence") or "{}")
+    except (ValueError, TypeError): return None
+    if not isinstance(d, dict): return None
+    sid, by = d.get("subject_id"), d.get("by")
+    if not isinstance(sid, str) or not sid or not isinstance(d.get("decision"), str) or not isinstance(by, str): return None
+    if is_human(env.actor) and env.actor == by: return d
+    if env.actor == SYSTEM_GATE_ACTOR and sid.startswith("UAT-"): return d
+    return None
 
 
 class PersistentGate(HumanGate):
@@ -51,11 +70,11 @@ class PersistentGate(HumanGate):
                 super().request(GateRequest(kind=d["kind"], subject_id=sid, checklist=d.get("checklist", []),
                                             created_by=d.get("created_by"), created_at=env.ts))
         elif sid in self.pending:
-            if not isinstance(d.get("decision"), str) or not isinstance(d.get("by"), str): return
+            if trusted_decision(env) is None: return  # actor không phải người (hay không trùng `by`): bỏ qua, không đóng gate
             super().decide(sid, d["decision"], by=d["by"], reason=d.get("reason", ""))
 
-    def _log(self, actor: str, action: str, data: dict) -> None:
-        a = AuditLog(actor=actor, action=action, evidence=json.dumps(data, ensure_ascii=False))
+    def _log(self, actor: str, action: str, data: dict, *, by: str | None = None) -> None:
+        a = AuditLog(actor=by or actor, action=action, evidence=json.dumps(data, ensure_ascii=False))
         self.bus.publish(Envelope(topic="audit-log", key=actor, actor=actor, payload=a.model_dump()))
 
     def request(self, req: GateRequest) -> GateRequest:
@@ -64,9 +83,13 @@ class PersistentGate(HumanGate):
                   {"kind": req.kind, "subject_id": req.subject_id, "checklist": req.checklist, "created_by": req.created_by})
         return r
 
-    def decide(self, subject_id: str, decision: Decision, by: str, reason: str = "") -> GateRequest:
+    def decide(self, subject_id: str, decision: Decision, by: str, reason: str = "", actor: str | None = None) -> GateRequest:
+        """`actor` là actor của envelope ghi lên bus (mặc định = `by`). Orchestrator đóng gate nghiệm thu truyền
+        `actor=SYSTEM_GATE_ACTOR` vì `by` là chữ ký khách, không phải id actor — xem `trusted_decision`."""
         r = super().decide(subject_id, decision, by=by, reason=reason)
-        self._log(by, "gate.decide", {"subject_id": subject_id, "decision": decision, "by": by, "reason": reason})
+        if actor is None:  # chữ ký khách trên gate nghiệm thu không phải actor người của bus → ghi dưới actor hệ thống
+            actor = by if is_human(by) or not subject_id.startswith("UAT-") else SYSTEM_GATE_ACTOR
+        self._log(actor, "gate.decide", {"subject_id": subject_id, "decision": decision, "by": by, "reason": reason}, by=by)
         return r
 
 
