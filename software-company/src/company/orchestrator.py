@@ -39,7 +39,7 @@ ADR-0012:
 - Người can thiệp giữa vòng: `comment` (hint cho ticket đang chạy, không tính retry) và `takeover` (người sửa tay trong
   worktree, code chạy lint/test và publish PR dưới tên người) — không cần đợi gate escalation.
 
-ADR-0026 (`--deliver`): production được duyệt và deploy → tag `v<version>` + fast-forward `company/release` trong repo
+ADR-0027 (`--deliver`): production được duyệt và deploy → tag `v<version>` + fast-forward `company/release` trong repo
 khách (`Integration.deliver`); production rolled_back/failed → lùi con trỏ nhánh release về lần giao trước (tag giữ).
 `--push-remote` đẩy lên remote của khách; lỗi push chỉ vào audit. `main` của khách vẫn không bị chạm.
 """
@@ -317,7 +317,7 @@ class Orchestrator:
         self.integration = Integration(self.repo, integration, base, release_branch) if self.repo is not None else None
         self.base, self.integration_branch = base, integration
         self.project_repos: dict[str, Integration] = {}
-        # release_id → {version, tag, sha, short, branch, previous}: bản đã giao (ADR-0026), dựng lại từ audit-log
+        # release_id → {version, tag, sha, short, branch, previous}: bản đã giao (ADR-0027), dựng lại từ audit-log
         self.delivered: dict[str, dict[str, Any]] = {}
         # release_id → sha ĐẦY ĐỦ của nhánh tích hợp lúc deploy staging: đúng nội dung QA đã hồi quy, và là sha được
         # giao khi production duyệt — nhánh tích hợp có thể đã đi tiếp (ticket khác merge) trong lúc chờ gate 3.
@@ -951,7 +951,7 @@ class Orchestrator:
         inp = rc.model_copy(update={"payload": {**rc.payload, "target_env": r.target_env,
                                                 "gate_release": self.gate.is_approved(rid), **extra}})
         if r.target_env == "staging" and integ is not None and (full := integ.rev(integ.branch)):
-            # Sha mà QA sẽ hồi quy — và sha sẽ được giao khi production duyệt (ADR-0026). Ghi audit để bền qua restart.
+            # Sha mà QA sẽ hồi quy — và sha sẽ được giao khi production duyệt (ADR-0027). Ghi audit để bền qua restart.
             with self._lock: self.release_sha[rid] = full
             self._audit("release.staged", {"release_id": rid, "sha": full, "branch": integ.branch}, project_id=self.project_for(rc))
         g = self.runner.generate(agent, inp, r.topic_out)
@@ -1173,7 +1173,7 @@ class Orchestrator:
             if self.lead.batch_releases:  # ticket đóng không còn giữ release của các ticket đã approved
                 self.lead.flush_releases(self.lead.tickets[tid].project_id)
 
-    # ---------- giao hàng thật (ADR-0026) ----------
+    # ---------- giao hàng thật (ADR-0027) ----------
 
     def _deliver(self, env: Envelope, res: StepResult) -> None:
         """Production đã deploy và gate release đã duyệt → tag `v<version>` + fast-forward `company/release` trong repo của
@@ -1467,7 +1467,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--batch-release", action="store_true",
                     help="gom mọi ticket approved của dự án vào một RC khi không còn ticket đang chạy (mặc định: mỗi ticket một RC)")
     ap.add_argument("--deliver", action="store_true",
-                    help="ADR-0026: production duyệt + deploy → tag v<version> và fast-forward nhánh release trong repo khách")
+                    help="ADR-0027: production duyệt + deploy → tag v<version> và fast-forward nhánh release trong repo khách")
     ap.add_argument("--push-remote", help="remote của repo khách để push nhánh release + tag sau khi giao (mặc định: không push)")
     ap.add_argument("--release-branch", default="company/release", help="nhánh 'đang chạy production' trong repo khách")
     sub = ap.add_subparsers(dest="cmd", required=True)

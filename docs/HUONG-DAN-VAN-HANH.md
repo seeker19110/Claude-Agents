@@ -145,11 +145,23 @@ cd Studio-creators
 cp media.example.yaml media.yaml     # rồi sửa provider/model; key đặt qua STUDIO_MEDIA_API_KEY (hoặc OPENAI_API_KEY)
 ```
 
-`media.yaml` có bốn khoá: `tts` (provider openai-compatible: model, voice, base_url), `image` (model, size), `video` (`ffmpeg`:
-fps, resolution), và `platform` (`provider: fake | youtube`, `tokens:` đường dẫn token). Chưa có nhà cung cấp media thì để `fake`
-cho cả ba kênh: pipeline vẫn chạy trọn vẹn với file giữ chỗ. `platform` mặc định `fake` (không chạm YouTube); bật thật ở 6.3.
-Biến môi trường tương ứng: `STUDIO_MEDIA_{TTS,IMAGE,VIDEO}_PROVIDER`, `STUDIO_MEDIA_BASE_URL`, `STUDIO_MEDIA_OUTPUT_DIR`,
-`STUDIO_PLATFORM`, `STUDIO_YOUTUBE_TOKENS`.
+`media.yaml` có bốn khoá: `tts`, `image`, `video` (`ffmpeg`: fps, resolution), và `platform` (`provider: fake | youtube`,
+`tokens:` đường dẫn token). Chưa có nhà cung cấp media thì để `fake` cho cả ba kênh: pipeline vẫn chạy trọn vẹn với file giữ
+chỗ. `platform` mặc định `fake` (không chạm YouTube); bật thật ở 6.3.
+
+Provider giọng đọc (`tts.provider`): `openai` (OpenAI hoặc server tương thích), `gemini` (Gemini TTS, có tiếng Việt),
+`elevenlabs`, `azure` (giọng `vi-VN-HoaiMyNeural` / `vi-VN-NamMinhNeural`), `google` (Cloud Text-to-Speech `vi-VN-Neural2-*`),
+`command` (lệnh cục bộ như Piper, Kokoro, edge-tts — không tốn tiền, văn bản không rời máy). Provider ảnh (`image.provider`):
+`openai`, `gemini` (`gemini-2.5-flash-image` hoặc `imagen-*`), `stability`, `replicate` (Flux, SDXL…). Mỗi provider có khối
+mẫu đủ tham số, đang chú thích, trong `media.example.yaml`; bỏ chú thích khối muốn dùng và đổi `provider`.
+
+Khoá API: khai `api_key_env: TEN_BIEN` trong từng kênh, hoặc đặt biến quen thuộc của nhà cung cấp (`GEMINI_API_KEY`,
+`ELEVENLABS_API_KEY`, `AZURE_SPEECH_KEY`, `GOOGLE_API_KEY`, `STABILITY_API_KEY`, `REPLICATE_API_TOKEN`); `STUDIO_MEDIA_API_KEY`
+là dự phòng chung khi tts và ảnh cùng một nhà. Giọng: production-manager ghi `voice_id`/`pace` vào manifest mà không biết
+provider nào sẽ đọc, nên với provider có id giọng riêng (elevenlabs, azure, google) hãy khai `tts.voice` mặc định hoặc bảng
+`tts.voices: {alloy: vi-VN-HoaiMyNeural}`. Lưu ý kích thước ảnh theo model: `gpt-image-1` chỉ nhận `1536x1024` / `1024x1536`
+/ `1024x1024`. Biến môi trường tương ứng: `STUDIO_MEDIA_{TTS,IMAGE,VIDEO}_PROVIDER`, `STUDIO_MEDIA_BASE_URL` (chỉ cho
+provider `openai`), `STUDIO_MEDIA_OUTPUT_DIR`, `STUDIO_PLATFORM`, `STUDIO_YOUTUBE_TOKENS`.
 
 ### 3.3b Đường tắt: hồ sơ gói Claude + gateway có sẵn
 
@@ -353,7 +365,7 @@ Làm **code thật** trên repo khách: thêm `--repo ../khach --base main`. Kh�
 PR mang lint/test thật; `--integration` để ticket rẽ từ và gộp vào nhánh `company/integration`; `--batch-release` gom
 ticket approved của dự án vào một RC (một staging, một gate 3, một UAT). Thêm `--deliver` để khi gate release được duyệt và
 release-engineer báo production đã deploy, công ty đặt tag `v<version>` và fast-forward nhánh `company/release` trong repo
-khách (ADR-0026; `--push-remote origin` để đẩy lên remote, `--release-branch` đổi tên nhánh). `main` của khách vẫn không bị
+khách (ADR-0027; `--push-remote origin` để đẩy lên remote, `--release-branch` đổi tên nhánh). `main` của khách vẫn không bị
 chạm — khách tự merge `company/release` (hoặc tag) vào `main` theo quy trình của họ.
 
 ### 5.3 Duyệt human gate

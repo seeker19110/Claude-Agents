@@ -94,7 +94,7 @@ Read/Grep/Glob) đọc hồ sơ và in bản tóm; người ký bằng `gate_cli
   Vòng lặp model ↔ tool nằm trong runner (`generate(tools=…)`), dừng khi hết lượt hoặc vượt ngân sách token.
 - **Nhánh tích hợp** (ADR-0011): ticket rẽ từ `company/integration`; RC xuất hiện → `merge --no-ff` vào đó trước khi
   release-engineer chạy; xung đột → RC huỷ, ticket làm lại trên nền mới. `main` của khách không bị chạm.
-- **Giao hàng** (ADR-0026, `--deliver`): sha nhánh tích hợp lúc deploy staging được ghi `release.staged`; production duyệt +
+- **Giao hàng** (ADR-0027, `--deliver`): sha nhánh tích hợp lúc deploy staging được ghi `release.staged`; production duyệt +
   deploy → `Integration.deliver`: tag `v<version>` tại sha đó + fast-forward `company/release` (tạo nếu chưa có); tag trùng ở
   sha khác hay nhánh không fast-forward được → audit `delivery.tag_conflict` / `delivery.diverged`, không ghi đè. Rolled_back/
   failed → `rollback_delivery` lùi con trỏ về lần giao trước (chỉ khi nhánh còn trỏ đúng sha đã giao; tag giữ). `--push-remote`

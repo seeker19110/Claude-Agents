@@ -1,4 +1,4 @@
-"""ADR-0026: giao hàng thật — tag `v<version>` + fast-forward `company/release` trong repo khách khi production được duyệt;
+"""ADR-0027: giao hàng thật — tag `v<version>` + fast-forward `company/release` trong repo khách khi production được duyệt;
 rollback lùi con trỏ (tag giữ nguyên); push tuỳ chọn, lỗi push không chặn; `main` của khách không bị chạm."""
 from __future__ import annotations
 

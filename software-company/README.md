@@ -31,7 +31,7 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0026); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0027); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
 agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
@@ -54,7 +54,7 @@ examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--rela
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng intake cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 20 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
-tests/         pytest 641 ca / 33 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+tests/         pytest 642 ca / 33 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
                guard/blackboard, schema consistency, golden 20 agent + 5 hồ sơ gate, bộ sinh subagent, hồ sơ gate, rà soát bảo mật);
                coverage fail_under=98
@@ -108,7 +108,7 @@ uv run python -m company.gate_brief REL-001 [--repo ../khach]   # hoặc: make g
 #   ghi <db>.artifacts/<project>/gate-brief/<subject>.{md,json}. Trong Claude Code: `/gate-brief REL-001` gọi thêm trợ lý
 #   `sc-gate-<kind>` + `sc-<agent>` (chỉ Read/Grep/Glob) đọc hồ sơ và in bản tóm; người vẫn tự ký bằng gate_cli
 uv run python -m company.orchestrator --repo ../khach --deliver [--push-remote origin] [--release-branch company/release] run --watch 5
-#   ADR-0026: production duyệt + deploy → tag v<version> tại sha đã QA trên staging + fast-forward nhánh `company/release`
+#   ADR-0027: production duyệt + deploy → tag v<version> tại sha đã QA trên staging + fast-forward nhánh `company/release`
 #   trong repo khách; rolled_back → lùi con trỏ (tag giữ); push lỗi chỉ vào audit `delivery.push_failed`; `main` khách không bị chạm
 uv run python -m company.orchestrator publish clarification-answers ans.json --actor human:po
 uv run python -m company.orchestrator decide-change CR-1 accepted --by human:po   # sau khi delivery-lead ước lượng impact
@@ -141,14 +141,14 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-04)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0026; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0027; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),
   supervisor (warn/cut/escalate, sprint_report), gates, blackboard, demo.
 - **Runner chạy model thật, trung lập provider** (`runner.py`, `llm.py`, ADR-0005): một interface `ModelClient`;
   adapter `anthropic`, `openai` (mọi server OpenAI-compatible: OpenAI, Ollama, Groq, vLLM, LM Studio...), `claude-code`
-  (CLI `claude -p`, gói Claude Pro/Max, `config_dir` → `CLAUDE_CONFIG_DIR`), `codex` (CLI `codex exec --json`, gói ChatGPT
+  (CLI `claude -p`, gói Claude Pro/Max, `config_dir` → `CLAUDE_CONFIG_DIR`, `effort` → `--effort` — ADR-0026), `codex` (CLI `codex exec --json`, gói ChatGPT
   Plus/Pro, `config_dir` → `CODEX_HOME`, `effort` → `model_reasoning_effort`, tự tìm binary trong `%LOCALAPPDATA%/OpenAI/Codex/bin`), `fake`.
   Hai provider CLI không có tool-use nên `supports_tools=false` mặc định: router bỏ qua chúng cho agent cần tool.
   Provider `openai` cũng nhận [`../gateway`](../gateway/README.md): proxy cục bộ xoay vòng nhiều tài khoản Google
@@ -247,14 +247,14 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   thất bại, hint đã dùng và hint lặp, ngân sách còn, worktree) — verdict chỉ `ok|gap|unknown`, mở SQLite `mode=ro`, trích ≤ 200 ký
   tự mỗi nguồn; `/gate-brief <subject>` gộp hồ sơ + subagent thành một bản tóm; trợ lý không bao giờ ký (`trusted_decision`
   chỉ tin actor là người — test hồi quy).
-- **Giao hàng thật** (ADR-0026, `--deliver`): production được duyệt và deploy → tag chú thích `v<version>` tại đúng sha nhánh
+- **Giao hàng thật** (ADR-0027, `--deliver`): production được duyệt và deploy → tag chú thích `v<version>` tại đúng sha nhánh
   tích hợp lúc deploy staging (audit `release.staged`, không phải đầu nhánh đã đi tiếp) + fast-forward `company/release`;
   rolled_back/failed → lùi con trỏ về lần giao trước, không lùi đè release sau (`superseded`); tag đã có ở sha khác không bị ghi
   đè (`delivery.tag_conflict`), nhánh bị đụng tay không bị ép (`delivery.diverged`); `--push-remote` đẩy lên remote khách với
   `--force-with-lease` khi lùi, lỗi push chỉ vào audit; bền qua restart; `status.delivery`. `main` của khách vẫn không bị chạm.
 
 ### Chưa có
-- **Deploy hạ tầng thật**: phần git của giao hàng đã thật (tag + `company/release`, ADR-0026) nhưng release-engineer vẫn
+- **Deploy hạ tầng thật**: phần git của giao hàng đã thật (tag + `company/release`, ADR-0027) nhưng release-engineer vẫn
   mô tả deploy chứ chưa chạy container/k8s/CI-CD cho sản phẩm khách; đưa `company/release` vào `main` là quy trình PR của
   khách. Xung đột giải quyết bằng làm lại trên nền mới, chưa rebase tự động. **Kafka/Redis** thay SQLite khi chạy nhiều
   máy (song song mới ở mức thread trong một tiến trình).
@@ -265,7 +265,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 
 ### Bước tiếp theo
 1. Chạy `make eval-record AGENT=<id>` cho 20 agent với model thật, commit bản ghi để CI eval có răng.
-2. Deploy hạ tầng thật cho sản phẩm khách (release-engineer chạy CI/CD, container) nối tiếp tag/nhánh release của ADR-0026.
+2. Deploy hạ tầng thật cho sản phẩm khách (release-engineer chạy CI/CD, container) nối tiếp tag/nhánh release của ADR-0027.
 3. Sandbox container cho `run`; adapter bus Redis Streams/Kafka giữ interface hiện tại (kể cả `poll`) để chạy nhiều tiến trình.
 4. Console hiện hồ sơ `gate_brief` cạnh nút duyệt; thông báo webhook khi gate mở/quá hạn; giao diện UAT cho khách.
 

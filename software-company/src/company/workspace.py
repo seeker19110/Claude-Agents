@@ -5,7 +5,7 @@ Tool xác định cho khối kỹ thuật; kết quả là bằng chứng để 
 và được merge vào đây (--no-ff) khi đủ review pass; xung đột thì huỷ merge, trả lại danh sách file để ticket làm lại
 trên nền mới. Nhánh của khách (`main`) không bị chạm.
 
-Giao hàng (ADR-0026): `Integration.deliver` đặt tag `v<version>` tại sha tích hợp và fast-forward nhánh `company/release`
+Giao hàng (ADR-0027): `Integration.deliver` đặt tag `v<version>` tại sha tích hợp và fast-forward nhánh `company/release`
 tới đó; `rollback_delivery` lùi con trỏ nhánh về lần giao trước (tag giữ nguyên). Tuỳ chọn push lên remote của khách."""
 from __future__ import annotations
 
@@ -196,7 +196,7 @@ class MergeResult:
 
 @dataclass
 class DeliveryResult:
-    """Kết quả một lần giao (ADR-0026). `problems` là chuỗi `tag_conflict:<tag>@<sha>` / `diverged:<sha>`; `pushed` là
+    """Kết quả một lần giao (ADR-0027). `problems` là chuỗi `tag_conflict:<tag>@<sha>` / `diverged:<sha>`; `pushed` là
     None khi không push, True/False khi có push (lỗi push nằm ở `push_error`, không làm `ok` sai vì bản giao cục bộ đã có)."""
     ok: bool
     sha: str = ""            # sha ĐẦY ĐỦ đã giao (để rollback đối chiếu bằng --force-with-lease)
@@ -227,7 +227,7 @@ class Integration:
     repo: Path
     branch: str = "company/integration"
     base: str = "HEAD"
-    release_branch: str = "company/release"  # ADR-0026: con trỏ "đang chạy production"; tag v* là lịch sử bất biến
+    release_branch: str = "company/release"  # ADR-0027: con trỏ "đang chạy production"; tag v* là lịch sử bất biến
 
     @property
     def path(self) -> Path: return self.repo / ".worktrees" / "_integration"
@@ -240,7 +240,7 @@ class Integration:
     def deliver(self, version: str, message: str, sha: str | None = None,
                 push_remote: str | None = None) -> DeliveryResult:
         """Tag `v<version>` tại `sha` (mặc định: đầu nhánh tích hợp; orchestrator truyền sha đã kiểm trên staging) +
-        fast-forward `release_branch` tới đó (ADR-0026). Idempotent; không bao giờ ghi đè tag đã có ở sha khác, không
+        fast-forward `release_branch` tới đó (ADR-0027). Idempotent; không bao giờ ghi đè tag đã có ở sha khác, không
         bao giờ ép nhánh release khi nó không fast-forward được."""
         sha = self.rev(sha) if sha else self.rev(self.branch)
         if sha is None:

@@ -1,4 +1,4 @@
-# ADR-0026: Giao hàng thật — tag phiên bản + nhánh `company/release` trong repo khách khi release production được duyệt
+# ADR-0027: Giao hàng thật — tag phiên bản + nhánh `company/release` trong repo khách khi release production được duyệt
 
 ## Bối cảnh
 Từ ADR-0011 tới ADR-0025, "làm code thật" dừng ở nhánh `company/integration`: ticket rẽ từ đó, merge `--no-ff` vào đó,
