@@ -362,9 +362,10 @@ class Orchestrator:
         # gate escalation lúc 06:51:31, restart lúc 06:51:45, sau đó không một dòng `orchestrated` nào nữa.
         # Ai đã bảo "chạy lại" mà event chưa được xử lý lại thì phải bỏ dấu để hàng đợi nhận lại.
         reopened = {eid for eid, idx in last_retry.items() if idx > last_done.get(eid, -1)}
-        if reopened:
-            self.processed -= reopened
-            self._audit("retry.reopened", {"event_ids": sorted(reopened)})
+        # KHÔNG audit ở đây: `_rehydrate` chạy trong MỌI tiến trình, kể cả lệnh chỉ-đọc (`status`, `report`,
+        # `show`, console). Ghi bus từ đường đọc là mỗi lần xem trạng thái lại thêm một dòng rác — chính tôi
+        # đã mắc và thấy nó trong log. Việc mở lại sẽ tự hiện ra ở dòng `orchestrated` khi event thật sự chạy.
+        self.processed -= reopened
         self.partial = {k: v for k, v in self.partial.items() if k not in self.processed}
         self.queue = [e for e in log if self._actionable(e) and e.event_id not in self.processed]
 
