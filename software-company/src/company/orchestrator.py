@@ -323,11 +323,11 @@ class Orchestrator:
         # Thứ tự trong log của lần `orchestrated` / `project.retried` gần nhất cho từng event: dùng ở cuối hàm
         # để nhận lại lệnh thử-lại chưa kịp chạy (xem chú thích ở đó).
         last_done: dict[str, int] = {}
-        last_retry: dict[str, int] = {}
+        last_retry: dict[str, tuple[int, dict[str, Any]]] = {}   # event_id → (thứ tự trong log, bản ghi stalled)
         for i, env in enumerate(log):
             if env.topic == "audit-log":
                 a = env.payload; d = _evidence(a)
-                if a["action"] == "project.retried" and d.get("event_id"): last_retry[str(d["event_id"])] = i
+                if a["action"] == "project.retried" and d.get("event_id"): last_retry[str(d["event_id"])] = (i, d)
                 if a["actor"] == ACTOR and a["action"] == "orchestrated":
                     self.processed.add(d["event_id"]); last_done[str(d["event_id"])] = i
                 elif a["actor"] == ACTOR and a["action"] == "once": self.once.add(d["key"])
@@ -360,14 +360,34 @@ class Orchestrator:
         # Restart giữa lúc đó là mất trắng — event vẫn mang dấu `orchestrated` của LẦN LỖI, nên hàng đợi dựng lại
         # loại nó ra và dự án nằm im vĩnh viễn dù người đã bấm duyệt. Đo được khi chạy thật (2026-09-04): duyệt
         # gate escalation lúc 06:51:31, restart lúc 06:51:45, sau đó không một dòng `orchestrated` nào nữa.
-        # Ai đã bảo "chạy lại" mà event chưa được xử lý lại thì phải bỏ dấu để hàng đợi nhận lại.
-        reopened = {eid for eid, idx in last_retry.items() if idx > last_done.get(eid, -1)}
+        # Ai đã bảo "chạy lại" mà event chưa được xử lý lại thì phải bỏ dấu để hàng đợi nhận lại — TRỪ khi việc
+        # đó đã có người khác làm xong trong lúc chờ (xem `_retry_con_can`).
+        reopened = {eid for eid, (idx, rec) in last_retry.items()
+                    if idx > last_done.get(eid, -1) and self._retry_con_can(log, idx, rec)}
         # KHÔNG audit ở đây: `_rehydrate` chạy trong MỌI tiến trình, kể cả lệnh chỉ-đọc (`status`, `report`,
         # `show`, console). Ghi bus từ đường đọc là mỗi lần xem trạng thái lại thêm một dòng rác — chính tôi
         # đã mắc và thấy nó trong log. Việc mở lại sẽ tự hiện ra ở dòng `orchestrated` khi event thật sự chạy.
         self.processed -= reopened
         self.partial = {k: v for k, v in self.partial.items() if k not in self.processed}
         self.queue = [e for e in log if self._actionable(e) and e.event_id not in self.processed]
+
+    def _retry_con_can(self, log: list[Envelope], idx: int, rec: dict[str, Any]) -> bool:
+        """Lệnh chạy lại còn ý nghĩa không, hay việc đã có người khác làm xong trong lúc chờ?
+
+        Lệnh chạy lại chỉ sống trong RAM nên có thể nằm chờ rất lâu (người duyệt gate xong, tiến trình chết,
+        hết hạn mức model...). Trong lúc đó dự án vẫn có thể đi tiếp bằng đường khác. Chạy lại một việc đã xong
+        là đốt một lượt model đắt tiền để sinh ra bản trùng. Đo được khi chạy thật (2026-09-04): lệnh chạy lại
+        ghi lúc 07:00:48, `spec-writer` sau đó thành công ba lần (08:15, 08:22, 08:28), nhưng lệnh cũ vẫn nổ
+        lúc 09:54:42 và tiêu 317 giây `claude-opus-5` chỉ để hệ thống báo `plan.duplicate_spec` ở bước sau.
+
+        Cách nhận biết: tra ROUTES xem event đó lẽ ra sinh ra topic nào; nếu topic đó đã có event mới cho cùng
+        khoá SAU thời điểm ra lệnh, thì việc đã xong."""
+        outs = {r.topic_out for r in ROUTES
+                if r.topic_in == rec.get("topic") and r.agent in {rec.get("agent"), "$assignee"}}
+        outs.discard(CONTEXT_ONLY)
+        if not outs: return True          # không suy ra được route → giữ nguyên hành vi cũ, thà chạy lại còn hơn kẹt
+        key = str(rec.get("project_id") or "")
+        return not any(e.topic in outs and e.key == key for e in log[idx + 1:])
 
     # ---------- repo theo từng dự án (ADR-0025) ----------
 
