@@ -284,6 +284,36 @@ def test_lenh_thu_lai_song_sot_qua_restart(tmp_path):
     assert orch2.bus.latest("clarification-questions", "P1"), "sau restart phải chạy tiếp, không được nằm im"
 
 
+def test_khong_chay_lai_viec_da_co_nguoi_lam_xong(tmp_path):
+    """Lệnh chạy lại chỉ sống trong RAM nên có thể nằm chờ rất lâu (người duyệt gate xong, tiến trình chết,
+    hết hạn mức model). Trong lúc đó dự án vẫn đi tiếp được bằng đường khác. Nổ lại một việc đã xong là đốt
+    một lượt model đắt tiền để sinh bản trùng. Đo được khi chạy thật 2026-09-04: lệnh ghi lúc 07:00:48,
+    spec-writer sau đó thành công ba lần, nhưng lệnh cũ vẫn nổ lúc 09:54:42 và tiêu 317 giây claude-opus-5."""
+    lan = {"n": 0}
+
+    def hong_lan_dau(system, user):
+        if _agent_of(system) == "researcher":
+            lan["n"] += 1
+            if lan["n"] == 1: raise LLMError("model rớt mạng")
+        return handler(system, user)
+
+    db = tmp_path / "c.sqlite"
+    bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=hong_lan_dau))
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app"})
+    orch.run()
+    assert orch.stalled.get("P1")
+    orch.gate.decide("P1", "approve", by="human:lead")
+    orch.run(max_steps=1)          # ghi `project.retried`, chưa kịp chạy lại thì tiến trình chết
+
+    # Trong lúc chờ, việc ĐÃ ĐƯỢC LÀM XONG bằng đường khác: researcher cho ra research-findings cho P1.
+    _pub(bus, "research-findings", "P1", "researcher", {"project_id": "P1", "kind": "researcher", "data": {}})
+
+    goi_truoc = lan["n"]
+    orch2 = Orchestrator(SQLiteBus(db), FakeClient(handler=hong_lan_dau))
+    orch2.run()
+    assert lan["n"] == goi_truoc, "việc đã xong thì không được gọi lại model"
+
+
 def test_ton_trong_thoi_gian_cho_backend_da_hen():
     """Backend nói rõ "thử lại sau 1515s" thì không được hỏi lại ở nhịp tick kế. Trước đây mọi tick đều thử
     lại: đo được 60 bản ghi `llm_error`/phút LIÊN TỤC lúc pool hết quota (2026-09-04). Rẻ về tài nguyên
