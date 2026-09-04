@@ -401,6 +401,28 @@ def test_cli_tools_runs_claude_inside_worktree_with_narrow_permissions(tmp_path:
     assert "Read(**/.env)" in deny and "Write(**/*.pem)" in deny and "Edit(**/llm.yaml)" in deny
 
 
+def test_claude_code_effort_xuong_cli_o_moi_che_do_va_gia_tri_sai_hong_to(tmp_path: Path):
+    """ADR-0026: `effort` theo tier phải thành `--effort` của `claude -p` — trước đây adapter anthropic và codex truyền
+    effort còn claude-code thì không, nên `effort: {strong: high}` với gói Claude bị bỏ qua ÂM THẦM (cùng loại lỗi #38).
+    Bảng đóng: giá trị CLI không nhận (vd. `none` của codex) phải hỏng rõ, không rơi về mặc định."""
+    def cfg(effort, **kw):
+        return LLMConfig(provider="claude-code", models={"strong": "claude-opus-5"}, effort=effort, **kw)
+    seen: list = []
+    ClaudeCodeClient(cfg({"strong": "max", "light": "low"}), runner=lambda a, s: (seen.append(a), _CC_OK)[1]).complete(
+        system="s", user="u", schema={}, model_tier="strong")
+    assert seen[0][seen[0].index("--effort") + 1] == "max"
+    ClaudeCodeClient(cfg({"strong": "xhigh"}, cli_tools=True), runner=lambda a, s, cwd=None: (seen.append(a), _CC_OK)[1]
+                     ).complete(system="s", user="u", schema={}, model_tier="strong", tools=_RW, workdir=str(tmp_path))
+    assert seen[1][seen[1].index("--effort") + 1] == "xhigh", "chế độ cli_tools cũng phải mang effort"
+    # tier không khai effort → không thêm cờ, CLI dùng mặc định của nó (không bịa một mức nào)
+    ClaudeCodeClient(cfg({"strong": "high"}), runner=lambda a, s: (seen.append(a), _CC_OK)[1]).complete(
+        system="s", user="u", schema={}, model_tier="light")
+    assert "--effort" not in seen[2]
+    with pytest.raises(LLMError, match=r"effort `none`.*low\|medium\|high\|xhigh\|max"):
+        ClaudeCodeClient(cfg({"strong": "none"}), runner=lambda a, s: _CC_OK).complete(
+            system="s", user="u", schema={}, model_tier="strong")
+
+
 def test_cli_tools_off_still_refuses_tools_and_keeps_single_turn():
     """Mặc định (cli_tools=False) giữ nguyên hành vi cũ: có tool thì báo lỗi, không tool thì một lượt, không tool CLI."""
     with pytest.raises(LLMError, match="cli_tools"):
