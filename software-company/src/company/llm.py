@@ -35,7 +35,8 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -571,9 +572,24 @@ def reported_model(model_usage: dict[str, Any], requested: str) -> str:
 ARGV_LIMIT = 30_000 if os.name == "nt" else 120_000   # Windows: CreateProcess ~32K ký tự; Linux: một đối số ≤ 128K
 
 
+@contextmanager
+def system_prompt_args(system: str) -> Iterator[list[str]]:
+    """`--system-prompt-file <path>` thay vì `--system-prompt <text>`: agent nhiều skill (vd. researcher) có system
+    prompt riêng đã sát hoặc vượt ARGV_LIMIT trên Windows; ghi ra file tạm thì argv chỉ còn một đường dẫn ngắn,
+    không đụng trần argv nữa (nội dung vẫn không qua stdin, để không lẫn với prompt/schema của user message)."""
+    import tempfile
+    fd, path = tempfile.mkstemp(prefix="claude-sp-", suffix=".txt")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f: f.write(system)
+        yield ["--system-prompt-file", path]
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
 def check_argv(args: list[str]) -> None:
-    """Prompt dài không được đi qua argv (đã chuyển sang stdin); phần còn lại (system prompt) vượt trần thì báo rõ
-    thay vì để hệ điều hành thoát với `Argument list too long` / `The command line is too long` khó hiểu."""
+    """Prompt dài không được đi qua argv (đã chuyển sang stdin); phần còn lại vượt trần thì báo rõ thay vì để hệ điều
+    hành thoát với `Argument list too long` / `The command line is too long` khó hiểu (system prompt tự nó đi qua
+    `--system-prompt-file`, xem `system_prompt_args`, nên không còn là nguồn chính gây vượt trần)."""
     total = sum(len(a) + 1 for a in args)
     if total > ARGV_LIMIT:
         raise LLMError(f"argv của CLI dài {total} ký tự > {ARGV_LIMIT} (system prompt quá lớn; rút gọn prompt/skill hoặc "
@@ -741,9 +757,10 @@ class ClaudeCodeClient:
                 args += ["--allowed-tools", " ".join(f"Bash({pat})" for pat in self.cfg.cli_bash)]
         else:
             args += ["--tools", "", "--max-turns", "1"]
-        args += ["--system-prompt", system]
-        check_argv(args)
-        out = self._run(args, prompt + hint, workdir) if cli else self._run(args, prompt + hint)
+        with system_prompt_args(system) as sp_args:
+            args += sp_args
+            check_argv(args)
+            out = self._run(args, prompt + hint, workdir) if cli else self._run(args, prompt + hint)
         return self._parse(out, model, tool_mode="cli" if cli else "")
 
     def _complete_mcp(self, *, args: list[str], system: str, stdin: str, workdir: str | None) -> str | None:
@@ -758,14 +775,15 @@ class ClaudeCodeClient:
             # --tools "": KHÔNG tool gốc nào của CLI (Read/Glob/Grep/Bash…) — chúng đọc được `.env`, `~/.ssh` ngoài
             # sandbox tools.py và không để dấu trong ToolBox.calls. --allowedTools chỉ liệt kê tool MCP của công ty; deny
             # file bí mật qua --settings là lớp chặn thứ hai nếu CLI vẫn nạp tool gốc.
-            full = [*args, "--mcp-config", str(cfg_path), "--strict-mcp-config", "--tools", "",
-                    "--allowedTools", bridge.allowed_tools(), "--settings", cli_settings_json(),
-                    "--max-turns", str(self.cfg.mcp_max_turns), "--system-prompt", system]
-            check_argv(full)
-            try:
-                return self._run(full, stdin, workdir)
-            except LLMError as e:
-                if not cli_lacks_mcp(str(e)): raise
+            with system_prompt_args(system) as sp_args:
+                full = [*args, "--mcp-config", str(cfg_path), "--strict-mcp-config", "--tools", "",
+                        "--allowedTools", bridge.allowed_tools(), "--settings", cli_settings_json(),
+                        "--max-turns", str(self.cfg.mcp_max_turns), *sp_args]
+                check_argv(full)
+                try:
+                    return self._run(full, stdin, workdir)
+                except LLMError as e:
+                    if not cli_lacks_mcp(str(e)): raise
                 self.cfg.mcp_tools = False
                 return None
 

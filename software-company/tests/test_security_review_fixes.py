@@ -31,8 +31,8 @@ def test_check_argv_raises_clear_error_and_claude_code_guards_system_prompt():
     with pytest.raises(LLMError, match="argv của CLI dài"):
         check_argv(["claude", "y" * ARGV_LIMIT])
     c = ClaudeCodeClient(LLMConfig(provider="claude-code", models={"standard": "m"}), runner=lambda a, s: '{"result": "{}"}')
-    with pytest.raises(LLMError, match="system prompt quá lớn"):
-        c.complete(system="s" * (ARGV_LIMIT + 1), user="u", schema={}, model_tier="standard")
+    # system prompt dài tuỳ ý: đi qua `--system-prompt-file` (file tạm), không qua argv nên không chạm trần
+    assert c.complete(system="s" * (ARGV_LIMIT + 1), user="u", schema={}, model_tier="standard").text == "{}"
     # user prompt dài tuỳ ý: không đi qua argv nên không chạm trần
     assert c.complete(system="s", user="u" * (ARGV_LIMIT + 1), schema={}, model_tier="standard").text == "{}"
 
