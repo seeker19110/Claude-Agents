@@ -342,6 +342,34 @@ def test_trang_thai_blocked_song_sot_qua_restart(tmp_path):
     assert len(tasks) >= 2, "duyệt escalation phải phát task mới"
 
 
+def test_ticket_bi_chan_lan_hai_van_phai_mo_gate(tmp_path):
+    """Ticket bị chặn LẦN HAI phải mở gate mới, không được im lặng.
+
+    `_check_escalations` chống gate trùng bằng khoá `escalation:<tid>:<n>:<state>`. Sau khi người duyệt mở lại
+    ticket, ticket chạy tiếp rồi hết retry lần nữa: supervisor không hành động gì thêm nên `n` không đổi và
+    `state` vẫn là `blocked` → khoá TRÙNG lần trước, `once` nuốt, không gate nào mở. Ticket nằm im vĩnh viễn
+    trong khi `gates_pending` rỗng và `status` không báo gì bất thường.
+
+    Đo được khi chạy thật 2026-09-04: QLKH-001 blocked lúc 13:25 với khoá `escalation:QLKH-001:5:blocked` đã có
+    sẵn trong `once`; không có `gate.request` nào sau 11:58, và 13 ticket phụ thuộc đứng chờ vô hạn.
+
+    Nhánh dự-án-kẹt đã có `stall_count` đúng vì lý do này ("mỗi lần một gate mới, không im lặng lần hai");
+    nhánh ticket-bị-chặn thiếu bộ đếm tương ứng."""
+    def hong_luon(system, user):
+        if _agent_of(system) in ENGINEERING: raise LLMError("agent kỹ thuật hỏng")
+        return handler(system, user)
+
+    bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient(handler=hong_luon))
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    assert orch.lead.state["T1"] == "blocked" and orch.gate.pending.get("T1"), "lần chặn đầu phải mở gate"
+
+    orch.gate.decide("T1", "approve", by="human:lead", reason="thử lại")  # duyệt → pending rỗng, retry về 0
+    orch.run()
+
+    assert orch.lead.state["T1"] == "blocked", "agent vẫn hỏng nên ticket phải chặn lại"
+    assert orch.gate.pending.get("T1"), "chặn lần hai mà không mở gate = dự án đứng im không ai được hỏi"
+
+
 # Trạng thái chỉ sống trong RAM là nguồn lỗi lặp lại nhiều nhất: nó không hỏng ồn ào, nó chỉ lặng lẽ biến mất
 # khi mở lại bus, rồi dự án đứng im trong khi mọi chỉ số vẫn xanh. Test dưới đây chốt bất biến chung thay vì
 # chạy theo từng ca: chạy hết một vòng đời rồi so TỪNG thuộc tính giữa đối tượng đang sống và đối tượng dựng
