@@ -195,6 +195,12 @@ jobs:
             echo "::error::Golden lệch — chạy \`make golden\` trong ${{ matrix.dir }} rồi commit lại" >&2
             exit 1
           fi
+      # Subagent kiểm duyệt là bản dẫn xuất MỘT CHIỀU từ agents/. Lệch nguồn nghĩa là người duyệt gate đang
+      # chấm theo tiêu chuẩn khác tiêu chuẩn công ty thực sự dùng — chặn ở cùng chỗ với golden.
+      - name: Subagent dẫn xuất có khớp nguồn không
+        if: matrix.dir == 'software-company'
+        run: uv run python -m company.subagents check
+        working-directory: ${{ matrix.dir }}
 
   gateway-static:
     name: gateway-static

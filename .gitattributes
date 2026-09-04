@@ -6,3 +6,7 @@
 *.mp4 binary
 *.mp3 binary
 *.wav binary
+
+# Subagent kiểm duyệt là bản dẫn xuất máy sinh từ agents/ (xem company.subagents): diff gọn khi review,
+# nhưng vẫn commit vì người dùng cần dùng ngay mà không phải chạy build.
+.claude/agents/sc-*.md linguist-generated=true
