@@ -194,7 +194,32 @@ def test_plan_rejected_when_budget_rule_violated():
     _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
-    assert "plan_rejected" in acts and not orch.plans and not orch.gate.pending and not orch.lead.tickets
+    assert "plan_rejected" in acts and not orch.plans and not orch.lead.tickets
+    # Kế hoạch bị từ chối là ngõ cụt: không ticket, không plan, không cơ chế tự lập lại. Phải mở gate
+    # `escalation` cho người quyết — trước đây dự án đứng im ở đây mà `status` vẫn báo mọi chỉ số xanh.
+    assert orch.gate.pending.get("P1") and orch.gate.pending["P1"].kind == "escalation"
+    assert "plan_problems" in orch.gate.pending["P1"].checklist
+
+
+def test_loi_agent_khong_nhanh_nao_nhan_thi_mo_gate_chu_khong_im_lang():
+    """Reviewer lỗi trên `pull-requests`: KHÔNG thuộc RESEARCH_TOPICS (nên `_stall` bỏ qua) và route không
+    phải `tools="rw"` (nên `_rework_after_error` bỏ qua). Trước đây lỗi rơi vào im lặng: event vẫn bị đánh
+    dấu đã xử lý, ticket treo `in_review`, không gate nào mở, `status` báo mọi chỉ số XANH trong khi dự án
+    đã chết. Đo được khi chạy thật 2026-09-04: ba reviewer cùng hỏng, 13 ticket phụ thuộc chờ vĩnh viễn."""
+    def reviewer_hong(system, user):
+        if _agent_of(system) in {"reviewer", "qa-debugger", "security-engineer"}:
+            raise LLMError("model không trả về nội dung nào")
+        return handler(system, user)
+
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=reviewer_hong))
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _pub(bus, "pull-requests", "T1", "backend",
+         {"ticket_id": "T1", "project_id": "P1", "branch": "ticket/T1", "pr_ref": "#1", "summary": "s",
+          "impact": {"files": ["a.py"]}, "local_checks": {"lint": True, "tests": True, "verified_by": "workspace"}})
+    orch.run()
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "agent_error_unhandled" in acts, "lỗi không nhánh nào nhận phải để lại dấu vết"
+    assert orch.gate.pending.get("T1"), "phải mở gate escalation thay vì chết lặng"
 
 
 def test_release_engineer_wrong_env_is_invalid_output():

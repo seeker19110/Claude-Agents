@@ -612,30 +612,49 @@ class Orchestrator:
         except (RunnerError, LLMError) as e:  # runner đã ghi audit; không retry lời gọi (ADR-0005)
             res.actions.append(f"error:{agent}:{str(e)[:120]}")
             with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
-            self._stall(env, agent, e, res)
-            self._rework_after_error(env, r, e)
+            self._after_error(env, agent, e, r, res)
         except Exception as e:  # handler xác định (delivery-lead) từ chối chuyển trạng thái: event đã ghi đĩa
             self._audit("handler_error", {"agent": agent, "error": str(e)[:300]}, ticket_id=env.payload.get("ticket_id"))
             res.actions.append(f"handler_error:{agent}:{str(e)[:120]}")
             with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
-            self._stall(env, agent, e, res)
-            self._rework_after_error(env, r, e)  # WorkspaceError (git/commit) cũng không được để ticket treo `dispatched`
+            self._after_error(env, agent, e, r, res)
 
-    def _rework_after_error(self, env: Envelope, r: Route, error: Exception) -> None:
+    def _after_error(self, env: Envelope, agent: str, error: Exception, r: Route, res: StepResult) -> None:
+        """Mọi lỗi agent phải có người nhận: `_stall` lo chuỗi nghiên cứu, `_rework_after_error` lo agent sửa code.
+        KHÔNG đường nào nhận thì đây là đường cuối — trước đây lỗi rơi vào im lặng: event vẫn bị `_mark` là đã xử
+        lý, ticket treo nguyên trạng thái cũ, không gate nào mở, và `status` báo mọi chỉ số XANH trong khi dự án
+        đã chết. Đo được khi chạy thật (2026-09-04): ba reviewer của `pull-requests:QLKH-001` cùng lỗi
+        (`env.topic` không thuộc RESEARCH_TOPICS nên `_stall` bỏ qua, `r.tools != "rw"` nên `_rework_after_error`
+        cũng bỏ qua) → 13 ticket phụ thuộc chờ vĩnh viễn mà không có một tín hiệu nào."""
+        handled = self._stall(env, agent, error, res)
+        handled = self._rework_after_error(env, r, error) or handled
+        if handled: return
+        subject = str(env.payload.get("ticket_id") or env.key)
+        self._audit("agent_error_unhandled",
+                    {"agent": agent, "topic": env.topic, "event_id": env.event_id, "error": str(error)[:300]},
+                    ticket_id=env.payload.get("ticket_id"), project_id=self.project_for(env))
+        self.supervisor.escalate_gate(subject, f"{agent} lỗi trên {env.topic}, không nhánh nào xử lý: {str(error)[:200]}",
+                                      once_key=f"unhandled:{env.event_id}:{agent}")
+        res.actions.append(f"unhandled:{subject}:{agent}")
+
+    def _rework_after_error(self, env: Envelope, r: Route, error: Exception) -> bool:
         """Agent kỹ thuật lỗi (không sửa file, JSON hỏng, hết ngân sách lượt...) → ticket không được treo `dispatched`
-        mãi: delivery-lead phát lại task retry+1 với hint là lỗi, hết retry → blocked → gate escalation."""
-        if r.tools != "rw": return
+        mãi: delivery-lead phát lại task retry+1 với hint là lỗi, hết retry → blocked → gate escalation.
+        Trả True nếu nhánh này đã nhận trách nhiệm xử lý lỗi."""
+        if r.tools != "rw": return False
         tid = str(env.payload.get("ticket_id") or env.key)
-        if self.lead.state.get(tid) not in {"dispatched", "in_progress"}: return
+        if self.lead.state.get(tid) not in {"dispatched", "in_progress"}: return False
         try:
             self.lead.rework(tid, f"lần trước lỗi: {str(error)[:500]}")
         except ValueError as ex:
             self._audit("handler_error", {"agent": "delivery-lead", "error": str(ex)[:300]}, ticket_id=tid)
+        return True
 
-    def _stall(self, env: Envelope, agent: str, error: Exception, res: StepResult) -> None:
+    def _stall(self, env: Envelope, agent: str, error: Exception, res: StepResult) -> bool:
         """Agent của chuỗi nghiên cứu lỗi → dự án không có bước kế tiếp. Ghi `project.stalled`, supervisor escalate
-        (dự án bị hoãn mọi event), mở gate `escalation` subject=project_id. Ticket có cơ chế retry/blocked riêng."""
-        if env.topic not in RESEARCH_TOPICS: return
+        (dự án bị hoãn mọi event), mở gate `escalation` subject=project_id. Ticket có cơ chế retry/blocked riêng.
+        Trả True nếu nhánh này đã nhận trách nhiệm xử lý lỗi."""
+        if env.topic not in RESEARCH_TOPICS: return False
         pid = str(env.payload.get("project_id") or env.key)
         with self._lock:
             self.stall_count[env.event_id] += 1; n = self.stall_count[env.event_id]
@@ -648,6 +667,7 @@ class Orchestrator:
             self.gate.request(GateRequest(kind="escalation", subject_id=pid, created_by="supervisor",
                                           checklist=["agent_error", "decision:retry|close"]))
         res.actions.append(f"stalled:{pid}:{agent}")
+        return True
 
     def _retry_stalled(self, pid: str, by: str, reason: str) -> bool:
         """Người duyệt gate escalation của dự án: chạy lại event đã lỗi (bỏ dấu đã xử lý, đưa về đầu hàng đợi)."""
@@ -842,6 +862,14 @@ class Orchestrator:
             self._audit("plan_rejected", plan, actor="delivery-lead", tokens=g.tokens, cost=g.cost_usd, project_id=project)
             res.actions.append(f"plan_rejected:{'; '.join(problems)[:120]}")
             with self._lock: self.stats["errors"] += 1
+            # Kế hoạch bị từ chối là ngõ cụt: không ticket nào được tạo, không gate nào mở, và không có cơ chế
+            # tự lập lại. Trước đây dự án đứng im ở đây mà `status` vẫn báo mọi chỉ số xanh (đo được với dự án
+            # DHCB: `tickets: []` → "kế hoạch rỗng" → im lặng vĩnh viễn). Phải hiện ra cho người quyết.
+            self.supervisor.escalate_gate(project, f"kế hoạch {plan_id} bị từ chối: {'; '.join(problems)[:200]}",
+                                          once_key=f"plan_rejected:{env.event_id}")
+            if project not in self.gate.pending:
+                self.gate.request(GateRequest(kind="escalation", subject_id=project, created_by="delivery-lead",
+                                              checklist=["plan_problems", "decision:retry|close"]))
         else:
             self.plans[plan_id] = plan
             self._audit("plan.proposed", plan, actor="delivery-lead", tokens=g.tokens, cost=g.cost_usd, project_id=project)
