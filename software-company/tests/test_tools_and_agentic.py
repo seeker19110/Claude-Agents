@@ -817,3 +817,27 @@ def test_agent_xoa_duoc_file_va_khong_vuot_ranh_gioi(tmp_path):
     assert "delete_file" not in [t.name for t in ro.toolbox().specs()], "agent chỉ-đọc không được cấp tool xoá"
     with pytest.raises(ToolError):
         ro.delete_file("mod.py")
+
+
+def test_prompt_tool_buoc_agent_noi_ra_khi_thieu_nang_luc(tmp_path):
+    """Hai chỉ dẫn trong `tools_prompt` vá hai thất bại đo được ở lần chạy thật 2026-09-04.
+
+    1. Agent không xoá được tệp rác (bộ tool khi đó không có `delete_file`) và **không lần nào nói ra** — qua
+       bốn vòng rework nó chỉ lặng lẽ sửa file khác. Hướng dẫn cũ có "bế tắc thì dừng, ghi lý do", nhưng agent
+       hiểu "bế tắc" là ĐÃ THỬ MÀ KHÔNG XONG, không phải KHÔNG CÓ CÁCH ĐỂ THỬ. Cùng ca: không có mạng nên
+       không tính được SHA-256, ticket khoá cứng cho tới khi người ngoài cấp giá trị.
+    2. Chính tệp `.tmp` đó bị 5 lượt review chặn liên tiếp; `write_file` ghi thẳng được nên bước ghi nháp là thừa.
+
+    Prompt là code (ADR-0004): xoá hai chỉ dẫn này phải làm test ĐỎ, không được im lặng trôi qua."""
+    from company.tools import WorkspaceTools, tools_prompt
+
+    tb = WorkspaceTools(_init_repo(tmp_path / "r")).toolbox()
+    ghi = tools_prompt(tb, can_write=True)
+    doc = tools_prompt(tb, can_write=False)
+
+    for p, ai in ((ghi, "agent ghi"), (doc, "agent chỉ-đọc")):
+        assert "KHÔNG có trong danh sách tool" in p and "NÓI THẲNG" in p, \
+            f"{ai} phải được bảo nói ra khi thiếu tool — im lặng làm việc khác là thất bại đã quan sát được"
+        assert "mạng" in p, f"{ai} phải được nhắc cả năng lực ngoài tool (mạng), không chỉ tool thiếu"
+
+    assert "tệp nháp/tạm" in ghi, "agent ghi phải được bảo đừng để lại tệp tạm — 5 lượt review đã chặn vì nó"
