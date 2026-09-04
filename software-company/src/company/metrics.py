@@ -12,6 +12,7 @@ file) để nối dashboard sẵn có. Nguồn số liệu:
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 from datetime import datetime
 from typing import Any
@@ -127,3 +128,77 @@ def prometheus(m: dict[str, Any], prefix: str = "company") -> str:
     for tid, sec in m["ticket_lead_seconds"].items():
         emit("ticket_lead_seconds", sec, "lead time ticket (tasks đầu → closed)", {"ticket": tid})
     return "\n".join(lines) + "\n"
+
+
+# ---------- chẩn đoán: 193 lỗi thô → vài khuôn lỗi đọc được ----------
+
+_SO = re.compile(r"\d+")
+_MA = re.compile(r"\b[0-9a-f]{8,}\b")
+_BS = chr(92)  # viết bằng chr() để lớp thoát của shell/editor không nuốt mất dấu gạch chéo ngược
+# `[{_BS}/]` KHÔNG đủ: trong lớp ký tự, `\/` là dấu thoát của `/` nên chỉ khớp `/`. Phải nhân đôi.
+_DUONG_DAN = re.compile(rf"[A-Za-z]:[{_BS}{_BS}/][^\s\"']+|/[^\s\"']*/[^\s\"']+")
+
+
+def chu_ky_loi(msg: str, dai: int = 120) -> str:
+    """Rút thông điệp lỗi về CHỮ KÝ để nhóm được: bỏ số, mã hex, đường dẫn.
+
+    `metrics` đếm được `errors: 193` nhưng không nói 193 lỗi đó là những lỗi gì, nên muốn biết phải tự truy
+    SQLite — phiên 2026-09-04 tôi viết tay chừng mười lăm truy vấn như vậy. Chuẩn hoá là phần làm nên giá trị:
+    "thử lại sau 1960s" và "thử lại sau 43s" là CÙNG một khuôn, còn đọc thô thì thành hai dòng khác nhau.
+    """
+    s = _DUONG_DAN.sub("<đường-dẫn>", str(msg or ""))
+    s = _MA.sub("<mã>", s)
+    s = _SO.sub("<số>", s)
+    return " ".join(s.split())[:dai]
+
+
+def diagnose(bus: InMemoryBus, top: int = 10) -> dict[str, Any]:
+    """Khuôn lỗi lặp lại, ticket quay vòng, gate — cho người vận hành, không phải cho agent.
+
+    Trả lời đúng những câu tôi phải hỏi thủ công suốt phiên 2026-09-04: lỗi nào lặp nhiều nhất, agent nào hỏng,
+    ticket nào quay vòng mà không ai biết, gate nào mở mà không ai quyết.
+    """
+    khuon: dict[str, dict[str, Any]] = {}
+    ticket: dict[str, dict[str, int]] = defaultdict(lambda: {"retry": 0, "blocked": 0, "reopen": 0, "review_block": 0})
+    # Đếm riêng khỏi danh sách `dang_cho`: trộn int với list trong một dict làm mypy suy ra `dict[str, object]`
+    # rồi `+= 1` thành lỗi kiểu. Ghép lại ở `return`.
+    gate_dem: dict[str, int] = {"mo": 0, "quyet": 0, "qua_han": 0}
+    mo_gate: dict[str, str] = {}
+
+    for env in bus.replay():
+        if env.topic == "tasks":
+            t = env.payload
+            ticket[env.key]["retry"] = max(ticket[env.key]["retry"], int(t.get("retry") or 0))
+        elif env.topic == "review-results" and env.payload.get("verdict") in {"block", "fail"}:
+            ticket[str(env.payload.get("ticket_id") or env.key)]["review_block"] += 1
+        elif env.topic == "audit-log":
+            a = env.payload; act = str(a.get("action", "")); d = _ev(a)
+            if act in {"llm_error", "invalid_output", "budget_exhausted", "handler_error", "agent_error_unhandled"}:
+                sig = chu_ky_loi(d.get("error") or a.get("evidence") or act)
+                k = khuon.setdefault(sig, {"so_lan": 0, "action": act, "agents": set(), "tickets": set(),
+                                           "dau": env.ts, "cuoi": env.ts, "vi_du": str(d.get("error") or a.get("evidence") or "")[:200]})
+                k["so_lan"] += 1; k["cuoi"] = env.ts
+                k["agents"].add(str(d.get("agent") or a.get("actor") or "?"))
+                if a.get("ticket_id"): k["tickets"].add(str(a["ticket_id"]))
+            elif act == "ticket.blocked" and d.get("ticket_id"):
+                ticket[str(d["ticket_id"])]["blocked"] += 1
+            elif act == "gate.request":
+                gate_dem["mo"] += 1
+                if d.get("subject_id"): mo_gate[str(d["subject_id"])] = str(d.get("kind") or "?")
+            elif act == "gate.decide":
+                gate_dem["quyet"] += 1; mo_gate.pop(str(d.get("subject_id")), None)
+                if d.get("subject_id"): ticket[str(d["subject_id"])]["reopen"] += 1
+            elif act == "gate.overdue":
+                gate_dem["qua_han"] += 1
+
+    xep = sorted(khuon.items(), key=lambda kv: -kv[1]["so_lan"])[:top]
+    return {
+        "loi_theo_khuon": [{"chu_ky": s, "so_lan": v["so_lan"], "action": v["action"],
+                            "agents": sorted(v["agents"]), "tickets": sorted(v["tickets"])[:5],
+                            "dau": v["dau"].isoformat(), "cuoi": v["cuoi"].isoformat(), "vi_du": v["vi_du"]}
+                           for s, v in xep],
+        "so_khuon": len(khuon),
+        "ticket_quay_vong": {t: v for t, v in sorted(ticket.items())
+                             if v["blocked"] or v["reopen"] or v["review_block"] >= 2},
+        "gate": {**gate_dem, "dang_cho": [f"{sid}:{kind}" for sid, kind in sorted(mo_gate.items())]},
+    }
