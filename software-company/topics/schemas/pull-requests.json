@@ -65,6 +65,13 @@
               "type": "string"
             }
           }
+        },
+        "project_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "dự án của ticket; orchestrator điền từ kế hoạch nếu model bỏ trống"
         }
       },
       "required": [

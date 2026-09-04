@@ -81,6 +81,7 @@ class PullRequest(BaseModel):
     summary: str = ""
     impact: dict[str, Any] = {}
     local_checks: dict[str, Any]
+    project_id: str | None = None  # orchestrator điền từ ticket: blackboard và chi phí phân vùng theo dự án (ADR-0018)
 
 class Finding(BaseModel):
     level: Literal["block", "warn", "nit"]
@@ -95,6 +96,15 @@ class ReviewResult(BaseModel):
     root_cause: str | None = None
     bug_reports: list[str] = []
     metrics: dict[str, Any] = {}
+    project_id: str | None = None
+    # Trường prompt reviewer/qa-debugger vẫn đòi (nay có trong schema, không còn lọt nhờ additionalProperties)
+    sbom_ref: str | None = None
+    # Model trả câu tóm tắt hoặc object theo từng loại scan/test: nhận cả hai, không ép model đổi hình đầu ra
+    scan_summary: str | dict[str, Any] | None = None
+    test_summary: str | dict[str, Any] | None = None
+    mutation_score: float | None = None
+    perf: dict[str, Any] | None = None
+    a11y: dict[str, Any] | None = None
 
 class SharedContext(BaseModel):
     namespace: Namespace
@@ -137,6 +147,7 @@ class SupervisorAction(BaseModel):
     action: Literal["pause", "resume", "escalate", "budget_cut", "warn"]
     reason: str
     evidence: str | None = None
+    project_id: str | None = None
 
 PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
     "tasks": Task, "pull-requests": PullRequest, "review-results": ReviewResult,

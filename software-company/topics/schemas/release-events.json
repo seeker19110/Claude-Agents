@@ -56,6 +56,13 @@
         },
         "integration_sha": {
           "type": "string"
+        },
+        "project_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "dự án của release"
         }
       },
       "required": [

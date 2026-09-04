@@ -481,10 +481,9 @@
       "observability"
     ],
     "timeout_minutes": 15,
-    "version": 10,
+    "version": 11,
     "writes": [
-      "supervisor-actions",
-      "knowledge-base"
+      "supervisor-actions"
     ]
   },
   "support-docs": {

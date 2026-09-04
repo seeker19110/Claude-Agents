@@ -3,7 +3,7 @@ id: supervisor
 block: supervision
 model_tier: light
 reads: [audit-log, "*"]
-writes: [supervisor-actions, knowledge-base]
+writes: [supervisor-actions]
 context_namespace_write: knowledge
 context_namespace_read: []
 max_input_chars: 30000
@@ -12,7 +12,7 @@ skills_core: [cost-estimation, observability]
 budget_tokens_per_task: 40000
 max_retries: 0
 timeout_minutes: 15
-version: 10
+version: 11
 ---
 # supervisor
 
