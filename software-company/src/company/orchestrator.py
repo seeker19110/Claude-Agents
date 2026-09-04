@@ -310,6 +310,9 @@ class Orchestrator:
         # chừng đó; hỏi lại sớm hơn vừa vô ích vừa làm bẩn audit-log (xem `_retry_deferred`).
         self.defer_until: dict[str, float] = {}
         self.once: set[str] = set()  # nhắc nhở / hành động chỉ làm một lần (gate.remind, review.reassign, lesson...)
+        # ticket_id → số quyết định escalation đã áp cho ticket đó. Đối xứng với `stall_count` ở nhánh dự-án-kẹt:
+        # nếu không có nó, ticket bị chặn LẦN HAI sinh ra đúng khoá `once` của lần một nên không mở gate nào nữa.
+        self.escalation_decided: Counter[str] = Counter()
         self.stats: Counter[str] = Counter()
         self._rehydrate()
         bus.subscribe("*", self._on_event)
@@ -347,9 +350,11 @@ class Orchestrator:
                 elif a["action"] == "project.stalled":
                     self.stalled[d["project_id"]] = d; self.stall_count[d["event_id"]] += 1
                 elif a["action"] in {"project.retried", "project.closed"}: self.stalled.pop(d["project_id"], None)
-                elif a["action"] == "gate.decide" and d.get("decision") == "approve" and d.get("subject_id") in self.plans \
-                        and trusted_decision(env) is not None:
-                    self._dispatch_plan(d["subject_id"], replaying=True)
+                elif a["action"] == "gate.decide":
+                    if d.get("subject_id"): self.escalation_decided[str(d["subject_id"])] += 1
+                    if d.get("decision") == "approve" and d.get("subject_id") in self.plans \
+                            and trusted_decision(env) is not None:
+                        self._dispatch_plan(d["subject_id"], replaying=True)
             elif env.topic == "supervisor-actions": self._track_pause(env)
             elif env.topic == "shared-context": self.blackboard._on(env)
             else:
@@ -1013,6 +1018,10 @@ class Orchestrator:
         d = _evidence(env.payload); sid, decision, by = d["subject_id"], d["decision"], d.get("by", "human")
         kind = next((g.kind for g in reversed(self.gate.history) if g.subject_id == sid), None)
         res.actions.append(f"gate:{kind}:{sid}:{decision}")
+        # Đếm ở ĐÂY chứ không ở `_on_escalation_decided`: `_rehydrate` đếm mọi `gate.decide` theo subject, nên đếm
+        # sống hẹp hơn (chỉ gate escalation) là hai đường lệch nhau và test bất biến restart đỏ — nó đã bắt đúng
+        # lỗi này trong chính bản sửa mở gate cho lần chặn thứ hai.
+        self.escalation_decided[sid] += 1
         if kind == "escalation":
             self._on_escalation_decided(sid, decision, by, d.get("reason", ""), res)
         elif decision == "approve":
@@ -1035,7 +1044,13 @@ class Orchestrator:
             if self.lead.state.get(tid) in DONE_STATES: continue  # đã đóng/đã xong: không mở gate nữa
             # budget_cut cũng là "dừng chờ người" (approve = cấp thêm ngân sách): không có gate thì ticket treo im lặng.
             n = sum(1 for a in self.supervisor.actions if a.target == tid and a.action in {"escalate", "budget_cut"})
-            key = f"escalation:{tid}:{n}:{self.lead.state.get(tid)}"  # mỗi lần escalate/cắt mới / blocked mới → một gate mới
+            # Mỗi lần escalate/cắt mới, mỗi lần blocked mới → một gate mới. `escalation_decided` là thành phần bắt
+            # buộc: sau khi người duyệt mở lại ticket, ticket có thể bị chặn LẠI mà supervisor không hành động gì
+            # thêm (n không đổi, state vẫn `blocked`) — thiếu nó thì khoá trùng lần trước, `once` nuốt, và ticket
+            # nằm im mãi không ai được hỏi. Đo được khi chạy thật (2026-09-04): QLKH-001 blocked lúc 13:25 với
+            # key `escalation:QLKH-001:5:blocked` đã có trong `once` từ lần chặn trước → `gates_pending` rỗng,
+            # `status` không báo gì bất thường, 13 ticket phụ thuộc đứng chờ vô hạn.
+            key = f"escalation:{tid}:{n}:{self.lead.state.get(tid)}:{self.escalation_decided[tid]}"
             if tid in self.gate.pending or key in self.once: continue
             if self.lead.state.get(tid) == "blocked" or n:
                 self._remember(key)
