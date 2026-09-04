@@ -454,8 +454,16 @@ _CAU_HINH = {"integration", "repo", "base", "integration_branch", "workers", "we
              "project_budget_usd"}
 _CO_Y_KHONG_DUNG_LAI = {
     "queue",        # dựng lại bằng công thức riêng (event chưa `orchestrated`), không phải bản sao
-    "deferred",     # KHÔNG `_mark` nên event tự vào lại hàng đợi — xem chú thích ở `_defer`
-    "defer_until",  # đi kèm `deferred`
+    # `deferred` dựng lại MỘT PHẦN, có chủ ý: chỉ event nào backend hẹn giờ rõ ràng (`defer.until` trong
+    # audit-log) mới quay về `deferred` với phần thời gian còn lại — nếu không thì mở lại bus giữa lúc chờ
+    # quota là đập ngay vào backend đã cạn. Event hoãn vì `gate:`/`paused:` KHÔNG ghi hẹn: chúng tự vào lại
+    # hàng đợi và bị hoãn lại ngay ở lượt chạy đầu theo trạng thái gate/pause hiện tại, đúng hơn là khôi phục
+    # một lý do có thể đã cũ. Nên hai bên không bằng nhau theo từng phần tử — xem `_nap_lai_hen`.
+    "deferred",
+    # Cùng lý do, cộng thêm: giá trị là mốc `time.monotonic()` của TỪNG TIẾN TRÌNH nên không bao giờ so được
+    # trực tiếp. Cái cần bảo đảm là "còn hẹn thì không chạy ngay", và điều đó có test riêng
+    # (`test_hen_cho_backend_song_sot_qua_restart`).
+    "defer_until",
     "stats",        # bộ đếm của phiên, không phải trạng thái nghiệp vụ
     "partial",      # bản dựng lại lọc theo `processed`, chặt hơn bản đang sống (và đúng hơn)
     "knowledge",    # bài học nằm trên blackboard; `sprint_report` đếm từ `lessons()`
