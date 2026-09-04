@@ -1,6 +1,9 @@
 # Đặc tả thực thi — Trợ lý kiểm duyệt (gate assistant)
 
-Trạng thái: đề xuất (chưa có mã). Phạm vi: `software-company/`, `.claude/agents/`, CI.
+Trạng thái: **đã thực thi đủ 6 PR (2026-09-04)** — mã ở `src/company/subagents.py`, `src/company/gate_checklists.py`,
+`src/company/gate_brief.py`, `.claude/commands/gate-brief.md`; test `tests/test_subagents.py`, `tests/test_gate_brief.py`,
+`tests/test_gate_trust.py`, `tests/test_assetscan.py`; golden `tests/golden/gate_brief/`. Sai khác so với bản đề xuất ghi ở §11.
+Phạm vi: `software-company/`, `.claude/agents/`, `.claude/commands/`, CI.
 Liên quan: `gates/checklists.md`, `src/company/gates.py`, `src/company/gate_cli.py`, ADR-0004 (prompt là code),
 ADR-0014 (schema là nguồn sự thật), ADR-0017 (acceptance là gate thật), ADR-0022 (quét tài sản prompt),
 ADR-0023 (Claude Code CLI tools).
@@ -328,6 +331,20 @@ Ba ca cho mỗi kind, chấm bằng assert văn bản chứ không bằng model:
 
 PR 3 trước PR 4–5 có chủ ý: `escalation` là chỗ trợ lý trả giá trị lớn nhất và cũng là chỗ dễ đo — hint tốt hay
 không thấy ngay ở lần retry sau.
+
+Kết quả: cả sáu PR gộp trong một đợt (nhánh `claude/software-company-upgrade-9fs2kf`, 2026-09-04).
+
+## 11. Sai khác khi thực thi so với bản đề xuất
+
+| Mục | Đề xuất | Thực thi | Vì sao |
+|---|---|---|---|
+| Bảng nguồn §5 | nằm trong đặc tả | `gate_checklists.SELF_CHECK_SOURCES` — một nguồn cho cả bộ sinh subagent lẫn `gate_brief`; parser gãy khi checklist có mục chưa khai nguồn | tránh hai bản chép tay lệch nhau |
+| `--out` mặc định | `company.artifacts/<project>/gate-brief/` | `<db>.artifacts/<project>/gate-brief/` (theo `artifact_store(db)`) | cùng chỗ với artifact mirror của bus đó |
+| Worktree / diff | ngầm | cần `--repo`; không có thì mục đó vào `unavailable` | lệnh chỉ đọc không được `ensure()` nhánh tích hợp trong repo khách |
+| Hồ sơ escalation | 4 phần | JSON có `extra` (`history`, `hints_used`, `duplicate_hints`, `budget`, `worktree`, `diagnose`) và `scope` = `ticket` hay `project` | escalation cấp dự án (chuỗi nghiên cứu lỗi) cũng cần hồ sơ |
+| Eval §8.3 | 3 ca eval qua `evals/` | assert văn bản trên prompt sinh ra (`test_subagents.py`: I1, I6, đủ mục, đủ nguồn) + ca injection ghi trong `BOUNDARY` | subagent chạy trong Claude Code, không qua `ModelClient`/`evals.py`; eval bằng model cho chúng chưa có harness |
+| `assetscan` | quét `.claude/agents/sc-*.md` | có, gắn vào cây `software-company` (nhận ra qua `src/company`) để không đếm hai lần khi quét cả hai công ty | |
+| Golden | `tests/golden/gate_brief/<kind>.json` | có, so sau khi bỏ thời gian/đường dẫn/event_id | |
 
 ## 10. Điều đặc tả này cố ý KHÔNG làm
 

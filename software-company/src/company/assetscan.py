@@ -123,13 +123,32 @@ def scan_text(text: str, path: str) -> list[Finding]:
     return out
 
 
+# Subagent kiểm duyệt (`.claude/agents/sc-*.md`, sinh từ agents/ + gates/checklists.md bởi `company.subagents`) nằm ở
+# gốc hub chứ không trong cây công ty, nhưng chúng là prompt đi thẳng vào một phiên Claude Code của người duyệt gate —
+# tài sản prompt như mọi file ở ASSET_DIRS (đặc tả trợ lý kiểm duyệt §7). Chỉ gắn vào cây của software-company
+# (nhận ra qua `src/company`) để hai công ty cùng quét không đếm chúng hai lần.
+SUBAGENT_GLOB = "sc-*.md"
+
+
+def subagent_files(root: Path) -> list[Path]:
+    if not (root / "src" / "company").is_dir(): return []
+    d = root.parent / ".claude" / "agents"
+    return sorted(p for p in d.glob(SUBAGENT_GLOB) if p.is_file()) if d.is_dir() else []
+
+
 def asset_files(root: Path) -> list[Path]:
     files: list[Path] = []
     for d in ASSET_DIRS:
         base = root / d
         if not base.is_dir(): continue
         files.extend(p for p in sorted(base.rglob("*")) if p.is_file() and p.suffix in ASSET_SUFFIXES)
-    return files
+    return files + subagent_files(root)
+
+
+def rel_path(p: Path, root: Path) -> str:
+    """Đường dẫn dùng trong finding và waiver: tương đối với cây công ty, hoặc với gốc hub cho subagent."""
+    try: return p.relative_to(root).as_posix()
+    except ValueError: return p.relative_to(root.parent).as_posix()
 
 
 @dataclass(frozen=True)
@@ -172,7 +191,7 @@ def scan_root(root: Path) -> tuple[list[Finding], list[str]]:
     """Quét một cây tài sản, đã áp miễn trừ. Trả về (finding, lỗi cú pháp waiver)."""
     raw: list[Finding] = []
     for p in asset_files(root):
-        rel = p.relative_to(root).as_posix()
+        rel = rel_path(p, root)
         try: text = p.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             # Tài sản prompt phải là UTF-8; file không giải mã được thì không ai review được nội dung thật của nó.

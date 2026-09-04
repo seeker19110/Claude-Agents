@@ -76,7 +76,10 @@ cộng `blocked` và `escalated` có thể vào từ bất kỳ trạng thái n�
 Ba điểm bắt buộc của công ty: `approved-specs`, plan sau delivery-lead (kèm threat model), release production
 (chỉ sau khi QA staging pass). Điểm thứ tư thuộc về khách: nghiệm thu (`acceptance-results`, người ký của khách,
 account-manager ghi nhận). Timeout 24h, supervisor nhắc ở 12h. Không bao giờ tự đi tiếp. Checklist trong
-`gates/checklists.md`.
+`gates/checklists.md`, tách hai nửa: "Code gửi kèm" (khoá trong `GateRequest.checklist`, hiện ở `gate_cli list`) và "Người tự
+kiểm thêm". Nửa sau có **trợ lý kiểm duyệt** (`docs/dac-ta-tro-ly-kiem-duyet.md`): `gate_brief` (code, chỉ đọc) rút bằng chứng
+định lượng thành hồ sơ `ok|gap|unknown`; subagent `sc-gate-<kind>` / `sc-<agent>` (sinh từ checklist và prompt agent, chỉ
+Read/Grep/Glob) đọc hồ sơ và in bản tóm; người ký bằng `gate_cli` — `trusted_decision` chỉ tin actor là người.
 
 ## Thành phần dùng chung (đứng độc lập, không phụ thuộc repo khác)
 
@@ -91,6 +94,12 @@ account-manager ghi nhận). Timeout 24h, supervisor nhắc ở 12h. Không bao 
   Vòng lặp model ↔ tool nằm trong runner (`generate(tools=…)`), dừng khi hết lượt hoặc vượt ngân sách token.
 - **Nhánh tích hợp** (ADR-0011): ticket rẽ từ `company/integration`; RC xuất hiện → `merge --no-ff` vào đó trước khi
   release-engineer chạy; xung đột → RC huỷ, ticket làm lại trên nền mới. `main` của khách không bị chạm.
+- **Giao hàng** (ADR-0026, `--deliver`): sha nhánh tích hợp lúc deploy staging được ghi `release.staged`; production duyệt +
+  deploy → `Integration.deliver`: tag `v<version>` tại sha đó + fast-forward `company/release` (tạo nếu chưa có); tag trùng ở
+  sha khác hay nhánh không fast-forward được → audit `delivery.tag_conflict` / `delivery.diverged`, không ghi đè. Rolled_back/
+  failed → `rollback_delivery` lùi con trỏ về lần giao trước (chỉ khi nhánh còn trỏ đúng sha đã giao; tag giữ). `--push-remote`
+  đẩy lên remote khách (lùi bằng `--force-with-lease`); push lỗi → `delivery.push_failed`, không chặn. `delivered` dựng lại từ
+  `delivery.done`/`delivery.rolled_back`.
 - **Bằng chứng PR do code điền**: sau vòng tool, runner chạy lint/test thật, commit và ghi đè `branch`, `pr_ref`,
   `local_checks` (`verified_by: workspace`), `impact.files` — model không tự khai được. Không có `--repo` thì
   `local_checks` thành `{"unverified": true}`.

@@ -1,0 +1,64 @@
+{
+  "code_checklist": [
+    "uat-script",
+    "acceptance-criteria",
+    "known-issues",
+    "signed_by"
+  ],
+  "created_by": "account-manager",
+  "extra": {
+    "release_id": "REL-001",
+    "tickets": [
+      "T1"
+    ]
+  },
+  "kind": "acceptance",
+  "project_id": "P1",
+  "schema_version": 1,
+  "self_check": [
+    {
+      "facts": [
+        "release-events mới nhất: env=production status=deployed version=0.1.1",
+        "chưa có contract trên blackboard"
+      ],
+      "id": "acceptance.moi-truong",
+      "question": "Chạy trên bản production (hoặc staging nếu hợp đồng quy định) với dữ liệu khách chấp thuận",
+      "sources": [
+        {
+          "event_ids": 2,
+          "key": "REL-001",
+          "kind": "topic",
+          "ref": "release-events"
+        }
+      ],
+      "verdict": "ok"
+    },
+    {
+      "facts": [
+        "khách chưa ký acceptance-results cho release này",
+        "prd có 2 requirement_id (REQ-…)"
+      ],
+      "id": "acceptance.truy-vet",
+      "question": "Finding truy vết về requirement_id; yêu cầu ngoài spec đi vào `change-requests`, không vào biên bản",
+      "sources": [
+        {
+          "event_ids": 0,
+          "key": "REL-001",
+          "kind": "topic",
+          "ref": "acceptance-results"
+        },
+        {
+          "content_ref": "docs/prd.md",
+          "kind": "namespace",
+          "path": "<…>",
+          "ref": "prd",
+          "version": 1
+        }
+      ],
+      "verdict": "unknown"
+    }
+  ],
+  "status": "pending",
+  "subject_id": "UAT-REL-001",
+  "unavailable": []
+}

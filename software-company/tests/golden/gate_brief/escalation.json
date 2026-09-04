@@ -1,0 +1,104 @@
+{
+  "code_checklist": [
+    "root_cause",
+    "decision:reopen|close",
+    "hint"
+  ],
+  "created_by": "supervisor",
+  "extra": {
+    "budget": {
+      "cost_usd": 0.0,
+      "limit": 6000,
+      "limit_usd": null,
+      "output_used": 0,
+      "retry": 2,
+      "review_used": 0,
+      "state": "blocked",
+      "used": 3900
+    },
+    "diagnose": {
+      "blocked": 1,
+      "reopen": 0,
+      "retry": 2,
+      "review_block": 0
+    },
+    "duplicate_hints": [],
+    "hints_used": [],
+    "history": [
+      {
+        "action": "tasks retry=0",
+        "at": "<…>",
+        "detail": ""
+      },
+      {
+        "action": "backend: invalid_output",
+        "at": "<…>",
+        "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id': 'T1', 'nonsense': True}, input_type=dict] For further inform…"
+      },
+      {
+        "action": "tasks retry=1",
+        "at": "<…>",
+        "detail": "lần trước lỗi: backend: đầu ra không hợp lệ cho pull-requests: payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id…"
+      },
+      {
+        "action": "backend: invalid_output",
+        "at": "<…>",
+        "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id': 'T1', 'nonsense': True}, input_type=dict] For further inform…"
+      },
+      {
+        "action": "tasks retry=2",
+        "at": "<…>",
+        "detail": "lần trước lỗi: backend: đầu ra không hợp lệ cho pull-requests: payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id…"
+      },
+      {
+        "action": "backend: invalid_output",
+        "at": "<…>",
+        "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id': 'T1', 'nonsense': True}, input_type=dict] For further inform…"
+      },
+      {
+        "action": "delivery-lead: ticket.blocked",
+        "at": "<…>",
+        "detail": "{\"ticket_id\": \"T1\", \"retry\": 3, \"max_retries\": 3}"
+      }
+    ],
+    "scope": "ticket",
+    "ticket": {
+      "assignee": "backend",
+      "hint": "lần trước lỗi: backend: đầu ra không hợp lệ cho pull-requests: payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id…",
+      "retry": 2,
+      "risk_tags": [],
+      "state": "blocked",
+      "title": "GET /orders"
+    },
+    "worktree": {}
+  },
+  "kind": "escalation",
+  "project_id": "P1",
+  "schema_version": 1,
+  "self_check": [
+    {
+      "facts": [
+        "đầu ra 0/6000 token (còn 6000); tổng kể cả input 3900; review 0; 0.0000 USD"
+      ],
+      "id": "escalation.ngan-sach",
+      "question": "Ngân sách còn",
+      "sources": [
+        {
+          "event_ids": 7,
+          "key": "T1",
+          "kind": "topic",
+          "ref": "audit-log"
+        }
+      ],
+      "verdict": "ok"
+    }
+  ],
+  "status": "pending",
+  "subject_id": "T1",
+  "unavailable": [
+    {
+      "id": "escalation.worktree",
+      "reason": "không có worktree của ticket (chạy lại với --repo, hoặc ticket chưa từng chạy trong repo)"
+    }
+  ]
+}
