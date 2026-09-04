@@ -77,7 +77,9 @@ def test_clean_env_loc_ca_bi_mat_khong_mang_ten_key(monkeypatch):
     env = clean_env()
     assert not any(k in env for k in ("DATABASE_URL", "AWS_ACCESS_KEY_ID", "SSH_AUTH_SOCK", "GITHUB_TOKEN",
                                        "COMPANY_LLM_BASE_URL", "CLAUDE_CONFIG_DIR", "REDIS_DSN", "SOME_AUTH_HEADER"))
-    assert env["GIT_AUTHOR_NAME"] == "ok" and env["PLAIN"] == "ok" and "PATH" in env and "HOME" in env
+    assert env["GIT_AUTHOR_NAME"] == "ok" and env["PLAIN"] == "ok" and "PATH" in env
+    # Thư mục nhà vẫn đi qua (lệnh lint/test của khách cần nó): tên biến khác nhau giữa POSIX và Windows.
+    assert ("HOME" in env) or ("USERPROFILE" in env)
 
 
 def test_git_cua_orchestrator_khong_chay_hook_cua_khach(tmp_path, monkeypatch):
