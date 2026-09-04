@@ -68,6 +68,17 @@ class Supervisor:
             self.bus.publish(Envelope(topic="supervisor-actions", key=target, actor="supervisor", payload=a.model_dump()))
 
     def replay(self, env: Envelope) -> None:
+        # Hành động của chính supervisor phải được DỰNG LẠI, không được bỏ qua. `_on` mở đầu bằng
+        # `if env.actor == "supervisor": return` — đúng cho đường chạy sống (không tự phản ứng với hành động của
+        # mình, tránh vòng lặp), nhưng khi replay thì nó nuốt luôn `self.actions`.
+        #
+        # Hệ quả dây chuyền, đo được khi chạy thật (2026-09-04): bus có 5 event escalate/budget_cut cho
+        # QLKH-001 nhưng sau restart đếm được 0. `_check_escalations` tạo gate theo điều kiện
+        # `state == "blocked" or n`; ticket đang `paused` ở trạng thái `in_review` với n=0 nên KHÔNG có gate nào
+        # được mở — không ai gỡ được pause, dự án đứng im 6 phút mà `stalled` và `gates_pending` đều rỗng.
+        if env.topic == "supervisor-actions" and env.actor == "supervisor":
+            self.actions.append(SupervisorAction.model_validate(env.payload))
+            return
         prev, self.replaying = self.replaying, True
         try:
             self._on(env)

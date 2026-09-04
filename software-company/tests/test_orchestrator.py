@@ -419,6 +419,41 @@ def test_moi_trang_thai_nghiep_vu_song_sot_qua_restart(tmp_path):
         assert not lech, f"{ten} mất trạng thái khi mở lại bus: " + " | ".join(lech)
 
 
+def test_state_song_sot_qua_restart_ca_khi_co_escalation(tmp_path):
+    """Bản đầu của test bất biến chỉ chạy vòng đời SẠCH nên không phủ nhánh escalation — và đúng nhánh đó có
+    lỗi: `Supervisor._on` mở đầu bằng `if env.actor == "supervisor": return`, nên khi replay nó nuốt luôn
+    `self.actions`. Đo được khi chạy thật 2026-09-04: bus có 5 event escalate/budget_cut cho một ticket nhưng
+    sau restart đếm được 0.
+
+    Hệ quả dây chuyền: `_check_escalations` tạo gate theo `state == "blocked" or n`; ticket đang `paused` ở
+    trạng thái không phải blocked với n=0 thì KHÔNG có gate nào mở — không ai gỡ được pause, dự án đứng im
+    trong khi `stalled` và `gates_pending` đều rỗng.
+
+    Bài học về chính test bất biến: nó chỉ phủ được những gì kịch bản đi qua."""
+    def reviewer_hong(system, user):
+        # reviewer hỏng trên `pull-requests` → `_after_error` gọi `supervisor.escalate_gate` (đường DUY NHẤT
+        # sinh action "escalate"; nhánh ticket blocked gọi thẳng `gate.request`, không qua supervisor).
+        if _agent_of(system) in {"reviewer", "qa-debugger", "security-engineer"}:
+            raise LLMError("reviewer hỏng")
+        return handler(system, user)
+
+    db = tmp_path / "c.sqlite"
+    bus = SQLiteBus(db)
+    o = Orchestrator(bus, FakeClient(handler=reviewer_hong))
+    _drive_to_plan(bus, o); o.gate.decide("PLAN-P1-1", "approve", by="human:pm"); o.run()
+    n_live = sum(1 for a in o.supervisor.actions if a.action in {"escalate", "budget_cut"})
+    assert n_live > 0, "kịch bản phải sinh ra escalation thì mới kiểm được nhánh này"
+
+    o2 = Orchestrator(SQLiteBus(db), FakeClient(handler=reviewer_hong))
+    n_rebuilt = sum(1 for a in o2.supervisor.actions if a.action in {"escalate", "budget_cut"})
+    assert n_rebuilt == n_live, f"hành động supervisor phải dựng lại đủ: live={n_live} rebuilt={n_rebuilt}"
+
+    for ten, a, b in (("Orchestrator", o, o2), ("DeliveryLead", o.lead, o2.lead),
+                      ("Supervisor", o.supervisor, o2.supervisor), ("PersistentGate", o.gate, o2.gate)):
+        lech = _thuoc_tinh_lech(a, b)
+        assert not lech, f"{ten} mất trạng thái khi mở lại bus: " + " | ".join(lech)
+
+
 def test_bao_cao_dem_bai_hoc_tu_blackboard_khong_tu_ram(tmp_path):
     """`sprint_report()['lessons']` từng đếm `self.knowledge` — danh sách RAM không dựng lại khi mở lại bus,
     nên sau restart báo cáo hiện 0 bài học dù chúng vẫn nằm nguyên trên blackboard. Người đọc sẽ tưởng vòng
