@@ -695,3 +695,74 @@ def test_per_agent_max_input_chars_trims_more():
     runner.agents["reviewer"].max_input_chars = 30_000
     runner.run("reviewer", _pr_env(diff="+" * 100_000), "review-results")
     assert "context_trimmed" in _acts(bus) and len(client.calls[0]["user"]) < 40_000
+
+
+def test_diagnose_gom_loi_tho_thanh_khuon_va_chi_ra_ticket_quay_vong():
+    """`metrics` đếm được `errors: 193` nhưng không nói 193 lỗi đó LÀ GÌ.
+
+    Muốn biết phải tự truy SQLite — phiên 2026-09-04 tôi viết tay chừng mười lăm truy vấn như vậy. `diagnose`
+    trả lời thẳng: gom lỗi thô thành khuôn, nêu ticket quay vòng, nêu gate còn chờ người.
+
+    Chuẩn hoá chữ ký là phần làm nên giá trị: chạy trên bus thật, 193 lỗi rút còn 11 khuôn, và 179 lỗi trong đó
+    là CÙNG MỘT sự cố hết quota kéo dài 53 phút. Đọc thô thì đó là 179 dòng khác nhau vì mỗi dòng một con số."""
+    from company.metrics import chu_ky_loi, diagnose
+
+    bus = InMemoryBus()
+    for n in (1, 43, 1960):  # cùng một khuôn, khác con số → phải gom làm một
+        bus.publish(Envelope(topic="audit-log", key="a", actor="spec-writer",
+                             payload={"actor": "spec-writer", "action": "llm_error", "ticket_id": "T1",
+                                      "evidence": json.dumps({"error": f"TransientError: thử lại sau {n}s"})}))
+    bus.publish(Envelope(topic="audit-log", key="a", actor="reviewer",
+                         payload={"actor": "reviewer", "action": "invalid_output", "ticket_id": "T1",
+                                  "evidence": json.dumps({"error": "đầu ra không phải JSON: line 1 column 1"})}))
+    bus.publish(Envelope(topic="audit-log", key="d", actor="delivery-lead",
+                         payload={"actor": "delivery-lead", "action": "ticket.blocked",
+                                  "evidence": json.dumps({"ticket_id": "T1"})}))
+    bus.publish(Envelope(topic="audit-log", key="s", actor="supervisor",
+                         payload={"actor": "supervisor", "action": "gate.request",
+                                  "evidence": json.dumps({"subject_id": "T1", "kind": "escalation"})}))
+
+    d = diagnose(bus)
+    assert d["so_khuon"] == 2, f"3 lỗi cùng khuôn + 1 khác khuôn = 2 khuôn, nhận được {d['so_khuon']}"
+    top = d["loi_theo_khuon"][0]
+    assert top["so_lan"] == 3 and "<số>" in top["chu_ky"], "khuôn hay gặp nhất phải gom đủ 3 và chuẩn hoá số"
+    assert top["agents"] == ["spec-writer"] and top["tickets"] == ["T1"]
+    assert "1960" in top["vi_du"] or "43" in top["vi_du"] or "1" in top["vi_du"], "phải giữ một ví dụ thô để đọc"
+
+    assert d["ticket_quay_vong"]["T1"]["blocked"] == 1
+    assert d["gate"]["mo"] == 1 and d["gate"]["dang_cho"] == ["T1:escalation"], \
+        "gate mở mà chưa ai quyết phải hiện ra — đó là câu hỏi 'còn ai đang chờ mình' "
+
+    # chữ ký phải bỏ cả mã hex và đường dẫn, nếu không mỗi lần chạy lại là một khuôn mới
+    assert chu_ky_loi("loi o deadbeef1234 khi doc /home/u/file.txt") == "loi o <mã> khi doc <đường-dẫn>"
+
+
+def test_qa_debugger_nhan_lich_su_hong_cua_dung_ticket_minh_dang_cham():
+    """qa-debugger chỉ thấy PR trước mặt nên mỗi vòng lại chẩn đoán từ đầu, không biết đây là lần thứ mấy.
+
+    Đo được 2026-09-04: QLKH-001 quay 8 vòng (`blocked 3× / reopen 8× / review_block 13×`) và 179/193 lỗi của
+    cả dự án là CÙNG MỘT sự cố hết quota — không agent nào biết vì chỉ `supervisor` đăng ký đọc `audit-log`.
+
+    Bơm LÁT CẮT THEO TICKET, không phải toàn cảnh: lỗi của ticket khác là nhiễu khi chấm một PR, và
+    `max_input_chars` của qa-debugger chỉ 50k."""
+    from company.orchestrator import _with_chan_doan
+
+    bus = InMemoryBus()
+    for tid in ("T1", "T2"):
+        bus.publish(Envelope(topic="audit-log", key="a", actor="platform",
+                             payload={"actor": "platform", "action": "llm_error", "ticket_id": tid,
+                                      "evidence": json.dumps({"error": f"lỗi riêng của {tid}"})}))
+    bus.publish(Envelope(topic="audit-log", key="d", actor="delivery-lead",
+                         payload={"actor": "delivery-lead", "action": "ticket.blocked",
+                                  "evidence": json.dumps({"ticket_id": "T1"})}))
+
+    class _O:  # chỉ cần `bus`: enrich không đụng gì khác
+        pass
+    o = _O(); o.bus = bus
+
+    got = _with_chan_doan(_pr_env("T1"), o)["chan_doan"]
+    assert got["lich_su_ticket"]["blocked"] == 1, "phải nêu ticket này đã bị chặn mấy lần"
+    assert [k["vi_du"] for k in got["khuon_loi_cua_ticket"]] == ["lỗi riêng của T1"], \
+        "chỉ lỗi của ticket đang chấm; lỗi ticket khác là nhiễu"
+
+    assert _with_chan_doan(_pr_env("T3"), o) == {}, "ticket sạch thì không bơm gì, khỏi tốn ngữ cảnh"

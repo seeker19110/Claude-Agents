@@ -199,6 +199,31 @@ def _with_diff(e: Envelope, o: Orchestrator) -> dict[str, Any]:
     except WorkspaceError as ex: return {"diff_error": str(ex)[:300]}
 
 
+def _with_chan_doan(e: Envelope, o: Orchestrator) -> dict[str, Any]:
+    """qa-debugger nhận thêm LỊCH SỬ HỎNG của chính ticket này, phạm vi hẹp và chỉ-đọc.
+
+    Agent chỉ thấy PR trước mặt nên mỗi vòng lại chẩn đoán từ đầu, không biết mình đang xem lần thứ mấy. Đo
+    được ở lần chạy thật 2026-09-04: QLKH-001 quay 8 vòng với `blocked 3× / reopen 8× / review_block 13×`, và
+    179/193 lỗi của cả dự án là CÙNG MỘT sự cố hết quota — không agent nào biết điều đó vì chỉ `supervisor`
+    đăng ký đọc `audit-log`.
+
+    Cố ý bơm bản LÁT CẮT THEO TICKET chứ không phải toàn cảnh: khuôn lỗi của dự án khác là nhiễu cho việc chấm
+    một PR, và `max_input_chars` của qa-debugger chỉ có 50k. Vẫn chỉ-đọc: agent không được cấp thêm tool nào,
+    không sửa được mã công ty — đây là bậc thấp nhất có ích, để kiểm xem nó chẩn đoán có đúng không trước khi
+    tính chuyện cho nhiều quyền hơn."""
+    tid = str(e.payload.get("ticket_id") or e.key)
+    try:
+        from .metrics import diagnose
+        d = diagnose(o.bus, top=30)
+    except Exception as ex:  # chẩn đoán hỏng không được làm hỏng lượt review
+        return {"chan_doan_error": str(ex)[:200]}
+    vong = d["ticket_quay_vong"].get(tid)
+    khuon = [k for k in d["loi_theo_khuon"] if tid in k["tickets"]][:3]
+    if not vong and not khuon: return {}
+    return {"chan_doan": {"lich_su_ticket": vong, "khuon_loi_cua_ticket": khuon,
+                          "gate_dang_cho": d["gate"]["dang_cho"]}}
+
+
 ROUTES: tuple[Route, ...] = (
     # khối nghiên cứu: intake → researcher → synthesizer → risk → clarifier → (người trả lời) → spec-writer
     Route("research-requests", "intake", "research-findings"),
@@ -211,7 +236,8 @@ ROUTES: tuple[Route, ...] = (
     # kỹ thuật + chất lượng
     Route("tasks", "$assignee", "pull-requests", tools="rw"),
     Route("pull-requests", "reviewer", "review-results", enrich=_with_diff),
-    Route("pull-requests", "qa-debugger", "review-results", _needs_qa, enrich=_with_diff, tools="ro"),
+    Route("pull-requests", "qa-debugger", "review-results", _needs_qa,
+          enrich=lambda e, o: {**_with_diff(e, o), **_with_chan_doan(e, o)}, tools="ro"),
     Route("pull-requests", "security-engineer", "review-results", _needs_security, enrich=_with_diff),
     # vận hành: RC → staging (+ security DAST/license khi có risk) → QA hồi quy; production đi qua gate 3 (PROD_ROUTE)
     Route("release-candidates", "release-engineer", "release-events", target_env="staging"),
@@ -1326,6 +1352,8 @@ def main(argv: list[str] | None = None) -> int:
     tk = sub.add_parser("takeover", help="người đã sửa tay trong worktree ticket: chạy lint/test, commit, publish PR dưới tên người")
     tk.add_argument("ticket_id"); tk.add_argument("--by", required=True); tk.add_argument("--message")
     sub.add_parser("status"); sub.add_parser("report", help="sprint report: estimate vs actual, chi phí, hành động supervisor")
+    dg = sub.add_parser("diagnose", help="chẩn đoán: gom lỗi thô thành khuôn lặp lại, ticket quay vòng, gate chờ quyết")
+    dg.add_argument("--top", type=int, default=10, help="số khuôn lỗi in ra (mặc định 10)")
     mt = sub.add_parser("metrics", help="metrics từ audit-log: gọi/token/USD/thời gian theo agent, model, ticket; gate chờ")
     mt.add_argument("--prometheus", action="store_true", help="xuất text exposition format cho Prometheus")
     sh = sub.add_parser("show", help="in toàn văn artifact mới nhất của một namespace blackboard"); sh.add_argument("namespace")
@@ -1356,6 +1384,9 @@ def main(argv: list[str] | None = None) -> int:
         from .metrics import collect, prometheus
         m = collect(bus)
         print(prometheus(m) if ns.prometheus else json.dumps(m, ensure_ascii=False, indent=2)); return 0
+    if ns.cmd == "diagnose":
+        from .metrics import diagnose
+        print(json.dumps(diagnose(bus, top=ns.top), ensure_ascii=False, indent=2)); return 0
     from .llm import FakeClient, make_client
     # Chỉ `run` gọi model; status/report/show/comment/takeover là việc của người và của code, không được đòi SDK/API key.
     orch = Orchestrator(bus, make_client() if ns.cmd == "run" else FakeClient(), repo=ns.repo, base=ns.base, integration=ns.integration, workers=ns.workers,
