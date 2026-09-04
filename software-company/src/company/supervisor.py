@@ -50,6 +50,7 @@ class Supervisor:
         self.budgets: dict[str, Budget] = {}
         self.project_cost: dict[str, float] = defaultdict(float)
         self.project_warned: set[str] = set(); self.project_paused: set[str] = set()
+        self.project_granted: dict[str, float] = defaultdict(float)  # mốc chi phí lúc người cho chạy tiếp
         self.ticket_warned: set[str] = set(); self.ticket_cut: set[str] = set()  # mỗi ticket một lần, tới khi cấp thêm
         self.unpriced = 0
         self.last_seen: dict[str, datetime] = {}
@@ -89,7 +90,19 @@ class Supervisor:
         if env.actor == "supervisor":
             return
         self.last_seen[env.key] = env.ts
-        if env.topic == "tasks":
+        if env.topic == "supervisor-actions" and env.payload.get("action") == "resume":
+            # Người cho chạy tiếp một dự án đã chạm trần: coi như CẤP THÊM một ngân sách dự án nữa, đối xứng với
+            # `budget.extended` của ticket. Không thể chỉ xoá `project_paused`: chi phí chỉ tăng nên tỉ lệ vẫn
+            # ≥ CUT_AT, và pause sẽ bật lại ngay lập tức thành vòng pause/resume vô tận.
+            #
+            # Trước đây `project_paused` không bao giờ được gỡ, nên sau lần resume đầu dự án KHÔNG BAO GIỜ bị
+            # pause lần nữa — đo được: chi phí 99 → 9999 (gấp 100 lần trần) mà supervisor chỉ sinh đúng một
+            # `pause` của lần đầu. Trần ngân sách dự án chỉ có tác dụng đúng một lần trong cả vòng đời.
+            pid = env.key
+            if pid in self.project_paused and self.project_budget_usd:
+                self.project_granted[pid] = self.project_cost[pid]
+                self.project_paused.discard(pid); self.project_warned.discard(pid)
+        elif env.topic == "tasks":
             t = Task.model_validate(env.payload)
             self.budgets.setdefault(t.ticket_id, Budget(t.budget_tokens, limit_usd=t.budget_usd))
             if t.retry >= self.max_retries:
@@ -131,7 +144,8 @@ class Supervisor:
 
     def _check_project(self, pid: str) -> None:
         if not self.project_budget_usd: return
-        cost = self.project_cost[pid]; ratio = cost / self.project_budget_usd
+        # Trần đo từ mốc lần cấp thêm gần nhất: mỗi lần người resume là thêm đúng một `project_budget_usd` nữa.
+        cost = self.project_cost[pid] - self.project_granted[pid]; ratio = cost / self.project_budget_usd
         if ratio >= self.CUT_AT and pid not in self.project_paused:
             self.project_paused.add(pid)
             self._act(pid, "pause", f"dự án dùng {cost:.2f}/{self.project_budget_usd:.2f} USD — cần người cấp thêm rồi resume")

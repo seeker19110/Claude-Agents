@@ -1045,10 +1045,16 @@ class Orchestrator:
 
     def _check_escalations(self) -> None:
         """Ticket blocked (retry hết) hoặc bị supervisor escalate → gate `escalation` cho người quyết (checklist gate 'bất thường')."""
-        for tid in {*self.lead.blocked(), *(t for t in self.paused if t in self.lead.tickets)}:
+        # `self.paused` chứa cả ID DỰ ÁN (supervisor pause khi dự án chạm trần ngân sách), không chỉ ticket. Lọc
+        # `t in self.lead.tickets` bỏ sót đúng nhóm đó: dự án bị pause thì mọi event của nó bị hoãn, không cổng
+        # nào mở, không ai được hỏi — đo được: `paused=['P1']` mà `gates_pending={}`.
+        for tid in {*self.lead.blocked(), *self.paused}:
             if self.lead.state.get(tid) in DONE_STATES: continue  # đã đóng/đã xong: không mở gate nữa
             # budget_cut cũng là "dừng chờ người" (approve = cấp thêm ngân sách): không có gate thì ticket treo im lặng.
-            n = sum(1 for a in self.supervisor.actions if a.target == tid and a.action in {"escalate", "budget_cut"})
+            # `pause` cũng vậy và còn nặng hơn — dự án chạm trần ngân sách bị pause thì MỌI event của nó bị hoãn.
+            # Thiếu `pause` ở đây thì `n = 0` cho một dự án bị pause, điều kiện bên dưới sai, và không gate nào mở.
+            n = sum(1 for a in self.supervisor.actions
+                    if a.target == tid and a.action in {"escalate", "budget_cut", "pause"})
             # Mỗi lần escalate/cắt mới, mỗi lần blocked mới → một gate mới. `escalation_decided` là thành phần bắt
             # buộc: sau khi người duyệt mở lại ticket, ticket có thể bị chặn LẠI mà supervisor không hành động gì
             # thêm (n không đổi, state vẫn `blocked`) — thiếu nó thì khoá trùng lần trước, `once` nuốt, và ticket
@@ -1238,7 +1244,10 @@ class Orchestrator:
         báo này không kêu oan khi hệ thống chỉ đang chờ model trả lời."""
         live = {t: st for t, st in self.lead.state.items() if st not in DONE_STATES}
         if not live: return []
-        if self.queue or self.deferred or self.gate.pending or self.stalled or self.paused: return []
+        # KHÔNG miễn trừ `self.paused`: pause luôn cần người gỡ, mà người chỉ được hỏi qua gate. Pause mà không
+        # có gate nào chính là ca bế tắc cần kêu to nhất — bản đầu của cảnh báo này miễn trừ `paused` nên mù
+        # đúng ca đó (`paused=['P1']`, `gates_pending={}`, `warnings=[]`).
+        if self.queue or self.deferred or self.gate.pending or self.stalled: return []
         return [f"khong co viec nao chay duoc: {len(live)} ticket chua xong "
                 f"({', '.join(f'{t}={st}' for t, st in sorted(live.items())[:5])}"
                 f"{', ...' if len(live) > 5 else ''}) ma queue/gate/deferred/stalled deu rong"]
