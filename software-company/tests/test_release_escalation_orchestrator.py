@@ -1,0 +1,120 @@
+"""Escalation của một RELEASE đi qua orchestrator: người chấp nhận (waive) hay từ chối (rework) — và trạng thái
+"đã chấp nhận" phải sống sót qua restart bus. Xem `DeliveryLead.waive_release_findings`/`rework_release_tickets`.
+
+Đo được 2026-09-05 (dự án QLKH): finding cấp release KHÔNG có code để sửa (DPIA — RISK-6) làm mọi ticket đã merged
+trong release bị đá về rework và đốt retry, lặp qua nhiều release liên tiếp trên các ticket khác nhau.
+"""
+from __future__ import annotations
+
+from company.events import Envelope, ReviewResult, Task
+from company.gates import GateRequest
+from company.llm import FakeClient
+from company.orchestrator import Orchestrator
+from company.sqlite_bus import SQLiteBus
+from test_orchestrator import handler
+
+
+def _blocked_release(orch, rid="REL-001", tid="T1"):
+    """Dựng trạng thái: ticket đã merged, release chứa nó bị qa chặn, gate escalation của RELEASE đang chờ."""
+    t = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="backend", title=tid, acceptance=["a"])
+    orch.lead.tickets[tid] = t
+    orch.lead.state[tid] = "merged"
+    orch.lead.releases.append(rid)
+    orch.lead.release_tickets[rid] = [tid]
+    orch.lead.release_reviews[rid]["qa"] = ReviewResult(
+        ticket_id=rid, source="qa", verdict="fail",
+        findings=[{"level": "block", "text": "DPIA (RISK-6) chưa hoàn thành"}])
+    orch.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="delivery-lead",
+                                  checklist=["root_cause", "decision:reopen|close", "hint"]))
+    return rid, tid
+
+
+def test_nguoi_chap_nhan_finding_cap_release_thi_khong_dung_ticket(tmp_path):
+    bus = SQLiteBus(tmp_path / "c.sqlite")
+    orch = Orchestrator(bus, FakeClient(handler=handler))
+    rid, tid = _blocked_release(orch)
+
+    orch.gate.decide(rid, "approve", by="human:owner", reason="dự án thử nghiệm, chấp nhận rủi ro DPIA")
+    res = orch.run()
+
+    assert orch.lead.release_waived[rid] == {"qa"}, "nguồn bị chặn được ghi nhận là đã chấp nhận"
+    assert orch.lead.state[tid] == "merged" and orch.lead.tickets[tid].retry == 0, "ticket đã merged KHÔNG bị đụng"
+    assert any(a.startswith(f"release_waived:{rid}:qa") for r in res for a in r.actions), [r.actions for r in res]
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "release.finding_waived" in acts, "phải có audit bền để dựng lại sau restart"
+
+    # sống sót qua restart: bộ đếm/waiver dựng lại từ audit-log (cùng khuôn `ticket.blocked`, `integration.conflict`)
+    bus.close()
+    o2 = Orchestrator(SQLiteBus(tmp_path / "c.sqlite"), FakeClient(handler=handler))
+    assert o2.lead.release_waived[rid] == {"qa"}
+
+
+def test_nguoi_tu_choi_finding_cap_release_thi_ticket_moi_ve_rework(tmp_path):
+    bus = SQLiteBus(tmp_path / "c.sqlite")
+    orch = Orchestrator(bus, FakeClient(handler=handler))
+    rid, tid = _blocked_release(orch)
+
+    orch.gate.decide(rid, "reject", by="human:owner", reason="p95 480ms — lỗi thật, sửa code")
+    res = orch.run()
+
+    assert orch.lead.release_waived[rid] == set(), "từ chối thì không chấp nhận nguồn nào"
+    # rework thật: retry+1 và hint là lý do người ghi. (Client giả chạy tiếp cả vòng nên state cuối có thể đã đi xa
+    # hơn `dispatched` — bằng chứng bền là retry và event `tasks`, không phải trạng thái tức thời.)
+    assert orch.lead.tickets[tid].retry == 1, "chỉ khi người từ chối mới rework"
+    assert "p95" in (orch.lead.tickets[tid].hint or "")
+    assert any(a == f"release_reworked:{rid}" for r in res for a in r.actions), [r.actions for r in res]
+    tasks = [e for e in bus.replay(topic="tasks") if e.key == tid]
+    assert tasks and tasks[-1].payload["retry"] == 1
+
+
+def test_escalation_cua_release_khong_chan_gate_release_mo_sau_do(tmp_path):
+    """`HumanGate.is_approved` không phân biệt kind: duyệt escalation của REL-001 từng làm gate release (Gate 3) của
+    chính REL-001 không bao giờ mở được nữa. `DeliveryLead._gate_kind_approved` phân biệt kind cho đúng."""
+    bus = SQLiteBus(tmp_path / "c.sqlite")
+    orch = Orchestrator(bus, FakeClient(handler=handler))
+    rid, _tid = _blocked_release(orch)
+    orch.gate.decide(rid, "approve", by="human:owner", reason="chấp nhận")
+    orch.run()
+
+    assert rid in orch.gate.pending and orch.gate.pending[rid].kind == "release", \
+        "đủ nguồn (qa đã waived) → mở gate release cho Gate 3, dù escalation cùng subject_id đã được duyệt"
+    assert not orch.lead._gate_kind_approved(rid, "release") and orch.lead._gate_kind_approved(rid, "escalation")
+
+
+def test_escalation_cua_ticket_van_di_duong_cu(tmp_path):
+    """Chốt chặn: nhánh mới chỉ bắt release_id. Escalation của TICKET vẫn `reopen` như trước (không rơi nhầm vào
+    nhánh release)."""
+    bus = SQLiteBus(tmp_path / "c.sqlite")
+    orch = Orchestrator(bus, FakeClient(handler=handler))
+    tid = "T9"
+    orch.lead.tickets[tid] = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="backend",
+                                  title=tid, acceptance=["a"])
+    orch.lead.state[tid] = "blocked"
+    orch.gate.request(GateRequest(kind="escalation", subject_id=tid, created_by="supervisor",
+                                  checklist=["root_cause", "decision:reopen|close", "hint"]))
+    orch.gate.decide(tid, "approve", by="human:lead", reason="thử lại")
+    res = orch.run()
+
+    assert any(a == f"reopen:{tid}" for r in res for a in r.actions), [r.actions for r in res]
+    assert [e for e in bus.replay(topic="tasks") if e.key == tid], "reopen phát lại task cho ticket"
+    assert not any(a.startswith("release_") for r in res for a in r.actions)
+
+
+def test_release_bi_chan_khong_con_tu_dong_day_ticket_ve_rework(tmp_path):
+    """Đường đi thật (không dựng tay gate): review-results verdict fail cho một release → mở gate escalation của
+    release, ticket giữ nguyên `merged`. Trước bản vá, chỗ này đá thẳng ticket về `changes_requested`."""
+    bus = SQLiteBus(tmp_path / "c.sqlite")
+    orch = Orchestrator(bus, FakeClient(handler=handler))
+    tid, rid = "T1", "REL-001"
+    orch.lead.tickets[tid] = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="backend",
+                                  title=tid, acceptance=["a"])
+    orch.lead.state[tid] = "merged"
+    orch.lead.releases.append(rid); orch.lead.release_tickets[rid] = [tid]
+
+    bus.publish(Envelope(topic="review-results", key=rid, actor="qa-debugger",
+                         payload=ReviewResult(ticket_id=rid, source="qa", verdict="fail",
+                                              findings=[{"level": "block", "text": "DPIA chưa hoàn thành"}]).model_dump()))
+    orch.run()
+
+    assert orch.lead.state[tid] == "merged" and orch.lead.tickets[tid].retry == 0
+    assert rid in orch.gate.pending and orch.gate.pending[rid].kind == "escalation"
