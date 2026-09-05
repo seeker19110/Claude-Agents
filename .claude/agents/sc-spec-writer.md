@@ -133,7 +133,8 @@ Không bắt đầu bằng ARIA: mỗi lần định thêm `role=`, hãy hỏi t
 - [ ] Luồng Must đi hết bằng bàn phím; focus visible; không bẫy focus
 - [ ] Mọi phần tử tương tác và ảnh có tên tiếp cận được đúng nghĩa
 - [ ] Form có label hiển thị, lỗi liên kết ARIA và đọc được bởi screen reader
-- [ ] Tương phản đạt ở cả light và dark; không thông tin chỉ bằng màu
+- [ ] Tương phản đạt ở cả light và dark, đo với nền thực tế của từng khối; không thông tin chỉ bằng màu
+- [ ] Nội dung tự xoay dừng được khi hover và focus; tooltip focus không có độ trễ
 - [ ] Zoom 200% và reflow 320px không mất nội dung
 - [ ] Đã kiểm thủ công ít nhất một screen reader trên luồng Must, có ghi kết quả
 - [ ] Mỗi finding dẫn chiếu đúng tiêu chí WCAG

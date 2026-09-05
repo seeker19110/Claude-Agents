@@ -60,3 +60,20 @@ của skill, đúng cách đã làm với `impeccable` và `ui-ux-pro-max-skill`
 ## Thay đổi kèm theo
 - `skills/ui-ux-design.md`: v5 → v6 (các mục ở bảng trên).
 - Golden test `tests/golden/agents/*` sinh lại (`make golden`) vì bốn agent nạp skill này ở mức đầy đủ hoặc core.
+
+## Lan sang các skill khác (đợt 2)
+Phần "tốt cho dự án" không chỉ nằm ở thiết kế — nó nằm ở chỗ code và chỗ review. Đặt quy tắc ở đúng skill
+của người làm, mỗi quy tắc một nơi, các skill khác dẫn chiếu:
+
+- `frontend` v2 → v3: token khoá khi code, đổi nền phải đổi màu chữ trong cùng rule, 8 trạng thái component
+  kèm trang demo 8 trạng thái, quy tắc trạng thái input, và mục mới "chất lượng giao diện" — cấm
+  `transition: all` / hover-scale đồng loạt / animate thuộc tính bố cục, `overflow-x: clip` hai cấp, chữ bấm
+  được không xuống hai dòng, `minmax(0, 1fr)`, một sticky top, không vẽ lại chrome, một bộ icon, không bịa số liệu.
+- `accessibility` v2 → v3: đo tương phản với nền thực tế của từng khối (chữ trong card đổi nền, chữ mờ trên
+  bề mặt phụ, viền focus), chữ nút ≈ nền nút là block, focus ring không fade, nội dung tự xoay dừng khi hover
+  và focus (WCAG 2.2.2), tooltip focus 0ms, disabled ba kênh, SVG trang trí phải `aria-hidden`.
+- `code-review` v2 → v3: thêm "giao diện" vào trọng tâm cần soi — các lỗi trên đều là finding có `file:line`
+  và cách sửa, không phải nhận xét thẩm mỹ.
+- `mobile`: không đổi. Hallmark là skill web; phần nền tảng của mobile đã dẫn chiếu `ui-ux-design`.
+
+Bản ghi eval cần chạy lại (ADR-0010): frontend, mobile, qa-debugger, researcher, reviewer, spec-writer.

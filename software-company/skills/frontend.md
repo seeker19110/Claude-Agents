@@ -1,6 +1,6 @@
 ---
 name: frontend
-version: 2
+version: 3
 standards: [WCAG 2.2 AA, Core Web Vitals, CSP Level 3, OWASP client-side, W3C Design Tokens, Progressive enhancement]
 ---
 # Skill: frontend
@@ -22,8 +22,23 @@ Component mới chỉ được tạo sau khi đã tìm trong thư viện hiện 
 - Mỗi màn hình xử lý đủ 5 trạng thái; trạng thái lỗi nói nguyên nhân và việc cần làm tiếp, giữ nguyên dữ liệu người dùng đã nhập.
 - Phân biệt rõ trạng thái máy chủ (dữ liệu lấy về, có cache và vòng đời) với trạng thái UI cục bộ; không nhân bản dữ liệu máy chủ vào store toàn cục nếu không cần.
 - Không hard-code màu, khoảng cách, cỡ chữ: dùng token; thiếu token thì đề xuất bổ sung vào nguồn, không tự đặt giá trị.
+- Token khoá trong lúc code: mọi `color` và `font-family` trỏ về token có tên. Cần giá trị chưa có thì thêm token rồi dùng, không viết thẳng hex/oklch/rgb giữa file.
+- Khối nào đổi nền thì đổi luôn màu chữ trong cùng rule (chữ tối trên nền tối là lỗi block); nền màu nhấn phải dùng token chữ đi kèm và đo tương phản với chính nền đó.
+- Component tương tác phải có mã cho đủ 8 trạng thái: mặc định, hover, `:focus-visible`, active, disabled, loading, error, success. Kèm một trang demo dựng đủ 8 trạng thái để soi bằng mắt, không đưa vào bản chạy thật.
+- Input: giữ nguyên `border-width` giữa các trạng thái (đổi nền / `outline` / `border-color`); focus dùng `outline` + `outline-offset`, không dùng border; input và nút cùng hàng cao bằng nhau (≥ 44px); chừa sẵn chỗ dòng helper/lỗi; disabled báo bằng ba kênh (mờ + `cursor: not-allowed` + thuộc tính `disabled`/`aria-disabled`).
 - Form: label hiển thị, validate khi blur, lỗi ngay dưới field, chặn double-submit, giữ dữ liệu khi gửi thất bại (chi tiết ở `ui-ux-design`).
 - Xử lý điều kiện mạng thật: mất mạng, chậm, request đến sai thứ tự (hủy request cũ), thử lại có giới hạn.
+
+## Quy tắc — chất lượng giao diện (chống mã sinh máy móc)
+- Không `transition: all`: liệt kê đúng thuộc tính. Không hover-scale đồng loạt, không chồng nhiều hiệu ứng hover trên một phần tử. Không animate `width/height/top/left/margin/padding` — chỉ `transform`/`opacity`.
+- Focus ring hiện tức thì, không có transition; mọi keyframe/transform có nhánh `prefers-reduced-motion`.
+- Không cuộn ngang ở mọi bề rộng 320–1920px: `overflow-x: clip` ở cả `html` và `body` (dùng `clip`, không `hidden`, để giữ `position: sticky`).
+- Chữ bấm được (nút, liên kết nav, CTA, breadcrumb) không xuống hai dòng: rút nhãn, `white-space: nowrap`, hoặc gộp vào menu.
+- Track lưới có chứa ảnh dùng `minmax(0, 1fr)` chứ không `1fr`; tiêu đề cỡ lớn thêm `overflow-wrap: anywhere; min-width: 0`.
+- Chỉ một sticky ở `top: 0` cho thanh trên cùng; sticky trong trang neo theo `--banner-height` và z-index thấp hơn thanh trên cùng.
+- Không vẽ lại chrome bằng HTML/CSS (khung trình duyệt, khung điện thoại, khung terminal/IDE giả): dùng ảnh chụp thật trong `<figure>` hoặc bỏ khung.
+- Một bộ icon cho toàn dự án; không trộn hai thư viện icon, không emoji làm icon. SVG trang trí có `aria-hidden="true"`, SVG mang nghĩa có `aria-label`.
+- Không tự bịa số liệu, logo hay lời chứng thực để lấp bố cục; thiếu dữ liệu thì để ô trống có nhãn và hỏi lại.
 
 ## Quy tắc — hiệu năng
 - Ngân sách hiệu năng khai báo trong repo (kích thước JS/CSS ban đầu, số request, LCP/INP/CLS) và kiểm trong CI; vượt ngân sách là finding block.

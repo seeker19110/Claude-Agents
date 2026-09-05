@@ -1,6 +1,6 @@
 ---
 name: code-review
-version: 2
+version: 3
 standards: [Google Engineering Practices (Code Review Developer Guide), CWE Top 25, Conventional Comments, OWASP ASVS L2]
 ---
 # Skill: code-review
@@ -35,6 +35,7 @@ Nếu PR quá lớn để hiểu (> ~400 dòng thay đổi thực chất), trả
 - Dữ liệu và đồng thời: giao dịch quá rộng, đọc-rồi-ghi không khóa, thao tác không idempotent, migration không tương thích ngược, mất thứ tự event.
 - Bảo trì: trùng lặp logic nghiệp vụ, hàm làm nhiều việc, tên sai nghĩa, phụ thuộc ngược hướng kiến trúc, cấu hình hard-code.
 - Hiệu năng: N+1, truy vấn không giới hạn, làm việc nặng trong vòng lặp hoặc trong request, cache không có cách vô hiệu.
+- Giao diện: chữ trên nền cùng tông (nhất là chữ nút và khối nền tối), component thiếu trạng thái focus-visible/disabled/loading, `transition: all`, animate thuộc tính bố cục, cuộn ngang ở 320px, màu và font viết thẳng thay vì token, số liệu hoặc lời chứng thực không có nguồn. Đều là finding có vị trí và cách sửa cụ thể, không phải nhận xét thẩm mỹ (xem `ui-ux-design`, `frontend`, `accessibility`).
 - Test: có test cho tiêu chí Gherkin không, test có thể sai lệch (assert vô nghĩa, mock chính thứ đang test) không, có test cho ca lỗi không.
 
 ## Checklist (supervisor và human gate dùng để chấm)

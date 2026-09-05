@@ -128,8 +128,23 @@ Component mới chỉ được tạo sau khi đã tìm trong thư viện hiện 
 - Mỗi màn hình xử lý đủ 5 trạng thái; trạng thái lỗi nói nguyên nhân và việc cần làm tiếp, giữ nguyên dữ liệu người dùng đã nhập.
 - Phân biệt rõ trạng thái máy chủ (dữ liệu lấy về, có cache và vòng đời) với trạng thái UI cục bộ; không nhân bản dữ liệu máy chủ vào store toàn cục nếu không cần.
 - Không hard-code màu, khoảng cách, cỡ chữ: dùng token; thiếu token thì đề xuất bổ sung vào nguồn, không tự đặt giá trị.
+- Token khoá trong lúc code: mọi `color` và `font-family` trỏ về token có tên. Cần giá trị chưa có thì thêm token rồi dùng, không viết thẳng hex/oklch/rgb giữa file.
+- Khối nào đổi nền thì đổi luôn màu chữ trong cùng rule (chữ tối trên nền tối là lỗi block); nền màu nhấn phải dùng token chữ đi kèm và đo tương phản với chính nền đó.
+- Component tương tác phải có mã cho đủ 8 trạng thái: mặc định, hover, `:focus-visible`, active, disabled, loading, error, success. Kèm một trang demo dựng đủ 8 trạng thái để soi bằng mắt, không đưa vào bản chạy thật.
+- Input: giữ nguyên `border-width` giữa các trạng thái (đổi nền / `outline` / `border-color`); focus dùng `outline` + `outline-offset`, không dùng border; input và nút cùng hàng cao bằng nhau (≥ 44px); chừa sẵn chỗ dòng helper/lỗi; disabled báo bằng ba kênh (mờ + `cursor: not-allowed` + thuộc tính `disabled`/`aria-disabled`).
 - Form: label hiển thị, validate khi blur, lỗi ngay dưới field, chặn double-submit, giữ dữ liệu khi gửi thất bại (chi tiết ở `ui-ux-design`).
 - Xử lý điều kiện mạng thật: mất mạng, chậm, request đến sai thứ tự (hủy request cũ), thử lại có giới hạn.
+
+## Quy tắc — chất lượng giao diện (chống mã sinh máy móc)
+- Không `transition: all`: liệt kê đúng thuộc tính. Không hover-scale đồng loạt, không chồng nhiều hiệu ứng hover trên một phần tử. Không animate `width/height/top/left/margin/padding` — chỉ `transform`/`opacity`.
+- Focus ring hiện tức thì, không có transition; mọi keyframe/transform có nhánh `prefers-reduced-motion`.
+- Không cuộn ngang ở mọi bề rộng 320–1920px: `overflow-x: clip` ở cả `html` và `body` (dùng `clip`, không `hidden`, để giữ `position: sticky`).
+- Chữ bấm được (nút, liên kết nav, CTA, breadcrumb) không xuống hai dòng: rút nhãn, `white-space: nowrap`, hoặc gộp vào menu.
+- Track lưới có chứa ảnh dùng `minmax(0, 1fr)` chứ không `1fr`; tiêu đề cỡ lớn thêm `overflow-wrap: anywhere; min-width: 0`.
+- Chỉ một sticky ở `top: 0` cho thanh trên cùng; sticky trong trang neo theo `--banner-height` và z-index thấp hơn thanh trên cùng.
+- Không vẽ lại chrome bằng HTML/CSS (khung trình duyệt, khung điện thoại, khung terminal/IDE giả): dùng ảnh chụp thật trong `<figure>` hoặc bỏ khung.
+- Một bộ icon cho toàn dự án; không trộn hai thư viện icon, không emoji làm icon. SVG trang trí có `aria-hidden="true"`, SVG mang nghĩa có `aria-label`.
+- Không tự bịa số liệu, logo hay lời chứng thực để lấp bố cục; thiếu dữ liệu thì để ô trống có nhãn và hỏi lại.
 
 ## Quy tắc — hiệu năng
 - Ngân sách hiệu năng khai báo trong repo (kích thước JS/CSS ban đầu, số request, LCP/INP/CLS) và kiểm trong CI; vượt ngân sách là finding block.
@@ -198,6 +213,13 @@ Không bắt đầu bằng ARIA: mỗi lần định thêm `role=`, hãy hỏi t
 
 ## Quy tắc — cảm nhận và trạng thái
 - Tương phản ≥ 4.5:1 cho chữ thường, ≥ 3:1 cho chữ lớn và cho thành phần UI mang thông tin; kiểm ở cả light và dark.
+- Đo tương phản với nền THỰC TẾ được tính ra, không với nền của trang: chữ trong card đã đổi nền, chữ mờ trên bề mặt phụ, và viền focus so với bề mặt ngay dưới nó là ba chỗ trượt nhiều nhất. Chữ nút gần trùng màu nền nút là lỗi block.
+- Khối nền tối phải đặt lại màu chữ trong cùng rule; nền màu nhấn phải có token chữ đi kèm, đo tương phản với chính màu nhấn.
+- Viền focus hiện tức thì, không fade — người dùng bàn phím cần chỉ báo ngay.
+- Nội dung tự xoay (carousel, băng thông báo, băng số liệu) phải dừng được khi hover và khi focus (WCAG 2.2.2).
+- Tooltip: trễ 800–1000ms khi hover nhưng 0ms khi focus; bằng nhau là bẫy cho người dùng bàn phím.
+- Trạng thái disabled báo bằng ba kênh: mờ + `cursor: not-allowed` + thuộc tính `disabled`/`aria-disabled`; chỉ giảm độ mờ là không đủ.
+- Hình trang trí tự vẽ (`svg`, `canvas`, khối CSS art) phải có `aria-hidden="true"` hoặc một tên tiếp cận được — bỏ trống là lỗi hay gặp ở giao diện do model sinh.
 - Không truyền thông tin chỉ bằng màu, chỉ bằng hình dạng, hay chỉ bằng vị trí; luôn kèm chữ hoặc icon.
 - Target ≥ 24×24 CSS px (WCAG 2.2 AA); trên mobile theo `ui-ux-design` là 44/48; nhỏ hơn thì phải có khoảng đệm không chồng lấn.
 - Zoom 200% và reflow ở 320px không mất nội dung, không cuộn ngang hai chiều; giãn chữ không làm cắt chữ.
@@ -216,7 +238,8 @@ Không bắt đầu bằng ARIA: mỗi lần định thêm `role=`, hãy hỏi t
 - [ ] Luồng Must đi hết bằng bàn phím; focus visible; không bẫy focus
 - [ ] Mọi phần tử tương tác và ảnh có tên tiếp cận được đúng nghĩa
 - [ ] Form có label hiển thị, lỗi liên kết ARIA và đọc được bởi screen reader
-- [ ] Tương phản đạt ở cả light và dark; không thông tin chỉ bằng màu
+- [ ] Tương phản đạt ở cả light và dark, đo với nền thực tế của từng khối; không thông tin chỉ bằng màu
+- [ ] Nội dung tự xoay dừng được khi hover và focus; tooltip focus không có độ trễ
 - [ ] Zoom 200% và reflow 320px không mất nội dung
 - [ ] Đã kiểm thủ công ít nhất một screen reader trên luồng Must, có ghi kết quả
 - [ ] Mỗi finding dẫn chiếu đúng tiêu chí WCAG
