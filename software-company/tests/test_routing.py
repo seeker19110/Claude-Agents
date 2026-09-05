@@ -496,7 +496,8 @@ def test_cli_tools_off_still_refuses_tools_and_keeps_single_turn():
         _cc(runner=lambda a, s: _CC_OK).complete(system="s", user="u", schema={}, model_tier="strong", tools=_RW)
     seen: list = []
     _cc(runner=lambda a, s: (seen.append(a), _CC_OK)[1]).complete(system="s", user="u", schema={}, model_tier="strong")
-    assert seen[0][seen[0].index("--tools") + 1] == "" and seen[0][seen[0].index("--max-turns") + 1] == "1"
+    # không tool nhưng KHÔNG phải 1 lượt: `--json-schema` cần lượt ép JSON của CLI (đo: num_turns 2); 1 → error_max_turns
+    assert seen[0][seen[0].index("--tools") + 1] == "" and int(seen[0][seen[0].index("--max-turns") + 1]) >= 2
     assert "--restricted" not in seen[0]
 
 

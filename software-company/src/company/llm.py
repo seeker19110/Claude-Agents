@@ -747,6 +747,8 @@ def cli_lacks_mcp(err: str) -> bool:
 # đã có --json-schema). `--no-session-persistence`: mỗi lượt `-p` mặc định ghi transcript (chứa nội dung repo khách)
 # ra ~/.claude/projects; agent gọi hàng trăm lượt thì đó là hàng trăm bản sao nằm ngoài worktree — tắt.
 CLI_BASE_FLAGS = ("--no-session-persistence",)
+# Lượt cho `claude -p` KHÔNG tool: 1 lượt trả lời + lượt CLI ép `--json-schema` (+1 dự phòng khi model sửa JSON).
+CLI_NO_TOOL_TURNS = 3
 
 # `subtype` trong JSON của `claude -p` nói vì sao phiên dừng; `result` có thể vắng ở các subtype lỗi. Trước đây adapter
 # chỉ nhìn `result` nên hết lượt bị báo thành "thiếu trường result" — người vận hành không biết phải tăng gì.
@@ -885,7 +887,11 @@ class ClaudeCodeClient:
             if "Bash" in names:
                 args += ["--allowed-tools", " ".join(f"Bash({pat})" for pat in self.cfg.cli_bash)]
         else:
-            args += ["--tools", "", "--max-turns", "1"]
+            # Không tool vẫn cần > 1 lượt: `--json-schema` (ADR-0026) ép JSON bằng một lượt nội bộ nữa của CLI — thử tay
+            # một prompt trivial đã thấy `num_turns: 2`. `--max-turns 1` thì lượt ép đó bị cắt → `error_max_turns`,
+            # không có `result`. Đo được (2026-09-05): reviewer/security-engineer trên QLKH-005/013 chết 3/4 lượt
+            # ở effort low, mỗi lần một escalation.
+            args += ["--tools", "", "--max-turns", str(CLI_NO_TOOL_TURNS)]
         with system_prompt_args(system) as sp_args:
             args += sp_args
             check_argv(args)
