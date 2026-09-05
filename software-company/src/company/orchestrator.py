@@ -1243,6 +1243,16 @@ class Orchestrator:
             self.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
                                       payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
             res.actions.append(f"reopen:{tid}")
+            # Escalation vì một REVIEW AGENT lỗi (không phải assignee): ticket vẫn `in_review`, event PR đã bị đánh dấu
+            # xử lý, nên duyệt gate xong không có gì chạy lại review còn thiếu — ticket nằm im tới `review_timeout`
+            # (2 giờ) mới được `tick` giao lại. Đo được (2026-09-05): QLKH-005/QLKH-013 duyệt xong đứng im, người
+            # phải `takeover` nộp lại PR nguyên trạng để vòng review chạy. Ở đây gọi lại đúng nguồn còn thiếu trên PR
+            # mới nhất; `partial` giữ cho reviewer/qa đã chấm không chạy lại.
+            if self.lead.state.get(tid) == "in_review" and (pr := self.latest("pull-requests", tid)) is not None:
+                for src in sorted(self.lead.required_reviews(tid) - set(self.lead.reviews.get(tid, {}))):
+                    self._audit("review.rerun", {"ticket_id": tid, "source": src, "by": by}, ticket_id=tid,
+                                project_id=self.project_for(pr))
+                    self._call(REVIEW_AGENT[src], pr, Route("pull-requests", REVIEW_AGENT[src], "review-results"), res)
         elif decision in {"reject", "rollback"} and tid in self.lead.tickets:
             blocked = self.lead.close_escalated(tid); res.actions.append(f"closed:{tid}")
             self._audit("ticket.abandoned", {"ticket_id": tid, "by": by, "dependents_blocked": blocked}, ticket_id=tid,

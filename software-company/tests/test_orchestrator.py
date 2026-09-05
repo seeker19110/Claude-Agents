@@ -371,6 +371,30 @@ def test_ticket_bi_chan_lan_hai_van_phai_mo_gate(tmp_path):
     assert orch.gate.pending.get("T1"), "chặn lần hai mà không mở gate = dự án đứng im không ai được hỏi"
 
 
+def test_duyet_escalation_do_reviewer_loi_thi_review_con_thieu_duoc_chay_lai(tmp_path):
+    """Reviewer (không phải assignee) lỗi → `agent_error_unhandled` → escalation. Người duyệt xong, ticket vẫn
+    `in_review` nhưng event PR đã bị đánh dấu xử lý: không gì chạy lại review còn thiếu, ticket nằm im tới
+    `review_timeout` 2 giờ. Đo được 2026-09-05: QLKH-005/013 duyệt xong đứng im, người phải `takeover` nộp lại PR
+    nguyên trạng. Duyệt gate phải gọi lại đúng nguồn review còn thiếu trên PR mới nhất."""
+    calls = {"reviewer": 0}
+
+    def reviewer_hong_lan_dau(system, user):
+        if _agent_of(system) == "reviewer":
+            calls["reviewer"] += 1
+            if calls["reviewer"] == 1: raise LLMError("reviewer hỏng một lần")
+        return handler(system, user)
+
+    bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient(handler=reviewer_hong_lan_dau))
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    assert orch.lead.state["T1"] == "in_review" and orch.gate.pending.get("T1"), "reviewer lỗi → escalation, PR đã có"
+    assert "agent_error_unhandled" in [e.payload["action"] for e in bus.replay(topic="audit-log")]
+
+    orch.gate.decide("T1", "approve", by="human:lead", reason="CLI lỗi tạm, chấm lại"); orch.run()
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "review.rerun" in acts, "duyệt gate phải giao lại review còn thiếu, không chờ review_timeout"
+    assert calls["reviewer"] >= 2 and orch.lead.state["T1"] in {"approved", "merged", "released"},         f"reviewer phải được gọi lại và ticket đi tiếp; state={orch.lead.state['T1']}"  # ≥2: T2 sau đó cũng được review
+
+
 def test_status_canh_bao_khi_khong_con_viec_nao_chay_duoc(tmp_path):
     """`status` phải trả lời được "còn việc nào chạy được không", không chỉ liệt kê trạng thái.
 
