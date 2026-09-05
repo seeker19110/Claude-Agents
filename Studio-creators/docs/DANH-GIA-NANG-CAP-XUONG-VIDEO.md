@@ -12,13 +12,13 @@ cao nằm ở **hai lớp cuối**:
 1. **Lớp render** (`media.py`, `renderer.py`) là *slideshow ảnh tĩnh + giọng đọc*: mỗi cảnh một ảnh đứng im, cắt cứng,
    không nhạc, không phụ đề, không chuẩn hoá âm lượng (mục 4). Năm lỗi khiến lượt chạy provider thật đầu tiên hỏng hoặc
    sai khung đã được sửa và kiểm chứng bằng ffmpeg thật (mục 3).
-2. **Lớp "mắt và tai"**: editor, quality-reviewer, rights-checker chỉ nhận JSON đường dẫn file. Không agent nào thấy ảnh
-   hay nghe audio, cũng không có bước code nào đo file thật. Vì vậy các quy tắc "ảnh khớp prompt", "narration đọc đúng",
-   "hook ≤ 5 giây", "không chữ/khuôn mặt thật trong ảnh" hiện **không kiểm được** ở bất kỳ tầng nào trước gate publish.
+2. **Lớp "mắt và tai"**: editor, quality-reviewer, rights-checker chỉ nhận JSON đường dẫn file. `qc.py` (mục 4) đã bù
+   phần đo được bằng máy — khung hình, thời lượng, âm lượng, hình đen, khoảng lặng — nhưng những gì phải NHÌN mới biết
+   ("ảnh khớp prompt", "không chữ/khuôn mặt thật trong ảnh") thì vẫn chưa ai kiểm được trước gate publish (mục 5).
 
-Khuyến nghị: P0 đã xong; ba ADR còn lại theo thứ tự: render pipeline v2 + QC bằng code → reviewer đa phương thức +
-preview cho người duyệt → thư viện nhạc/footage có license. Việc còn thiếu không cần đổi kiến trúc, chỉ cần thêm bước code
-và một trường tuỳ chọn trong scene manifest.
+Khuyến nghị: P0 và P1 (ADR-0009) đã xong. Còn lại theo thứ tự: reviewer đa phương thức + preview cho người duyệt
+(ADR-0010, mục 5) → thư viện nhạc/footage có license và giá media (mục 6). ADR-0010 là bước duy nhất phải chạm front
+matter của agent, nên phải ghi lại eval bằng model thật.
 
 ## 2. Hiện trạng lớp sản xuất (những gì đã có)
 
@@ -26,12 +26,12 @@ và một trường tuỳ chọn trong scene manifest.
 |---|---|---|
 | TTS | `openai`, `gemini`, `elevenlabs`, `azure`, `google`, `command`, `fake` *(5 provider sau thêm ở đợt này)* | provider có timestamps từng từ (phụ đề karaoke); cache audio theo hash narration |
 | Ảnh | `openai`, `gemini` (Gemini Image / Imagen), `stability`, `replicate`, `fake` *(3 provider sau thêm ở đợt này)*; kích thước hợp lệ theo model | neo phong cách (seed/ảnh tham chiếu), ép `brand` vào prompt bằng code |
-| Ghép video | ffmpeg: ảnh tĩnh + audio từng cảnh → concat; khung theo `aspect`, không cắt cụt giọng đọc, `fit: cover` | chuyển động, chuyển cảnh, nhạc, phụ đề, loudness |
+| Ghép video | một lệnh ffmpeg: chuyển động từng cảnh, `xfade`/`acrossfade`, `loudnorm` -14 LUFS, khung theo `aspect` | nhạc nền có license + ducking |
 | Sửa cảnh | `apply_cutlist`: sinh lại đúng cảnh, khoá, thay asset, đổi thứ tự, ≤ 3 vòng | kiểm asset còn tồn tại; cache TTS theo nội dung |
 | Thumbnail | 2–3 biến thể; nền do model ảnh vẽ (không chữ), code phủ chữ, 1280x720 JPEG ≤ 2 MB | đo độ đọc được ở 120 px; ảnh nền theo `brand` |
-| Review | 3 agent độc lập, checklist đo được trên giấy | không thấy ảnh/audio; metrics do model đọc manifest, không đo file |
-| QC file | — | ffprobe, LUFS, frame đen, im lặng, đồng bộ, kích thước |
-| Đăng | upload private, thumbnail (chặn > 2 MB trước khi gọi API), publishAt, comments, analytics | `captions.insert`, kiểm video trước upload |
+| Review | 3 agent độc lập; số đo file thật (QC) nằm trong `package` của quality-reviewer | vẫn không THẤY ảnh / NGHE audio (mục 5) |
+| QC file | `qc.py`: ffprobe + ebur128/blackdetect/silencedetect → `package` + checklist gate | đo độ đọc được của thumbnail, so ảnh với prompt |
+| Đăng | upload private, thumbnail (chặn > 2 MB), phụ đề (`captions.insert`), publishAt, comments, analytics | playlist, Shorts flag, đổi lịch/gỡ video |
 | Duyệt | gate publish có checklist, đường dẫn file | xem bản nháp/final trong console |
 
 ## 3. Lỗi phải sửa ngay (P0) — ĐÃ SỬA (đợt 2026-09-04)
@@ -79,34 +79,37 @@ sang giọng của provider đang dùng, vì production-manager không biết tr
 **E1. File trung gian lẫn vào asset.** `_seg000.mp4`, `_concat.txt` nằm cùng `output/<video_id>/`.
 *Đã sửa:* segment và danh sách concat nằm trong thư mục tạm, xoá trong `finally`; `output/<video_id>/` chỉ còn asset thật.
 
-## 4. Thiếu năng lực cốt lõi cho "chất lượng xuất sắc" (P1)
+## 4. Thiếu năng lực cốt lõi cho "chất lượng xuất sắc" (P1) — ĐÃ LÀM (đợt 2026-09-05, ADR-0009)
 
-**B1. Video là slideshow ảnh tĩnh.** `-loop 1 -tune stillimage`, cắt cứng giữa cảnh. Không chuyển động (Ken Burns), không
-chuyển cảnh, không nhạc nền, không intro/outro, không lower-third. Skill `retention-storytelling` đòi "ngắt mẫu mỗi 15–20 s"
-nhưng render chỉ tạo được một kiểu ngắt là đổi ảnh. Đề xuất: `Scene` thêm `motion` (zoom_in | zoom_out | pan_left |
-pan_right | static; mặc định xoay vòng để không hai cảnh liền nhau cùng kiểu), `transition` (cut | fade | dissolve, 0,3–0,5 s);
-render `zoompan` theo fps, ghép bằng `filter_complex` + `xfade` thay `concat -c copy`; nhạc nền từ thư viện có license
-(mục D4) với ducking dưới giọng (≈ −18 dB), fade in/out, ghi provenance kind `music` để rights-checker kiểm.
+**B1. Video là slideshow ảnh tĩnh.** Trước: `-loop 1 -tune stillimage`, cắt cứng giữa cảnh, không chuyển động, không
+chuyển cảnh, không nhạc.
+*Đã làm:* cả bản dựng là MỘT lệnh ffmpeg — mỗi cảnh một kiểu chuyển động nhẹ (`motion_for` xoay vòng zoom_in →
+pan_right → zoom_out → pan_left nên hai cảnh liền nhau không cùng kiểu; pan bằng cửa sổ `crop` chạy trên ảnh phóng to,
+zoom bằng `zoompan`), nối bằng `xfade`/`acrossfade`. Mẹo giữ đồng bộ: `transition_s` bị kẹp ≤ `tail_pad_s` nên phần
+chồng lấn luôn nằm trong đoạn đệm im lặng — không câu nào chồng lên câu nào, và hình với tiếng cùng ngắn đi đúng
+`transition_s` mỗi mối nối. Tắt bằng `video.motion: none` / `transition_s: 0`.
+*Còn thiếu:* nhạc nền có license và ducking dưới giọng đọc (cần thư viện nhạc, mục D4).
 
-**B2. Không chuẩn hoá âm lượng.** Skill nêu −14 LUFS, README ghi "chưa có", `media.py` không có `loudnorm`. Đề xuất: ở bước
-final chạy `loudnorm` hai lượt (I = −14, TP = −1, LRA = 11), AAC 192 kb/s 48 kHz, `afade` 20 ms đầu/cuối mỗi cảnh chống click,
-đệm im lặng giữa cảnh.
+**B2. Không chuẩn hoá âm lượng.** *Đã làm:* `loudnorm=I=-14:TP=-1:LRA=11` ở lượt ghép cuối, AAC 192 kb/s 48 kHz.
+Kiểm chứng: hai đoạn tiếng vào ở -52,7 và -24,6 LUFS đều ra đúng -14,0 LUFS, đỉnh -1,2 dBFS.
 
-**B3. Không có phụ đề.** Không sinh SRT/VTT, adapter YouTube không có `captions.insert`. Phụ đề vừa là accessibility, vừa
-là SEO, vừa quyết định xem-không-tiếng trên Shorts. Manifest đã có narration + thời lượng từng cảnh nên sinh SRT theo cảnh
-không cần nhận dạng giọng; mức cao hơn dùng timestamps của TTS (ElevenLabs trả về) hoặc whisper local để burn-in kiểu
-từng cụm từ cho Shorts. Thêm `AssetKind` `captions`, đưa vào `package`, upload sau gate.
+**B3. Không có phụ đề.** *Đã làm:* `timeline.srt` sinh SRT thẳng từ narration của manifest — narration CHÍNH LÀ văn bản
+đã đọc nên không cần nhận dạng giọng nói — với mốc thời gian tính bằng đúng công thức assembler ghép. Publish thành
+`media-assets` kind `captions`; sau khi upload video, code gọi `Platform.upload_captions` (YouTube `captions.insert`
+dạng multipart/related). Phụ đề là phần thêm: lỗi khi đăng nó ghi vào evidence chứ không làm hỏng lượt đăng.
+*Còn thiếu:* phụ đề theo từng cụm từ (cần timestamps của provider TTS), phụ đề đốt sẵn cho Shorts.
 
-**B4. Chapter là số đoán.** `orchestrator.py:207` cho seo-optimizer chạy ngay khi fact pass, **trước** render; mốc chapter
-không thể khớp thời gian thật; `preflight.py` chỉ kiểm định dạng (00:00, ≥ 3, ≥ 10 s). Đề xuất: code tính chapter từ
-manifest cuối (mục kịch bản → cảnh đầu của mục → thời điểm tích luỹ) và ghi đè `chapters[].time` ở bước finalize;
-seo-optimizer chỉ đặt nhãn. Đây đúng tinh thần "model quyết định, code hành động".
+**B4. Chapter là số đoán.** seo-optimizer viết nhãn trước khi có video nên mốc của nó không thể khớp thời gian thật.
+*Đã làm:* `timeline.snap_chapters` nắn từng mốc về đầu cảnh gần nhất, bỏ mốc trùng cảnh, mốc cách nhau < 10 giây và mốc
+nằm ngoài video; code publish lại `metadata-packages` dưới actor `chapters` và preflight kiểm lại chính bản đã nắn.
+Model đặt tên, code đặt giờ — đúng nguyên tắc ADR-0003.
 
-**B5. Không có QC bằng code trên file thật.** Không ffprobe, không kiểm final có audio, duration khớp Σ duration_s,
-resolution/fps đúng, frame đen, im lặng dài, dung lượng, thumbnail hợp lệ. `metrics` của quality-reviewer do model đọc
-manifest. Đề xuất module `qc.py` (code) chạy sau finalize → báo cáo (duration thật, LUFS, true peak, % frame đen, khoảng
-im lặng > 1,5 s, resolution, bitrate, kích thước và dung lượng thumbnail, độ phủ phụ đề) → nhét vào `package` cho
-quality-reviewer và vào checklist gate; block cứng khi thiếu audio hoặc độ dài lệch > 10 %.
+**B5. Không có QC bằng code trên file thật.** *Đã làm:* `qc.py` đo bản cuối bằng ffprobe + `ebur128`/`blackdetect`/
+`silencedetect`: khung hình, fps, thời lượng (so với manifest), LUFS, đỉnh, đoạn hình đen, khoảng lặng, kích thước và
+dung lượng thumbnail, có phụ đề hay không. `block` cho thứ không được phép lên nền tảng (mất luồng âm thanh, thời lượng
+lệch > 10%, sai khung, thumbnail > 2 MB), `warn` cho phần còn lại. Báo cáo đi vào `package` của quality-reviewer **và**
+vào checklist gate publish. Thiếu ffprobe thì báo cáo nói thẳng là không đo được, không đoán bừa.
+*Ghi chú:* QC chỉ báo cáo, không tự chặn — quyền quyết định vẫn ở quality-reviewer và người duyệt gate (approval-first).
 
 ## 5. Reviewer "mù và điếc" (P1, ảnh hưởng chất lượng lớn nhất)
 
@@ -185,7 +188,7 @@ giây video) → audit `render.*` ghi USD → supervisor áp ngưỡng 80/100 ch
 | Giai đoạn | Nội dung | Thay đổi kiến trúc |
 |---|---|---|
 | 0 — **xong** | A1–A5, E1 (+ 8 provider media) | Không đổi schema; `media.yaml` thêm `video.fit/tail_pad_s/font`; kiểm chứng bằng ffmpeg thật |
-| 1 (≈ 1 tuần) | B1, B2, B4, B5 | **ADR-0009** Render pipeline v2: `Scene += motion, transition, visual_kind`; `AssetKind += music, captions`; topic hoặc payload `qc_report`; `media.yaml += audio.loudness, music, captions`; chapter do code tính |
+| 1 — **xong** | B1–B5 | **ADR-0009** Render pipeline v2. Thực tế nhẹ hơn dự kiến: chuyển động suy ra từ thứ tự cảnh nên KHÔNG phải thêm trường vào scene manifest; chỉ `AssetKind += captions`; `media.yaml += video.motion/transition_s/loudness_lufs` |
 | 2 (≈ 1 tuần) | C1, C2, B3 | **ADR-0010** Reviewer đa phương thức có ranh giới: `attachments` trong `ModelClient`, front matter `inputs`, QC code trước model, eval lưu hash ảnh; console preview `output/` |
 | 3 (theo nhu cầu) | D3–D5, E3 (D1–D2 đã xong ở đợt này) | **ADR-0011** Footage/video-gen + thư viện nhạc có license + giá media |
 

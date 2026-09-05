@@ -1,6 +1,6 @@
 import json
 import shutil
-from pathlib import Path
+from itertools import pairwise
 
 import pytest
 
@@ -86,47 +86,56 @@ def test_replace_asset_only_accepts_files_inside_upload_dir(tmp_path):
     assert new2.scenes[1].asset_refs["scene_image"] == str(inside.resolve()) and new2.scenes[1].locked
 
 
-def test_ffmpeg_concat_list_escapes_single_quotes_and_cleans_temp_files(tmp_path, monkeypatch):
-    """Danh sách concat phải escape dấu ' trong đường dẫn, và mọi file trung gian phải nằm trong thư mục tạm rồi bị
-    xoá — `output/<video_id>/` chỉ còn asset thật."""
-    import subprocess
-
-    from studio import media
-    seen: dict[str, str] = {}
-
-    def fake_run(argv, *a, **k):
-        lst = next((Path(argv[i + 1]) for i, x in enumerate(argv) if x == "-i" and argv[i + 1].endswith("concat.txt")), None)
-        if lst is not None: seen["list"] = lst.read_text(encoding="utf-8")
-        return subprocess.CompletedProcess(argv, 0, "", "")
-
-    monkeypatch.setattr(media.shutil, "which", lambda b: "/usr/bin/ffmpeg")
-    monkeypatch.setattr(media.subprocess, "run", fake_run)
-    out = tmp_path / "it's" / "o'k.mp4"; out.parent.mkdir()
-    r = FFmpegAssembler().assemble([(tmp_path / "i.png", tmp_path / "a.wav", 1.0)], out, 24, "320x180")
-    assert seen["list"].startswith("file '") and seen["list"].endswith("'\n")
-    assert "it'\\''s" in seen["list"] and "/seg000.mp4" in seen["list"]  # ' → '\'' (đóng, escape, mở lại)
-    assert list(out.parent.iterdir()) == [] or [p.name for p in out.parent.iterdir()] == ["o'k.mp4"]
-    assert r.duration_s == 1.35  # thời lượng giọng đọc + 0,35 s đệm cuối cảnh
-
-
-def test_ffmpeg_segment_runs_without_hard_cut_and_pads_tail(tmp_path, monkeypatch):
-    """Không `-t <ước lượng>` (cắt cụt câu khi TTS đọc dài hơn), mà `-shortest` chạy hết giọng đọc + `apad` đệm cuối."""
+def test_ffmpeg_builds_one_graph_with_motion_transition_and_loudness(tmp_path, monkeypatch):
+    """Cả video là MỘT lệnh ffmpeg: mỗi cảnh có chuyển động, các cảnh nối bằng xfade/acrossfade, âm lượng chuẩn hoá.
+    Không `-t` cắt theo thời lượng ước lượng cho phần TIẾNG (chỉ đặt độ dài cho ảnh tĩnh), và không để lại file tạm."""
     import subprocess
 
     from studio import media
     runs: list[list[str]] = []
-    monkeypatch.setattr(media.shutil, "which", lambda b: "/usr/bin/ffmpeg")
-    monkeypatch.setattr(media.subprocess, "run", lambda argv, *a, **k: (runs.append(argv), subprocess.CompletedProcess(argv, 0, "", ""))[1])
-    seg = [(tmp_path / "i.png", tmp_path / "a.wav", 3.0)]
-    FFmpegAssembler().assemble(seg, tmp_path / "o.mp4", 30, "1920x1080")
-    first = runs[0]
-    assert "-t" not in first and "-shortest" in first and "apad=pad_dur=0.35" in first
-    vf = first[first.index("-vf") + 1]
-    assert vf.startswith("scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080")  # cover: không dải đen
-    runs.clear()
-    FFmpegAssembler(fit="contain", tail_pad_s=0).assemble(seg, tmp_path / "p.mp4", 30, "1080x1920")
-    vf2 = runs[0][runs[0].index("-vf") + 1]
-    assert "force_original_aspect_ratio=decrease" in vf2 and "pad=1080:1920" in vf2 and "-af" not in runs[0]
+    monkeypatch.setattr(media.shutil, "which", lambda b: f"/usr/bin/{b}")
+    monkeypatch.setattr(media.subprocess, "run",
+                        lambda argv, *a, **k: (runs.append(argv), subprocess.CompletedProcess(argv, 0, "", ""))[1])
+    segs = [(tmp_path / f"i{i}.png", tmp_path / f"a{i}.wav", 3.0) for i in range(3)]
+    r = FFmpegAssembler().assemble(segs, tmp_path / "o.mp4", 30, "1920x1080")
+    argv = next(a for a in runs if "-filter_complex" in a)
+    graph = argv[argv.index("-filter_complex") + 1]
+    assert argv.count("-i") == 6  # mỗi cảnh hai đầu vào: ảnh + giọng đọc
+    assert graph.count("xfade=transition=fade:duration=0.3") == 2 and graph.count("acrossfade=d=0.3") == 2
+    assert "offset=3.050" in graph and "offset=6.100" in graph  # 3.35-0.3 rồi (3.35+3.35-0.3)-0.3
+    assert "zoompan=" in graph and "crop=1920:1080:x=" in graph  # cảnh 0 zoom, cảnh 1 pan: hai cảnh liền kề khác kiểu
+    assert "loudnorm=I=-14.0:TP=-1.0:LRA=11" in graph and "apad=pad_dur=0.35" in graph
+    assert r.duration_s == 9.45  # 3×(3+0.35) − 2×0.3
+    assert list(tmp_path.glob(".studio-*")) == [] and not list(tmp_path.glob("*concat*"))
+
+
+def test_ffmpeg_one_scene_or_no_transition_falls_back_to_concat(tmp_path, monkeypatch):
+    import subprocess
+
+    from studio import media
+    runs: list[list[str]] = []
+    monkeypatch.setattr(media.shutil, "which", lambda b: f"/usr/bin/{b}")
+    monkeypatch.setattr(media.subprocess, "run",
+                        lambda argv, *a, **k: (runs.append(argv), subprocess.CompletedProcess(argv, 0, "", ""))[1])
+    one = [(tmp_path / "i.png", tmp_path / "a.wav", 2.0)]
+    FFmpegAssembler().assemble(one, tmp_path / "one.mp4", 30, "1920x1080")
+    g1 = runs[-1][runs[-1].index("-filter_complex") + 1]
+    assert "xfade" not in g1 and "concat=" not in g1 and "[v0]" in g1
+    two = [*one, (tmp_path / "i2.png", tmp_path / "a2.wav", 2.0)]
+    FFmpegAssembler(transition_s=0).assemble(two, tmp_path / "cut.mp4", 30, "1920x1080")
+    g2 = runs[-1][runs[-1].index("-filter_complex") + 1]
+    assert "concat=n=2:v=1:a=1" in g2 and "xfade" not in g2
+    # tắt chuyển động và chuẩn hoá âm lượng
+    FFmpegAssembler(motion="none", loudness_lufs=None).assemble(two, tmp_path / "plain.mp4", 30, "1920x1080")
+    g3 = runs[-1][runs[-1].index("-filter_complex") + 1]
+    assert "zoompan" not in g3 and "loudnorm" not in g3
+
+
+def test_motion_rotates_so_neighbours_differ():
+    from studio.media import motion_for
+    kinds = [motion_for(i) for i in range(5)]
+    assert all(a != b for a, b in pairwise(kinds)) and kinds[0] == kinds[4]
+    assert motion_for(3, "none") == "static" and motion_for(1, "zoom_in") == "zoom_in"
 
 
 def test_ids_used_in_paths_must_be_safe():

@@ -83,6 +83,10 @@ video:
   resolution: 1920x1080     # khung của video dài; manifest `aspect: 9:16` (Shorts) tự hoán đổi thành 1080x1920
   fit: cover                # cover: ảnh lấp đầy khung, cắt mép (mặc định) | contain: giữ trọn ảnh, chấp nhận viền đen
   tail_pad_s: 0.35          # im lặng đệm cuối mỗi cảnh; cảnh dài đúng bằng giọng đọc, không bị cắt theo thời lượng ước lượng
+  motion: auto              # chuyển động nhẹ trên ảnh tĩnh: auto (xoay vòng zoom/pan, hai cảnh liền nhau khác kiểu)
+                            # | none | zoom_in | zoom_out | pan_left | pan_right (ép cùng một kiểu cho cả video)
+  transition_s: 0.3         # chuyển cảnh mờ dần; tự kẹp ≤ tail_pad_s để giọng đọc hai cảnh không chồng nhau; 0 = cắt thẳng
+  loudness_lufs: -14        # chuẩn hoá âm lượng về mức nền tảng phát lại (đỉnh ≤ -1 dBTP); `null` = giữ nguyên tiếng gốc
   # font: /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf   # font phủ chữ thumbnail (mặc định: tìm font đậm có sẵn trên máy;
   #                          không có font thì thumbnail vẫn ra 1280x720 nhưng KHÔNG có chữ, và audit `thumbnail.finish` nói rõ)
   # binary: ffmpeg

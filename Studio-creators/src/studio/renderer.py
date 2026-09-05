@@ -22,6 +22,7 @@ from typing import Any
 from .bus import InMemoryBus
 from .events import AssetKind, AuditLog, CutList, Envelope, MediaAsset, Provenance, Scene, SceneManifest, ThumbnailSpec
 from .media import MediaResult, MediaSuite, frame_size, image_size, make_media
+from .timeline import srt, timeline
 
 ACTOR = "renderer"
 # Chữ nằm trong ảnh sinh là lỗi (skill visual-direction): model ảnh viết sai dấu tiếng Việt, và chữ phải do code phủ lên.
@@ -156,11 +157,25 @@ class Renderer:
         self._publish(assets, f"render.repair:{','.join(sorted(touched)) or 'none'}")
         return new
 
+    def cues(self, m: SceneManifest, order: list[str] | None = None) -> list[Any]:
+        """Mốc từng cảnh trong bản dựng cuối, tính theo đúng tham số ghép của assembler đang dùng."""
+        return timeline(m, order, pad=getattr(self.media.video, "tail_pad_s", 0.0),
+                        transition=getattr(self.media.video, "transition_s", 0.0))
+
     def finalize(self, m: SceneManifest, order: list[str] | None = None) -> MediaAsset:
+        """Bản cuối + phụ đề. Phụ đề sinh thẳng từ narration của manifest (đó chính là văn bản đã đọc) nên không cần
+        nhận dạng giọng nói, và mốc thời gian khớp bản dựng vì cùng một công thức."""
         fps, res = self._video_opts(m.aspect)
         r = self.media.video.assemble(self._segments(m, order), self._dir(m.video_id) / f"final_v{m.version}.mp4", fps, res)
         a = self._asset(m.video_id, "final_video", r, m.version, prompt_ref=f"manifest:v{m.version}")
-        self._publish([a], "render.final")
+        assets = [a]
+        text = srt(self.cues(m, order))
+        if text:
+            p = self._dir(m.video_id) / f"captions_v{m.version}.srt"
+            p.write_text(text, encoding="utf-8")
+            cap = MediaResult(p, "studio", "srt-from-manifest")
+            assets.append(self._asset(m.video_id, "captions", cap, m.version, prompt_ref=f"manifest:v{m.version}"))
+        self._publish(assets, "render.final")
         return a
 
     def thumbnails(self, spec: ThumbnailSpec) -> list[MediaAsset]:

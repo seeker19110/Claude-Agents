@@ -70,6 +70,11 @@ MODEL_SIZES: dict[str, dict[str, str]] = {
 DEFAULT_SIZES = {"16:9": "1536x1024", "9:16": "1024x1536", "1:1": "1024x1024"}
 THUMBNAIL_SIZE = "1280x720"      # YouTube: 1280x720, ≤ 2 MB, JPG/PNG
 THUMBNAIL_MAX_BYTES = 2_000_000
+# Ngắt mẫu bằng hình (skill retention-storytelling): mỗi cảnh một kiểu chuyển động, xoay vòng để hai cảnh liền nhau khác nhau.
+MOTIONS = ("zoom_in", "pan_right", "zoom_out", "pan_left")
+MOTION_ZOOM = 1.12               # biên độ zoom/pan: đủ thấy là có chuyển động, không đủ để thấy méo
+TARGET_LUFS = -14.0              # mức âm lượng nền tảng phát lại (YouTube/Spotify chuẩn hoá về đây)
+TRUE_PEAK_DB = -1.0
 # Font đậm có dấu tiếng Việt để phủ chữ thumbnail; `video.font` trong media.yaml thắng danh sách này.
 FONT_CANDIDATES = (
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -102,6 +107,10 @@ class ImageGen(Protocol):
 
 
 class VideoAssembler(Protocol):
+    # Renderer cần đúng hai con số này để tính mốc thời gian từng cảnh (phụ đề, chapter) khớp với bản dựng thật.
+    tail_pad_s: float
+    transition_s: float
+
     def assemble(self, segments: list[tuple[Path, Path, float]], out: Path, fps: int, resolution: str) -> MediaResult: ...
     def finish_thumbnail(self, src: Path, out: Path, text: str = "", size: str = THUMBNAIL_SIZE,
                          max_bytes: int = THUMBNAIL_MAX_BYTES) -> MediaResult: ...
@@ -164,7 +173,9 @@ def make_media(cfg: MediaConfig | None = None) -> MediaSuite:
     img: ImageGen = _pick("image", cfg.image, IMAGE_PROVIDERS, cfg, lambda: FakeImage(cfg))
     v = cfg.video
     vid: VideoAssembler = (FFmpegAssembler(binary=str(v.get("binary") or "ffmpeg"), fit=str(v.get("fit") or "cover"),
-                                           tail_pad_s=float(v.get("tail_pad_s", 0.35)), font=v.get("font"))
+                                           tail_pad_s=float(v.get("tail_pad_s", 0.35)), font=v.get("font"),
+                                           motion=str(v.get("motion") or "auto"), transition_s=float(v.get("transition_s", 0.3)),
+                                           loudness_lufs=v.get("loudness_lufs", TARGET_LUFS))
                            if v.get("provider") == "ffmpeg" else _require_fake("video", v, FakeVideo()))
     return MediaSuite(tts=tts, image=img, video=vid, cfg=cfg)
 
@@ -231,6 +242,25 @@ def wrap_overlay(text: str, max_chars: int = 16) -> list[str]:
 
 def estimate_duration(text: str) -> float:
     return round(max(1.0, len(text.split()) / WORDS_PER_SECOND), 2)
+
+
+def motion_for(index: int, mode: str = "auto") -> str:
+    """Kiểu chuyển động của cảnh thứ `index`. `auto` xoay vòng nên không hai cảnh liền nhau cùng kiểu; `none` để ảnh tĩnh."""
+    if mode in MOTIONS: return mode
+    if mode != "auto": return "static"
+    return MOTIONS[index % len(MOTIONS)]
+
+
+def probe_duration(path: Path) -> float | None:
+    """Thời lượng thật của file theo ffprobe; None khi không có ffprobe hoặc file không đọc được."""
+    probe = shutil.which("ffprobe")
+    if not probe: return None
+    try:
+        r = subprocess.run([probe, "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
+        return round(float(r.stdout.strip()), 3) if r.returncode == 0 and r.stdout.strip() else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
 
 
 def audio_duration(path: Path, text: str) -> float:
@@ -374,6 +404,9 @@ class FakeImage:
 
 
 class FakeVideo:
+    tail_pad_s = 0.0      # bản giả ghép thẳng, không đệm và không chuyển cảnh: mốc thời gian = tổng thời lượng cảnh
+    transition_s = 0.0
+
     def assemble(self, segments: list[tuple[Path, Path, float]], out: Path, fps: int, resolution: str) -> MediaResult:
         out.parent.mkdir(parents=True, exist_ok=True)
         manifest = [{"image": str(i), "audio": str(a), "duration_s": d} for i, a, d in segments]
@@ -731,7 +764,8 @@ class FFmpegAssembler:
     File trung gian (segment, danh sách concat) nằm trong thư mục tạm và bị xoá, không lẫn vào `output/<video_id>/`.
     """
 
-    def __init__(self, binary: str = "ffmpeg", fit: str = "cover", tail_pad_s: float = 0.35, font: Any = None):
+    def __init__(self, binary: str = "ffmpeg", fit: str = "cover", tail_pad_s: float = 0.35, font: Any = None,
+                 motion: str = "auto", transition_s: float = 0.3, loudness_lufs: float | None = TARGET_LUFS):
         found = shutil.which(binary)
         if not found:
             raise MediaError("không tìm thấy ffmpeg trên PATH (đổi video.provider=fake để chạy offline)")
@@ -739,6 +773,10 @@ class FFmpegAssembler:
         self.fit = fit if fit in {"cover", "contain"} else "cover"
         self.tail_pad_s = max(0.0, float(tail_pad_s))
         self.font = Path(str(font)) if font else None
+        self.motion = str(motion or "auto")
+        # Chuyển cảnh ăn vào phần đệm im lặng cuối cảnh: giữ ≤ tail_pad_s thì giọng đọc hai cảnh KHÔNG BAO GIỜ chồng lên nhau.
+        self.transition_s = min(max(0.0, float(transition_s)), self.tail_pad_s)
+        self.loudness_lufs = float(loudness_lufs) if loudness_lufs else None
 
     def _run(self, args: list[str], cwd: Path | None = None) -> None:
         # encoding cố định: `text=True` trần sẽ giải mã theo bảng mã hệ thống, mà trên Windows đó là
@@ -755,28 +793,62 @@ class FFmpegAssembler:
             return f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black"
         return f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"
 
+    def _motion_filter(self, kind: str, w: int, h: int, dur: float, fps: int) -> str:
+        """Chuyển động nhẹ trên ảnh tĩnh (Ken Burns). Pan làm bằng `crop` cửa sổ chạy trên ảnh đã phóng to (rẻ, chính xác);
+        zoom phải dùng `zoompan` vì kích thước cửa sổ đổi theo thời gian. Cả hai luôn ra đúng khung `w`x`h`."""
+        frames = max(1, round(dur * fps))
+        big_w, big_h = int(w * MOTION_ZOOM), int(h * MOTION_ZOOM)
+        cover = f"scale={big_w}:{big_h}:force_original_aspect_ratio=increase,crop={big_w}:{big_h}"
+        if kind in {"pan_left", "pan_right"}:
+            # t/D chạy 0→1; pan_left đi từ phải sang trái nên đảo chiều
+            p = f"min(1\\,t/{dur:.3f})" if kind == "pan_right" else f"(1-min(1\\,t/{dur:.3f}))"
+            return f"{cover},crop={w}:{h}:x='(iw-ow)*{p}':y='(ih-oh)/2'"
+        if kind in {"zoom_in", "zoom_out"}:
+            z = (f"min(1+{MOTION_ZOOM - 1:.3f}*on/{frames},{MOTION_ZOOM})" if kind == "zoom_in"
+                 else f"max({MOTION_ZOOM}-{MOTION_ZOOM - 1:.3f}*on/{frames},1)")
+            return (f"{cover},zoompan=z='{z}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}:fps={fps}")
+        return self._scale(str(w), str(h))
+
     def assemble(self, segments: list[tuple[Path, Path, float]], out: Path, fps: int, resolution: str) -> MediaResult:
+        """Một lệnh ffmpeg cho cả video: mỗi cảnh là ảnh có chuyển động + giọng đọc, nối bằng `xfade`/`acrossfade`,
+        rồi chuẩn hoá âm lượng về -14 LUFS. Phần chồng lấn của chuyển cảnh nằm trọn trong đoạn im lặng đệm cuối cảnh
+        (`transition_s ≤ tail_pad_s`), nên video và tiếng luôn khớp nhau và không câu nào bị chồng."""
         out.parent.mkdir(parents=True, exist_ok=True)
-        w, h = resolution.lower().split("x")
-        tmp = Path(tempfile.mkdtemp(prefix=".studio-", dir=out.parent))
-        try:
-            parts: list[Path] = []
-            for i, (img, audio, _dur) in enumerate(segments):
-                seg = tmp / f"seg{i:03d}.mp4"
-                args = ["-loop", "1", "-framerate", str(fps), "-i", str(img), "-i", str(audio),
-                        "-vf", f"{self._scale(w, h)},format=yuv420p"]
-                if self.tail_pad_s: args += ["-af", f"apad=pad_dur={self.tail_pad_s}"]
-                self._run([*args, "-c:v", "libx264", "-crf", "20", "-tune", "stillimage", "-c:a", "aac", "-b:a", "192k",
-                           "-ar", "48000", "-shortest", str(seg)])
-                parts.append(seg)
-            lst = tmp / "concat.txt"
-            # ffmpeg concat: đường dẫn trong nháy đơn, dấu ' trong tên file phải viết thành '\'' (đóng, escape, mở lại)
-            lst.write_text("".join(f"file '{_concat_quote(p)}'\n" for p in parts), encoding="utf-8")
-            self._run(["-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", "-movflags", "+faststart", str(out)])
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
-        total = round(sum(d + self.tail_pad_s for _, _, d in segments), 2)
-        return MediaResult(out, "ffmpeg", "libx264", total, notes=f"fit={self.fit} pad={self.tail_pad_s}s")
+        w, h = (int(x) for x in resolution.lower().split("x"))
+        durs = [round((probe_duration(a) or d) + self.tail_pad_s, 3) for _, a, d in segments]
+        t = self.transition_s if len(segments) > 1 else 0.0
+        args: list[str] = []
+        for (img, audio, _), d in zip(segments, durs, strict=True):
+            args += ["-loop", "1", "-framerate", str(fps), "-t", f"{d:.3f}", "-i", str(img), "-i", str(audio)]
+        chains: list[str] = []
+        for i, d in enumerate(durs):
+            mo = motion_for(i, self.motion)
+            chains.append(f"[{2 * i}:v]{self._motion_filter(mo, w, h, d, fps)},fps={fps},format=yuv420p,setsar=1[v{i}]")
+            chains.append(f"[{2 * i + 1}:a]aresample=48000,apad=pad_dur={self.tail_pad_s},atrim=0:{d:.3f},asetpts=N/SR/TB[a{i}]")
+        vlast, alast = "v0", "a0"
+        if len(durs) == 1:
+            pass
+        elif t <= 0:
+            chains.append("".join(f"[v{i}][a{i}]" for i in range(len(durs))) + f"concat=n={len(durs)}:v=1:a=1[vc][ac]")
+            vlast, alast = "vc", "ac"
+        else:
+            acc = durs[0]
+            for i in range(1, len(durs)):
+                nv, na = f"vx{i}", f"ax{i}"
+                chains.append(f"[{vlast}][v{i}]xfade=transition=fade:duration={t}:offset={max(0.0, acc - t):.3f}[{nv}]")
+                chains.append(f"[{alast}][a{i}]acrossfade=d={t}:c1=tri:c2=tri[{na}]")
+                vlast, alast = nv, na
+                acc = acc + durs[i] - t
+        aout = alast
+        if self.loudness_lufs is not None:
+            chains.append(f"[{alast}]loudnorm=I={self.loudness_lufs}:TP={TRUE_PEAK_DB}:LRA=11[aout]"); aout = "aout"
+        self._run([*args, "-filter_complex", ";".join(chains), "-map", f"[{vlast}]", "-map", f"[{aout}]",
+                   "-c:v", "libx264", "-crf", "20", "-preset", "medium", "-pix_fmt", "yuv420p",
+                   "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", str(out)])
+        total = round(sum(durs) - t * (len(durs) - 1), 2)
+        loud = f" {self.loudness_lufs} LUFS" if self.loudness_lufs is not None else ""
+        return MediaResult(out, "ffmpeg", "libx264", total,
+                           notes=f"fit={self.fit} pad={self.tail_pad_s}s chuyển cảnh={t}s chuyển động={self.motion}{loud}")
 
     def finish_thumbnail(self, src: Path, out: Path, text: str = "", size: str = THUMBNAIL_SIZE,
                          max_bytes: int = THUMBNAIL_MAX_BYTES) -> MediaResult:

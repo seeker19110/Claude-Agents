@@ -43,6 +43,16 @@ QUOTA_REASONS = frozenset({"quotaExceeded", "dailyLimitExceeded", "rateLimitExce
 Fetcher = Callable[[str, str, dict[str, str], bytes | None], tuple[int, dict[str, str], bytes]]
 
 
+def _multipart_related(meta: dict[str, Any], data: bytes, ctype: str) -> tuple[bytes, str]:
+    """Thân multipart/related của Google upload API: phần JSON rồi phần nhị phân, cùng một boundary."""
+    boundary = "studio-" + os.urandom(12).hex()
+    body = (f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n".encode()
+            + json.dumps(meta, ensure_ascii=False).encode("utf-8")
+            + f"\r\n--{boundary}\r\nContent-Type: {ctype}\r\n\r\n".encode() + data
+            + f"\r\n--{boundary}--\r\n".encode())
+    return body, f"multipart/related; boundary={boundary}"
+
+
 class PlatformError(Exception):
     def __init__(self, msg: str, status: int | None = None, reason: str | None = None):
         super().__init__(msg); self.status = status
@@ -100,6 +110,7 @@ class Platform(Protocol):
     def upload_video(self, path: Path, metadata: MetadataPackage, privacy: str = "private", publish_at: str | None = None,
                      made_for_kids: bool = False) -> UploadResult: ...
     def set_thumbnail(self, platform_ref: str, path: Path) -> str: ...
+    def upload_captions(self, platform_ref: str, path: Path, language: str = "vi", name: str = "") -> str: ...
     def schedule(self, platform_ref: str, publish_at: str) -> str: ...
     def list_comments(self, platform_ref: str, since: str | None = None) -> list[Comment]: ...
     def reply(self, comment_id: str, text: str) -> ReplyResult: ...
@@ -148,6 +159,12 @@ class FakePlatform:
     def set_thumbnail(self, platform_ref: str, path: Path) -> str:
         self._check("set_thumbnail", platform_ref=platform_ref, path=str(path))
         self.videos[platform_ref]["thumbnail"] = str(path); return f"fake thumbnail {platform_ref} ← {Path(path).name}"
+
+    def upload_captions(self, platform_ref: str, path: Path, language: str = "vi", name: str = "") -> str:
+        self._check("upload_captions", platform_ref=platform_ref, path=str(path), language=language)
+        if not Path(path).exists(): raise PlatformError(f"không có file phụ đề {path}")
+        self.videos[platform_ref]["captions"] = str(path)
+        return f"fake captions {platform_ref} ← {Path(path).name} ({language})"
 
     def schedule(self, platform_ref: str, publish_at: str) -> str:
         self._check("schedule", platform_ref=platform_ref, publish_at=publish_at)
@@ -354,6 +371,16 @@ class YouTubePlatform:
         st, _, _ = self._call("POST", f"{UPLOAD_URL.replace('/videos', '/thumbnails/set')}?videoId={urllib.parse.quote(platform_ref)}&uploadType=media",
                                 data, {"Content-Type": ctype, "Content-Length": str(len(data))})
         return json.dumps({"thumbnails.set": st, "bytes": len(data), "file": path.name})
+
+    def upload_captions(self, platform_ref: str, path: Path, language: str = "vi", name: str = "") -> str:
+        """captions.insert dạng multipart/related: phần JSON mô tả rãnh phụ đề, phần hai là nội dung SRT."""
+        path = Path(path); data = path.read_bytes()
+        meta = {"snippet": {"videoId": platform_ref, "language": language, "name": name or "", "isDraft": False}}
+        body, ctype = _multipart_related(meta, data, "application/octet-stream")
+        st, _, raw = self._call("POST", f"{UPLOAD_URL.replace('/videos', '/captions')}?part=snippet&uploadType=multipart",
+                                body, {"Content-Type": ctype, "Content-Length": str(len(body))})
+        cid = (json.loads(raw) if raw.strip() else {}).get("id")
+        return json.dumps({"captions.insert": st, "id": cid, "bytes": len(data), "language": language, "file": path.name})
 
     def schedule(self, platform_ref: str, publish_at: str) -> str:
         st, d = self._json("PUT", f"{API_URL}/videos?part=status",
