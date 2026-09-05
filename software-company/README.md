@@ -57,7 +57,7 @@ evals/         ca eval prompt theo agent (YAML) — đủ 21 agent, mỗi agent 
 tests/         pytest 675 ca / 34 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
                guard/blackboard, schema consistency, golden 21 agent + 5 hồ sơ gate, bộ sinh subagent, hồ sơ gate, rà soát bảo mật);
-               coverage fail_under=98
+               coverage fail_under=100 (phủ 100% dòng)
 ```
 
 ## Chạy
