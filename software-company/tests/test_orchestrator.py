@@ -394,6 +394,31 @@ def test_duyet_escalation_do_reviewer_loi_thi_review_con_thieu_duoc_chay_lai(tmp
     assert "review.rerun" in acts, "duyệt gate phải giao lại review còn thiếu, không chờ review_timeout"
     assert calls["reviewer"] >= 2 and orch.lead.state["T1"] in {"approved", "merged", "released"},         f"reviewer phải được gọi lại và ticket đi tiếp; state={orch.lead.state['T1']}"  # ≥2: T2 sau đó cũng được review
 
+def test_mo_lai_bus_khi_gate_decide_chua_duoc_xu_ly_khong_mo_gate_trung(tmp_path):
+    """Người duyệt escalation rồi orchestrator mở lại bus TRƯỚC khi event `gate.decide` được xử lý (nó nằm sau một event
+    khác trong hàng đợi): `_rehydrate` đã đếm quyết định vào `escalation_decided`, nhưng `resume` chỉ phát khi decide
+    được xử lý nên subject vẫn `paused` → khoá `escalation:<tid>:<n>:<state>:<decided+1>` mới → gate thứ hai cho việc
+    người vừa duyệt. Đo được 2026-09-05: REL-004 duyệt 21:19, mở lại bus 21:30, gate trùng mở ngay sau event đầu tiên.
+    Chiều ngược (chặn LẠI sau khi duyệt vẫn phải mở gate) ở `test_ticket_bi_chan_lan_hai_van_phai_mo_gate`."""
+    def hong_luon(system, user):
+        if _agent_of(system) in ENGINEERING: raise LLMError("agent kỹ thuật hỏng")
+        return handler(system, user)
+
+    bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient(handler=hong_luon))
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    assert orch.lead.state["T1"] == "blocked" and orch.gate.pending.get("T1")
+    # một event của T1 vào hàng đợi TRƯỚC quyết định (thực tế: task/PR hoãn vì paused), rồi người duyệt
+    bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=orch.lead.tickets["T1"].model_dump()))
+    orch.gate.decide("T1", "approve", by="human:lead", reason="mở lại")
+    bus.close()
+
+    orch2 = Orchestrator(SQLiteBus(tmp_path / "c.sqlite"), FakeClient(handler=handler))  # mở lại bus, agent đã khoẻ
+    orch2.run()
+    requests = [e for e in orch2.bus.replay(topic="audit-log")
+                if e.payload["action"] == "gate.request" and "T1" in (e.payload.get("evidence") or "")]
+    assert len(requests) == 1, f"đã duyệt mà còn mở gate trùng: {len(requests)} gate.request cho T1"
+    assert not orch2.gate.pending.get("T1") and orch2.lead.state["T1"] != "blocked", "quyết định phải được áp dụng"
+
 
 def test_status_canh_bao_khi_khong_con_viec_nao_chay_duoc(tmp_path):
     """`status` phải trả lời được "còn việc nào chạy được không", không chỉ liệt kê trạng thái.
