@@ -36,10 +36,22 @@ Câu hỏi đặt ra (09/2026): "nâng cấp harness" có cần không? *Harness
    (không tool, `cli_tools`, `mcp_tools`). Bảng `CLAUDE_EFFORT` **đóng**, không có `.get(..., mặc định)`: giá trị CLI không
    nhận (`none`, `minimal` của codex, gõ sai) là `LLMError` nói rõ các mức hợp lệ; tier không khai `effort` thì không thêm
    cờ, CLI dùng mặc định của nó. Test hai chiều trong `tests/test_routing.py`.
-3. **Các bước sau, mỗi bước một PR nhỏ, không cần ADR mới**: (a) `--json-schema` + đọc `structured_output`, bỏ lượt "ép
-   chốt bằng JSON" cho provider này; đọc `subtype` để báo đúng lỗi; thêm `--no-session-persistence`. (b) Đồng bộ adapter
-   của `Studio-creators` theo bản `software-company`. (c) Nối `--max-budget-usd` với `budget_usd`.
-4. **Không dùng `--bare`.** Ghi lại để không ai thử thêm nó "cho nhanh".
+3. **Bước 2 (cùng PR)**: `--json-schema` ở cả ba chế độ, `_parse` ưu tiên `structured_output` (đã qua kiểm của CLI) nên
+   lượt "ép chốt bằng JSON" của runner không còn kích với provider này; schema vẫn nhúng vào prompt để model thấy mô tả
+   trường. `_parse` đọc `subtype` trước `result`: `error_max_turns` / `error_max_budget_usd` /
+   `error_max_structured_output_retries` / `error_during_execution` thành thông báo nói đúng việc phải làm. Thêm
+   `--no-session-persistence`. Không có đường lùi cho CLI thiếu `--json-schema`: bản có `--restricted` đã có nó.
+4. **Bước 3 (cùng PR)**: (a) **Đồng bộ adapter của `Studio-creators`** theo bản `software-company`: system prompt qua
+   `--system-prompt-file` (trần argv Windows), `cli_env` lọc biến bí mật cho cả `claude` và `codex` (trước đây truyền
+   nguyên `os.environ`, nên khoá TTS/ảnh/YouTube đi thẳng vào tiến trình con), `CODEX_EFFORT` có `none`, và cả
+   `--effort` / `--json-schema` / `structured_output` / `subtype` / `--no-session-persistence` của bước 1–2. KHÔNG
+   port `TransientError`: Studio phân loại lỗi bằng regex trong `routing.py`, đổi sang exception là thay đổi kiến
+   trúc, không thuộc phạm vi ADR này.
+   (b) **`--max-budget-usd`**: khoá mới `cli_max_budget_usd` là trần USD cho MỘT lượt CLI. Không khai thì lấy
+   `budget_usd` (trần cả dự án) làm trần thảm hoạ — một lượt tiêu quá ngân sách cả dự án chắc chắn là hỏng; suy diễn
+   này chỉ làm CHẶT thêm, không nới mức nào. Đây là cái hãm duy nhất có tác dụng GIỮA phiên CLI, bịt đúng đánh đổi mà
+   ADR-0023/0024 đã ghi ("ngân sách chỉ kiểm được sau khi CLI trả về").
+5. **Không dùng `--bare`.** Ghi lại để không ai thử thêm nó "cho nhanh".
 
 ## Hệ quả
 - `effort` trong `llm.yaml` có hiệu lực với gói Claude như với hai provider kia; agent tier `strong` chạy `high` thật

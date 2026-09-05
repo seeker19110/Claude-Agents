@@ -235,6 +235,25 @@ def test_claude_code_client_parses_print_json_and_counts_cache_tokens():
     assert args[-1] == args[args.index("--system-prompt-file") + 1], "user prompt không đi qua argv"
     assert sp_contents[0] == "SYS", "system prompt đi qua file tạm (--system-prompt-file), không qua argv"
     assert stdin.startswith("USER") and "JSON Schema" in stdin
+    assert json.loads(args[args.index("--json-schema") + 1]) == {"type": "object"}, "ADR-0026: CLI ép schema"
+    assert "--no-session-persistence" in args, "ADR-0026: không ghi transcript chứa repo khách ra ~/.claude"
+
+
+def test_claude_code_uu_tien_structured_output_va_doc_subtype_loi():
+    """ADR-0026 bước 2: có `structured_output` (đã qua kiểm của CLI) thì dùng nó, kể cả khi `result` là văn xuôi;
+    `subtype` lỗi (hết lượt, trần USD, không ép được schema) phải thành thông báo nói đúng việc — trước đây các JSON
+    này thiếu `result` nên bị báo chung chung "thiếu trường result"."""
+    so = json.dumps({"result": "Tôi đã làm xong, đây là JSON: ...", "subtype": "success",
+                     "structured_output": {"ticket_id": "T9"}, "usage": {"input_tokens": 1, "output_tokens": 1}})
+    c = _cc(runner=lambda a, s: so).complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+    assert c.json() == {"ticket_id": "T9"}
+    for sub, hint in (("error_max_turns", "hết lượt"), ("error_max_budget_usd", "trần chi phí"),
+                      ("error_max_structured_output_retries", "JSON Schema"), ("error_during_execution", "lỗi khi đang chạy")):
+        with pytest.raises(LLMError, match=f"{sub}.*{hint}"):
+            _cc(runner=lambda a, s, sub=sub: json.dumps({"subtype": sub, "is_error": True})).complete(
+                system="s", user="u", schema={}, model_tier="strong")
+    with pytest.raises(LLMError, match="thiếu trường result"):
+        _cc(runner=lambda a, s: json.dumps({"subtype": "success"})).complete(system="s", user="u", schema={}, model_tier="strong")
 
 
 def test_claude_code_client_errors_and_limits():
@@ -421,6 +440,23 @@ def test_claude_code_effort_xuong_cli_o_moi_che_do_va_gia_tri_sai_hong_to(tmp_pa
     with pytest.raises(LLMError, match=r"effort `none`.*low\|medium\|high\|xhigh\|max"):
         ClaudeCodeClient(cfg({"strong": "none"}), runner=lambda a, s: _CC_OK).complete(
             system="s", user="u", schema={}, model_tier="strong")
+
+
+def test_claude_code_tran_chi_phi_moi_luot_cli(tmp_path: Path):
+    """ADR-0026: `--max-budget-usd` là cái hãm DUY NHẤT có tác dụng GIỮA phiên CLI — ngân sách của supervisor chỉ đo
+    được sau khi CLI trả về (đánh đổi ADR-0023/0024). Khai riêng thì dùng nó; không khai thì `budget_usd` của dự án
+    làm trần thảm hoạ; không có gì thì không thêm cờ."""
+    seen: list = []
+    def run(a, s, cwd=None): seen.append(a); return _CC_OK
+    base = dict(provider="claude-code", models={"strong": "m"})
+    ClaudeCodeClient(LLMConfig(**base, cli_max_budget_usd=0.5, budget_usd=100.0), runner=run).complete(
+        system="s", user="u", schema={}, model_tier="strong")
+    assert seen[0][seen[0].index("--max-budget-usd") + 1] == "0.5", "khai riêng thì thắng trần dự án"
+    ClaudeCodeClient(LLMConfig(**base, budget_usd=12.0), runner=run).complete(
+        system="s", user="u", schema={}, model_tier="strong")
+    assert seen[1][seen[1].index("--max-budget-usd") + 1] == "12", "không khai riêng → trần dự án làm trần thảm hoạ"
+    ClaudeCodeClient(LLMConfig(**base), runner=run).complete(system="s", user="u", schema={}, model_tier="strong")
+    assert "--max-budget-usd" not in seen[2], "không cấu hình gì thì không bịa ra trần"
 
 
 def test_cli_tools_off_still_refuses_tools_and_keeps_single_turn():
