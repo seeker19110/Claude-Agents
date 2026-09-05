@@ -38,6 +38,10 @@ ADR-0012:
   (`--artifacts`, mặc định `<db>.artifacts/`) mirror toàn văn PRD/C4/OpenAPI/threat model ra file.
 - Người can thiệp giữa vòng: `comment` (hint cho ticket đang chạy, không tính retry) và `takeover` (người sửa tay trong
   worktree, code chạy lint/test và publish PR dưới tên người) — không cần đợi gate escalation.
+
+ADR-0027 (`--deliver`): production được duyệt và deploy → tag `v<version>` + fast-forward `company/release` trong repo
+khách (`Integration.deliver`); production rolled_back/failed → lùi con trỏ nhánh release về lần giao trước (tag giữ).
+`--push-remote` đẩy lên remote của khách; lỗi push chỉ vào audit. `main` của khách vẫn không bị chạm.
 """
 from __future__ import annotations
 
@@ -293,7 +297,8 @@ class Orchestrator:
                  max_retries: int = 3, repo: Path | None = None, base: str = "HEAD", max_turns: int = 25,
                  batch_releases: bool = False,
                  integration: str = "company/integration", workers: int = 1, web: WebTools | bool = False,
-                 artifacts: Path | None = None, project_budget_usd: float | None = None):
+                 artifacts: Path | None = None, project_budget_usd: float | None = None,
+                 deliver: bool = False, push_remote: str | None = None, release_branch: str = "company/release"):
         self.bus = bus
         self.repo, self.max_turns = (Path(repo) if repo else None), max_turns
         self.workers = max(1, int(workers))
@@ -308,9 +313,15 @@ class Orchestrator:
         # `--repo` là repo MẶC ĐỊNH của tiến trình. Từng dự án có thể chỉ repo riêng ngay trong `research-requests`
         # (payload.repo, payload.base — ADR-0025): học từ log lúc mở lại và từ event lúc chạy, ticket của dự án nào
         # làm trong worktree của repo đó. Repo sai (không có .git) → audit một lần, dự án rơi về mặc định.
-        self.integration = Integration(self.repo, integration, base) if self.repo is not None else None
+        self.deliver, self.push_remote, self.release_branch = bool(deliver), push_remote, release_branch
+        self.integration = Integration(self.repo, integration, base, release_branch) if self.repo is not None else None
         self.base, self.integration_branch = base, integration
         self.project_repos: dict[str, Integration] = {}
+        # release_id → {version, tag, sha, short, branch, previous}: bản đã giao (ADR-0027), dựng lại từ audit-log
+        self.delivered: dict[str, dict[str, Any]] = {}
+        # release_id → sha ĐẦY ĐỦ của nhánh tích hợp lúc deploy staging: đúng nội dung QA đã hồi quy, và là sha được
+        # giao khi production duyệt — nhánh tích hợp có thể đã đi tiếp (ticket khác merge) trong lúc chờ gate 3.
+        self.release_sha: dict[str, str] = {}
         self.bad_repos: set[str] = set()
         self.void_releases: set[str] = set()
         self.integrated: set[str] = set()  # ticket đã merge vào nhánh tích hợp (khi approved, không đợi RC)
@@ -363,6 +374,9 @@ class Orchestrator:
                 elif a["actor"] == ACTOR and a["action"] == "once": self.once.add(d["key"])
                 elif a["action"] == "plan.proposed": self.plans[d["plan_id"]] = d
                 elif a["action"] == "release.void": self._void(d["release_id"])
+                elif a["action"] == "release.staged": self.release_sha[d["release_id"]] = d["sha"]
+                elif a["action"] == "delivery.done": self.delivered[d["release_id"]] = d
+                elif a["action"] == "delivery.rolled_back": self.delivered.pop(d["release_id"], None)
                 elif a["action"] == "ticket.abandoned": self.lead.abandon(d["ticket_id"])
                 elif a["action"] == "defer.until" and d.get("event_id"):
                     hen[str(d["event_id"])] = (str(d.get("until") or ""), str(d.get("reason") or "transient:?"))
@@ -472,7 +486,7 @@ class Orchestrator:
         base = str(env.payload.get("base") or self.base)
         current = self.project_repos.get(pid)
         if current is not None and current.repo == path.resolve() and current.base == base: return
-        self.project_repos[pid] = Integration(path.resolve(), self.integration_branch, base)
+        self.project_repos[pid] = Integration(path.resolve(), self.integration_branch, base, self.release_branch)
         self.bad_repos.discard(pid)
         self.lead.require_integration = True
         if not replaying: self._audit("project.repo", {"project_id": pid, "repo": str(path.resolve()), "base": base}, project_id=pid)
@@ -654,8 +668,12 @@ class Orchestrator:
             if r.topic_in != env.topic or (r.when and not r.when(env, self)): continue
             agent = env.payload["assignee"] if r.agent == "$assignee" else r.agent
             self._call(agent, env, r, res)
-        if env.topic == "release-events" and _deployed("production")(env, self):
-            self._open_acceptance_gate(env.key, res)
+        if env.topic == "release-events" and env.payload.get("env") == "production":
+            if env.payload.get("status") == "deployed":
+                self._deliver(env, res)
+                self._open_acceptance_gate(env.key, res)
+            elif env.payload.get("status") in {"rolled_back", "failed"}:
+                self._rollback_delivery(env, res)
         if env.topic == "acceptance-results":
             self._close_acceptance_gate(env, res)
             self._record_lessons(env.payload["release_id"])
@@ -932,6 +950,10 @@ class Orchestrator:
         extra = {"integration_branch": integ.branch, "integration_sha": integ.sha()} if integ is not None else {}
         inp = rc.model_copy(update={"payload": {**rc.payload, "target_env": r.target_env,
                                                 "gate_release": self.gate.is_approved(rid), **extra}})
+        if r.target_env == "staging" and integ is not None and (full := integ.rev(integ.branch)):
+            # Sha mà QA sẽ hồi quy — và sha sẽ được giao khi production duyệt (ADR-0027). Ghi audit để bền qua restart.
+            with self._lock: self.release_sha[rid] = full
+            self._audit("release.staged", {"release_id": rid, "sha": full, "branch": integ.branch}, project_id=self.project_for(rc))
         g = self.runner.generate(agent, inp, r.topic_out)
         p = g.payloads[0]
         if p.get("env") != r.target_env or p.get("release_id") != rid:
@@ -1151,6 +1173,66 @@ class Orchestrator:
             if self.lead.batch_releases:  # ticket đóng không còn giữ release của các ticket đã approved
                 self.lead.flush_releases(self.lead.tickets[tid].project_id)
 
+    # ---------- giao hàng thật (ADR-0027) ----------
+
+    def _deliver(self, env: Envelope, res: StepResult) -> None:
+        """Production đã deploy và gate release đã duyệt → tag `v<version>` + fast-forward `company/release` trong repo của
+        dự án. Tắt (`--deliver` không bật) hoặc không có repo thì không làm gì; đã giao rồi thì không giao lại."""
+        if not self.deliver: return
+        rid = env.key
+        if rid in self.delivered: return
+        integ = self._integration_of_release(env)
+        if integ is None or integ.rev(integ.branch) is None:
+            self._audit("delivery.skipped", {"release_id": rid, "reason": "không có nhánh tích hợp (dự án chạy không repo)"},
+                        project_id=self.project_for(env), once=f"delivery.skipped:{rid}")
+            return
+        if not self.gate.is_approved(rid):  # delivery-lead đã chặn trước (PermissionError); đây là lớp sau, không tin lời khai
+            self._audit("delivery.skipped", {"release_id": rid, "reason": "gate release chưa duyệt"}, project_id=self.project_for(env))
+            return
+        version = str(env.payload.get("version") or "")
+        tickets = self.lead.release_tickets.get(rid, [])
+        message = f"release {rid} v{version}\n\ntickets: {', '.join(tickets) or '-'}\nintegration: {integ.branch}"
+        try:
+            r = integ.deliver(version, message, sha=self.release_sha.get(rid), push_remote=self.push_remote)
+        except WorkspaceError as e:
+            self._audit("delivery.error", {"release_id": rid, "version": version, "error": str(e)[:300]}, project_id=self.project_for(env))
+            res.actions.append(f"delivery_error:{rid}"); return
+        rec = {"release_id": rid, "version": version, "tag": r.tag, "sha": r.sha, "short": r.short, "branch": r.branch,
+               "previous": r.previous, "tag_created": r.tag_created, "branch_moved": r.branch_moved, "problems": r.problems,
+               "pushed": r.pushed, "push_error": r.push_error, "repo": str(integ.repo)}
+        with self._lock: self.delivered[rid] = rec
+        self._audit("delivery.done", rec, project_id=self.project_for(env))
+        for pr in r.problems:  # mỗi vấn đề một dòng audit riêng để `diagnose`/console thấy ngay, không phải bới evidence
+            kind_, _, detail = pr.partition(":")
+            self._audit(f"delivery.{kind_}", {"release_id": rid, "tag": r.tag, "detail": detail}, project_id=self.project_for(env))
+        if r.pushed is False:
+            self._audit("delivery.push_failed", {"release_id": rid, "remote": self.push_remote, "error": r.push_error},
+                        project_id=self.project_for(env))
+        res.actions.append(f"delivered:{rid}@{r.tag}" + (f"({','.join(r.problems)})" if r.problems else ""))
+
+    def _rollback_delivery(self, env: Envelope, res: StepResult) -> None:
+        """Production rolled_back/failed của một release đã giao → `company/release` lùi về lần giao trước; tag giữ nguyên."""
+        if not self.deliver: return
+        rid = env.key
+        d = self.delivered.get(rid)
+        if d is None: return
+        integ = self._integration_of_release(env)
+        if integ is None: return
+        try:
+            r = integ.rollback_delivery(d.get("previous"), expected=str(d["sha"]), push_remote=self.push_remote)
+        except WorkspaceError as e:
+            self._audit("delivery.error", {"release_id": rid, "error": str(e)[:300]}, project_id=self.project_for(env))
+            res.actions.append(f"rollback_error:{rid}"); return
+        with self._lock: self.delivered.pop(rid, None)
+        self._audit("delivery.rolled_back", {"release_id": rid, "from": d["sha"], "to": d.get("previous"), "tag": d["tag"],
+                                             "branch": r.branch, "problems": r.problems, "pushed": r.pushed,
+                                             "push_error": r.push_error, "status": env.payload.get("status")},
+                    project_id=self.project_for(env))
+        if r.pushed is False:
+            self._audit("delivery.push_failed", {"release_id": rid, "remote": self.push_remote, "error": r.push_error},
+                        project_id=self.project_for(env))
+        res.actions.append(f"rolled_back:{rid}" + (f"({','.join(r.problems)})" if r.problems else ""))
+
     # ---------- vòng học ----------
 
     def _open_acceptance_gate(self, rid: str, res: StepResult) -> None:
@@ -1335,6 +1417,8 @@ class Orchestrator:
                 "workers": self.workers, "web": self.web is not None,
                 "cost_usd": self.supervisor.sprint_report()["cost_usd_total"],
                 "integration": self._integration_status(), "void_releases": sorted(self.void_releases),
+                "delivery": {rid: {k: d.get(k) for k in ("version", "tag", "short", "branch", "problems", "pushed")}
+                             for rid, d in sorted(self.delivered.items())},
                 "stats": dict(self.stats), "events": len(self.bus)}
 
 
@@ -1382,6 +1466,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--web", action="store_true", help="cho researcher tool web_search/fetch_url (mạng ra ngoài)")
     ap.add_argument("--batch-release", action="store_true",
                     help="gom mọi ticket approved của dự án vào một RC khi không còn ticket đang chạy (mặc định: mỗi ticket một RC)")
+    ap.add_argument("--deliver", action="store_true",
+                    help="ADR-0027: production duyệt + deploy → tag v<version> và fast-forward nhánh release trong repo khách")
+    ap.add_argument("--push-remote", help="remote của repo khách để push nhánh release + tag sau khi giao (mặc định: không push)")
+    ap.add_argument("--release-branch", default="company/release", help="nhánh 'đang chạy production' trong repo khách")
     sub = ap.add_subparsers(dest="cmd", required=True)
     rn = sub.add_parser("run"); rn.add_argument("--max-steps", type=int); rn.add_argument("--watch", type=float,
         help="chạy liên tục, mỗi N giây nạp event mới (gate CLI, publish) rồi xử lý")
@@ -1433,7 +1521,8 @@ def main(argv: list[str] | None = None) -> int:
     from .llm import FakeClient, make_client
     # Chỉ `run` gọi model; status/report/show/comment/takeover là việc của người và của code, không được đòi SDK/API key.
     orch = Orchestrator(bus, make_client() if ns.cmd == "run" else FakeClient(), repo=ns.repo, base=ns.base, integration=ns.integration, workers=ns.workers,
-                        web=ns.web, batch_releases=ns.batch_release, artifacts=ns.artifacts or artifact_store(ns.db))
+                        web=ns.web, batch_releases=ns.batch_release, artifacts=ns.artifacts or artifact_store(ns.db),
+                        deliver=ns.deliver, push_remote=ns.push_remote, release_branch=ns.release_branch)
     if ns.cmd == "status":
         print(json.dumps(orch.status(), ensure_ascii=False, indent=2)); return 0
     if ns.cmd == "report":

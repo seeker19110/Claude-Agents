@@ -363,7 +363,10 @@ uv run python -m company.orchestrator run --workers 4 --web   # ticket khác key
 
 Làm **code thật** trên repo khách: thêm `--repo ../khach --base main`. Khối kỹ thuật sửa trong worktree `ticket/<id>`,
 PR mang lint/test thật; `--integration` để ticket rẽ từ và gộp vào nhánh `company/integration`; `--batch-release` gom
-ticket approved của dự án vào một RC (một staging, một gate 3, một UAT).
+ticket approved của dự án vào một RC (một staging, một gate 3, một UAT). Thêm `--deliver` để khi gate release được duyệt và
+release-engineer báo production đã deploy, công ty đặt tag `v<version>` và fast-forward nhánh `company/release` trong repo
+khách (ADR-0027; `--push-remote origin` để đẩy lên remote, `--release-branch` đổi tên nhánh). `main` của khách vẫn không bị
+chạm — khách tự merge `company/release` (hoặc tag) vào `main` theo quy trình của họ.
 
 ### 5.3 Duyệt human gate
 
@@ -378,6 +381,21 @@ uv run python -m company.gate_cli reject  PLAN-P1 --by human:po --reason "tách 
 Năm quyết định: `approve`, `request_changes`, `reject`, `hold`, `rollback` (cùng cú pháp `SUBJECT --by --reason`). Gate có hạn
 24 giờ, nhắc ở 12 giờ; quá hạn thì supervisor escalate. Ticket blocked hoặc dự án kẹt mở thêm gate `escalation` (approve = mở
 lại với hint, reject = đóng).
+
+`gate_cli list` chỉ hiện nửa "Code gửi kèm" của checklist. Nửa "Người tự kiểm thêm" có trợ lý chuẩn bị bằng chứng, chỉ đọc,
+không ký thay:
+
+```bash
+uv run python -m company.gate_brief REL-001 --repo ../khach   # hoặc: make gate-brief SUBJECT=REL-001 REPO=../khach
+uv run python -m company.gate_brief --all                      # mọi gate đang chờ
+```
+
+Hồ sơ in ra màn hình và ghi `company.artifacts/<project>/gate-brief/<subject>.{md,json}`: mỗi mục tự kiểm là `ok` / `gap` /
+`unknown` kèm sự việc và nguồn (namespace@version, topic, worktree) — không có mục nào là "nên duyệt". Với gate `escalation`
+hồ sơ gom lịch sử thất bại, hint đã dùng (và hint lặp lại y hệt), ngân sách còn, worktree để hint mới cụ thể hơn "thử lại".
+Trong Claude Code, `/gate-brief REL-001` chạy lệnh trên rồi gọi subagent `sc-gate-release` + trợ lý chuyên môn (`sc-qa-debugger`,
+`sc-security-engineer`, `sc-release-engineer`; chỉ Read/Grep/Glob) đọc hồ sơ và in một bản tóm; câu cuối luôn là lệnh
+`gate_cli` để bạn tự ký.
 
 Con người trả lời câu hỏi của clarifier, quyết định change request, nhận xét ticket đang chạy, hoặc tiếp quản worktree:
 

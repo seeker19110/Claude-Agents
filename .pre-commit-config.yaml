@@ -32,4 +32,4 @@ repos:
         entry: uv run --project software-company python -m company.subagents check
         language: system
         pass_filenames: false
-        files: ^(software-company/(agents|skills)/|\.claude/agents/sc-)
+        files: ^(software-company/(agents|skills)/|software-company/gates/checklists\.md|\.claude/agents/sc-)

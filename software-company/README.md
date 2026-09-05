@@ -31,11 +31,12 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0026); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0027); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
 agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
 gates/         checklist 4 human gate + gate bất thường `escalation` (ticket và cấp dự án); GateKind = spec|plan|release|acceptance|escalation
+               — nửa "Người tự kiểm thêm" của mỗi gate được `gate_checklists.py` parse thành trợ lý `sc-gate-<kind>` và hồ sơ `gate_brief`
 templates/     PRD, ticket, PR, bug report, postmortem, ADR, threat model, data contract
 topics/        18 JSON Schema topic + bảng owner namespace
 src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, gate_cli, blackboard (artifact store),
@@ -45,16 +46,18 @@ src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, g
                giới tin cậy), mcp_bridge (cầu MCP đưa tool công ty vào CLI — ADR-0024), probe (CLI chạy được chế độ tool
                nào), web (tool web cho researcher), guard (chống injection), assetscan (quét tài sản prompt), context (hạn mức ngữ cảnh),
                metrics (từ audit-log), evals (ghi/phát lại), stacks (lint/test theo stack — ADR-0013),
-               subagents (sinh trợ lý kiểm duyệt chỉ-đọc `.claude/agents/sc-*.md` từ agents/ — `make subagents`),
-               demo, graph (cần `uv sync --extra graph`, không tính coverage)
+               subagents (sinh 25 trợ lý kiểm duyệt chỉ-đọc `.claude/agents/sc-*.md` từ agents/ + gates/checklists.md — `make subagents`),
+               gate_checklists (parser checklists.md + bảng nguồn bằng chứng §5 đặc tả), gate_brief (hồ sơ bằng chứng chỉ đọc
+               cho nửa "người tự kiểm" của một gate — `make gate-brief SUBJECT=…`), demo, graph (cần `uv sync --extra graph`, không tính coverage)
 examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--relay/--resume/--auto-escalate), relay_client.py
                yeu-cau-mau-web-app.json (yêu cầu mẫu để publish vào `research-requests`: đủ mục tiêu, người dùng,
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng intake cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 20 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
-tests/         pytest 584 ca / 31 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
-               tích hợp, repo theo dự án, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan, guard/blackboard,
-               schema consistency, golden 20 agent, bộ sinh subagent, rà soát bảo mật); coverage fail_under=98
+tests/         pytest 642 ca / 33 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+               tích hợp, repo theo dự án, giao hàng thật, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
+               guard/blackboard, schema consistency, golden 20 agent + 5 hồ sơ gate, bộ sinh subagent, hồ sơ gate, rà soát bảo mật);
+               coverage fail_under=98
 ```
 
 ## Chạy
@@ -100,6 +103,13 @@ uv run python -m company.orchestrator run --repo ../khach --base main   # làm T
                                                                         # ticket rẽ từ và merge vào company/integration (--integration)
 uv run python -m company.gate_cli approve SPEC-P1 --by human:po   # gate spec → plan → release → acceptance
 #   quyết định: approve | request_changes | reject | hold | rollback; `request KIND SUBJECT --by --checklist` mở gate tay
+uv run python -m company.gate_brief REL-001 [--repo ../khach]   # hoặc: make gate-brief SUBJECT=REL-001 — hồ sơ bằng chứng CHỈ ĐỌC
+#   cho nửa "người tự kiểm thêm" của gate (SQLite mode=ro, verdict chỉ ok|gap|unknown, không khuyến nghị); `--all` mọi gate chờ;
+#   ghi <db>.artifacts/<project>/gate-brief/<subject>.{md,json}. Trong Claude Code: `/gate-brief REL-001` gọi thêm trợ lý
+#   `sc-gate-<kind>` + `sc-<agent>` (chỉ Read/Grep/Glob) đọc hồ sơ và in bản tóm; người vẫn tự ký bằng gate_cli
+uv run python -m company.orchestrator --repo ../khach --deliver [--push-remote origin] [--release-branch company/release] run --watch 5
+#   ADR-0027: production duyệt + deploy → tag v<version> tại sha đã QA trên staging + fast-forward nhánh `company/release`
+#   trong repo khách; rolled_back → lùi con trỏ (tag giữ); push lỗi chỉ vào audit `delivery.push_failed`; `main` khách không bị chạm
 uv run python -m company.orchestrator publish clarification-answers ans.json --actor human:po
 uv run python -m company.orchestrator decide-change CR-1 accepted --by human:po   # sau khi delivery-lead ước lượng impact
 uv run python -m company.orchestrator run --workers 4 --web   # ticket khác key chạy song song; researcher có web
@@ -131,7 +141,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-04)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0026; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0027; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),
@@ -229,20 +239,35 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   front matter; runner cắt payload/blackboard theo `context.py` nên reviewer/QA/security không còn nhận toàn văn blackboard.
 - **Lỗi tạm thời của provider** (429, 5xx, đứt mạng) được thử lại có backoff; `Refused` và 4xx thì không. Anthropic
   có timeout nên một request treo không giữ luôn cả orchestrator.
+- **Trợ lý kiểm duyệt có hồ sơ bằng chứng** (`docs/dac-ta-tro-ly-kiem-duyet.md`, đủ 6 PR): 25 subagent Claude Code chỉ đọc
+  (`sc-<agent>` theo góc nhìn từng agent + `sc-gate-<kind>` theo từng gate, sinh một chiều từ `agents/` và
+  `gates/checklists.md`, CI `subagents-check` chặn trôi, `assetscan` quét như tài sản prompt); `gate_brief` rút bằng chứng
+  ĐỊNH LƯỢNG cho nửa "người tự kiểm thêm" của gate (NFR có số đo, out-of-scope, câu hỏi mở, ước lượng vs knowledge, ngân sách,
+  endpoint ↔ infra, changelog/NOTICE trên diff nhánh tích hợp, môi trường UAT, finding ↔ requirement_id; gate escalation: lịch sử
+  thất bại, hint đã dùng và hint lặp, ngân sách còn, worktree) — verdict chỉ `ok|gap|unknown`, mở SQLite `mode=ro`, trích ≤ 200 ký
+  tự mỗi nguồn; `/gate-brief <subject>` gộp hồ sơ + subagent thành một bản tóm; trợ lý không bao giờ ký (`trusted_decision`
+  chỉ tin actor là người — test hồi quy).
+- **Giao hàng thật** (ADR-0027, `--deliver`): production được duyệt và deploy → tag chú thích `v<version>` tại đúng sha nhánh
+  tích hợp lúc deploy staging (audit `release.staged`, không phải đầu nhánh đã đi tiếp) + fast-forward `company/release`;
+  rolled_back/failed → lùi con trỏ về lần giao trước, không lùi đè release sau (`superseded`); tag đã có ở sha khác không bị ghi
+  đè (`delivery.tag_conflict`), nhánh bị đụng tay không bị ép (`delivery.diverged`); `--push-remote` đẩy lên remote khách với
+  `--force-with-lease` khi lùi, lỗi push chỉ vào audit; bền qua restart; `status.delivery`. `main` của khách vẫn không bị chạm.
 
 ### Chưa có
-- **Deploy thật**: release-engineer vẫn mô phỏng; chưa đẩy `company/integration` lên `main`/tag phiên bản; xung đột
-  giải quyết bằng làm lại trên nền mới, chưa rebase tự động. Chưa dựng **CI/CD cho sản phẩm của khách** (CI của chính
-  repo này thì có). **Kafka/Redis** thay SQLite khi chạy nhiều máy (song song mới ở mức thread trong một tiến trình).
+- **Deploy hạ tầng thật**: phần git của giao hàng đã thật (tag + `company/release`, ADR-0027) nhưng release-engineer vẫn
+  mô tả deploy chứ chưa chạy container/k8s/CI-CD cho sản phẩm khách; đưa `company/release` vào `main` là quy trình PR của
+  khách. Xung đột giải quyết bằng làm lại trên nền mới, chưa rebase tự động. **Kafka/Redis** thay SQLite khi chạy nhiều
+  máy (song song mới ở mức thread trong một tiến trình).
 - **Sandbox tiến trình** cho `run` (container/seccomp): hiện chỉ allowlist lệnh + khoá đường dẫn + lọc env. Guard
   injection là lưới chắn theo mẫu, không phải hàng rào — xem `../SECURITY.md` ở gốc hub.
-- **Giao diện gate** ngoài CLI; thông báo (email/chat) khi gate quá hạn; **giao diện UAT cho khách**.
+- **Thông báo** (email/chat/webhook) khi gate mở hay quá hạn; **giao diện UAT cho khách**; console chưa hiện hồ sơ
+  `gate_brief` cạnh nút duyệt (mới có ở CLI và `/gate-brief`).
 
 ### Bước tiếp theo
 1. Chạy `make eval-record AGENT=<id>` cho 20 agent với model thật, commit bản ghi để CI eval có răng.
-2. Release-engineer thật: đẩy `company/integration` lên `main` + tag khi gate release duyệt; CI/CD.
+2. Deploy hạ tầng thật cho sản phẩm khách (release-engineer chạy CI/CD, container) nối tiếp tag/nhánh release của ADR-0027.
 3. Sandbox container cho `run`; adapter bus Redis Streams/Kafka giữ interface hiện tại (kể cả `poll`) để chạy nhiều tiến trình.
-4. Giao diện web cho human gate + thông báo; giao diện UAT cho khách.
+4. Console hiện hồ sơ `gate_brief` cạnh nút duyệt; thông báo webhook khi gate mở/quá hạn; giao diện UAT cho khách.
 
 ## Thứ tự triển khai khuyến nghị
 

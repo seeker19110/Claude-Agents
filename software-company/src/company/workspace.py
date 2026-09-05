@@ -3,13 +3,16 @@ Tool xác định cho khối kỹ thuật; kết quả là bằng chứng để 
 
 `Integration` (ADR-0011): nhánh tích hợp của công ty (`company/integration`, rẽ từ `base` lần đầu). Ticket rẽ từ đây
 và được merge vào đây (--no-ff) khi đủ review pass; xung đột thì huỷ merge, trả lại danh sách file để ticket làm lại
-trên nền mới. Nhánh của khách (`main`) không bị chạm."""
+trên nền mới. Nhánh của khách (`main`) không bị chạm.
+
+Giao hàng (ADR-0027): `Integration.deliver` đặt tag `v<version>` tại sha tích hợp và fast-forward nhánh `company/release`
+tới đó; `rollback_delivery` lùi con trỏ nhánh về lần giao trước (tag giữ nguyên). Tuỳ chọn push lên remote của khách."""
 from __future__ import annotations
 
 import os
 import re
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -192,14 +195,116 @@ class MergeResult:
 
 
 @dataclass
+class DeliveryResult:
+    """Kết quả một lần giao (ADR-0027). `problems` là chuỗi `tag_conflict:<tag>@<sha>` / `diverged:<sha>`; `pushed` là
+    None khi không push, True/False khi có push (lỗi push nằm ở `push_error`, không làm `ok` sai vì bản giao cục bộ đã có)."""
+    ok: bool
+    sha: str = ""            # sha ĐẦY ĐỦ đã giao (để rollback đối chiếu bằng --force-with-lease)
+    short: str = ""
+    tag: str = ""
+    branch: str = ""
+    previous: str | None = None   # sha nhánh release TRƯỚC lần giao này (None = nhánh vừa được tạo)
+    tag_created: bool = False
+    branch_moved: bool = False
+    problems: list[str] = field(default_factory=list)
+    pushed: bool | None = None
+    push_error: str = ""
+
+
+def _git_ok(repo: Path, *args: str, timeout: int = 120) -> tuple[bool, str]:
+    """Như `_git` nhưng không ném: (ok, stdout hoặc stderr rút gọn). Dùng cho thao tác được phép thất bại (push)."""
+    try:
+        r = subprocess.run(["git", "-C", str(repo), *NO_HOOKS, *args], capture_output=True, text=True, encoding="utf-8",
+                           env=clean_env(), timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return False, f"git {' '.join(args)}: quá {timeout}s"
+    return (True, r.stdout.strip()) if r.returncode == 0 else (False, (r.stderr or r.stdout).strip()[-300:])
+
+
+@dataclass
 class Integration:
     """Nhánh tích hợp trong worktree riêng `.worktrees/_integration`; merge ticket vào đây, không checkout repo gốc."""
     repo: Path
     branch: str = "company/integration"
     base: str = "HEAD"
+    release_branch: str = "company/release"  # ADR-0027: con trỏ "đang chạy production"; tag v* là lịch sử bất biến
 
     @property
     def path(self) -> Path: return self.repo / ".worktrees" / "_integration"
+
+    def rev(self, ref: str) -> str | None:
+        """Sha đầy đủ của một ref (commit mà tag trỏ tới, không phải object tag); None nếu ref không tồn tại."""
+        ok, out = _git_ok(self.repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+        return out if ok and out else None
+
+    def deliver(self, version: str, message: str, sha: str | None = None,
+                push_remote: str | None = None) -> DeliveryResult:
+        """Tag `v<version>` tại `sha` (mặc định: đầu nhánh tích hợp; orchestrator truyền sha đã kiểm trên staging) +
+        fast-forward `release_branch` tới đó (ADR-0027). Idempotent; không bao giờ ghi đè tag đã có ở sha khác, không
+        bao giờ ép nhánh release khi nó không fast-forward được."""
+        sha = self.rev(sha) if sha else self.rev(self.branch)
+        if sha is None:
+            raise WorkspaceError(f"nhánh tích hợp {self.branch} chưa tồn tại (hoặc sha không có): chưa có gì để giao")
+        tag = f"v{version}"
+        res = DeliveryResult(ok=True, sha=sha, short=sha[:7], tag=tag, branch=self.release_branch,
+                             previous=self.rev(self.release_branch))
+        existing = self.rev(f"refs/tags/{tag}")
+        if existing is None:
+            msg = self.repo / ".worktrees" / "_tag_msg.txt"
+            msg.parent.mkdir(parents=True, exist_ok=True)
+            msg.write_text(message, encoding="utf-8", newline="\n")
+            try:
+                _git(self.repo, "-c", "user.name=release-engineer", "-c", "user.email=release@company.local",
+                     "tag", "-a", "-F", str(msg), tag, sha)
+            finally:
+                msg.unlink(missing_ok=True)
+            res.tag_created = True
+        elif existing != sha:
+            res.problems.append(f"tag_conflict:{tag}@{existing[:7]}")
+        prev = res.previous
+        if prev is None:
+            _git(self.repo, "branch", self.release_branch, sha); res.branch_moved = True
+        elif prev != sha:
+            if _git_ok(self.repo, "merge-base", "--is-ancestor", prev, sha)[0]:
+                _git(self.repo, "branch", "-f", self.release_branch, sha); res.branch_moved = True
+            elif _git_ok(self.repo, "merge-base", "--is-ancestor", sha, prev)[0]:
+                pass  # nhánh release đã đi qua sha này (release sau lên production trước): không lùi, không phải lỗi
+            else:
+                res.problems.append(f"diverged:{prev[:7]}")
+        res.ok = not res.problems
+        if push_remote:
+            refs = [f"refs/heads/{self.release_branch}"] if res.branch_moved else []
+            if res.tag_created or existing == sha: refs.append(f"refs/tags/{tag}")
+            res.pushed, res.push_error = self.push(push_remote, *refs) if refs else (True, "")
+        return res
+
+    def rollback_delivery(self, to_sha: str | None, expected: str, push_remote: str | None = None) -> DeliveryResult:
+        """Lùi `release_branch` về `to_sha` (lần giao trước); None = xoá nhánh (đây là lần giao đầu). Tag giữ nguyên.
+        Chỉ lùi khi nhánh đang trỏ đúng sha đã giao (`expected`): release sau đã lên thì bản này bị thay thế, không
+        lùi đè lên nó (`superseded`). Push dùng `--force-with-lease` với `expected` để không đè thứ người khác vừa đẩy."""
+        res = DeliveryResult(ok=True, sha=to_sha or "", short=(to_sha or "")[:7], branch=self.release_branch, previous=expected)
+        cur = self.rev(self.release_branch)
+        if cur is None:
+            res.problems.append("missing:nhánh release không còn")
+        elif cur != expected:
+            res.problems.append(f"superseded:{cur[:7]}")
+        elif to_sha is None:
+            _git(self.repo, "branch", "-D", self.release_branch); res.branch_moved = True
+        elif cur != to_sha:
+            _git(self.repo, "branch", "-f", self.release_branch, to_sha); res.branch_moved = True
+        res.ok = not res.problems
+        if push_remote and res.branch_moved:
+            spec = f"{to_sha}:refs/heads/{self.release_branch}" if to_sha else f":refs/heads/{self.release_branch}"
+            res.pushed, res.push_error = self.push(push_remote, spec, lease=(self.release_branch, expected))
+        return res
+
+    def push(self, remote: str, *refspecs: str, lease: tuple[str, str] | None = None) -> tuple[bool, str]:
+        """`git push` với env đã lọc bí mật và không hook; thất bại trả (False, stderr rút gọn) chứ không ném —
+        bản giao cục bộ đã có, push hỏng là việc người xử lý (audit `delivery.push_failed`)."""
+        args = ["push"]
+        if lease: args.append(f"--force-with-lease=refs/heads/{lease[0]}:{lease[1]}")
+        ok, out = _git_ok(self.repo, *args, remote, *refspecs)
+        return ok, ("" if ok else out)
 
     def ensure(self) -> str:
         """Tạo nhánh (từ `base`) và worktree nếu chưa có; trả về sha hiện tại của nhánh tích hợp."""

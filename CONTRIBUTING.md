@@ -76,6 +76,10 @@ Prompt là code: đổi prompt mà không chạy lại các bước dưới đâ
    mẫu để làm ví dụ dạy học thì thêm dòng có lý do vào `assetscan-waivers.txt`, đừng nới regex.
 6. Nhồi thêm skill vào một agent thì chạy **`make assetbudget`**: prompt tĩnh vượt 50% `budget_tokens_per_task`
    của chính agent đó là đỏ — nâng ngân sách có chủ đích, hoặc bớt skill.
+7. **`make subagents`** (trong `software-company/`) rồi commit `.claude/agents/`: trợ lý kiểm duyệt `sc-*` là bản dẫn xuất
+   một chiều từ `agents/`, `skills/` và `gates/checklists.md`; CI `subagents-check` và pre-commit đỏ khi bản trên đĩa lệch
+   nguồn. Sửa mục "Người tự kiểm thêm" trong `gates/checklists.md` thì khai nguồn bằng chứng cho nó ở
+   `src/company/gate_checklists.py` trước, nếu không parser gãy.
 
 Ca eval chấm không đạt **không** làm CI đỏ (đó là tín hiệu chất lượng cho vòng sau); chỉ bản ghi thiếu hoặc lệch
 mới đỏ.

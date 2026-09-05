@@ -1,4 +1,4 @@
-.PHONY: llm probe test cov lint types fix demo golden subagents subagents-check gate eval eval-record eval-replay run watch status report metrics assetscan assetbudget
+.PHONY: llm probe test cov lint types fix demo golden subagents subagents-check gate gate-brief eval eval-record eval-replay run watch status report metrics assetscan assetbudget
 llm:           # cài hồ sơ model chạy thật: make llm PROFILE=claude-gateway (không ghi đè llm.yaml đang có)
 	@test -f llm.yaml && echo "llm.yaml đã có, không ghi đè (xoá nó nếu muốn cài lại)" || \
 	 (cp llm.$(or $(PROFILE),claude-gateway).yaml llm.yaml && echo "đã tạo llm.yaml từ llm.$(or $(PROFILE),claude-gateway).yaml")
@@ -25,6 +25,8 @@ subagents-check:  # CI: gãy nếu bản dẫn xuất lệch nguồn
 	uv run python -m company.subagents check
 gate:
 	uv run python -m company.gate_cli list
+gate-brief:       # hồ sơ bằng chứng (chỉ đọc) cho nửa "người tự kiểm thêm" của một gate: make gate-brief SUBJECT=REL-001 [REPO=../khach]
+	uv run python -m company.gate_brief $(or $(SUBJECT),--all) $(if $(REPO),--repo $(REPO),)
 assetscan:     # quét tài sản prompt của cả hai công ty (ADR-0022); miễn trừ ở assetscan-waivers.txt
 	uv run python -m company.assetscan scan . ../Studio-creators
 assetbudget:   # prompt tĩnh chiếm bao nhiêu phần ngân sách token của từng agent

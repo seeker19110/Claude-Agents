@@ -1,0 +1,82 @@
+{
+  "code_checklist": [
+    "tests",
+    "scan",
+    "regression-staging",
+    "perf",
+    "a11y",
+    "runbook",
+    "rollback"
+  ],
+  "created_by": "delivery-lead",
+  "extra": {
+    "staging_reviews": [
+      {
+        "metrics": "{}",
+        "source": "qa",
+        "verdict": "pass"
+      }
+    ],
+    "tickets": [
+      "T1"
+    ],
+    "version": "0.1.1"
+  },
+  "kind": "release",
+  "project_id": "P1",
+  "schema_version": 1,
+  "self_check": [
+    {
+      "facts": [
+        "2 endpoint trong api-contract, 2 được nhắc trong infra",
+        "infra có nhắc dashboard/alert/runbook"
+      ],
+      "id": "release.dashboard-alert",
+      "question": "Dashboard + alert (có runbook) cho dịch vụ/tính năng mới",
+      "sources": [
+        {
+          "content_ref": "openapi.yaml",
+          "kind": "namespace",
+          "path": "<…>",
+          "ref": "api-contract",
+          "version": 1
+        },
+        {
+          "content_ref": "infra/dash.md",
+          "kind": "namespace",
+          "path": "<…>",
+          "ref": "infra",
+          "version": 2
+        }
+      ],
+      "verdict": "ok"
+    },
+    {
+      "facts": [
+        "gate do `delivery-lead` tạo; code từ chối quyết định của chính actor đó (four-eyes)"
+      ],
+      "id": "release.four-eyes",
+      "question": "Người duyệt ≠ người tạo release",
+      "sources": [
+        {
+          "created_by": "delivery-lead",
+          "kind": "gate",
+          "ref": "REL-001"
+        }
+      ],
+      "verdict": "ok"
+    }
+  ],
+  "status": "pending",
+  "subject_id": "REL-001",
+  "unavailable": [
+    {
+      "id": "release.changelog-docs-notice",
+      "reason": "không có repo/nhánh tích hợp để xem diff (chạy lại với --repo)"
+    },
+    {
+      "id": "release.error-budget",
+      "reason": "repo không định nghĩa SLO/error budget; 30 ngày qua: 0 incident SEV1/SEV2, 0 release rolled_back/failed"
+    }
+  ]
+}
