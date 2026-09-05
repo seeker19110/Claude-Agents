@@ -187,6 +187,9 @@ def test_claude_code_thoat_ma_1_phan_loai_theo_thong_diep_khong_theo_duoi_teleme
     with pytest.raises(LLMError, match="thoát mã 1: boom") as ei2:  # không có JSON: stderr như cũ
         c._subprocess([sys.executable, "-c", "import sys; sys.stderr.write('boom'); sys.exit(1)"], stdin="")
     assert not isinstance(ei2.value, TransientError)
+    with pytest.raises(LLMError, match="thoát mã 1.*not json") as ei3:  # có `{` nhưng không phải JSON: rơi về đuôi output
+        c._subprocess([sys.executable, "-c", "import sys; print('{not json'); sys.exit(1)"], stdin="")
+    assert not isinstance(ei3.value, TransientError)
 
 
 def test_retrying_client_bind_toolbox_chuyen_tiep_khi_inner_biet():
