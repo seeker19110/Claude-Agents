@@ -4,11 +4,17 @@ Vòng chạy của công ty dừng ở human gate. `gate_cli list` chỉ hiện 
 "Người tự kiểm thêm" thì người duyệt phải tự đi tìm bằng chứng trong bus, blackboard, artifacts, worktree.
 Subagent sinh ra ở đây đứng ở PHÍA BÊN KIA gate: nó chuẩn bị bằng chứng cho người ký, không ký và không được ký.
 
-Dẫn xuất là MỘT CHIỀU: nguồn là `agents/<block>/<id>.md`, đích là `.claude/agents/sc-<id>.md`. Sửa đích bằng tay
-sẽ bị `check` bắt (CI gọi cùng chỗ với golden test), vì bản dẫn xuất lệch nguồn nghĩa là người duyệt đang chấm
-theo tiêu chuẩn khác với tiêu chuẩn công ty thực sự dùng.
+Dẫn xuất là MỘT CHIỀU, từ hai nguồn (đặc tả `docs/dac-ta-tro-ly-kiem-duyet.md` §4):
 
-    python -m company.subagents build [--out ../.claude/agents] [--only sc-qa-debugger]
+- `agents/<block>/<id>.md` → `.claude/agents/sc-<id>.md`: trợ lý CHUYÊN MÔN, chấm bằng chứng theo tiêu chuẩn của
+  đúng agent đó (20 file).
+- `gates/checklists.md` (qua `gate_checklists.parse`) → `.claude/agents/sc-gate-<kind>.md`: trợ lý THEO GATE, mỗi mục
+  "Người tự kiểm thêm" thành một đề mục bắt buộc trả lời kèm nguồn bằng chứng (5 file, một cho mỗi `GateKind`).
+
+Sửa đích bằng tay sẽ bị `check` bắt (CI gọi cùng chỗ với golden test), vì bản dẫn xuất lệch nguồn nghĩa là người
+duyệt đang chấm theo tiêu chuẩn khác với tiêu chuẩn công ty thực sự dùng.
+
+    python -m company.subagents build [--out ../.claude/agents] [--only sc-qa-debugger|sc-gate-plan]
     python -m company.subagents check [--out ../.claude/agents]   # exit 1 nếu lệch, in diff thống nhất
     python -m company.subagents list
 """
@@ -20,10 +26,14 @@ import re
 import sys
 from pathlib import Path
 
+from .gate_checklists import EXPERTS, GATE_MODEL, GateSection
+from .gate_checklists import load as load_gates
 from .registry import ROOT, AgentSpec, load_agents, load_skill
 
 OUT_DIR = ROOT.parent / ".claude" / "agents"
 PREFIX = "sc-"
+GATE_PREFIX = "sc-gate-"
+GATE_CAP = 50_000  # trần kích thước file sc-gate-* (không có agent gốc để lấy max_input_chars)
 
 # I1: chỉ tool đọc. Không `Bash` — subagent không được chạm `company.sqlite`, `gate_cli`, hay worktree.
 TOOLS = ("Read", "Grep", "Glob")
@@ -140,27 +150,107 @@ def render(spec: AgentSpec) -> str:
     return "\n".join(parts)
 
 
+def gate_name(kind: str) -> str:
+    return f"{GATE_PREFIX}{kind}"
+
+
+def render_gate(g: GateSection) -> str:
+    """Toàn văn `.claude/agents/sc-gate-<kind>.md` (§4.4): nửa của code chỉ nêu khi có bằng chứng trái ngược;
+    nửa của người là các đề mục BẮT BUỘC trả lời, mỗi mục kèm nguồn bằng chứng từ bảng §5."""
+    model = GATE_MODEL.get(g.kind, "sonnet")
+    parts = [
+        "---",
+        f"name: {gate_name(g.kind)}",
+        "description: >-",
+        f"  Trợ lý kiểm duyệt gate `{g.kind}` — chuẩn bị bằng chứng cho nửa \"người tự kiểm thêm\" của checklist."
+        " Chỉ đọc, không quyết định.",
+        f"tools: {', '.join(TOOLS)}",
+        f"model: {model}",
+        "---",
+        "",
+        f"<!-- SINH TỰ ĐỘNG từ gates/checklists.md ({g.title}) — sửa nguồn rồi chạy make subagents -->",
+        "",
+        BOUNDARY,
+        "",
+        f"## Gate `{g.kind}` — subject `{g.subject}`",
+        "",
+        "Hồ sơ bằng chứng của gate (nếu người duyệt đã sinh) nằm ở `company.artifacts/<project>/gate-brief/<subject>.md`"
+        " và `.json` cùng thư mục; đọc nó trước, rồi mới đối chiếu thêm trong artifact khác. Không có hồ sơ thì bạn"
+        " vẫn làm việc được, chỉ là nhiều mục hơn sẽ là `unknown`.",
+        "",
+        "## Nửa của code",
+        "",
+        "Các khoá dưới đây đã có trong checklist của gate và người duyệt tự xác nhận. Bạn CHỈ nêu một mục ở đây khi"
+        " tìm thấy bằng chứng TRÁI NGƯỢC với nó.",
+        "",
+        *[f"- `{c.key}` — {c.text}" for c in g.code],
+        "",
+        "## Nửa của người — bắt buộc trả lời từng mục",
+        "",
+        "Mỗi mục phải xuất hiện trong báo cáo với đúng một kết luận `ok` / `gap` / `unknown` và nguồn kiểm chứng"
+        " lại được. Nguồn gợi ý bên dưới là nơi bắt đầu tìm, không phải danh sách đóng.",
+        "",
+    ]
+    for it in g.self_checks:
+        parts.append(f"- **{it.text}** (`{it.id}`)")
+        parts += [f"  - nguồn: {src}" for src in it.sources]
+    if g.kind == "escalation":
+        parts += [
+            "",
+            "## Riêng gate bất thường",
+            "",
+            "Subject là `ticket_id` (ticket blocked hoặc bị supervisor escalate) hoặc `project_id` (chuỗi nghiên cứu lỗi,"
+            " dự án không có bước kế tiếp). Thứ người duyệt phải viết là hint cho lần làm lại, nên hồ sơ có bốn phần"
+            " bạn PHẢI đọc hết trước khi kết luận: lịch sử thất bại từng lần (retry, review block/fail, lỗi runner),"
+            " hint đã dùng ở các lần mở lại trước (hint mới trùng hint cũ nghĩa là vòng lặp sắp lặp lại), ngân sách còn,"
+            " và worktree/diff cuối. Bạn nêu SỰ VIỆC để hint của người cụ thể hơn — không tự đề xuất mở lại hay đóng.",
+        ]
+    parts += [
+        "",
+        "## Trợ lý chuyên môn nên gọi cùng hồ sơ",
+        "",
+        *[f"- {x}" for x in EXPERTS[g.kind]],
+        "",
+        REPORT,
+        "",
+    ]
+    return "\n".join(parts)
+
+
 def render_all(only: str | None = None) -> dict[Path, str]:
-    """{đường dẫn đích: nội dung} cho mọi agent (hoặc riêng `only`, nhận cả `sc-x` lẫn `x`)."""
-    want = only[len(PREFIX):] if only and only.startswith(PREFIX) else only
-    specs = load_agents()
-    if want is not None and want not in specs:
-        raise SystemExit(f"không có agent {want!r}; có: {', '.join(sorted(specs))}")
-    return {OUT_DIR / f"{target_name(s.id)}.md": render(s)
-            for s in specs.values() if want is None or s.id == want}
+    """{đường dẫn đích: nội dung} cho mọi agent + mọi gate (hoặc riêng `only`: `sc-x`, `x`, hay `sc-gate-<kind>`)."""
+    specs = load_agents(); gates = load_gates()
+    if only is None:
+        out = {OUT_DIR / f"{target_name(s.id)}.md": render(s) for s in specs.values()}
+        out |= {OUT_DIR / f"{gate_name(g.kind)}.md": render_gate(g) for g in gates.values()}
+        return out
+    if only.startswith(GATE_PREFIX) and only[len(GATE_PREFIX):] in gates:
+        g = gates[only[len(GATE_PREFIX):]]
+        return {OUT_DIR / f"{gate_name(g.kind)}.md": render_gate(g)}
+    want = only[len(PREFIX):] if only.startswith(PREFIX) else only
+    if want not in specs:
+        raise SystemExit(f"không có agent {want!r}; có: {', '.join(sorted(specs))}"
+                         f" và gate: {', '.join(gate_name(k) for k in sorted(gates))}")
+    return {OUT_DIR / f"{target_name(want)}.md": render(specs[want])}
 
 
-def oversize(spec: AgentSpec, text: str) -> str | None:
-    """Trần kích thước: file sinh không được vượt trần prompt của agent gốc (ADR-0020)."""
-    cap = spec.max_input_chars or 50_000
-    return f"{target_name(spec.id)}: {len(text)} ký tự > trần {cap}" if len(text) > cap else None
+def oversize(spec: AgentSpec | None, text: str, name: str = "") -> str | None:
+    """Trần kích thước: file sinh không được vượt trần prompt của agent gốc (ADR-0020); sc-gate-* dùng GATE_CAP."""
+    cap = (spec.max_input_chars or 50_000) if spec is not None else GATE_CAP
+    label = target_name(spec.id) if spec is not None else name
+    return f"{label}: {len(text)} ký tự > trần {cap}" if len(text) > cap else None
+
+
+def _spec_of(path: Path, specs: dict[str, AgentSpec]) -> AgentSpec | None:
+    """Agent gốc của một file sinh; None với sc-gate-*."""
+    if path.stem.startswith(GATE_PREFIX): return None
+    return specs[path.stem[len(PREFIX):]]
 
 
 def build(only: str | None = None, out: Path | None = None) -> list[Path]:
     files = render_all(only)
     specs = load_agents()
-    if bad := [m for p, t in files.items()
-               if (m := oversize(specs[p.stem[len(PREFIX):]], t))]:
+    if bad := [m for p, t in files.items() if (m := oversize(_spec_of(p, specs), t, p.stem))]:
         raise SystemExit("file sinh vượt trần:\n  " + "\n  ".join(bad))
     written = []
     for path, text in sorted(files.items()):
@@ -198,6 +288,8 @@ def main(argv: list[str] | None = None) -> int:
     if ns.cmd == "list":
         for s in sorted(load_agents().values(), key=lambda x: x.id):
             print(f"agents/{s.block}/{s.id}.md  ->  .claude/agents/{target_name(s.id)}.md  version={s.version}")
+        for g in load_gates().values():
+            print(f"gates/checklists.md ({g.title})  ->  .claude/agents/{gate_name(g.kind)}.md")
         return 0
     if ns.cmd == "build":
         for p in build(ns.only, ns.out): print(f"đã ghi {p}")

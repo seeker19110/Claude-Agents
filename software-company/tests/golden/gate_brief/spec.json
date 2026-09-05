@@ -1,0 +1,104 @@
+{
+  "code_checklist": [
+    "prd",
+    "acceptance-criteria",
+    "ux-flow",
+    "risks"
+  ],
+  "created_by": "spec-writer",
+  "extra": {},
+  "kind": "spec",
+  "project_id": "P1",
+  "schema_version": 1,
+  "self_check": [
+    {
+      "facts": [
+        "mục NFR có 3 dòng, 2 dòng có ngưỡng/đơn vị",
+        "vd: - p95 < 300 ms cho GET /orders",
+        "vd: - sẵn sàng 99.9 %"
+      ],
+      "id": "spec.nfr-co-so-do",
+      "question": "NFR có số đo",
+      "sources": [
+        {
+          "content_ref": "docs/prd.md",
+          "kind": "namespace",
+          "path": "<…>",
+          "ref": "prd",
+          "version": 1
+        }
+      ],
+      "verdict": "ok"
+    },
+    {
+      "facts": [
+        "mục ngoài phạm vi có 1 mục",
+        "vd: - Không làm app mobile"
+      ],
+      "id": "spec.out-of-scope",
+      "question": "Out-of-scope rõ",
+      "sources": [
+        {
+          "content_ref": "docs/prd.md",
+          "kind": "namespace",
+          "path": "<…>",
+          "ref": "prd",
+          "version": 1
+        }
+      ],
+      "verdict": "ok"
+    },
+    {
+      "facts": [
+        "prd có 1 dòng nhắc PII/dữ liệu cá nhân",
+        "vd: - REQ-2 POST /payments nhận email và số điện thoại khách",
+        "threat-model có nhắc phân loại dữ liệu/DPIA",
+        "ticket mang risk_tags pii: chưa có ticket nào"
+      ],
+      "id": "spec.pii",
+      "question": "PII đã phân loại; DPIA có nếu cần",
+      "sources": [
+        {
+          "content_ref": "docs/prd.md",
+          "kind": "namespace",
+          "path": "<…>",
+          "ref": "prd",
+          "version": 1
+        },
+        {
+          "content_ref": "docs/threat-model.md",
+          "kind": "namespace",
+          "path": "<…>",
+          "ref": "threat-model",
+          "version": 1
+        }
+      ],
+      "verdict": "unknown"
+    },
+    {
+      "facts": [
+        "1 câu hỏi làm rõ qua 1 vòng, 1 đã trả lời, 0 chưa"
+      ],
+      "id": "spec.cau-hoi-mo",
+      "question": "Câu hỏi mở chỉ còn assumption đã ghi nhận",
+      "sources": [
+        {
+          "event_ids": 1,
+          "key": "P1",
+          "kind": "topic",
+          "ref": "clarification-questions"
+        },
+        {
+          "event_ids": 1,
+          "key": "P1",
+          "kind": "topic",
+          "ref": "clarification-answers"
+        }
+      ],
+      "verdict": "ok"
+    }
+  ],
+  "status": "approve",
+  "subject_id": "SPEC-P1",
+  "unavailable": []
+}

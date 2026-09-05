@@ -59,3 +59,18 @@ def test_cli_publish_tu_choi_actor_khong_phai_nguoi(tmp_path, capsys):
     f.write_text(json.dumps({"actor": "x", "action": "gate.decide", "evidence": "{}"}), encoding="utf-8")
     assert orch_main(["--db", db, "publish", "audit-log", str(f), "--actor", "delivery-lead", "--key", "k"]) == 2
     assert "human:" in capsys.readouterr().err
+
+
+def test_subagent_actor_khong_dong_duoc_gate():
+    """I2 (đặc tả trợ lý kiểm duyệt §8.4): kể cả khi một trợ lý `sc-*` có cách ghi được `gate.decide` lên bus, quyết
+    định đó không được tin — gate vẫn `pending`. Trợ lý chuẩn bị bằng chứng, người ký."""
+    bus = InMemoryBus(); gate = PersistentGate(bus)
+    gate.request(GateRequest(kind="escalation", subject_id="T1", created_by="supervisor", checklist=["hint"]))
+    with pytest.raises(PermissionDenied):  # đường thẳng: bus chặn ngay
+        _decide_log(bus, actor="sc-qa-debugger", by="sc-qa-debugger", sid="T1")
+    for actor, by in (("sc-qa-debugger", "sc-qa-debugger"), ("sc-gate-escalation", "human:lead")):
+        env = _decide_log(bus, actor=actor, by=by, sid="T1", enforce=False)  # đường vòng: log bị chèn tay
+        assert trusted_decision(env) is None
+    assert "T1" in gate.pending and "T1" in PersistentGate(bus).pending
+    gate.decide("T1", "approve", by="human:lead", reason="mock thiếu header X-Idempotency-Key")
+    assert PersistentGate(bus).is_approved("T1")

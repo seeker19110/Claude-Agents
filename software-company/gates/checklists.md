@@ -6,7 +6,10 @@ Mỗi gate dưới đây tách làm hai phần:
 - **Code gửi kèm** — đúng các khoá trong `GateRequest(...).checklist` mà `src/company/orchestrator.py` và
   `src/company/delivery.py` sinh ra; đây là thứ hiện lên trong `gate_cli list`. Code dựng danh sách và điều kiện
   mở gate, còn việc từng mục có đạt hay không thì người duyệt xác nhận.
-- **Người tự kiểm thêm** — không có trong payload, không có tên khoá; người duyệt phải tự đọc và trả lời.
+- **Người tự kiểm thêm** — không có trong payload, không có tên khoá; người duyệt phải tự đọc và trả lời. Có trợ lý
+  chỉ đọc cho nửa này: `make gate-brief SUBJECT=<subject>` (hồ sơ bằng chứng `ok|gap|unknown`, `src/company/gate_brief.py`)
+  và subagent `.claude/agents/sc-gate-<kind>.md` sinh từ chính file này (`make subagents`). Sửa một mục "Người tự kiểm thêm"
+  thì phải khai nguồn bằng chứng cho nó trong `src/company/gate_checklists.py` rồi `make subagents` — parser gãy nếu thiếu.
 
 `GateKind` hiện có đúng năm giá trị: `spec`, `plan`, `release`, `acceptance`, `escalation` (`src/company/gates.py`).
 

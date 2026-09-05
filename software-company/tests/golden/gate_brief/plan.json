@@ -1,0 +1,107 @@
+{
+  "code_checklist": [
+    "tickets",
+    "estimate_tokens",
+    "risk_tags",
+    "depends_on",
+    "threat-model",
+    "architecture",
+    "api-contract"
+  ],
+  "created_by": "delivery-lead",
+  "extra": {
+    "tickets": [
+      {
+        "assignee": "backend",
+        "budget_tokens": 6000,
+        "depends_on": [],
+        "estimate_tokens": 4000,
+        "risk_tags": [],
+        "ticket_id": "T1"
+      },
+      {
+        "assignee": "backend",
+        "budget_tokens": 6000,
+        "depends_on": [
+          "T1"
+        ],
+        "estimate_tokens": 4000,
+        "risk_tags": [
+          "payment"
+        ],
+        "ticket_id": "T2"
+      }
+    ]
+  },
+  "kind": "plan",
+  "project_id": "P1",
+  "schema_version": 1,
+  "self_check": [
+    {
+      "facts": [
+        "2/2 ticket có estimate_tokens",
+        "estimate min/median/max = 4000/4000/4000 token",
+        "knowledge có 0 bài học estimate-vs-actual; hiệu chỉnh: chưa có",
+        "dự án đầu: chưa có bài học để đối chiếu"
+      ],
+      "id": "plan.uoc-luong-co-so",
+      "question": "Ước lượng có cơ sở (tham chiếu `knowledge` hoặc PERT)",
+      "sources": [
+        {
+          "event_ids": 1,
+          "key": "plan.proposed",
+          "kind": "topic",
+          "ref": "audit-log"
+        }
+      ],
+      "verdict": "unknown"
+    },
+    {
+      "facts": [
+        "architecture: 1 dòng nhắc dependency/license/dịch vụ ngoài",
+        "vd: Thư viện: fastapi (MIT license), dịch vụ ngoài: cổng thanh toán VNPay",
+        "api-contract: 0 dòng nhắc dependency/license/dịch vụ ngoài",
+        "0 review security nhắc license"
+      ],
+      "id": "plan.phu-thuoc-ngoai",
+      "question": "Phụ thuộc ngoài đã xác nhận; license dependency dự kiến hợp lệ",
+      "sources": [
+        {
+          "content_ref": "docs/c4.md",
+          "kind": "namespace",
+          "path": "<…>",
+          "ref": "architecture",
+          "version": 1
+        },
+        {
+          "content_ref": "openapi.yaml",
+          "kind": "namespace",
+          "path": "<…>",
+          "ref": "api-contract",
+          "version": 1
+        }
+      ],
+      "verdict": "unknown"
+    },
+    {
+      "facts": [
+        "2 ticket: tổng estimate 8000 token, tổng budget 12000 token",
+        "trần tiền dự án (llm.yaml budget_usd): chưa đặt; đã dùng 0.00 USD"
+      ],
+      "id": "plan.ngan-sach-token",
+      "question": "Ngân sách token cho dự án được đặt; tổng estimate sprint ≤ ngân sách",
+      "sources": [
+        {
+          "event_ids": 1,
+          "key": "plan.proposed",
+          "kind": "topic",
+          "ref": "audit-log"
+        }
+      ],
+      "verdict": "unknown"
+    }
+  ],
+  "status": "pending",
+  "subject_id": "PLAN-P1-1",
+  "unavailable": []
+}
