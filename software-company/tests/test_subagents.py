@@ -17,7 +17,7 @@ from company.registry import load_agents
 from company.subagents import GATE_PREFIX, PREFIX, TOOLS, build, diffs, render_all, sections
 from company.subagents import main as sub_main
 
-N_AGENTS, N_GATES = 20, 5
+N_AGENTS, N_GATES = 21, 5
 
 
 def _agent_files() -> dict:

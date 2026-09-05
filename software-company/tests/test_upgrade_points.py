@@ -228,7 +228,7 @@ def test_watch_survives_tick_error(monkeypatch):
 def test_retry_gets_remaining_budget(tmp_path, monkeypatch):
     repo = _init_repo(tmp_path / "repo")
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler), repo=repo, base="main"); budgets: list[int] = []
-    def fake_generate(agent, inp, ws, budget=None, max_turns=25):
+    def fake_generate(agent, inp, ws, budget=None, max_turns=25, write_scope="all"):
         budgets.append(budget)
         # giả lập vòng tool đã sinh 2_000 token ĐẦU RA rồi lỗi: runner ghi audit (supervisor cộng dồn) và ném
         # RunnerError. Ngân sách ticket đo theo đầu ra, nên phải khai `output_tokens` — khai mỗi `tokens` (tổng)

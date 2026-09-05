@@ -380,6 +380,20 @@ release-engineer báo production đã deploy, công ty đặt tag `v<version>` v
 khách (ADR-0027; `--push-remote origin` để đẩy lên remote, `--release-branch` đổi tên nhánh). `main` của khách vẫn không bị
 chạm — khách tự merge `company/release` (hoặc tag) vào `main` theo quy trình của họ.
 
+Thêm `--test-author` để **bộ test do một vai khác viết** (ADR-0028): `test-author` đọc `acceptance` của ticket (không
+thấy code, không thấy diff, không thấy `hint` của vòng trước), ghi **chỉ** file test và commit vào nhánh ticket; rồi
+agent kỹ thuật viết code cho tới khi bộ test đó xanh mà **không ghi và không xoá được** file test — ranh giới cưỡng chế
+ở `tools.py`, không phải lời dặn trong prompt.
+
+- Test **đỏ ngay sau lượt test-author là đúng**: nó chứng minh bộ test ràng buộc một hành vi chưa tồn tại. Xanh ngay
+  mới là dấu hiệu đáng ngờ (test rỗng, assert vô nghĩa) → audit `tests_green_before_code`.
+- Agent kỹ thuật cho rằng test sai đặc tả thì ghi `test_dispute` vào PR; việc quay về test-author (lượt này được xem
+  diff). Đó là đường **duy nhất** bộ test được đổi sau khi đã viết.
+- Repo mà công ty không nhận ra vùng test (stack `unknown`) thì **không** chạy test-author — không cưỡng chế được ranh
+  giới thì không giả vờ có nó. Ticket đi đường cũ và PR mang `tests_authored_by: assignee`, để reviewer biết bộ test
+  này không độc lập và tự chấm kỹ hơn.
+- Giá: thêm một lượt model (tier `standard`) mỗi ticket, và ticket chạy tuần tự hơn một nhịp.
+
 ### 5.3 Duyệt human gate
 
 Vòng lặp dừng ở bốn điểm: spec, plan, release, và khách ký nghiệm thu. Xem và quyết định:

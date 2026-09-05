@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass
+from fnmatch import fnmatch
 from pathlib import Path
 
 
@@ -18,18 +19,32 @@ class Stack:
     name: str
     lint: list[str] | None
     test: list[str] | None
+    # Thư mục/tên file được coi là TEST của stack này (ADR-0028). Dùng để phân vùng quyền ghi giữa
+    # `test-author` (chỉ test) và agent viết code (mọi thứ trừ test). Rỗng = không phân vùng được ⇒ fail closed.
+    test_globs: tuple[str, ...] = ()
 
     def commands(self) -> dict[str, list[str]]:
         return {k: v for k, v in (("lint", self.lint), ("test", self.test)) if v}
 
+    def is_test_path(self, rel: str) -> bool:
+        """`rel` (POSIX, tương đối gốc worktree) có nằm trong vùng test của stack không.
 
-PY = Stack("python", [sys.executable, "-m", "ruff", "check"], [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"])
-NODE = Stack("node", ["npm", "run", "--if-present", "lint"], ["npm", "test", "--if-present"])
-GO = Stack("go", ["go", "vet", "./..."], ["go", "test", "./..."])
-RUST = Stack("rust", ["cargo", "clippy", "--quiet"], ["cargo", "test", "--quiet"])
-GRADLE = Stack("gradle", ["./gradlew", "lint"], ["./gradlew", "test"])
-MAVEN = Stack("maven", ["mvn", "-q", "checkstyle:check"], ["mvn", "-q", "test"])
-UNKNOWN = Stack("unknown", None, None)
+        Khớp cả đường dẫn đầy đủ (`tests/**`) lẫn riêng tên file (`test_*.py` ở bất kỳ thư mục nào)."""
+        rel = rel.replace("\\", "/").lstrip("./")
+        name = rel.rsplit("/", 1)[-1]
+        return any(fnmatch(rel, g) or fnmatch(name, g) for g in self.test_globs)
+
+
+PY_TEST_GLOBS = ("tests/**", "test/**", "test_*.py", "*_test.py")
+NODE_TEST_GLOBS = ("test/**", "tests/**", "__tests__/**", "*.test.*", "*.spec.*")
+
+PY = Stack("python", [sys.executable, "-m", "ruff", "check"], [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"], PY_TEST_GLOBS)
+NODE = Stack("node", ["npm", "run", "--if-present", "lint"], ["npm", "test", "--if-present"], NODE_TEST_GLOBS)
+GO = Stack("go", ["go", "vet", "./..."], ["go", "test", "./..."], ("*_test.go",))
+RUST = Stack("rust", ["cargo", "clippy", "--quiet"], ["cargo", "test", "--quiet"], ("tests/**",))
+GRADLE = Stack("gradle", ["./gradlew", "lint"], ["./gradlew", "test"], ("src/test/**",))
+MAVEN = Stack("maven", ["mvn", "-q", "checkstyle:check"], ["mvn", "-q", "test"], ("src/test/**",))
+UNKNOWN = Stack("unknown", None, None)  # không có test_globs ⇒ không phân vùng ghi được (ADR-0028 §3)
 
 # Thứ tự có ý nghĩa: file dấu hiệu đầu tiên khớp thì thắng (repo đa ngôn ngữ lấy stack của gốc repo).
 MARKERS: tuple[tuple[str, Stack], ...] = (
@@ -56,4 +71,4 @@ def _node_stack(pkg: Path) -> Stack:
     except (OSError, json.JSONDecodeError):
         scripts = {}
     return Stack("node", ["npm", "run", "lint"] if "lint" in scripts else None,
-                 ["npm", "test", "--", "--watch=false"] if "test" in scripts else None)
+                 ["npm", "test", "--", "--watch=false"] if "test" in scripts else None, NODE_TEST_GLOBS)

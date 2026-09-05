@@ -841,3 +841,123 @@ def test_prompt_tool_buoc_agent_noi_ra_khi_thieu_nang_luc(tmp_path):
         assert "mạng" in p, f"{ai} phải được nhắc cả năng lực ngoài tool (mạng), không chỉ tool thiếu"
 
     assert "tệp nháp/tạm" in ghi, "agent ghi phải được bảo đừng để lại tệp tạm — 5 lượt review đã chặn vì nó"
+
+
+# --- ADR-0028: phân vùng ghi tests/src trong worktree ------------------------
+
+def _py_repo(tmp_path: Path) -> Path:
+    """Thư mục có dấu hiệu stack python, dùng trực tiếp làm root của WorkspaceTools (không cần git)."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "pyproject.toml").write_text('[project]\nname = "k"\nversion = "0.1.0"\n', encoding="utf-8")
+    (root / "mod.py").write_text("x = 1\n", encoding="utf-8")
+    (root / "tests").mkdir()
+    (root / "tests" / "test_mod.py").write_text("def test_x(): assert True\n", encoding="utf-8")
+    return root
+
+
+@pytest.mark.parametrize("rel", ["tests/test_a.py", "tests/sub/test_b.py", "test_c.py", "pkg/d_test.py"])
+def test_scope_tests_ghi_duoc_file_test(tmp_path: Path, rel: str) -> None:
+    t = WorkspaceTools(_py_repo(tmp_path), write_scope="tests")
+    assert "lỗi" not in t.write_file(rel, "def test_z(): assert True\n")
+    assert (tmp_path / "repo" / rel).exists()
+
+
+@pytest.mark.parametrize("rel", ["mod.py", "pkg/service.py", "README.md", "tests.py"])
+def test_scope_tests_khong_ghi_duoc_file_nguon(tmp_path: Path, rel: str) -> None:
+    root = _py_repo(tmp_path)
+    truoc = (root / rel).read_text(encoding="utf-8") if (root / rel).exists() else None
+    t = WorkspaceTools(root, write_scope="tests")
+    with pytest.raises(ToolError, match="chỉ được ghi file test"):
+        t.write_file(rel, "x = 1\n")
+    assert (None if not (root / rel).exists() else (root / rel).read_text(encoding="utf-8")) == truoc
+
+
+def test_scope_src_khong_ghi_duoc_file_test(tmp_path: Path) -> None:
+    root = _py_repo(tmp_path)
+    t = WorkspaceTools(root, write_scope="src")
+    with pytest.raises(ToolError, match="không được ghi file test"):
+        t.write_file("tests/test_mod.py", "def test_x(): assert False\n")
+    assert (root / "tests" / "test_mod.py").read_text(encoding="utf-8") == "def test_x(): assert True\n"
+    assert "lỗi" not in t.write_file("mod.py", "x = 2\n")
+
+
+def test_scope_chan_ca_delete_file(tmp_path: Path) -> None:
+    """Xoá cũng là thay đổi cây nguồn: assignee không được xoá test cho khỏi đỏ."""
+    root = _py_repo(tmp_path)
+    with pytest.raises(ToolError, match="không được ghi file test"):
+        WorkspaceTools(root, write_scope="src").delete_file("tests/test_mod.py")
+    assert (root / "tests" / "test_mod.py").exists()
+    with pytest.raises(ToolError, match="chỉ được ghi file test"):
+        WorkspaceTools(root, write_scope="tests").delete_file("mod.py")
+    assert (root / "mod.py").exists()
+
+
+def test_scope_all_giu_nguyen_duong_cu(tmp_path: Path) -> None:
+    t = WorkspaceTools(_py_repo(tmp_path))
+    assert t.write_scope == "all"
+    assert "lỗi" not in t.write_file("mod.py", "x = 3\n")
+    assert "lỗi" not in t.write_file("tests/test_new.py", "def test_y(): assert True\n")
+
+
+def test_scope_khong_hop_le_bi_tu_choi(tmp_path: Path) -> None:
+    with pytest.raises(ToolError, match="write_scope không hợp lệ"):
+        WorkspaceTools(_py_repo(tmp_path), write_scope="everything")
+
+
+def test_stack_khong_khai_test_globs_thi_fail_closed(tmp_path: Path) -> None:
+    """UNKNOWN stack: không cưỡng chế được ranh giới thì không dựng bảng tool giả vờ có nó (ADR-0028 §3)."""
+    root = tmp_path / "la"
+    root.mkdir()
+    (root / "doc.txt").write_text("hi\n", encoding="utf-8")
+    with pytest.raises(ToolError, match="không phân vùng ghi được"):
+        WorkspaceTools(root, write_scope="tests")
+    assert WorkspaceTools(root).write_scope == "all"  # đường cũ vẫn chạy được
+
+
+def test_test_globs_theo_tung_stack() -> None:
+    from company.stacks import GO, GRADLE, MAVEN, NODE, PY, RUST, UNKNOWN
+    assert PY.is_test_path("tests/a/b.py") and PY.is_test_path("x/test_a.py") and not PY.is_test_path("src/a.py")
+    assert NODE.is_test_path("src/a.spec.ts") and NODE.is_test_path("__tests__/a.ts") and not NODE.is_test_path("src/a.ts")
+    assert GO.is_test_path("pkg/a_test.go") and not GO.is_test_path("pkg/a.go")
+    assert RUST.is_test_path("tests/it.rs") and not RUST.is_test_path("src/lib.rs")
+    assert GRADLE.is_test_path("src/test/java/A.java") and not GRADLE.is_test_path("src/main/java/A.java")
+    assert MAVEN.is_test_path("src/test/java/A.java")
+    assert UNKNOWN.test_globs == () and not UNKNOWN.is_test_path("tests/a.py")
+
+
+# --- chuỗi "null" ở trường schema cho phép null -----------------------------
+
+def test_nullable_fields_doc_tu_schema() -> None:
+    b = InMemoryBus()
+    assert {"mutation_score", "root_cause", "project_id"} <= b.nullable_fields("review-results")
+    assert "verdict" not in b.nullable_fields("review-results"), "enum không có null thì không được sửa"
+    assert b.nullable_fields("khong-co-topic-nay") == frozenset()
+
+
+def test_chuoi_null_thanh_none_o_dung_truong_va_de_lai_vet() -> None:
+    """Model muốn nói "không đo được" nhưng viết CHUỖI "null": sửa cú pháp ở trường schema cho phép null,
+    ghi audit, và KHÔNG đụng trường khác — bỏ cả lượt vì một chữ là phí, sửa im lặng là mất dấu."""
+    bus = InMemoryBus()
+    out = {"ticket_id": "T1", "source": "qa", "verdict": "block", "mutation_score": "null",
+           "root_cause": "  N/A ", "test_summary": "42 passed"}
+    client = FakeClient(handler=lambda s, u: out)
+    g = AgentRunner(bus, client).generate("qa-debugger", Envelope(
+        topic="pull-requests", key="T1", actor="backend",
+        payload={"ticket_id": "T1", "branch": "b", "pr_ref": "#1", "local_checks": {"lint": True, "tests": False}}),
+        "review-results")
+    p = g.payloads[0]
+    assert p["mutation_score"] is None and p["root_cause"] is None
+    assert p["test_summary"] == "42 passed" and p["verdict"] == "block", "chỉ sửa chuỗi mang nghĩa rỗng"
+    ev = next(e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "null_string_normalized")
+    assert ev["evidence"] == "mutation_score,root_cause"
+
+
+def test_chuoi_la_o_truong_nullable_van_hong_nhu_cu() -> None:
+    """Chỉ chuỗi mang nghĩa "không có" mới được sửa; một con số viết sai kiểu vẫn phải là đầu ra không hợp lệ."""
+    client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "source": "qa", "verdict": "block", "mutation_score": "bảy mươi"})
+    with pytest.raises(RunnerError, match="không hợp lệ"):
+        AgentRunner(InMemoryBus(), client).generate("qa-debugger", Envelope(
+            topic="pull-requests", key="T1", actor="backend",
+            payload={"ticket_id": "T1", "branch": "b", "pr_ref": "#1", "local_checks": {"lint": True, "tests": False}}),
+            "review-results")

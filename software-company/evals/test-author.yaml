@@ -1,0 +1,41 @@
+# Eval cho test-author (ADR-0004, ADR-0028). Chạy: python -m company.evals test-author
+cases:
+  - name: moi-acceptance-phai-co-test
+    topic_out: test-suites
+    context:
+      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "GET /orders/{id} trả 200 với đơn hàng, 404 Problem Details khi không có"}
+    input:
+      topic: tasks
+      key: TCK-1
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-1
+        project_id: P1
+        requirement_id: R1
+        assignee: backend
+        title: "GET /orders/{id}"
+        acceptance:
+          - "Given đơn hàng ORD-1 tồn tại, When GET /orders/ORD-1, Then trả 200 kèm id và total"
+          - "Given đơn hàng ORD-9 không tồn tại, When GET /orders/ORD-9, Then trả 404 theo RFC 9457"
+    expect:
+      equals: {ticket_id: TCK-1, assignee: backend}
+      min_len: {acceptance_covered: 2, files: 1}
+
+  - name: tranh-chap-test-phai-tra-loi-co-ly-do
+    topic_out: test-suites
+    input:
+      topic: pull-requests
+      key: TCK-2
+      actor: backend
+      payload:
+        ticket_id: TCK-2
+        project_id: P1
+        assignee: backend
+        branch: ticket/TCK-2
+        pr_ref: "abc1234"
+        local_checks: {lint: true, tests: false}
+        test_dispute: "test khẳng định 404 trả body rỗng, nhưng acceptance nói phải theo RFC 9457 — test sai đặc tả"
+        summary: "handler GET /orders/{id}; test 404 không khớp acceptance"
+    expect:
+      equals: {ticket_id: TCK-2}
+      min_len: {notes: 1}
