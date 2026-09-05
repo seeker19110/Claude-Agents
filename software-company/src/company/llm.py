@@ -93,9 +93,30 @@ class Completion:
         try:
             return json.loads(text)
         except json.JSONDecodeError as e:
+            if (obj := _object_before_trailing_junk(text)) is not None:
+                return obj
             # chỉ trích đoạn quanh vị trí lỗi, không đổ cả đầu ra vào log
             near = text[max(0, e.pos - 120):e.pos + 120]
             raise LLMError(f"đầu ra không phải JSON: {e} — gần vị trí lỗi: ...{near}...") from e
+
+
+def _object_before_trailing_junk(text: str) -> dict[str, Any] | None:
+    """Một object HOÀN CHỈNH rồi thừa dấu đóng ở cuối → trả object đó; mọi trường hợp khác → None.
+
+    Trượt quan sát được của model khi đầu ra dài (đo 2026-09-05 trên bản ghi eval `researcher`: 14.5k ký tự
+    JSON, thừa đúng một `}` ở cuối). Object đứng trước đã đóng đủ và không mơ hồ — bỏ cả lượt vì một dấu thừa
+    là phí, y như chuyện chuỗi "null" ở `runner._normalize_nulls`.
+
+    Ranh giới hẹp có chủ đích: chỉ chấp nhận phần dư gồm khoảng trắng và `}`/`]`. JSON hỏng GIỮA cấu trúc
+    (model đóng sớm rồi viết tiếp `,{...}`) thì không cứu được nếu không đoán ý — chỗ đó vẫn phải đỏ."""
+    try:
+        obj, end = json.JSONDecoder().raw_decode(text)
+    except json.JSONDecodeError:
+        return None
+    thua = "".join(text[end:].split())  # bỏ mọi khoảng trắng, kể cả ở giữa các dấu đóng
+    if not isinstance(obj, dict) or not thua or set(thua) - {"}", "]"}:
+        return None
+    return obj
 
 
 def _strip_code_fence(raw: str) -> str:

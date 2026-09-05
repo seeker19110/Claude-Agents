@@ -1,22 +1,22 @@
 {
  "agent": "qa-debugger",
  "prompt_version": 11,
- "recorded_at": "2026-09-05T06:27:59.705053+00:00",
+ "recorded_at": "2026-09-05T08:32:11.404096+00:00",
  "models": [
-  "gpt-5.6-terra"
+  "claude-sonnet-5"
  ],
  "cases": {
-  "113a04dc1655eda0be28fcfc": {
-   "text": "{\"ticket_id\":\"TCK-3\",\"source\":\"qa\",\"verdict\":\"block\",\"findings\":[{\"level\":\"block\",\"location\":\"tests/test_orders.py::test_concurrent_reads\",\"text\":\"Test đồng thời đang đỏ: KeyError: 'ORD-9' khi hai request cùng ghi/xóa cache dict toàn cục. Đây là bằng chứng lỗi race condition và chưa đạt tiêu chí ca đồng thời.\"},{\"level\":\"warn\",\"text\":\"Chưa có bằng chứng chạy mutation test, đo hiệu năng theo NFR, hoặc kiểm accessibility; cần thực hiện trước khi xác nhận Definition of Done.\"}],\"root_cause\":\"Cache kết quả GET /orders dùng dict toàn cục với thao tác ghi/xóa không đồng bộ; các request đồng thời có thể xóa khóa trước khi request khác truy cập, gây KeyError.\",\"bug_reports\":[],\"metrics\":{\"lint\":\"pass\",\"tests\":\"fail\",\"failing_test\":\"tests/test_orders.py::test_concurrent_reads\",\"error\":\"KeyError: 'ORD-9'\"},\"project_id\":null,\"test_summary\":\"FAILED: tests/test_orders.py::test_concurrent_reads - KeyError: 'ORD-9'\",\"mutation_score\":null,\"perf\":null,\"a11y\":null}",
-   "model": "gpt-5.6-terra",
-   "input_tokens": 19889,
-   "output_tokens": 256
+  "8ec8014455d1496b1a2aecc1": {
+   "text": "{\"ticket_id\": \"TCK-3\", \"source\": \"qa\", \"verdict\": \"fail\", \"findings\": [{\"level\": \"block\", \"location\": \"tests/test_orders.py::test_concurrent_reads\", \"text\": \"Test đỏ: KeyError: 'ORD-9' khi 2 request đọc/ghi/xóa đồng thời cache dict toàn cục. Đây là race condition thật trên cache GET /orders, không phải lỗi hạ tầng — chặn merge tới khi có khóa/đồng bộ hóa truy cập.\"}, {\"level\": \"warn\", \"location\": \"shared-context\", \"text\": \"shared-context rỗng, không có PRD/Gherkin của TCK-3 để đối chiếu tiêu chí đã phủ test — không thể xác nhận 100% Gherkin có test tương ứng. Cần bổ sung PRD/Gherkin vào shared-context.\"}, {\"level\": \"warn\", \"text\": \"Không có số liệu mutation score cho module cache/orders trong payload — cần backend/CI cung cấp để đánh giá theo DoD (≥70% module lõi).\"}, {\"level\": \"warn\", \"text\": \"Không có kịch bản perf/NFR cho endpoint GET /orders trong payload lần này — cần trích NFR từ prd và chạy k6/Locust để đánh giá p95.\"}], \"root_cause\": \"Race condition trên cache dict toàn cục dùng cho GET /orders: nhiều request đọc/ghi/xóa cùng một key ('ORD-9') không có khóa đồng bộ (lock) hay cấu trúc dữ liệu an toàn theo luồng/coroutine, dẫn tới một request đọc key ngay sau khi request khác đã xóa nó → KeyError. Cơ chế: thao tác đọc-rồi-truy cập không nguyên tử trên dict chia sẻ giữa các request đồng thời (tương tự lớp lỗi đọc-rồi-ghi không khóa).\", \"bug_reports\": [], \"metrics\": {\"tests_failed\": 1, \"tests_status\": \"red\"}, \"test_summary\": \"\\\"lint pass; tests fail: test_concurrent_reads đỏ với KeyError 'ORD-9' do tranh chấp đồng thời trên cache dict toàn cục\\\"\", \"mutation_score\": null, \"perf\": null, \"a11y\": null, \"project_id\": null}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 12459,
+   "output_tokens": 1327
   },
-  "2105943d7ce1c019b1a57361": {
-   "text": "{\"ticket_id\":\"TCK-4\",\"source\":\"qa\",\"verdict\":\"block\",\"findings\":[{\"level\":\"block\",\"location\":null,\"text\":\"Không có bằng chứng truy vết 100% Gherkin của ticket sang test tương ứng; không thể xác nhận tiêu chí Must được phủ đầy đủ.\"},{\"level\":\"block\",\"location\":\"src/orders/cancel.py\",\"text\":\"Thiếu kết quả mutation testing cho module lõi; chưa chứng minh đạt ngưỡng mutation ≥ 70%.\"}],\"root_cause\":null,\"bug_reports\":[],\"metrics\":{\"coverage\":0.93,\"lint\":true,\"local_test_output\":\"42 passed in 3.1s\",\"provided_tests\":true},\"test_summary\":{\"total\":42,\"passed\":42,\"failed\":0},\"mutation_score\":null,\"perf\":null,\"a11y\":null,\"project_id\":null,\"sbom_ref\":null,\"scan_summary\":null}",
-   "model": "gpt-5.6-terra",
-   "input_tokens": 19732,
-   "output_tokens": 195
+  "01e16723553735e068b370e4": {
+   "text": "{\"ticket_id\": \"TCK-4\", \"source\": \"qa\", \"verdict\": \"pass\", \"findings\": [{\"level\": \"warn\", \"location\": \"shared-context/prd, gherkin\", \"text\": \"Không có Gherkin/PRD gốc trong shared-context để đối chiếu 100% tiêu chí; ticket-owner/PM cần bổ sung để lần review sau đối chiếu truy vết requirement_id.\"}, {\"level\": \"warn\", \"location\": \"module lõi (cancel.py)\", \"text\": \"Payload không kèm mutation score cho module lõi order-cancel; đề nghị backend/CI bổ sung số mutation testing ở lượt sau.\"}, {\"level\": \"warn\", \"location\": \"NFR perf/a11y\", \"text\": \"Ticket TCK-4 là logic backend tính phí, không thấy NFR perf/a11y liên quan trong đầu vào; nếu có NFR áp dụng, cần trích từ prd để QA chạy kịch bản tương ứng.\"}], \"bug_reports\": [], \"metrics\": {\"coverage\": 0.93, \"tests_total\": 42, \"tests_passed\": 42, \"tests_failed\": 0, \"test_output\": \"42 passed in 3.1s\"}, \"test_summary\": {\"total\": 42, \"passed\": 42, \"failed\": 0, \"detail\": \"unit test phủ 0h/23h/24h/25h trước giờ khám, property test idempotency, clock được tiêm\"}, \"mutation_score\": null, \"perf\": null, \"a11y\": null, \"root_cause\": null}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 12505,
+   "output_tokens": 703
   }
  }
 }
