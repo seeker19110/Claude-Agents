@@ -14,9 +14,9 @@ Nguyên tắc chung cho mọi công ty:
 
 | Thư mục | Vai trò | Quy mô |
 |---|---|---|
-| [`software-company/`](software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 20 agent, 45 skill, 18 topic, 14 template, 4 human gate (+ gate `escalation`) có trợ lý kiểm duyệt chỉ đọc (25 subagent + hồ sơ bằng chứng `gate_brief`, `/gate-brief`), giao hàng thật bằng tag + nhánh `company/release` (`--deliver`), ADR 0001–0027, 644 test |
-| [`Studio-creators/`](Studio-creators/) | Phòng ban sáng tạo video (YouTube): kế hoạch → kịch bản → fact-check → render (TTS + ảnh + ghép) → sửa từng cảnh → review → đăng → số liệu thật nuôi chiến lược. Approval-first, media trung lập provider | 7 khối, 14 agent, 24 skill, 19 topic, 7 template, 4 human gate, ADR 0001–0008 (0007 tool web, 0008 adapter YouTube thật), 393 test |
-| [`gateway/`](gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code | daemon `127.0.0.1:1123/v1`, CLI `python -m gateway start/stop/status/login/logout/reset/setup/models`, 206 test |
+| [`software-company/`](software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 20 agent, 45 skill, 18 topic, 14 template, 4 human gate (+ gate `escalation`) có trợ lý kiểm duyệt chỉ đọc (25 subagent + hồ sơ bằng chứng `gate_brief`, `/gate-brief`), giao hàng thật bằng tag + nhánh `company/release` (`--deliver`), ADR 0001–0027, 645 test |
+| [`Studio-creators/`](Studio-creators/) | Phòng ban sáng tạo video (YouTube): kế hoạch → kịch bản → fact-check → render (TTS + ảnh + ghép) → sửa từng cảnh → review → đăng → số liệu thật nuôi chiến lược. Approval-first, media trung lập provider | 7 khối, 14 agent, 24 skill, 19 topic, 7 template, 4 human gate, ADR 0001–0008 (0007 tool web, 0008 adapter YouTube thật), 395 test |
+| [`gateway/`](gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code | daemon `127.0.0.1:1123/v1`, CLI `python -m gateway start/stop/status/login/logout/reset/setup/models`, 216 test |
 | [`console/`](console/) | Trực ban hợp nhất: một trang web cục bộ nhìn cả hai công ty — hàng đợi human gate, ticket, dây chuyền video, token và chi phí, gói tài khoản đang xoay — duyệt gate ngay tại chỗ khi bật `--allow-decide`, đổi model/backend từng công ty khi bật `--allow-config`, giao việc mới ngay trong màn của từng xưởng (yêu cầu phần mềm kèm nơi lưu dự án, brief kênh video) khi bật `--allow-submit`. Cập nhật tức thì bằng SSE, địa chỉ deep-link tới từng gate/ticket, tìm và lọc mọi bảng, cài được thành app (PWA). Đọc bus SQLite ở chế độ chỉ đọc; quyết định đi qua đúng `HumanGate`, việc mới đi qua đúng bus + schema của từng công ty | `127.0.0.1:8200`, chỉ thư viện chuẩn (`http.server`), 6 màn hình, chỉ đọc mặc định + token mỗi lần chạy, ADR 0001–0002 |
 | [`docs/HUONG-DAN-VAN-HANH.md`](docs/HUONG-DAN-VAN-HANH.md) | Hướng dẫn cài đặt và vận hành từng bước: cấu hình gói tài khoản, chạy thử, đưa yêu cầu, duyệt gate, theo dõi chi phí, bảo trì | |
 | [`docs/DIEU-PHOI-MODEL.md`](docs/DIEU-PHOI-MODEL.md) | Điều phối model theo gói tài khoản: backend, 3 tier, bảng agent → tier, cơ chế xoay khi hết quota | |
@@ -103,7 +103,7 @@ topic (JSON Schema, có key) ──► registry: agent nào nhận topic nào
 ## Phát triển
 
 - CI (`.github/workflows/ci.yml`, Python 3.11 và 3.13): cả bốn package chạy ruff + mypy + pytest có ngưỡng coverage
-  (`fail_under` 90 / 84 / 73 / 84 cho software-company / Studio-creators / gateway / console, đặt ở mức đang đạt để chặn
+  (`fail_under` 98 / 84 / 73 / 84 cho software-company / Studio-creators / gateway / console, đặt ở mức đang đạt để chặn
   tụt lùi); hai công ty chạy thêm `evals all --replay --strict`. Job `golden-check` chạy `make golden` rồi so
   `git diff --exit-code`; `asset-scan` quét tài sản prompt và ngân sách token của cả hai công ty (ADR-0022); `audit` chạy
   `pip-audit --strict` + gitleaks trên cả lịch sử; `quality` gom kết quả — tên job này là bất biến (required status check
