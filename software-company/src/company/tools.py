@@ -109,15 +109,27 @@ class WorkspaceTools:
         "git_diff": ["git", "diff"],
     }
 
-    def __init__(self, ws: TicketWorkspace | Path | str, allow_write: bool = True, timeout: int = 600, allow_run: bool = True):
+    WRITE_SCOPES: ClassVar[tuple[str, ...]] = ("tests", "src", "all")
+
+    def __init__(self, ws: TicketWorkspace | Path | str, allow_write: bool = True, timeout: int = 600,
+                 allow_run: bool = True, write_scope: str = "all"):
         self.ws = ws if isinstance(ws, TicketWorkspace) else None
         self.allow_write, self.allow_run, self.timeout = allow_write, allow_run, timeout
         self.root = (ws.path if isinstance(ws, TicketWorkspace) else Path(ws)).resolve()
         # lint/test lấy theo stack của repo khách (ADR-0013): argv vẫn do code ghép, model chỉ chọn tên lệnh.
         # Thư mục chỉ đọc (researcher trên repo khách) không có TicketWorkspace nên chỉ còn lệnh git.
         # Thư mục thường mà được phép chạy (QA hồi quy trên worktree tích hợp) thì nhận stack theo file dấu hiệu ở gốc.
-        stack_cmds = (self.ws.stack() if self.ws is not None else detect(self.root)).commands() if allow_run else {}
+        self.stack = self.ws.stack() if self.ws is not None else detect(self.root)
+        stack_cmds = self.stack.commands() if allow_run else {}
         self.COMMANDS: dict[str, list[str]] = {**stack_cmds, **self.GIT_COMMANDS}
+        # Phân vùng ghi (ADR-0028): `tests` cho test-author, `src` cho agent viết code, `all` là đường cũ.
+        # Fail closed — không biết đâu là test thì không giả vờ có ranh giới, dựng bảng tool luôn hỏng
+        # để người gọi phải chọn đường không có test-author, chứ không im lặng cho ghi tràn.
+        if write_scope not in self.WRITE_SCOPES:
+            raise ToolError(f"write_scope không hợp lệ: {write_scope!r} (có: {list(self.WRITE_SCOPES)})")
+        if write_scope != "all" and not self.stack.test_globs:
+            raise ToolError(f"stack {self.stack.name!r} không khai test_globs nên không phân vùng ghi được")
+        self.write_scope = write_scope
 
     # ---------- ranh giới đường dẫn ----------
 
@@ -134,7 +146,19 @@ class WorkspaceTools:
             raise ToolError(f"file bí mật, không đọc/ghi: {rel!r}")
         if for_write and p.suffix.lower() in BINARY_EXT:
             raise ToolError("không ghi file nhị phân")
+        if for_write:
+            self._check_write_scope(parts, rel)
         return p
+
+    def _check_write_scope(self, parts: tuple[str, ...], rel: str) -> None:
+        """Phân vùng ghi của ADR-0028. Gọi từ mọi đường ghi/xoá, không chỉ `write_file`."""
+        if self.write_scope == "all":
+            return
+        is_test = self.stack.is_test_path(Path(*parts).as_posix() if parts else "")
+        if self.write_scope == "tests" and not is_test:
+            raise ToolError(f"chỉ được ghi file test ({', '.join(self.stack.test_globs)}); {rel!r} không phải")
+        if self.write_scope == "src" and is_test:
+            raise ToolError(f"không được ghi file test: {rel!r} (bộ test do test-author giữ — ADR-0028)")
 
     def _walk(self, base: Path, glob: str):
         for p in sorted(base.glob(glob)):
@@ -180,6 +204,7 @@ class WorkspaceTools:
         Không xoá thư mục — xoá cây thư mục là thao tác quá rộng cho một agent, và chưa có nhu cầu thật."""
         if not self.allow_write: raise ToolError("tool này chỉ đọc")
         p = self._path(path)
+        self._check_write_scope(p.relative_to(self.root).parts, path)  # xoá cũng là thay đổi cây nguồn
         if p.is_dir(): raise ToolError(f"chỉ xoá file, không xoá thư mục: {path!r}")
         if not p.is_file(): return f"lỗi: không có file {path}"
         p.unlink()

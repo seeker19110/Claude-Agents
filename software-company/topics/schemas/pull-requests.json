@@ -72,6 +72,25 @@
             "null"
           ],
           "description": "dự án của ticket; orchestrator điền từ kế hoạch nếu model bỏ trống"
+        },
+        "tests_authored_by": {
+          "enum": [
+            "test-author",
+            "assignee"
+          ],
+          "description": "ADR-0028: ai viết bộ test của ticket. `assignee` = KHÔNG độc lập (không phân vùng được vùng test, hoặc chạy không bật test-author) — reviewer phải tự chấm test kỹ hơn."
+        },
+        "test_dispute": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "ADR-0028: assignee cho rằng bộ test sai đặc tả (nó không sửa được test). Nội dung = lý do; route đưa việc về test-author."
+        },
+        "test_suite": {
+          "type": "object",
+          "description": "bộ test do test-author viết: files[], acceptance_covered[], tests_status, commit",
+          "additionalProperties": true
         }
       },
       "required": [

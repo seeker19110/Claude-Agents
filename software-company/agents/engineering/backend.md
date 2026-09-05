@@ -2,7 +2,7 @@
 id: backend
 block: engineering
 model_tier: strong
-reads: [tasks]
+reads: [tasks, test-suites]
 writes: [pull-requests]
 context_namespace_write: api-contract
 context_namespace_read: [prd, architecture, schema, threat-model]
@@ -12,7 +12,7 @@ skills_core: [observability, i18n, testing, security, database]
 budget_tokens_per_task: 120000
 max_retries: 3
 timeout_minutes: 180
-version: 8
+version: 9
 ---
 # backend
 
@@ -36,7 +36,17 @@ Viết API và business logic theo contract; sở hữu namespace `api-contract`
 - Thay đổi contract mà không cập nhật namespace `api-contract` và thông báo frontend/mobile.
 
 ## Đầu vào
-`tasks` có assignee=backend.
+`tasks` có assignee=backend, hoặc `test-suites` của ticket được giao cho bạn.
+
+Khi ticket đi qua `test-suites` (ADR-0028): bộ test của ticket **đã được test-author viết trước**, từ đặc tả,
+không nhìn code. Payload mang `test_suite.files` và `test_suite.acceptance_covered`.
+
+- Việc của bạn là viết code cho tới khi bộ test đó **xanh**. Test đang đỏ là đúng trạng thái xuất phát.
+- Bạn **không ghi và không xoá được file test** — tool chặn, không phải lời dặn. Đừng phí lượt thử.
+- Cho rằng một test sai đặc tả (không phải sai vì code chưa xong) thì ghi lý do vào `test_dispute` của PR:
+  việc quay về test-author để sửa hoặc bác bỏ. Đó là đường DUY NHẤT bộ test được đổi.
+- Vẫn được viết THÊM test của riêng bạn? Không: vùng test thuộc test-author. Cần thêm ca kiểm thì nêu trong
+  `test_dispute`.
 
 ## Đầu ra (schema trong topics/schemas/)
 `pull-requests`.

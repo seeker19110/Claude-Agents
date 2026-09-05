@@ -11,18 +11,18 @@ EXPECTED = {
     "delivery-lead",
     # engineering (6)
     "backend", "frontend", "mobile", "database", "platform", "data",
-    # quality (3)
-    "reviewer", "qa-debugger", "security-engineer",
+    # quality (4) — ADR-0028 tách vai viết test khỏi vai viết code
+    "reviewer", "qa-debugger", "security-engineer", "test-author",
     # operations (3)
     "release-engineer", "support-docs", "account-manager",
     # supervision (1)
     "supervisor",
 }
 
-def test_all_20_agents_load():
+def test_all_21_agents_load():
     agents = load_agents()
     assert set(agents) == EXPECTED
-    assert len(agents) == 20
+    assert len(agents) == 21
 
 def test_prompts_have_skills_and_dod():
     for a in load_agents().values():

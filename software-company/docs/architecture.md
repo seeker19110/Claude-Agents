@@ -31,8 +31,9 @@ phải có mặt; agent được liệt kê mà không có route phải ghi `(ch
 | clarification-questions | clarifier | human gate | project_id |
 | clarification-answers | human gate | clarifier (hỏi lại khi trả lời thiếu), spec-writer (khi đủ) | project_id |
 | approved-specs | spec-writer → human gate `spec` | không có route trong `ROUTES`: security-engineer (threat model, `THREAT_ROUTE`), delivery-lead (plan, `PLAN_INPUTS`), account-manager (chỉ đọc) | project_id |
-| tasks | delivery-lead | engineering (6 agent) | ticket_id |
-| pull-requests | engineering | reviewer, qa-debugger, security-engineer (khi risk_tags) | ticket_id |
+| tasks | delivery-lead | test-author (khi bật, ADR-0028), engineering (6 agent) | ticket_id |
+| test-suites | test-author | engineering (6 agent) | ticket_id |
+| pull-requests | engineering | reviewer, qa-debugger, security-engineer (khi risk_tags), test-author (khi có `test_dispute`) | ticket_id |
 | review-results | reviewer, qa-debugger, security-engineer | delivery-lead | ticket_id (hoặc release_id cho QA staging) |
 | release-candidates | delivery-lead | release-engineer, security-engineer | release_id |
 | release-events | release-engineer | delivery-lead, qa-debugger (staging), support-docs (production), account-manager (chỉ đọc), human gate | release_id |
@@ -48,7 +49,11 @@ phải có mặt; agent được liệt kê mà không có route phải ghi `(ch
 
 ```
 delivery-lead:      tasks(ticket, assignee, estimate_tokens, risk_tags?)
-engineering:        đọc shared-context → code trên branch → pull-requests(ticket)
+test-author:        (ADR-0028, khi bật) lượt MÙ từ acceptance → chỉ ghi file test → test-suites(ticket)
+                    test ĐỎ ngay sau lượt này là kết quả đúng; xanh ngay → audit tests_green_before_code
+engineering:        đọc shared-context → code trên branch cho tới khi test xanh (KHÔNG ghi được file test)
+                    → pull-requests(ticket, tests_authored_by, test_dispute?)
+test-author:        PR có test_dispute → xem diff, sửa test hoặc bác bỏ → test-suites(blind=false)
 reviewer:           review-results(source=reviewer, verdict=pass|block, findings[])
 qa-debugger:        review-results(source=qa, verdict=pass|fail, root_cause?)
 security-engineer:  review-results(source=security) — chỉ khi ticket có risk_tags

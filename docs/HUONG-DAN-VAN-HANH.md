@@ -163,6 +163,18 @@ provider nào sẽ đọc, nên với provider có id giọng riêng (elevenlabs
 / `1024x1024`. Biến môi trường tương ứng: `STUDIO_MEDIA_{TTS,IMAGE,VIDEO}_PROVIDER`, `STUDIO_MEDIA_BASE_URL` (chỉ cho
 provider `openai`), `STUDIO_MEDIA_OUTPUT_DIR`, `STUDIO_PLATFORM`, `STUDIO_YOUTUBE_TOKENS`.
 
+Với `video.provider: ffmpeg`, khung hình bám theo `aspect` của manifest (video dài `1920x1080`, Shorts tự thành `1080x1920`),
+mỗi cảnh dài đúng bằng giọng đọc cộng `tail_pad_s` giây im lặng, và ảnh lấp đầy khung (`fit: cover`, đổi `contain` nếu muốn
+giữ trọn ảnh và chấp nhận viền đen). Mỗi cảnh còn có chuyển động nhẹ (`motion: auto` xoay vòng zoom/pan; `none` để tắt),
+các cảnh nối bằng chuyển cảnh mờ dần `transition_s` giây (tự kẹp ≤ `tail_pad_s` nên giọng đọc hai cảnh không chồng nhau),
+và âm lượng chuẩn hoá về `loudness_lufs` (-14 LUFS, đỉnh -1 dBTP). Bản cuối kèm phụ đề `captions_v<n>.srt` sinh từ chính
+narration của manifest; sau khi upload video, phụ đề được đăng kèm. Trước gate publish, code đo lại file thật bằng ffprobe
+(khung hình, thời lượng, âm lượng, đoạn hình đen, khoảng lặng, thumbnail) và đưa kết quả vào checklist dưới dạng
+dòng `qc:`. Thumbnail cũng do ffmpeg hoàn thiện: model ảnh chỉ vẽ nền, code phủ chữ rồi xuất
+1280x720 JPEG ≤ 2 MB. Chữ cần một font đậm có dấu tiếng Việt; máy không có thì cài (`apt install fonts-dejavu-core`) hoặc
+khai `video.font` trỏ tới file `.ttf`. Thiếu font, thumbnail vẫn đúng kích thước nhưng không có chữ và audit
+`thumbnail.finish` ghi rõ lý do.
+
 ### 3.3b Đường tắt: hồ sơ gói Claude + gateway có sẵn
 
 Không muốn tự viết `backends:` thì mỗi công ty có sẵn một hồ sơ chạy thật, đã kiểm trong CI:
@@ -367,6 +379,20 @@ ticket approved của dự án vào một RC (một staging, một gate 3, một
 release-engineer báo production đã deploy, công ty đặt tag `v<version>` và fast-forward nhánh `company/release` trong repo
 khách (ADR-0027; `--push-remote origin` để đẩy lên remote, `--release-branch` đổi tên nhánh). `main` của khách vẫn không bị
 chạm — khách tự merge `company/release` (hoặc tag) vào `main` theo quy trình của họ.
+
+Thêm `--test-author` để **bộ test do một vai khác viết** (ADR-0028): `test-author` đọc `acceptance` của ticket (không
+thấy code, không thấy diff, không thấy `hint` của vòng trước), ghi **chỉ** file test và commit vào nhánh ticket; rồi
+agent kỹ thuật viết code cho tới khi bộ test đó xanh mà **không ghi và không xoá được** file test — ranh giới cưỡng chế
+ở `tools.py`, không phải lời dặn trong prompt.
+
+- Test **đỏ ngay sau lượt test-author là đúng**: nó chứng minh bộ test ràng buộc một hành vi chưa tồn tại. Xanh ngay
+  mới là dấu hiệu đáng ngờ (test rỗng, assert vô nghĩa) → audit `tests_green_before_code`.
+- Agent kỹ thuật cho rằng test sai đặc tả thì ghi `test_dispute` vào PR; việc quay về test-author (lượt này được xem
+  diff). Đó là đường **duy nhất** bộ test được đổi sau khi đã viết.
+- Repo mà công ty không nhận ra vùng test (stack `unknown`) thì **không** chạy test-author — không cưỡng chế được ranh
+  giới thì không giả vờ có nó. Ticket đi đường cũ và PR mang `tests_authored_by: assignee`, để reviewer biết bộ test
+  này không độc lập và tự chấm kỹ hơn.
+- Giá: thêm một lượt model (tier `standard`) mỗi ticket, và ticket chạy tuần tự hơn một nhịp.
 
 ### 5.3 Duyệt human gate
 

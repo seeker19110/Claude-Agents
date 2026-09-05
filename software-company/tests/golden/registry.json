@@ -37,7 +37,8 @@
     "max_retries": 3,
     "model_tier": "strong",
     "reads": [
-      "tasks"
+      "tasks",
+      "test-suites"
     ],
     "skills": [
       "engineering-common",
@@ -54,7 +55,7 @@
       "database"
     ],
     "timeout_minutes": 180,
-    "version": 8,
+    "version": 9,
     "writes": [
       "pull-requests"
     ]
@@ -88,7 +89,8 @@
     "max_retries": 3,
     "model_tier": "strong",
     "reads": [
-      "tasks"
+      "tasks",
+      "test-suites"
     ],
     "skills": [
       "engineering-common",
@@ -101,7 +103,7 @@
       "event-driven-architecture"
     ],
     "timeout_minutes": 180,
-    "version": 6,
+    "version": 7,
     "writes": [
       "pull-requests"
     ]
@@ -113,7 +115,8 @@
     "max_retries": 3,
     "model_tier": "strong",
     "reads": [
-      "tasks"
+      "tasks",
+      "test-suites"
     ],
     "skills": [
       "engineering-common",
@@ -125,7 +128,7 @@
       "performance-testing"
     ],
     "timeout_minutes": 120,
-    "version": 7,
+    "version": 8,
     "writes": [
       "pull-requests"
     ]
@@ -174,7 +177,8 @@
     "max_retries": 3,
     "model_tier": "strong",
     "reads": [
-      "tasks"
+      "tasks",
+      "test-suites"
     ],
     "skills": [
       "engineering-common",
@@ -190,7 +194,7 @@
       "security"
     ],
     "timeout_minutes": 180,
-    "version": 11,
+    "version": 12,
     "writes": [
       "pull-requests"
     ]
@@ -226,7 +230,8 @@
     "max_retries": 3,
     "model_tier": "strong",
     "reads": [
-      "tasks"
+      "tasks",
+      "test-suites"
     ],
     "skills": [
       "engineering-common",
@@ -242,7 +247,7 @@
       "security"
     ],
     "timeout_minutes": 180,
-    "version": 9,
+    "version": 10,
     "writes": [
       "pull-requests"
     ]
@@ -254,7 +259,8 @@
     "max_retries": 3,
     "model_tier": "strong",
     "reads": [
-      "tasks"
+      "tasks",
+      "test-suites"
     ],
     "skills": [
       "engineering-common",
@@ -271,7 +277,7 @@
       "incident-management"
     ],
     "timeout_minutes": 180,
-    "version": 7,
+    "version": 8,
     "writes": [
       "pull-requests"
     ]
@@ -379,7 +385,7 @@
       "observability"
     ],
     "timeout_minutes": 60,
-    "version": 10,
+    "version": 11,
     "writes": [
       "review-results"
     ]
@@ -532,6 +538,30 @@
     "version": 9,
     "writes": [
       "requirements-draft"
+    ]
+  },
+  "test-author": {
+    "block": "quality",
+    "budget_tokens_per_task": 60000,
+    "context_namespace_write": null,
+    "max_retries": 1,
+    "model_tier": "standard",
+    "reads": [
+      "tasks",
+      "pull-requests"
+    ],
+    "skills": [
+      "testing"
+    ],
+    "skills_core": [
+      "engineering-common",
+      "api-contract",
+      "accessibility"
+    ],
+    "timeout_minutes": 60,
+    "version": 1,
+    "writes": [
+      "test-suites"
     ]
   }
 }

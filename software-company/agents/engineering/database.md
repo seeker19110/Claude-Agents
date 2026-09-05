@@ -2,7 +2,7 @@
 id: database
 block: engineering
 model_tier: strong
-reads: [tasks]
+reads: [tasks, test-suites]
 writes: [pull-requests]
 context_namespace_write: schema
 context_namespace_read: [prd, architecture, api-contract]
@@ -12,7 +12,7 @@ skills_core: [observability, privacy-compliance, performance-testing]
 budget_tokens_per_task: 80000
 max_retries: 3
 timeout_minutes: 120
-version: 7
+version: 8
 ---
 # database
 
@@ -35,7 +35,17 @@ Schema, migration, index, seed; sở hữu namespace `schema`.
 - Migration phá hủy dữ liệu không có bước sao lưu.
 
 ## Đầu vào
-`tasks` có assignee=database.
+`tasks` có assignee=database, hoặc `test-suites` của ticket được giao cho bạn.
+
+Khi ticket đi qua `test-suites` (ADR-0028): bộ test của ticket **đã được test-author viết trước**, từ đặc tả,
+không nhìn code. Payload mang `test_suite.files` và `test_suite.acceptance_covered`.
+
+- Việc của bạn là viết code cho tới khi bộ test đó **xanh**. Test đang đỏ là đúng trạng thái xuất phát.
+- Bạn **không ghi và không xoá được file test** — tool chặn, không phải lời dặn. Đừng phí lượt thử.
+- Cho rằng một test sai đặc tả (không phải sai vì code chưa xong) thì ghi lý do vào `test_dispute` của PR:
+  việc quay về test-author để sửa hoặc bác bỏ. Đó là đường DUY NHẤT bộ test được đổi.
+- Vẫn được viết THÊM test của riêng bạn? Không: vùng test thuộc test-author. Cần thêm ca kiểm thì nêu trong
+  `test_dispute`.
 
 ## Đầu ra (schema trong topics/schemas/)
 `pull-requests`.

@@ -33,7 +33,7 @@ test, hoặc nguồn chính thống có ngày truy cập.
 | Thay đổi | Bằng chứng tối thiểu |
 | --- | --- |
 | Tài liệu thuần (`*.md`, docs) | Đọc lại diff, `git diff --check` |
-| Prompt agent / skill / template | `make test` (golden 20 agent bắt được thay đổi prompt) |
+| Prompt agent / skill / template | `make test` (golden 21 agent bắt được thay đổi prompt) |
 | Code `src/company/**` | `make lint` + `make test`, thêm test cho hành vi mới |
 | Schema topic / hợp đồng event | Các cổng trên + ADR + kiểm test nhất quán registry↔events |
 | Đổi cổng CI | Chạy thật trên PR đó rồi đọc thời gian từng job, không đoán |
