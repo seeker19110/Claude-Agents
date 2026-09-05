@@ -1,7 +1,7 @@
 {
  "agent": "qa-debugger",
  "prompt_version": 12,
- "recorded_at": "2026-09-05T09:22:54.770255+00:00",
+ "recorded_at": "2026-09-05T11:39:49.456422+00:00",
  "models": [
   "claude-sonnet-5"
  ],
@@ -17,6 +17,18 @@
    "model": "claude-sonnet-5",
    "input_tokens": 12459,
    "output_tokens": 1545
+  },
+  "460d4755c71a18995340de7b": {
+   "text": "{\"ticket_id\": \"TCK-3\", \"source\": \"qa\", \"verdict\": \"fail\", \"findings\": [{\"level\": \"block\", \"location\": \"tests/test_orders.py::test_concurrent_reads\", \"text\": \"Test đỏ: KeyError: 'ORD-9' khi 2 request đọc/ghi/xóa cùng lúc trên dict cache toàn cục GET /orders. Đây là race condition có thật (concurrent dict mutation không khóa), không phải lỗi hạ tầng — chặn merge.\"}, {\"level\": \"warn\", \"text\": \"Không có số mutation score/perf/a11y trong payload lượt này; nếu module cache này thuộc lõi, cần backend bổ sung số mutation ≥70% khi resubmit.\"}], \"root_cause\": \"Cache dùng dict Python toàn cục dùng chung giữa các request đồng thời, không có khóa (lock) hay cấu trúc an toàn concurrent (vd threading.Lock, hoặc cache có atomic get/set). Khi một request đang xóa/ghi key 'ORD-9' (ví dụ do invalidate cache) đúng lúc request khác đang đọc key đó, thao tác đọc gặp KeyError vì key vừa bị xóa giữa lúc kiểm tra tồn tại và lúc truy cập giá trị (kinh điển check-then-act race, TOCTOU). Test test_concurrent_reads mô phỏng đúng kịch bản 2 luồng ghi/xóa đồng thời nên bắt được lỗi này (fail ngẫu nhiên tùy thời điểm interleave của thread scheduler).\\\"\", \"test_summary\": {\"tests_passed_locally\": \"lint pass, tests fail\", \"failing_test\": \"tests/test_orders.py::test_concurrent_reads\", \"error\": \"KeyError: 'ORD-9'\", \"reproducible\": \"có, do race condition trên dict toàn cục — cần chạy lặp lại nhiều lần hoặc chèn độ trễ giả để tái hiện ổn định\"}, \"mutation_score\": null, \"perf\": null, \"a11y\": null, \"bug_reports\": [\"BUG-TCK-3-01: Race condition trong cache dict toàn cục GET /orders gây KeyError khi truy cập đồng thời. Môi trường: local/CI (nhánh ticket/TCK-3, PR #14). Bước tái hiện tối thiểu: chạy song song ≥2 request GET /orders trong khi một request khác trigger invalidate/xóa cùng key (vd 'ORD-9'); lặp test_concurrent_reads nhiều lần hoặc thêm sleep ngẫu nhiên để tăng khả năng trúng interleave. Kỳ vọng: đọc cache trả về giá trị hợp lệ hoặc cache-miss êm (fallback query DB), không raise KeyError. Thực tế: KeyError: 'ORD-9' khi đọc đúng lúc key bị xóa. Tần suất: không ổn định (flaky theo thread scheduling), nhưng test hiện tại đã bắt được ổn định trong CI này. Mức độ: High — có thể gây lỗi 500 ngẫu nhiên trên production dưới tải đồng thời thật. Nguyên nhân gốc: check-then-act không nguyên tử trên dict Python dùng chung giữa các thread/request. Đề xuất sửa: dùng cache.get(key, default) thay vì kiểm tra 'in' rồi truy cập, hoặc dùng cấu trúc thread-safe (threading.Lock quanh đoạn đọc/ghi/xóa, hoặc dùng cache có sẵn atomic operations như functools.lru_cache có khóa, hoặc TTLCache của cachetools với lock). Rủi ro bản sửa: thêm lock có thể làm giảm throughput nếu khóa quá thô (khóa toàn bộ dict thay vì per-key); cân nhắc khóa theo key hoặc dùng cache thread-safe có sẵn thay vì tự viết.\"], \"metrics\": {\"local_lint\": \"pass\", \"local_tests\": \"fail\", \"failing_test_count\": 1}}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 13144,
+   "output_tokens": 1722
+  },
+  "a2a53478f60568379fd0b2c6": {
+   "text": "{\"a11y\": {\"content\": null}, \"bug_reports\": [], \"findings\": [{\"level\": \"warn\", \"text\": \"Không có Gherkin gốc của TCK-4 trong tay (shared-context rỗng) nên chưa đối chiếu được 100% tiêu chí có test tương ứng; đề nghị PM/BA đính kèm Gherkin hoặc link requirement vào ticket để lượt sau đối chiếu.\", \"location\": null}, {\"level\": \"warn\", \"text\": \"Payload không kèm mutation score cho module lõi (cancel.py tính phí huỷ đơn). Cần backend chạy mutation testing (vd mutmut/cosmic-ray) và báo số liệu ở PR sau để xác nhận đạt ngưỡng ≥70%.\", \"location\": \"src/orders/cancel.py\"}, {\"level\": \"nit\", \"text\": \"Test suite đã phủ tốt các mốc biên thời gian (0h/23h/24h/25h) và có property test idempotent với đồng hồ tiêm qua clock — đúng thực hành khuyến nghị, không phụ thuộc now() thật.\", \"location\": \"tests/test_cancel.py\"}], \"metrics\": {\"coverage\": 0.93, \"test_output\": \"42 passed in 3.1s\"}, \"mutation_score\": null, \"perf\": null, \"project_id\": null, \"root_cause\": null, \"source\": \"qa\", \"test_summary\": {\"total\": 42, \"passed\": 42, \"failed\": 0, \"note\": \"42 passed in 3.1s, coverage 0.93; bao gồm unit test biên giờ huỷ (0/23/24/25h) và property test idempotent với clock tiêm được\"}, \"ticket_id\": \"TCK-4\", \"verdict\": \"pass\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 13190,
+   "output_tokens": 1006
   }
  }
 }

@@ -1,7 +1,7 @@
 {
  "agent": "reviewer",
  "prompt_version": 11,
- "recorded_at": "2026-09-05T06:20:10.214227+00:00",
+ "recorded_at": "2026-09-05T11:41:02.613088+00:00",
  "models": [
   "claude-sonnet-5"
  ],
@@ -17,6 +17,18 @@
    "model": "claude-sonnet-5",
    "input_tokens": 12520,
    "output_tokens": 987
+  },
+  "a9943ccf18dcdb7a5beba036": {
+   "text": "{\"ticket_id\": \"TCK-2\", \"source\": \"reviewer\", \"verdict\": \"block\", \"findings\": [{\"level\": \"block\", \"location\": \"src/payments/api.py\", \"text\": \"Secret 'STRIPE_KEY=\\\"sk_live_abc\\\"' (khóa live) hard-code trong mã nguồn. Hậu quả: khóa lộ qua git history/mã nguồn, ai đọc được repo có thể thực hiện giao dịch thật qua Stripe. Sửa: xoá khỏi code, nạp qua biến môi trường/secret manager, thu hồi và xoay vòng khóa 'sk_live_abc' đã lộ ngay lập tức.\"}, {\"level\": \"block\", \"location\": \"src/payments/api.py\", \"text\": \"Không có test cho endpoint POST /payments (local_checks.tests=false). Đây là luồng thanh toán (rủi ro cao) và ticket không có bằng chứng risk_tags được xử lý riêng; thiếu test cho Gherkin/happy path lẫn đường lỗi (gọi cổng thanh toán thất bại, timeout, key invalid) là finding block theo yêu cầu bắt buộc kiểm mọi Gherkin có test tương ứng.\"}, {\"level\": \"warn\", \"location\": \"PR #13\", \"text\": \"Mô tả PR không đề cập rollback, observability (log), hay ghi chú PII cho thay đổi chạm luồng thanh toán. Với thay đổi động vào payments API, cần bổ sung để tránh phải suy đoán khi cần rollback hoặc điều tra sự cố.\"}], \"scan_summary\": {\"secret_scan\": \"FAIL - phát hiện secret sk_live_abc hard-code trong src/payments/api.py\", \"sca\": \"chưa chạy được vì chưa xác nhận diff đầy đủ dependencies mới\"}, \"sbom_ref\": null, \"metrics\": {\"local_checks_lint\": true, \"local_checks_tests\": false}}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 13346,
+   "output_tokens": 804
+  },
+  "ef2841debfb616532d589c82": {
+   "text": "{\"ticket_id\": \"TCK-1\", \"source\": \"reviewer\", \"verdict\": \"pass\", \"findings\": [{\"level\": \"warn\", \"location\": \"pull-request description\", \"text\": \"Mô tả PR không nêu rõ mục rollback/PII theo templates/pull_request.md. Thay đổi này (thêm handler GET + test) revert được bằng một commit nên chỉ ghi nhận warn, không chặn merge. Bổ sung một dòng rollback (revert commit) và xác nhận không có PII trong response/log.\"}], \"bug_reports\": [], \"metrics\": {\"coverage\": 0.91, \"lint\": true, \"tests\": true}, \"project_id\": null, \"sbom_ref\": \"sbom/TCK-1-pr12.json\", \"scan_summary\": {\"sast\": \"no issues found in diff (src/orders/api.py)\", \"sca\": \"no new dependencies introduced\", \"secret_scan\": \"no secrets detected\", \"license_scan\": \"n/a - no new dependencies\"}}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 13422,
+   "output_tokens": 748
   }
  }
 }

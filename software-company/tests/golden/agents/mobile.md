@@ -188,6 +188,13 @@ Không bắt đầu bằng ARIA: mỗi lần định thêm `role=`, hãy hỏi t
 
 ## Quy tắc — cảm nhận và trạng thái
 - Tương phản ≥ 4.5:1 cho chữ thường, ≥ 3:1 cho chữ lớn và cho thành phần UI mang thông tin; kiểm ở cả light và dark.
+- Đo tương phản với nền THỰC TẾ được tính ra, không với nền của trang: chữ trong card đã đổi nền, chữ mờ trên bề mặt phụ, và viền focus so với bề mặt ngay dưới nó là ba chỗ trượt nhiều nhất. Chữ nút gần trùng màu nền nút là lỗi block.
+- Khối nền tối phải đặt lại màu chữ trong cùng rule; nền màu nhấn phải có token chữ đi kèm, đo tương phản với chính màu nhấn.
+- Viền focus hiện tức thì, không fade — người dùng bàn phím cần chỉ báo ngay.
+- Nội dung tự xoay (carousel, băng thông báo, băng số liệu) phải dừng được khi hover và khi focus (WCAG 2.2.2).
+- Tooltip: trễ 800–1000ms khi hover nhưng 0ms khi focus; bằng nhau là bẫy cho người dùng bàn phím.
+- Trạng thái disabled báo bằng ba kênh: mờ + `cursor: not-allowed` + thuộc tính `disabled`/`aria-disabled`; chỉ giảm độ mờ là không đủ.
+- Hình trang trí tự vẽ (`svg`, `canvas`, khối CSS art) phải có `aria-hidden="true"` hoặc một tên tiếp cận được — bỏ trống là lỗi hay gặp ở giao diện do model sinh.
 - Không truyền thông tin chỉ bằng màu, chỉ bằng hình dạng, hay chỉ bằng vị trí; luôn kèm chữ hoặc icon.
 - Target ≥ 24×24 CSS px (WCAG 2.2 AA); trên mobile theo `ui-ux-design` là 44/48; nhỏ hơn thì phải có khoảng đệm không chồng lấn.
 - Zoom 200% và reflow ở 320px không mất nội dung, không cuộn ngang hai chiều; giãn chữ không làm cắt chữ.
@@ -206,7 +213,8 @@ Không bắt đầu bằng ARIA: mỗi lần định thêm `role=`, hãy hỏi t
 - [ ] Luồng Must đi hết bằng bàn phím; focus visible; không bẫy focus
 - [ ] Mọi phần tử tương tác và ảnh có tên tiếp cận được đúng nghĩa
 - [ ] Form có label hiển thị, lỗi liên kết ARIA và đọc được bởi screen reader
-- [ ] Tương phản đạt ở cả light và dark; không thông tin chỉ bằng màu
+- [ ] Tương phản đạt ở cả light và dark, đo với nền thực tế của từng khối; không thông tin chỉ bằng màu
+- [ ] Nội dung tự xoay dừng được khi hover và focus; tooltip focus không có độ trễ
 - [ ] Zoom 200% và reflow 320px không mất nội dung
 - [ ] Đã kiểm thủ công ít nhất một screen reader trên luồng Must, có ghi kết quả
 - [ ] Mỗi finding dẫn chiếu đúng tiêu chí WCAG
@@ -223,7 +231,8 @@ Bản rút gọn: bạn vẫn phải đạt checklist bên dưới, nhưng KHÔN
 # Skill: ui-ux-design
 
 ## Quy trình (làm đúng thứ tự)
-Bối cảnh và phân loại màn hình → tokens và bố cục → đủ 5 trạng thái → vi tương tác → cổng kiểm chứng (a11y + gate).
+Bối cảnh và phân loại màn hình → chọn vân tay cấu trúc → tokens và bố cục → đủ 5 trạng thái → vi tương tác → tự chấm 6 trục → cổng kiểm chứng (a11y + gate).
+Tự chấm trước khi giao: chấm 1–5 sáu trục — triết lý (có lý do vì sao trang trông thế này), phân cấp (2 giây nhìn ra chính/phụ), thi công (chi tiết đúng spec), riêng biệt (giống bản brief này chứ không giống trang bất kỳ), tiết chế (bỏ hết thứ không làm việc gì), đa dạng (khác cấu trúc các màn đã làm). Dưới 3 ở bất kỳ trục nào thì sửa rồi mới chạy checklist; ghi sáu điểm vào `design`.
 Trước khi đề xuất token hay component: ĐỌC file token và thư mục component hiện có, dùng đúng tên đang có (chống bịa tên);
 thiếu thì đề xuất bổ sung vào nguồn token, không hard-code và không vẽ lại component đã có.
 
@@ -234,7 +243,11 @@ thiếu thì đề xuất bổ sung vào nguồn token, không hard-code và kh�
 - [ ] Tokens có version trong `design`: spacing, type scale, màu semantic, dark mode, elevation, motion
 - [ ] Tiêu chí a11y đo được (contrast, focus, target, label, không chỉ dựa vào màu)
 - [ ] Thông báo lỗi có nguyên nhân + cách khắc phục
-- [ ] Đã kiểm ở 375px, landscape, dark mode, cỡ chữ hệ thống lớn nhất, reduced-motion
+- [ ] Vân tay cấu trúc đã ghi đủ sáu trục và khác các màn trước ở ≥ 2 trục
+- [ ] Component tương tác có đủ 8 trạng thái trong mã
+- [ ] Đã tự chấm 6 trục, không trục nào dưới 3
+- [ ] Không bịa số liệu / lời chứng thực / logo khách
+- [ ] Đã kiểm ở 320 và 375px (không cuộn ngang, chữ bấm được không xuống hai dòng), landscape, dark mode, cỡ chữ hệ thống lớn nhất, reduced-motion
 - [ ] Giả định người dùng đã liệt kê
 
 # Skill: observability
