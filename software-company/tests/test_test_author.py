@@ -3,6 +3,7 @@ thứ tự (test trước code), ranh giới ghi (ai được chạm vùng nào)
 và tính nhìn thấy được (`tests_authored_by`, `tests_red_as_expected` / `tests_green_before_code`)."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -209,3 +210,54 @@ def test_luot_mu_khong_thay_hint_cua_vong_review_truoc(tmp_path: Path) -> None:
     orch._call("test-author", _task(hint="reviewer bảo dùng dict thay vì dataclass", retry=2), r, StepResult("e", "tasks", "T1"))
     joined = "\n".join(seen)
     assert "dataclass" not in joined and "given/when/then" in joined
+
+
+# ---------- các nhánh lỗi ----------
+
+def test_khong_dung_duoc_worktree_thi_di_duong_cu(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Worktree hỏng (git lỗi, đĩa đầy) không được làm ticket đứng im: rơi về đường cũ, `_engineer` báo lỗi thật."""
+    from company import orchestrator as orch_mod
+    _bus, orch = _orch(tmp_path, test_author=True)
+    monkeypatch.setattr(TicketWorkspace, "create", lambda self: (_ for _ in ()).throw(OSError("đĩa đầy")))
+    assert orch_mod._test_scope_ok(orch, "T1") is False
+    assert orch_mod._can_author_tests(_task(), orch) is False
+
+
+def test_orchestrator_ghi_audit_khi_test_xanh_ngay(tmp_path: Path) -> None:
+    """Cùng tín hiệu như ở runner, nhưng đi qua orchestrator: cờ phải tới được audit-log của dự án."""
+    repo = _init_repo(tmp_path / "repo")
+    def th(msgs, tools):
+        return [_tc("write_file", path=TEST_FILE, content="def test_luon_dung():\n    assert True\n")] if _first_turn(msgs) else []
+    bus = InMemoryBus()
+    orch = Orchestrator(bus, FakeClient(handler=lambda s, u: _ts(_inp(u)), tool_handler=th), repo=repo, base="main", test_author=True)
+    from company.orchestrator import ROUTES, StepResult
+    r = next(x for x in ROUTES if x.topic_in == "tasks" and x.agent == "test-author")
+    orch._call("test-author", _task(), r, StepResult("e", "tasks", "T1"))
+    ev = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "tests_green_before_code"]
+    assert ev and ev[-1]["ticket_id"] == "T1"
+    assert json.loads(ev[-1]["evidence"])["files"] == [TEST_FILE]
+
+
+def test_don_file_do_dang_cua_lan_truoc_truoc_khi_viet_test(tmp_path: Path) -> None:
+    """Lần chạy trước lỗi giữa chừng để lại file dở; không dọn thì lượt này commit luôn rác đó vào bộ test."""
+    repo = _init_repo(tmp_path / "repo"); ws = TicketWorkspace(repo, "T1", base="main")
+    ws.create()
+    (ws.path / "rac.py").write_text("# tệp dở của lần trước\n", encoding="utf-8")
+    th = lambda m, t: [_tc("write_file", path=TEST_FILE, content=TEST_BODY)] if _first_turn(m) else []  # noqa: E731
+    bus = InMemoryBus()
+    g, _ = AgentRunner(bus, FakeClient(handler=lambda s, u: _ts(_inp(u)), tool_handler=th)).author_tests(
+        "test-author", _task(), ws)
+    assert not (ws.path / "rac.py").exists()
+    assert g.payloads[0]["files"] == [TEST_FILE]
+    assert "workspace_reset" in [e.payload["action"] for e in bus.replay(topic="audit-log")]
+
+
+def test_commit_bo_test_that_bai_thi_noi_thang(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from company.workspace import WorkspaceError
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main")
+    th = lambda m, t: [_tc("write_file", path=TEST_FILE, content=TEST_BODY)] if _first_turn(m) else []  # noqa: E731
+    monkeypatch.setattr(TicketWorkspace, "commit_all",
+                        lambda self, msg: (_ for _ in ()).throw(WorkspaceError("index đang khoá")))
+    with pytest.raises(RunnerError, match="commit bộ test thất bại"):
+        AgentRunner(InMemoryBus(), FakeClient(handler=lambda s, u: _ts(_inp(u)), tool_handler=th)).author_tests(
+            "test-author", _task(), ws)
