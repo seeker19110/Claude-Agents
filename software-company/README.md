@@ -54,10 +54,10 @@ examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--rela
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng intake cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 20 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
-tests/         pytest 642 ca / 33 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+tests/         pytest 668 ca / 34 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
                guard/blackboard, schema consistency, golden 20 agent + 5 hồ sơ gate, bộ sinh subagent, hồ sơ gate, rà soát bảo mật);
-               coverage fail_under=98
+               coverage fail_under=100 (phủ 100% dòng)
 ```
 
 ## Chạy

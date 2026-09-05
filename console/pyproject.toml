@@ -50,5 +50,6 @@ testpaths = ["tests"]
 source = ["src/console"]
 
 [tool.coverage.report]
-# Đặt ở mức đang đạt để chặn tụt lùi, nâng lên khi coverage thật tăng.
-fail_under = 84
+# Cả bốn package phủ 100% dòng: ngưỡng bằng đúng mức đạt được, nên mất một dòng phủ là CI đỏ.
+# Nhánh phụ thuộc nền tảng (os.name == "nt", AF_INET6) được test bằng cách thay socket/ctypes, không bằng môi trường.
+fail_under = 100
