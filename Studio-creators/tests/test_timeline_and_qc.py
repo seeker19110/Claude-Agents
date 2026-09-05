@@ -183,3 +183,102 @@ def test_qc_measures_a_real_render_end_to_end(tmp_path):
     assert rep.metrics["duration_drift"] < 0.05 and rep.metrics["sample_rate"] == 48000
     assert not rep.blocked and all(f.location != "captions" for f in rep.findings)
     assert any("qc:640x360 24.0fps" in line for line in rep.checklist())
+
+
+# ---------- QC từng cảnh: dữ liệu thật cho editor ----------
+
+def _ffmpeg_out(monkeypatch, image_err: str = "", audio_err: str = "", duration: float | None = 3.0):
+    monkeypatch.setattr(qc.shutil, "which", lambda b: f"/usr/bin/{b}")
+    monkeypatch.setattr(qc, "probe_duration", lambda p: duration)
+
+    def run(argv, *a, **k):
+        err = image_err if "-vf" in argv else audio_err
+        return subprocess.CompletedProcess(argv, 0, "", err)
+
+    monkeypatch.setattr(qc.subprocess, "run", run)
+
+
+_GOOD_IMG = ("lavfi.signalstats.YAVG=125.5\nlavfi.signalstats.YLOW=16\nlavfi.signalstats.YHIGH=235\n")
+
+
+def test_scene_qc_is_silent_when_the_scene_is_healthy(tmp_path, monkeypatch):
+    img = tmp_path / "S1.png"; img.write_bytes(b"x"); aud = tmp_path / "S1.wav"; aud.write_bytes(b"y")
+    _ffmpeg_out(monkeypatch, _GOOD_IMG, "")
+    r = qc.qc_scene(img, aud, "một hai ba bốn năm sáu bảy tám", 3.0)
+    assert r["findings"] == []
+    assert r["metrics"] == {"image": {"yavg": 125.5, "ylow": 16.0, "yhigh": 235.0, "contrast": 219.0},
+                            "audio": {"duration_s": 3.0, "silence_s": 0.0}}
+
+
+def test_scene_qc_catches_dark_flat_images_and_broken_narration(tmp_path, monkeypatch):
+    """Đúng những thứ editor được yêu cầu bắt ("ảnh tối", "đọc vấp") mà trước đây nó không có cách nào thấy."""
+    img = tmp_path / "S2.png"; img.write_bytes(b"x"); aud = tmp_path / "S2.wav"; aud.write_bytes(b"y")
+    dark = "lavfi.signalstats.YAVG=25\nlavfi.signalstats.YLOW=25\nlavfi.signalstats.YHIGH=25\n"
+    _ffmpeg_out(monkeypatch, dark, "silence_start: 0 | silence_end: 3 | silence_duration: 3.0")
+    r = qc.qc_scene(img, aud, " ".join(["từ"] * 25), 3.0)
+    text = " | ".join(f["text"] for f in r["findings"])
+    assert "ảnh gần như đen (độ sáng 25.0/255)" in text and "tương phản 0.0" in text
+    assert "giọng đọc gần như im lặng (3.0s/3.0s)" in text and "TTS nuốt phần cuối" in text
+    assert next(f["level"] for f in r["findings"] if f["location"] == "scene_audio") == "block"
+    # ảnh cháy sáng
+    _ffmpeg_out(monkeypatch, "lavfi.signalstats.YAVG=240\nlavfi.signalstats.YLOW=200\nlavfi.signalstats.YHIGH=255\n")
+    assert "ảnh gần như trắng" in " ".join(f["text"] for f in qc.qc_scene(img, aud, "một hai ba", 3.0)["findings"])
+
+
+def test_scene_qc_flags_audio_that_does_not_match_the_manifest(tmp_path, monkeypatch):
+    img = tmp_path / "S3.png"; img.write_bytes(b"x"); aud = tmp_path / "S3.wav"; aud.write_bytes(b"y")
+    _ffmpeg_out(monkeypatch, _GOOD_IMG, "", duration=0.6)
+    r = qc.qc_scene(img, aud, "một hai ba bốn năm", 3.0)
+    assert "thời lượng thật 0.6s lệch manifest (3.0s)" in " ".join(f["text"] for f in r["findings"])
+    _ffmpeg_out(monkeypatch, _GOOD_IMG, "", duration=0.0)
+    assert any(f["level"] == "block" and "rỗng" in f["text"] for f in qc.qc_scene(img, aud, "x", 0)["findings"])
+
+
+def test_scene_qc_reports_missing_files_and_skips_without_ffmpeg(tmp_path, monkeypatch):
+    _ffmpeg_out(monkeypatch)
+    r = qc.qc_scene(None, tmp_path / "khong-co.wav", "x", 1.0)
+    assert [(f["level"], f["location"]) for f in r["findings"]] == [("block", "scene_image"), ("block", "scene_audio")]
+    m = _manifest((2.0,))
+    assert qc.qc_scenes(m) != {}                       # có ffmpeg (giả) → có đo
+    monkeypatch.setattr(qc.shutil, "which", lambda b: None)
+    assert qc.qc_scenes(m) == {}                        # không có ffmpeg → rỗng, editor vẫn chạy như cũ
+    assert qc.measure_image(tmp_path / "x.png") == {} and qc.measure_silence(tmp_path / "x.wav") == 0.0
+
+
+def test_editor_receives_scene_measurements_in_its_payload(tmp_path):
+    """Nối dây: editor nhận `scene_qc` cùng manifest và asset, nên nó quyết định sửa cảnh nào bằng số đo."""
+    from studio.events import Envelope
+    from studio.fakes import make_scripted_client
+    from studio.media import MediaConfig, make_media
+    from studio.orchestrator import Orchestrator, _with_manifest_assets
+
+    bus = InMemoryBus()
+    o = Orchestrator(bus, make_scripted_client(), media=make_media(MediaConfig(output_dir=tmp_path)), out_dir=tmp_path)
+    m = _manifest((2.0, 3.0), vid="CH1-V1")
+    o.renderer.render(m)
+    draft = next(e for e in bus.replay("media-assets", "CH1-V1") if e.payload["kind"] == "draft_video")
+    extra = _with_manifest_assets(Envelope(topic="media-assets", key="CH1-V1", actor="renderer", payload=draft.payload), o)
+    assert set(extra) == {"manifest", "scene_assets", "scene_qc", "repair_rounds_used", "repair_rounds_max"}
+    if shutil.which("ffmpeg"):
+        assert set(extra["scene_qc"]) == {"S1", "S2"}
+        assert "metrics" in extra["scene_qc"]["S1"] and "findings" in extra["scene_qc"]["S1"]
+    else:
+        assert extra["scene_qc"] == {}
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="cần ffmpeg")
+def test_scene_qc_measures_real_files(tmp_path):
+    """Đo file thật: ảnh gần đen và giọng đọc im lặng phải bị bắt, cảnh lành lặn thì không báo gì."""
+    def lavfi(spec: str, out: Path, *args: str) -> Path:
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", spec, *args, str(out)], check=True)
+        return out
+
+    dark = lavfi("color=c=0x0a0a0a:s=320x180:d=1", tmp_path / "dark.png", "-frames:v", "1")
+    good = lavfi("testsrc=size=320x180:d=1:rate=1", tmp_path / "good.png", "-frames:v", "1")
+    silent = lavfi("anullsrc=r=24000:cl=mono:d=3", tmp_path / "silent.wav", "-ar", "24000")
+    speech = lavfi("anoisesrc=d=3:c=pink:a=0.2,lowpass=f=3400", tmp_path / "speech.wav", "-ar", "24000")
+    assert qc.qc_scene(good, speech, "một hai ba bốn năm sáu bảy tám", 3.0)["findings"] == []
+    xấu = qc.qc_scene(dark, silent, "một hai ba bốn năm sáu bảy tám", 3.0)
+    text = " | ".join(f["text"] for f in xấu["findings"])
+    assert "ảnh gần như đen" in text and "giọng đọc gần như im lặng" in text
+    assert xấu["metrics"]["image"]["yavg"] < 40 and xấu["metrics"]["audio"]["silence_s"] >= 2.9

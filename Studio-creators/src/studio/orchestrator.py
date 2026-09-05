@@ -53,7 +53,7 @@ from .llm import LLMError, ModelClient
 from .media import MediaError, MediaSuite, frame_size
 from .platform import Platform, PlatformError, UploadResult, make_platform
 from .preflight import PreflightReport, preflight
-from .qc import QCReport, qc_video
+from .qc import QCReport, qc_scenes, qc_video
 from .registry import AgentSpec, load_agents
 from .renderer import ACTOR as RENDERER
 from .renderer import Renderer
@@ -153,9 +153,12 @@ def _assets_of(o: Orchestrator, vid: str, version: int | None = None) -> list[di
 
 
 def _with_manifest_assets(e: Envelope, o: Orchestrator) -> dict[str, Any]:
+    """Editor là người duy nhất sửa được cảnh, nhưng nó chỉ đọc JSON: `scene_qc` là số đo THẬT của từng ảnh và từng
+    file giọng đọc (độ sáng, tương phản, thời lượng, im lặng) để nó quyết định sửa cảnh nào bằng dữ liệu, không phải
+    phỏng đoán. Máy không có ffmpeg thì trường này rỗng và editor làm việc như cũ."""
     vid = e.payload["video_id"]; m = o.manifest(vid)
     if m is None: return {}
-    return {"manifest": m.model_dump(), "scene_assets": _assets_of(o, vid, m.version),
+    return {"manifest": m.model_dump(), "scene_assets": _assets_of(o, vid, m.version), "scene_qc": qc_scenes(m),
             "repair_rounds_used": o.desk.repair_rounds[vid], "repair_rounds_max": 3}
 
 

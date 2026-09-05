@@ -38,6 +38,12 @@ video **đúng**, nhưng chưa ra được video **xem được**:
    thời lượng, âm lượng, đỉnh, đoạn hình đen, khoảng lặng, thumbnail và phụ đề. Báo cáo đi vào `package` của
    quality-reviewer **và** vào checklist gate publish. Không có ffprobe thì báo cáo nói thẳng là không đo được.
 
+8. **QC từng cảnh cho editor** (`qc.qc_scenes`): editor là người duy nhất sửa được cảnh, và prompt của nó yêu cầu bắt
+   "ảnh tối", "narration vấp" — nhưng nó chỉ nhận JSON đường dẫn. Code đo từng ảnh (độ sáng, tương phản qua
+   `signalstats`) và từng file giọng đọc (thời lượng, tổng im lặng, so với số từ của narration), rồi gắn vào payload
+   của editor dưới khoá `scene_qc`. Không đổi prompt: đây là dữ liệu, không phải chỉ thị. Máy không có ffmpeg thì
+   trường này rỗng và editor làm việc như trước.
+
 ## Hệ quả
 
 - Video ra có nhịp: mỗi cảnh có chuyển động riêng, chuyển cảnh mềm, tiếng đều ở mức nền tảng.
@@ -47,6 +53,8 @@ video **đúng**, nhưng chưa ra được video **xem được**:
   mỗi bản dựng. Đo trên máy phát triển: bốn cảnh 1080p mất khoảng 10 giây.
 - Mốc thời gian giờ có một nguồn sự thật duy nhất (`timeline.timeline`) dùng chung cho phụ đề, chapter và điểm rơi
   retention. Đổi `tail_pad_s`/`transition_s` mà quên sửa công thức này thì phụ đề sẽ lệch — đó là chỗ dễ hỏng nhất.
+- Editor lần đầu có số để quyết định: một cảnh ảnh gần đen hay TTS trả về im lặng nay hiện thành finding có mức và
+  vị trí, thay vì phải đoán từ đường dẫn file. Chi phí: hai lượt ffmpeg cho mỗi cảnh ở bước dựng nháp.
 - QC chỉ **báo cáo**, không tự chặn: quyền quyết định vẫn ở quality-reviewer và người duyệt gate (ADR-0002,
   approval-first). Đổi lại, mọi finding block đều hiện nguyên văn trong checklist gate.
 
@@ -54,5 +62,6 @@ video **đúng**, nhưng chưa ra được video **xem được**:
 
 - Nhạc nền có license và ducking dưới giọng đọc (cần thư viện nhạc + sổ provenance riêng).
 - Phụ đề theo từng cụm từ (cần timestamps của provider TTS), phụ đề đốt sẵn cho Shorts.
-- Reviewer nhìn được ảnh cảnh (đầu vào đa phương thức) — việc đó chạm front matter của agent nên phải ghi lại eval bằng
-  model thật, để sang ADR-0010.
+- Reviewer **nhìn** được ảnh cảnh (đầu vào đa phương thức). `scene_qc` bù được phần đo bằng máy (tối, một màu, im lặng)
+  nhưng không thay được mắt người: "ảnh có khớp prompt không", "có chữ hay khuôn mặt thật trong ảnh không" vẫn phải
+  nhìn. Việc đó chạm front matter của agent nên phải ghi lại eval bằng model thật, để sang ADR-0010.

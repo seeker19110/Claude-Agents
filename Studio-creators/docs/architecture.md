@@ -124,7 +124,8 @@ trong đoạn đệm im lặng nên giọng đọc không chồng nhau và hình
 đỉnh -1 dBTP. `timeline.py` giữ công thức mốc cảnh dùng chung cho phụ đề (SRT sinh từ narration), cho việc nắn mốc
 chapter về đầu cảnh thật (model đặt tên, code đặt giờ) và cho điểm rơi retention. `qc.py` đo bản cuối (khung hình, fps,
 thời lượng, LUFS, đỉnh, hình đen, khoảng lặng, thumbnail, phụ đề) rồi đưa báo cáo vào `package` của quality-reviewer và
-vào checklist gate publish.
+vào checklist gate publish; `qc_scenes` đo từng cảnh (độ sáng, tương phản của ảnh; thời lượng, im lặng của giọng đọc)
+rồi đưa vào payload của editor dưới khoá `scene_qc`.
 
 Ba quyết định khung hình nằm ở lớp này vì chúng quyết định video có xem được không: `image_size` chỉ gửi kích thước HỢP LỆ
 theo model (gpt-image-1 không nhận 1792x1024); `frame_size` đổi khung theo `aspect` của manifest (9:16 → 1080x1920);

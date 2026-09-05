@@ -45,7 +45,7 @@ src/studio/    events, bus, sqlite_bus, blackboard, registry, gates, gate_cli, l
                platform (adapter YouTube thật / fake — ADR-0008), youtube (CLI login/status/sync-*),
                preflight, analytics, desk, supervisor, runner, orchestrator, evals, fakes, demo
 evals/         ca eval theo agent (YAML) — 14 agent, mỗi agent 2 ca; recordings/ = phản hồi model đã ghi
-tests/         pytest 418 ca / 31 file: bus, registry, golden 14 agent, preflight/analytics, media/renderer (ffmpeg nếu có),
+tests/         pytest 424 ca / 31 file: bus, registry, golden 14 agent, preflight/analytics, media/renderer (ffmpeg nếu có),
                desk/gate, runner/eval ghi-phát lại, tool web + vòng lặp tool, platform (fake, YouTube với HTTP giả, CLI sync),
                routing nhiều backend, provider claude-code, orchestrator end-to-end (gate, rework, sửa cảnh, upload sau gate,
                resume SQLite, injection)
@@ -168,6 +168,9 @@ Asset sinh ra nằm ở `output/<video_id>/` (bị gitignore): `S1.wav`, `S1.png
 - **QC bằng code trên file thật** (`qc.py`, ADR-0009): ffprobe + ebur128/blackdetect/silencedetect đo khung hình, fps,
   thời lượng, âm lượng, đỉnh, đoạn hình đen, khoảng lặng, thumbnail, phụ đề. Báo cáo vào `package` của quality-reviewer
   và vào checklist gate publish — ba reviewer chỉ đọc JSON nên đây là mắt và tai của họ.
+- **Đo từng cảnh cho editor** (`qc.qc_scenes`): độ sáng và tương phản của từng ảnh, thời lượng và tổng im lặng của từng
+  file giọng đọc, so với số từ của narration → `scene_qc` trong payload của editor. Ảnh gần đen, ảnh một màu, TTS trả về
+  im lặng hay đọc thiếu đều thành finding có mức và vị trí, nên editor sửa đúng cảnh thay vì đoán.
 - **Khung hình và thời lượng đúng ngay lượt render thật đầu tiên**: kích thước ảnh chọn theo model (`gpt-image-1` không
   nhận 1792x1024 — khai sai được thay bằng kích thước hợp lệ cùng tỷ lệ), khung video theo `aspect` của manifest (short
   9:16 ra 1080x1920, không phải khung ngang kèm hai dải đen), cảnh dài đúng bằng giọng đọc (`-shortest` + `apad`, không
@@ -199,7 +202,7 @@ Asset sinh ra nằm ở `output/<video_id>/` (bị gitignore): `S1.wav`, `S1.png
   Orchestrator: gate publish approve → CODE upload + thumbnail chosen + lịch, ghi đè `platform_ref`/`url`/`evidence`; gate replies
   approve → CODE đăng reply; không có approve thì adapter không bị chạm. CLI `sync-comments`/`sync-metrics` nạp số thật lên bus.
 - **Eval ghi/phát lại** + **client giả có kịch bản** (`fakes.py`) chạy được mọi ca eval và demo end-to-end offline.
-- Test: 418 ca pytest (golden 14 agent, bus, registry, preflight/analytics, media/renderer + 8 provider media, timeline/QC, desk/gate, runner/eval, tool web + vòng tool,
+- Test: 424 ca pytest (golden 14 agent, bus, registry, preflight/analytics, media/renderer + 8 provider media, timeline/QC, desk/gate, runner/eval, tool web + vòng tool,
   platform fake/YouTube HTTP giả/CLI sync, routing nhiều backend, provider claude-code, orchestrator e2e kể cả approval-first
   với adapter); 28/28 ca eval có bản ghi model thật; ruff sạch.
 

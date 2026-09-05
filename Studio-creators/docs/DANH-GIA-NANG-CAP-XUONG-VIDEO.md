@@ -113,17 +113,19 @@ vào checklist gate publish. Thiếu ffprobe thì báo cáo nói thẳng là kh�
 
 ## 5. Reviewer "mù và điếc" (P1, ảnh hưởng chất lượng lớn nhất)
 
-**C1. Editor, quality-reviewer, rights-checker chỉ nhận JSON.** `orchestrator.py:152-166` truyền `manifest` + `scene_assets`
+**C1. Editor, quality-reviewer, rights-checker chỉ nhận JSON.** *(nửa code đã làm, xem cuối mục)* `orchestrator.py:152-166` truyền `manifest` + `scene_assets`
 (path, checksum, provenance); `runner.py:89-111` đóng gói mọi thứ thành văn bản; `ModelClient.complete` (`llm.py:100-102`)
 không có đầu vào ảnh/audio. Editor phải "kiểm ảnh khớp prompt, narration đọc đúng" mà không thấy ảnh, không nghe audio.
 Bản ghi eval thật (`evals/recordings/editor.json`) cho thấy editor tự ghi chú không kiểm được và đẩy việc cho
 quality-reviewer, agent cũng mù như nó. Rights-checker không thấy ảnh nên không bắt được logo, chữ, khuôn mặt thật vô tình
 sinh ra. Đề xuất hai lớp, giữ nguyên tắc code hành động:
 
-- *Lớp code (rẻ, xác định, chạy trước):* ảnh thu nhỏ mỗi cảnh (contact sheet); đo độ sáng trung bình và tương phản
-  (bắt ảnh gần đen/gần trắng); OCR nhẹ phát hiện chữ trong ảnh; phát hiện khuôn mặt (OpenCV Haar); nhận dạng lại audio
-  (whisper local) so với narration, WER > 10 % → đề nghị `regenerate_audio`. Kết quả gắn vào `scene_assets[].qc` để editor
-  quyết định trên dữ liệu thật.
+- *Lớp code (rẻ, xác định, chạy trước) — **ĐÃ LÀM** (`qc.qc_scenes`, ADR-0009):* mỗi cảnh được đo độ sáng và tương phản
+  của ảnh (`signalstats`), thời lượng và tổng im lặng của giọng đọc, rồi so với số từ của narration. Ảnh gần đen, ảnh một
+  màu, TTS trả về im lặng hoặc đọc thiếu đều thành finding có mức và vị trí trong `scene_qc` của payload editor. Kiểm
+  chứng bằng file thật: cảnh lành lặn ra 0 finding, ảnh 0x0a0a0a bị bắt (độ sáng 25/255), audio im lặng bị bắt ở mức
+  block. *Còn thiếu (cần thêm phụ thuộc):* OCR phát hiện chữ trong ảnh, phát hiện khuôn mặt, nhận dạng lại audio so với
+  narration (whisper local).
 - *Lớp model (đa phương thức):* mở rộng `ModelClient.complete` nhận `attachments: [{type: image, path}]` (Anthropic image
   block, OpenAI `image_url` base64); agent khai `inputs: [images]` trong front matter; runner gắn ảnh cảnh thu nhỏ (≤ 512 px)
   cho editor / quality-reviewer / rights-checker; provider `claude-code` đọc file ảnh qua tool. Eval ghi/phát lại lưu hash
