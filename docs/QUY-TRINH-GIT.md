@@ -88,13 +88,58 @@ Merge sạch (không xung đột) thì **không** chạy lại toàn bộ cổng
 - Sau merge, kiểm `main` còn xanh; hỏng thì ưu tiên revert rồi điều tra trong PR mới.
 - Tag `vX.Y.Z` khi phát hành mốc (`version` trong `software-company/pyproject.toml`).
 
-## 8. Việc cần bật trên GitHub (một lần)
+## 8. Việc cần bật trên GitHub (một lần) — và cách biết nó CÓ THẬT
 
-Quy trình trên giả định `main` có branch protection. Trong Settings → Branches của
-`seeker19110/X-Agents`, thêm rule cho `main`:
+Quy trình trên giả định `main` có bảo vệ nhánh. Cấu hình này **không nằm trong git**, nên trước đây "đã bật"
+chỉ là lời hứa: PR #29 merge 23 giây sau khi mở, job `quality` xanh **3 phút sau khi đã merge**. Từ nay có hai lớp:
 
-- Require a pull request before merging.
-- Required status checks: `quality`, `metadata`.
-- **Tắt** "Require branches to be up to date before merging" (tránh mỗi PR khác merge là mọi PR
-  đang mở phải gộp `main` rồi chờ CI lại).
-- Bật "Allow auto-merge" và "Automatically delete head branches".
+1. **Ruleset import được** — `.github/rulesets/main.json` là nguồn sự thật, đi qua PR như code.
+   Bật: Settings → Rules → Rulesets → **New ruleset → Import a ruleset** → chọn file đó → Create.
+   Nội dung: bắt buộc PR (**0 approval** — xem ô dưới, thread review phải resolve, chỉ **squash**) ·
+   required status checks `quality` + `metadata` · cấm xoá và cấm force-push `main` ·
+   **Copilot code review** (`copilot_code_review`, không review khi push và không review PR nháp) ·
+   **không ai được bypass, kể cả admin** (`bypass_actors` rỗng) · **tắt** "up to date" (`strict: false`) để PR khác
+   merge không bắt mọi PR đang mở gộp `main` rồi chờ CI lại.
+2. **Job `protection-guard` trong CI** đọc rule đang áp lên nhánh mặc định qua API và **đỏ khi thiếu** bất kỳ mục
+   nào ở trên. `quality` cần nó xanh. Nghĩa là: chưa import ruleset thì mọi PR đỏ — đó là chủ đích.
+
+Hai nút vẫn phải bật tay trong Settings → General (không thuộc ruleset): **Allow auto-merge** và
+**Automatically delete head branches**.
+
+### Vì sao `required_approving_review_count` = 0
+
+> **Không phải hạ tiêu chuẩn — là ghi nhận thực tế.** Repo hiện có **đúng một cộng tác viên**. GitHub không cho
+> tự duyệt PR của chính mình, và `bypass_actors` cố ý để rỗng, nên đặt 1 approval sẽ **khoá vĩnh viễn mọi PR**
+> vào `main` — auto-merge bật cũng không kích hoạt. Lần đầu import với số 1 đã tạo đúng thế kẹt đó (PR #40).
+
+Đặt 0 **vẫn chặn nguyên hai vấn đề** mà đường cơ sở đo được ngày 2026-09-04:
+
+| Vấn đề đo được | Rule nào chặn |
+|---|---|
+| PR #29 merge sau 23 giây, `quality` xanh **3 phút sau khi merge** | `required_status_checks` |
+| **35% commit** đẩy thẳng vào `main` | rule `pull_request` — nó bắt buộc phải qua PR; số approval chỉ là **một tham số** của rule đó |
+
+Thứ mất đi là **four-eyes**, và four-eyes vốn không tồn tại khi chỉ có một người.
+
+**Nâng lại lên 1 (hoặc 2) ngay khi có người thứ hai thật** trong repo — lúc đó nó mới có nghĩa. Cách đổi: sửa
+`required_approving_review_count` trong file JSON qua PR **rồi import lại** (ruleset cùng tên sẽ được cập nhật).
+Guard không kiểm số approval, chỉ kiểm **có** rule `pull_request` — nên đổi số không làm CI đỏ.
+
+⚠️ **Thứ tự bắt buộc nếu lỡ khoá lại:** file JSON trong repo chỉ là bản nguồn để nhập; sửa nó cũng cần một PR,
+mà PR thì đang bị khoá. Phải **sửa ruleset đang chạy trong Settings trước**, rồi mới sửa được file.
+
+### File và ruleset thật phải khớp
+
+File này được **đối chiếu với `GET /repos/:owner/:repo/rulesets/:id`** ngày 2026-09-05, không viết theo trí nhớ.
+Ba thứ GitHub tự thêm khi tạo ruleset mà bản viết tay ban đầu thiếu — nay đã bổ sung: rule `copilot_code_review`,
+và hai tham số `required_reviewers` + `require_extra_approval_for_unattributed_changes` của rule `pull_request`.
+Nếu không bổ sung, lần import lại từ file sẽ **âm thầm gỡ mất Copilot review**.
+
+Sau khi bổ sung, lệch duy nhất còn lại giữa file và ruleset đang chạy là `required_approving_review_count`
+(file 0, đang chạy 1) — đúng thứ cần đổi trong Settings.
+
+🔍 **Điểm cần theo dõi:** `require_extra_approval_for_unattributed_changes = true` đòi **thêm một approval** khi PR
+chứa thay đổi không gán được cho một tài khoản. Hiện không cắn: commit trên nhánh này gán đúng vào tài khoản
+`claude` (kiểm bằng trường `author.login` của API commit). Nhưng nếu sau khi hạ approval về 0 mà PR **vẫn**
+`blocked` dù mọi check xanh, hãy nghi tham số này trước tiên — nhất là khi người mở PR và người tạo commit là
+hai tài khoản khác nhau.

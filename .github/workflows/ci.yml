@@ -313,6 +313,41 @@ jobs:
       - run: uv run python -m company.assetscan budget . ../Studio-creators
         working-directory: software-company
 
+  # Canh gác bảo vệ nhánh — ĐỎ cho tới khi ruleset `.github/rulesets/main.json` thật sự có hiệu lực trên `main`.
+  # Lý do: cấu hình repo không nằm trong git, nên "đã bật" chỉ là lời hứa nếu không có gì kiểm. Bằng chứng: PR #29
+  # merge 23 giây sau khi mở, job `quality` xanh 3 phút SAU merge. Bật ruleset (docs/QUY-TRINH-GIT.md §8) là job này xanh.
+  protection-guard:
+    name: protection-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Rule đang áp lên nhánh mặc định phải khớp .github/rulesets/main.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          rules=$(curl -sS --fail \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/rules/branches/$BRANCH")
+          has_rule()  { jq -e --arg t "$1" 'map(select(.type == $t)) | length > 0' <<<"$rules" >/dev/null; }
+          has_check() { jq -e --arg c "$1" '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | index($c) != null' <<<"$rules" >/dev/null; }
+          fail=0
+          for t in pull_request required_status_checks deletion non_fast_forward; do
+            has_rule "$t" || { echo "::error::Thiếu rule '$t' trên $BRANCH"; fail=1; }
+          done
+          for c in quality metadata; do
+            has_check "$c" || { echo "::error::Status check '$c' chưa được bắt buộc trên $BRANCH"; fail=1; }
+          done
+          if [ "$fail" = 1 ]; then
+            echo "::error::Bảo vệ nhánh CHƯA có hiệu lực. Import .github/rulesets/main.json: Settings → Rules → Rulesets → New ruleset → Import a ruleset. Chi tiết: docs/QUY-TRINH-GIT.md §8."
+            exit 1
+          fi
+          echo "OK — $BRANCH đang được bảo vệ đúng ruleset (pull_request, required_status_checks: quality + metadata, deletion, non_fast_forward)."
+
   # Job tổng hợp — TÊN `quality` LÀ BẤT BIẾN (required status check của branch protection `main`).
   # Thêm job con mới thì phải nối vào `needs` dưới đây, nếu không kết quả của nó không được tính.
   quality:
@@ -321,7 +356,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    needs: [static, unit, eval-replay, audit, studio-static, studio-unit, studio-eval-replay, golden-check, gateway-static, gateway-unit, console-static, console-unit, asset-scan]
+    needs: [static, unit, eval-replay, audit, studio-static, studio-unit, studio-eval-replay, golden-check, gateway-static, gateway-unit, console-static, console-unit, asset-scan, protection-guard]
     if: always()
     steps:
       - name: Kiểm mọi job con đã success
