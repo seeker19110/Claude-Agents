@@ -45,13 +45,18 @@ def test_pin_url_cong_khong_hop_le():
 # ---------- sqlite_bus ----------
 
 def test_bus_del_nuot_loi_khi_dong_that_bai(tmp_path):
+    """`__del__` chạy lúc thông dịch tắt: `close()` hỏng thì phải nuốt, vì `__del__` không được phép ném."""
     bus = SB.SQLiteBus(tmp_path / "b.sqlite")
+    that = bus._db   # giữ kết nối THẬT lại: bỏ rơi nó là đúng cái ResourceWarning mà `__del__` sinh ra để tránh
+                     # (trên 3.13 + filterwarnings=error, cảnh báo đó nổ ở một test khác đang chạy lúc GC)
 
     class _Hong:
         def close(self): raise RuntimeError("thông dịch đang tắt")
-    bus._db = _Hong()
-    bus.__del__()   # không được ném
-    bus._db = None  # type: ignore[assignment]
+
+    bus._db = _Hong()   # type: ignore[assignment]
+    bus.__del__()       # không được ném
+    bus._db = that
+    bus.close()
 
 
 def test_alive_tren_windows_dung_openprocess(monkeypatch):
