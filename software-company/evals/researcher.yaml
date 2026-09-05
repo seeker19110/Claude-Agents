@@ -17,8 +17,15 @@ cases:
         sources: ["email khách 2026-08-30", "họp kickoff 2026-09-01"]
     expect:
       equals: {project_id: P1, kind: researcher}
-      min_len: {data.domain.glossary: 3, data.ux.flows: 1, data.ux.personas: 2, data.tech.options: 1, sources: 1}
+      min_len: {data.ux.flows: 1, data.ux.personas: 2, data.tech.options: 1, sources: 1}
       contains: {data.domain.regulations: "13/2023"}
+      # Glossary phải TỚI ĐƯỢC synthesizer, không phải phải nằm ở một chỗ nhất định: synthesizer có
+      # `context_namespace_read: [glossary, ...]` nên nó đọc toàn văn namespace `glossary` (ADR-0020).
+      # Viết thẳng vào báo cáo hay ghi artifact rồi trỏ tới đều đủ — với đề bài đầy đủ, artifact glossary
+      # lên tới 6KB, lặp lại inline chỉ tốn token đầu ra chứ không thêm thông tin cho ai.
+      any_of:
+        - - min_len: {data.domain.glossary: 3}
+          - min_len: {data.domain.glossary_ref: 1}
 
   - name: khong-co-codebase-phai-ghi-khong-ap-dung-khong-bia
     topic_out: research-findings

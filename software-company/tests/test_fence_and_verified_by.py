@@ -119,3 +119,21 @@ def test_khong_noi_long_ngoai_dung_mot_truong_hop(text: str):
 def test_mang_tran_khong_phai_viec_cua_lop_nay():
     """`[1,2,3]` là JSON hợp lệ nên `.json()` trả về nó; "phải là object" do runner chặn, không phải ở đây."""
     assert _c("[1, 2, 3]").json() == [1, 2, 3]
+
+
+# ---------- any_of trong ngôn ngữ chấm eval ----------
+
+def test_any_of_dat_khi_mot_nhanh_dat():
+    """Hệ chấp nhận nhiều cách diễn đạt cho cùng một yêu cầu (vd. glossary viết thẳng hay ghi artifact rồi trỏ tới);
+    ép đúng một cách là chấm khác biệt mà hệ không định nghĩa."""
+    from company.evals import check
+    p = {"data": {"domain": {"glossary_ref": "glossary/P1-v1"}}}
+    hai_cach = [{"min_len": {"data.domain.glossary": 3}}, {"min_len": {"data.domain.glossary_ref": 1}}]
+    assert check(p, {"any_of": [hai_cach]}) == []
+    assert check({"data": {"domain": {"glossary": [1, 2, 3]}}}, {"any_of": [hai_cach]}) == []
+
+
+def test_any_of_hong_thi_noi_ly_do_cua_TUNG_nhanh():
+    from company.evals import check
+    fails = check({"data": {}}, {"any_of": [[{"min_len": {"a": 1}}, {"min_len": {"b": 2}}]]})
+    assert len(fails) == 1 and "len(a) ≥ 1" in fails[0] and "len(b) ≥ 2" in fails[0]
