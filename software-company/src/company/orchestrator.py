@@ -1231,8 +1231,16 @@ class Orchestrator:
         # `self.paused` chứa cả ID DỰ ÁN (supervisor pause khi dự án chạm trần ngân sách), không chỉ ticket. Lọc
         # `t in self.lead.tickets` bỏ sót đúng nhóm đó: dự án bị pause thì mọi event của nó bị hoãn, không cổng
         # nào mở, không ai được hỏi — đo được: `paused=['P1']` mà `gates_pending={}`.
+        # Người ĐÃ quyết nhưng `gate.decide` còn nằm trong hàng đợi (mở lại bus: `_rehydrate` đã đếm nó vào
+        # `escalation_decided` nhưng `resume` chỉ được phát khi event đó được xử lý) → subject vẫn `paused`, khoá mang số
+        # quyết định mới → gate TRÙNG cho một việc người vừa duyệt. Đo được (2026-09-05): REL-004 duyệt 21:19, orchestrator
+        # mở lại 21:30, gate thứ hai mở ngay sau event đầu tiên trong hàng đợi, trước khi decide được áp dụng.
+        with self._qlock:
+            decided_pending = {str(_evidence(e.payload).get("subject_id")) for e in self.queue
+                               if e.topic == "audit-log" and e.payload.get("action") == "gate.decide"}
         for tid in {*self.lead.blocked(), *self.paused}:
             if self.lead.state.get(tid) in DONE_STATES: continue  # đã đóng/đã xong: không mở gate nữa
+            if tid in decided_pending: continue  # đã có quyết định chờ áp dụng: không hỏi người lần nữa
             # budget_cut cũng là "dừng chờ người" (approve = cấp thêm ngân sách): không có gate thì ticket treo im lặng.
             # `pause` cũng vậy và còn nặng hơn — dự án chạm trần ngân sách bị pause thì MỌI event của nó bị hoãn.
             # Thiếu `pause` ở đây thì `n = 0` cho một dự án bị pause, điều kiện bên dưới sai, và không gate nào mở.
