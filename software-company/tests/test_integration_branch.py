@@ -7,7 +7,7 @@ import subprocess
 
 from company.bus import InMemoryBus
 from company.llm import FakeClient
-from company.orchestrator import Orchestrator
+from company.orchestrator import MAX_CONFLICT_RETRIES, Orchestrator
 from company.sqlite_bus import SQLiteBus
 from company.workspace import Integration, TicketWorkspace
 from test_orchestrator import T1, T2, _agent_of, _drive_to_plan, _inp, _pub, handler
@@ -60,6 +60,36 @@ def test_tickets_branch_from_integration_and_merge_in_order(tmp_path):
     assert orch.status()["integration"]["sha"] == it.sha()
 
 
+def test_xung_dot_lap_lai_qua_nguong_moi_tinh_vao_retry_noi_dung(tmp_path):
+    """`conflict_retries` (tách khỏi `Task.retry`) cho ticket thua cuộc đua merge một khoảng chịu đựng riêng, không
+    đốt retry nội dung — xem `request_changes_no_retry_bump`. Nhưng KHÔNG vô hạn: xung đột lặp lại quá
+    `MAX_CONFLICT_RETRIES` là dấu hiệu bế tắc cấu trúc thật (không chỉ xui thứ tự) và phải tính vào retry nội dung
+    như cũ, để cuối cùng còn `ticket.blocked` → gate escalation cho người biết. Test dựng bằng cách đặt trước bộ đếm
+    ở ngưỡng, để đúng MỘT xung đột thật đẩy nó qua ngưỡng."""
+    repo = _init_repo(tmp_path / "repo")
+    def lead_independent(system, user):
+        if _agent_of(system) == "delivery-lead" and "P1" in user and "decision" not in _inp(user):
+            return {"items": [{**T1, "budget_tokens": 40_000}, {**T2, "depends_on": [], "risk_tags": [], "budget_tokens": 40_000, "priority": 3}]}
+        return handler(system, user)
+    def th(msgs, tools):
+        names = {t.name for t in tools}
+        if "write_file" in names and _first_turn(msgs):
+            p = _inp(msgs[0]["content"]); tid = p["ticket_id"]
+            if p.get("hint"):
+                return [_tc("write_file", path=f"after_{tid.lower()}.py", content="Y = 1\n")]
+            return [_tc("write_file", path="shared.py", content=f"X = '{tid}'\n")]
+        return _repo_tool_handler(msgs, tools)
+    bus = SQLiteBus(tmp_path / "c.sqlite")
+    orch = Orchestrator(bus, FakeClient(handler=lead_independent, tool_handler=th), repo=repo, base="main")
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm")
+    orch.conflict_retries["T2"] = MAX_CONFLICT_RETRIES  # giả lập đã xung đột đủ ngưỡng ở các lần trước
+    orch.run()
+    assert orch.conflict_retries["T2"] == MAX_CONFLICT_RETRIES + 1, "vẫn tăng đúng, chỉ đổi NGƯỠNG áp dụng"
+    tasks = [e.payload for e in bus.replay(topic="tasks") if e.key == "T2"]
+    assert len(tasks) == 2 and tasks[1]["retry"] == 1, "vượt ngưỡng: xung đột này tính vào retry nội dung như cũ"
+    assert orch.lead.state == {"T1": "merged", "T2": "merged"}, "vẫn chỉ 1 retry, còn xa max_retries=3 nên đi tiếp bình thường"
+
+
 def test_conflict_voids_release_and_ticket_redoes_on_fresh_base(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     def lead_independent(system, user):  # hai ticket độc lập, cùng ghi shared.py khác nhau → ticket sau xung đột
@@ -70,7 +100,7 @@ def test_conflict_voids_release_and_ticket_redoes_on_fresh_base(tmp_path):
         names = {t.name for t in tools}
         if "write_file" in names and _first_turn(msgs):
             p = _inp(msgs[0]["content"]); tid = p["ticket_id"]
-            if p.get("retry"):  # làm lại sau xung đột: nền mới đã có shared.py của ticket kia → sửa file khác
+            if p.get("hint"):  # làm lại sau xung đột (không tính vào retry nữa, xem conflict_retries): sửa file khác
                 return [_tc("write_file", path=f"after_{tid.lower()}.py", content="Y = 1\n")]
             return [_tc("write_file", path="shared.py", content=f"X = '{tid}'\n")]
         return _repo_tool_handler(msgs, tools)
@@ -80,7 +110,10 @@ def test_conflict_voids_release_and_ticket_redoes_on_fresh_base(tmp_path):
     assert orch.stats["conflicts"] == 1 and len(orch.void_releases) == 1
     assert orch.lead.state == {"T1": "merged", "T2": "merged"}, orch.lead.state
     tasks = [e.payload for e in bus.replay(topic="tasks") if e.key == "T2"]
-    assert len(tasks) == 2 and tasks[1]["retry"] == 1 and "xung đột" in tasks[1]["hint"] and "shared.py" in tasks[1]["hint"]
+    # xung đột merge KHÔNG tính vào retry nội dung (ticket thua cuộc đua merge, không phải lỗi của nó) — chỉ
+    # `orchestrator.conflict_retries` (đếm riêng) tăng; xem `request_changes_no_retry_bump`.
+    assert len(tasks) == 2 and tasks[1]["retry"] == 0 and "xung đột" in tasks[1]["hint"] and "shared.py" in tasks[1]["hint"]
+    assert orch.conflict_retries["T2"] == 1
     it = orch.integration
     assert it.files().count("shared.py") == 1 and "after_t2.py" in it.files() and "after_t1.py" not in it.files()
     assert (repo / ".worktrees" / "T2" / "shared.py").read_text(encoding="utf-8") == "X = 'T1'\n", "worktree T2 tạo lại từ nền mới"
@@ -150,20 +183,22 @@ def test_rework_state_survives_restart_and_empty_branch_is_not_integrated(tmp_pa
     def th(msgs, tools):
         if "write_file" in {t.name for t in tools} and _first_turn(msgs):
             p = _inp(msgs[0]["content"]); tid = p["ticket_id"]
-            if p.get("retry"):
+            if p.get("hint"):
                 calls["n"] += 1
                 return [_tc("write_file", path=f"after_{tid.lower()}.py", content="Y = 1\n")]
             return [_tc("write_file", path="shared.py", content=f"X = '{tid}'\n")]
         return _repo_tool_handler(msgs, tools)
     bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=lead_independent, tool_handler=th), repo=repo, base="main")
     _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm")
-    # chạy tới đúng lúc T2 bị trả về vì xung đột (task retry=1 đã publish) rồi "tắt máy"
-    while orch.queue and not any(e.topic == "tasks" and e.payload.get("retry") == 1 for e in bus.replay()):
+    # chạy tới đúng lúc T2 bị trả về vì xung đột (task với hint "xung đột" đã publish) rồi "tắt máy". Xung đột KHÔNG
+    # tính vào retry nội dung (`request_changes_no_retry_bump`) nên tín hiệu chờ là hint, không phải retry==1.
+    while orch.queue and not any(e.topic == "tasks" and "xung đột" in (e.payload.get("hint") or "") for e in bus.replay()):
         orch.run(max_steps=1)
-    assert orch.lead.state["T2"] == "dispatched" and orch.lead.tickets["T2"].retry == 1
+    assert orch.lead.state["T2"] == "dispatched" and orch.lead.tickets["T2"].retry == 0 and orch.conflict_retries["T2"] == 1
     bus.close()
     o2 = Orchestrator(SQLiteBus(db), FakeClient(handler=lead_independent, tool_handler=th), repo=repo, base="main")
-    assert o2.lead.state["T2"] == "dispatched" and o2.lead.tickets["T2"].retry == 1, "F17: trạng thái làm lại sống sót qua restart"
+    assert o2.lead.state["T2"] == "dispatched" and o2.lead.tickets["T2"].retry == 0, "F17: trạng thái làm lại sống sót qua restart"
+    assert o2.conflict_retries["T2"] == 1, "F17b: bộ đếm xung đột (tách khỏi retry) cũng phải sống sót qua restart"
     assert "T2" not in o2.integrated
     o2.run()
     assert o2.lead.state == {"T1": "merged", "T2": "merged"} and calls["n"] == 1

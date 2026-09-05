@@ -77,6 +77,8 @@ ACTOR = "orchestrator"
 MAX_CLARIFY_ROUNDS = 2  # khớp `clarification-questions.round` (maximum 2) và prompt clarifier
 ENGINEERING = ("backend", "frontend", "mobile", "database", "platform", "data")
 PAUSING = frozenset({"pause", "budget_cut", "escalate"})
+
+MAX_CONFLICT_RETRIES = 6  # xung đột merge thứ 7 liên tiếp cho một ticket mới tính vào retry nội dung (xem conflict_retries)
 # Chuỗi nghiên cứu chạy theo key=project, không có ticket/retry/blocked: một agent lỗi là cả dự án đứng mà không ai
 # thấy. Lỗi ở các topic này mở gate `escalation` cấp dự án (approve = chạy lại event, reject = đóng dự án).
 RESEARCH_TOPICS = frozenset({"research-requests", "research-findings", "requirements-draft", "clarification-answers"})
@@ -401,6 +403,14 @@ class Orchestrator:
         # ticket_id → số quyết định escalation đã áp cho ticket đó. Đối xứng với `stall_count` ở nhánh dự-án-kẹt:
         # nếu không có nó, ticket bị chặn LẦN HAI sinh ra đúng khoá `once` của lần một nên không mở gate nào nữa.
         self.escalation_decided: Counter[str] = Counter()
+        # ticket_id → số lần xung đột merge vào nhánh tích hợp. TÁCH KHỎI `Task.retry`: `request_changes` cũ dùng
+        # chung bộ đếm với lỗi nội dung (review block, agent lỗi) và `max_retries=3` — một ticket đúng logic nhưng
+        # thua cuộc đua merge (ticket khác gộp trước trong lúc nó còn đang review) cháy hết retry chỉ vì THỨ TỰ,
+        # không vì làm sai gì. Đo được (2026-09-05): QLKH-011 hết 3 lần (2 lỗi CLI/review thật + 1 xung đột merge)
+        # rồi `blocked` đúng lúc nội dung đã qua đủ ba reviewer. Xung đột không tính vào retry nội dung nữa; chỉ
+        # chặn thật khi xung đột LẶP LẠI quá `MAX_CONFLICT_RETRIES` — dấu hiệu bế tắc cấu trúc (vd. nhiều ticket
+        # cùng sửa một file interface), không phải may rủi thứ tự.
+        self.conflict_retries: Counter[str] = Counter()
         self.stats: Counter[str] = Counter()
         self._rehydrate()
         bus.subscribe("*", self._on_event)
@@ -449,6 +459,8 @@ class Orchestrator:
                     if d.get("decision") == "approve" and d.get("subject_id") in self.plans \
                             and trusted_decision(env) is not None:
                         self._dispatch_plan(d["subject_id"], replaying=True)
+                elif a["action"] == "integration.conflict":
+                    self.conflict_retries[str(d["ticket_id"])] += 1
             elif env.topic == "supervisor-actions": self._track_pause(env)
             elif env.topic == "shared-context": self.blackboard._on(env)
             else:
@@ -951,9 +963,16 @@ class Orchestrator:
             return True
         hint = f"xung đột với nhánh tích hợp {integration.branch} ở: {', '.join(m.conflicts or [])}. Làm lại trên nền mới."
         self._audit("integration.conflict", {"release_id": release_id, "ticket_id": tid, "conflicts": m.conflicts}, ticket_id=tid)
+        with self._lock: self.conflict_retries[tid] += 1; n = self.conflict_retries[tid]
         try:
             ws.fresh()
-            self.lead.request_changes(tid, hint)
+            # Dưới ngưỡng: xung đột do thua cuộc đua merge, không tính vào retry nội dung (xem docstring
+            # `request_changes_no_retry_bump`). Vượt ngưỡng: lặp quá nhiều lần là dấu hiệu bế tắc cấu trúc
+            # (nhiều ticket cùng sửa một file interface) — tính vào retry nội dung như cũ để cuối cùng mở gate.
+            if n > MAX_CONFLICT_RETRIES:
+                self.lead.request_changes(tid, hint)
+            else:
+                self.lead.request_changes_no_retry_bump(tid, hint)
         except (ValueError, WorkspaceError) as e:
             self._audit("handler_error", {"agent": "delivery-lead", "error": str(e)[:300]}, ticket_id=tid)
         res.actions.append(f"conflict:{tid}")
