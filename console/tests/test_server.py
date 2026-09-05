@@ -716,6 +716,18 @@ def test_write_token_file_tao_va_ghi_de_tren_moi_he_dieu_hanh(tmp_path: Path) ->
 
 # --- ConsoleServer với host IPv6 không ngoặc ---------------------------------
 
+def _co_ipv6() -> bool:
+    """Máy chạy test có hỗ trợ IPv6 không (container mạng IPv4-only thì không)."""
+    if not socket.has_ipv6:
+        return False
+    try:
+        socket.socket(socket.AF_INET6, socket.SOCK_STREAM).close()
+    except OSError:
+        return False
+    return True
+
+
+@pytest.mark.skipif(not _co_ipv6(), reason="môi trường không có IPv6")
 def test_server_host_ipv6_khong_ngoac_dung_af_inet6(static_dir: Path) -> None:
     server = srv.make_server("::1", 0, static_dir=static_dir)
     try:
