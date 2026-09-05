@@ -97,7 +97,6 @@ chỉ là lời hứa: PR #29 merge 23 giây sau khi mở, job `quality` xanh **
    Bật: Settings → Rules → Rulesets → **New ruleset → Import a ruleset** → chọn file đó → Create.
    Nội dung: bắt buộc PR (**0 approval** — xem ô dưới, thread review phải resolve, chỉ **squash**) ·
    required status checks `quality` + `metadata` · cấm xoá và cấm force-push `main` ·
-   **Copilot code review** (`copilot_code_review`, không review khi push và không review PR nháp) ·
    **không ai được bypass, kể cả admin** (`bypass_actors` rỗng) · **tắt** "up to date" (`strict: false`) để PR khác
    merge không bắt mọi PR đang mở gộp `main` rồi chờ CI lại.
 2. **Job `protection-guard` trong CI**, hai vế. `quality` cần nó xanh.
@@ -111,6 +110,8 @@ chỉ là lời hứa: PR #29 merge 23 giây sau khi mở, job `quality` xanh **
    > **Vì sao cần vế 2.** Sửa ruleset trong UI có thể **làm rơi một rule mà không báo gì**. Đã xảy ra thật ngày
    > 2026-09-05: lần đổi `required_approving_review_count` về 0 làm mất `copilot_code_review`, và guard bản cũ
    > **vẫn xanh** vì nó chỉ kiểm bốn rule bất biến. Kiểu trôi này không ai phát hiện cho tới khi cần đến rule đó.
+   > *(Kết cục: sau khi guard chỉ ra, đã quyết định **không dùng** Copilot code review — nên file cũng bỏ luôn
+   > rule đó cho khớp. Điều đáng giữ lại là bài học: mất một rule mà CI vẫn xanh là chuyện có thật.)*
 
 Hai nút vẫn phải bật tay trong Settings → General (không thuộc ruleset): **Allow auto-merge** và
 **Automatically delete head branches**.
@@ -139,13 +140,14 @@ mà PR thì đang bị khoá. Phải **sửa ruleset đang chạy trong Settings
 
 ### File và ruleset thật phải khớp
 
-File này được **đối chiếu với `GET /repos/:owner/:repo/rulesets/:id`** ngày 2026-09-05, không viết theo trí nhớ.
-Ba thứ GitHub tự thêm khi tạo ruleset mà bản viết tay ban đầu thiếu — nay đã bổ sung: rule `copilot_code_review`,
-và hai tham số `required_reviewers` + `require_extra_approval_for_unattributed_changes` của rule `pull_request`.
-Nếu không bổ sung, lần import lại từ file sẽ **âm thầm gỡ mất Copilot review**.
+File này được **đối chiếu với `GET /repos/:owner/:repo/rulesets/:id`** bằng máy, không viết theo trí nhớ.
+Hai tham số GitHub tự thêm khi tạo ruleset mà bản viết tay ban đầu thiếu — nay đã bổ sung:
+`required_reviewers` và `require_extra_approval_for_unattributed_changes` của rule `pull_request`.
 
-Sau khi bổ sung, lệch duy nhất còn lại giữa file và ruleset đang chạy là `required_approving_review_count`
-(file 0, đang chạy 1) — đúng thứ cần đổi trong Settings.
+**Bốn rule là đủ:** `deletion` · `non_fast_forward` · `pull_request` · `required_status_checks`.
+`copilot_code_review` từng được GitHub thêm vào lúc tạo ruleset, nhưng **đã quyết định không dùng** (2026-09-05)
+nên gỡ khỏi cả ruleset lẫn file. Muốn dùng lại thì thêm vào **cả hai chỗ** — thêm một chỗ thôi sẽ bị vế 2 của
+`protection-guard` bắt.
 
 🔍 **Điểm cần theo dõi:** `require_extra_approval_for_unattributed_changes = true` đòi **thêm một approval** khi PR
 chứa thay đổi không gán được cho một tài khoản. Hiện không cắn: commit trên nhánh này gán đúng vào tài khoản
