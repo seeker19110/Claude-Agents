@@ -120,7 +120,8 @@ Không bắt đầu bằng ARIA: mỗi lần định thêm `role=`, hãy hỏi t
 # Skill: ui-ux-design
 
 ## Quy trình (làm đúng thứ tự)
-Bối cảnh và phân loại màn hình → tokens và bố cục → đủ 5 trạng thái → vi tương tác → cổng kiểm chứng (a11y + gate).
+Bối cảnh và phân loại màn hình → chọn vân tay cấu trúc → tokens và bố cục → đủ 5 trạng thái → vi tương tác → tự chấm 6 trục → cổng kiểm chứng (a11y + gate).
+Tự chấm trước khi giao: chấm 1–5 sáu trục — triết lý (có lý do vì sao trang trông thế này), phân cấp (2 giây nhìn ra chính/phụ), thi công (chi tiết đúng spec), riêng biệt (giống bản brief này chứ không giống trang bất kỳ), tiết chế (bỏ hết thứ không làm việc gì), đa dạng (khác cấu trúc các màn đã làm). Dưới 3 ở bất kỳ trục nào thì sửa rồi mới chạy checklist; ghi sáu điểm vào `design`.
 Trước khi đề xuất token hay component: ĐỌC file token và thư mục component hiện có, dùng đúng tên đang có (chống bịa tên);
 thiếu thì đề xuất bổ sung vào nguồn token, không hard-code và không vẽ lại component đã có.
 
@@ -131,7 +132,11 @@ thiếu thì đề xuất bổ sung vào nguồn token, không hard-code và kh�
 - [ ] Tokens có version trong `design`: spacing, type scale, màu semantic, dark mode, elevation, motion
 - [ ] Tiêu chí a11y đo được (contrast, focus, target, label, không chỉ dựa vào màu)
 - [ ] Thông báo lỗi có nguyên nhân + cách khắc phục
-- [ ] Đã kiểm ở 375px, landscape, dark mode, cỡ chữ hệ thống lớn nhất, reduced-motion
+- [ ] Vân tay cấu trúc đã ghi đủ sáu trục và khác các màn trước ở ≥ 2 trục
+- [ ] Component tương tác có đủ 8 trạng thái trong mã
+- [ ] Đã tự chấm 6 trục, không trục nào dưới 3
+- [ ] Không bịa số liệu / lời chứng thực / logo khách
+- [ ] Đã kiểm ở 320 và 375px (không cuộn ngang, chữ bấm được không xuống hai dòng), landscape, dark mode, cỡ chữ hệ thống lớn nhất, reduced-motion
 - [ ] Giả định người dùng đã liệt kê
 
 # Skill: observability
