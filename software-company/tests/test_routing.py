@@ -239,6 +239,37 @@ def test_claude_code_client_parses_print_json_and_counts_cache_tokens():
     assert "--no-session-persistence" in args, "ADR-0026: không ghi transcript chứa repo khách ra ~/.claude"
 
 
+def test_claude_code_json_schema_union_nhieu_kieu_thanh_anyof():
+    """`claude -p --json-schema` kiểm bằng ajv strictTypes: `type: [X, "null"]` được, union ≥ 2 kiểu không-null bị
+    từ chối "use allowUnionTypes" và CLI thoát mã 1 trước khi gọi model (đo được: security-engineer trên REL-004,
+    2026-09-05, vì `review-results.scan_summary`). Chỉ union đó thành `anyOf`; nullable và phần còn lại giữ nguyên;
+    schema nhúng trong prompt (stdin) vẫn là bản gốc."""
+    from company.llm import cli_json_schema
+
+    schema = {"type": "object", "properties": {
+        "scan_summary": {"type": ["string", "object", "null"], "description": "tóm tắt"},
+        "sbom_ref": {"type": ["string", "null"]},
+        "items": {"type": "array", "items": {"type": ["integer", "string"]}}}}
+    out = cli_json_schema(schema)
+    assert out["properties"]["scan_summary"] == {"anyOf": [{"type": "string"}, {"type": "object"}, {"type": "null"}],
+                                                 "description": "tóm tắt"}
+    assert out["properties"]["sbom_ref"] == {"type": ["string", "null"]}, "nullable hai kiểu ajv chấp nhận, giữ nguyên"
+    assert out["properties"]["items"]["items"] == {"anyOf": [{"type": "integer"}, {"type": "string"}]}
+    assert schema["properties"]["scan_summary"]["type"] == ["string", "object", "null"], "không đổi schema gốc"
+
+    seen: list[tuple[list[str], str]] = []
+
+    def runner(args, stdin, **kw):
+        seen.append((args, stdin))
+        return json.dumps({"result": '{"ok": 1}', "stop_reason": "end_turn",
+                           "usage": {"input_tokens": 1, "output_tokens": 1}, "modelUsage": {"claude-sonnet-5": {}}})
+
+    _cc(runner=runner).complete(system="SYS", user="USER", schema=schema, model_tier="standard")
+    args, stdin = seen[0]
+    assert json.loads(args[args.index("--json-schema") + 1]) == out, "CLI nhận bản anyOf"
+    assert '["string", "object", "null"]' in stdin, "prompt vẫn nhúng schema gốc để model đọc mô tả"
+
+
 def test_claude_code_uu_tien_structured_output_va_doc_subtype_loi():
     """ADR-0026 bước 2: có `structured_output` (đã qua kiểm của CLI) thì dùng nó, kể cả khi `result` là văn xuôi;
     `subtype` lỗi (hết lượt, trần USD, không ép được schema) phải thành thông báo nói đúng việc — trước đây các JSON
