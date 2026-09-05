@@ -1,7 +1,7 @@
 {
  "agent": "test-author",
  "prompt_version": 1,
- "recorded_at": "2026-09-05T05:56:56.560326+00:00",
+ "recorded_at": "2026-09-05T11:09:15.424950+00:00",
  "models": [
   "claude-sonnet-5"
  ],
@@ -17,6 +17,18 @@
    "model": "claude-sonnet-5",
    "input_tokens": 7606,
    "output_tokens": 1483
+  },
+  "13de433b2ae5e80e0c28e384": {
+   "text": "{\"ticket_id\": \"TCK-1\", \"project_id\": \"P1\", \"assignee\": \"backend\", \"branch\": \"test/TCK-1-get-order-by-id\", \"commit\": null, \"files\": [\"tests/integration/orders/get_order_by_id.test.js\"], \"acceptance_covered\": [{\"acceptance\": \"Given đơn hàng ORD-1 tồn tại, When GET /orders/ORD-1, Then trả 200 kèm id và total\", \"tests\": [\"test_get_order_existing_returns_200_with_id_and_total\", \"test_get_order_response_body_has_correct_shape_id_string_total_number\"]}, {\"acceptance\": \"Given đơn hàng ORD-9 không tồn tại, When GET /orders/ORD-9, Then trả 404 theo RFC 9457\", \"tests\": [\"test_get_order_nonexistent_returns_404\", \"test_get_order_404_body_matches_rfc9457_problem_details_shape\", \"test_get_order_404_content_type_is_application_problem_json\"]}], \"blind\": true, \"tests_status\": \"red\", \"notes\": \"Viết mù theo acceptance + api-contract summary (chưa có nội dung chi tiết openapi.yaml, chỉ có summary). Test giả định: (1) response 200 có tối thiểu 2 field `id` (string, khớp ORD-1) và `total` (number); không assert thêm field khác vì đặc tả không nói rõ full shape đơn hàng — nếu contract có thêm field bắt buộc (status, items...) cần bổ sung sau khi có chi tiết openapi.yaml. (2) 404 theo RFC 9457 nghĩa là Content-Type `application/problem+json` và body có ít nhất `type`, `title`, `status`; test kiểm `status===404` và các field tồn tại đúng kiểu, không giả định giá trị `type`/`title` cụ thể vì chưa có ví dụ trong contract — nếu producer định nghĩa type slug cụ thể, cần cập nhật assert. (3) Thêm case biên: id rỗng/khoảng trắng và id có ký tự đặc biệt (case ngoài 2 tiêu chí chính, để bổ trợ) — đã thêm nhưng không tính vào acceptance_covered vì không map 1-1 với tiêu chí gốc, chỉ ghi trong file test với comment 'extra edge case, not required by acceptance'. Không mock nội bộ; gọi thẳng HTTP endpoint qua supertest-style client giả định app export sẵn (nếu backend dùng framework khác, đường import cần agent code chỉnh nhưng KHÔNG được sửa assertion). Test hiện đỏ vì route/handler GET /orders/:id chưa tồn tại.\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 8379,
+   "output_tokens": 1152
+  },
+  "bbf48b45224cae21dc174c04": {
+   "text": "{\"ticket_id\": \"TCK-2\", \"project_id\": \"P1\", \"assignee\": \"backend\", \"branch\": \"ticket/TCK-2\", \"commit\": null, \"files\": [\"tests/orders/test_get_order.py\"], \"acceptance_covered\": [{\"acceptance\": \"GET /orders/{id} với id không tồn tại trả 404 theo RFC 9457 (Content-Type application/problem+json, body có type/title/status/detail)\", \"tests\": [\"test_get_order_not_found_returns_rfc9457_problem_details\", \"test_get_order_not_found_content_type_is_problem_json\", \"test_get_order_not_found_problem_has_required_fields\"]}], \"blind\": false, \"tests_status\": \"red\", \"notes\": \"Đồng ý với dispute của backend: test cũ khẳng định 404 trả body rỗng là SAI so với acceptance (yêu cầu RFC 9457). Đã sửa test_get_order.py: thay assert body rỗng bằng assert Content-Type=application/problem+json và body chứa đủ các trường bắt buộc của RFC 9457 (type, title, status=404, detail; không lộ chi tiết nội bộ như stack trace/DB id). Không nới lỏng thêm gì khác — các test khác của ticket (happy path 200, shape dữ liệu) giữ nguyên vì không nằm trong tranh chấp. Vì lượt trước là mù nên tôi không có toàn bộ danh sách acceptance gốc trong payload này; chỉ report lại tiêu chí liên quan tới dispute. Nếu còn tiêu chí khác chưa được liệt kê ở đây, chúng đã có test từ lượt viết mù ban đầu và không bị thay đổi ở lượt này.</notes>\\n</invoke>\\n\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 8291,
+   "output_tokens": 1208
   }
  }
 }
