@@ -301,7 +301,7 @@
       "accessibility"
     ],
     "timeout_minutes": 90,
-    "version": 11,
+    "version": 12,
     "writes": [
       "review-results"
     ]

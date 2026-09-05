@@ -7,6 +7,10 @@ Tiêu chí (`expect`):
   min_len:  {field: n}             list/chuỗi có độ dài ≥ n
   max_len:  {field: n}             list/chuỗi có độ dài ≤ n (n=0 nghĩa là phải rỗng)
   one_of:   {field: [v1, v2]}      giá trị nằm trong tập
+  any_of:   [expect1, expect2]     ĐẠT nếu ít nhất một nhánh đạt (mỗi nhánh là một khối `expect` đầy đủ)
+
+`any_of` có vì hệ thống nhiều chỗ chấp nhận NHIỀU CÁCH DIỄN ĐẠT cho cùng một yêu cầu; ép đúng một cách là
+chấm khác biệt mà hệ không định nghĩa, và ca eval sẽ đỏ vì model chọn cách kia chứ không vì nó làm sai.
 
 Ghi / phát lại (ADR-0010): `--record` chạy model thật và lưu phản hồi vào `evals/recordings/<agent>.json`, khoá bằng
 hash(system prompt + user message). `--replay` chạy lại từ bản ghi, không cần model — CI dùng chế độ này. Sửa prompt
@@ -58,6 +62,11 @@ class RecordingClient:
     def __init__(self, inner: ModelClient, agent_id: str):
         self.inner, self.agent_id = inner, agent_id
         self.entries: dict[str, dict[str, Any]] = {}
+        # Chốt phiên bản NGAY LÚC BẮT ĐẦU, không đọc lại lúc `save()`. Một lượt ghi kéo dài nhiều phút; file
+        # prompt đổi giữa chừng (người sửa tiếp, hay `git stash`/`checkout` ở nhánh khác) thì bản ghi mang một
+        # phiên bản mà nó KHÔNG được ghi bằng — `outdated_versions` đỏ mà không ai hiểu vì sao. Đo được
+        # 2026-09-05: stash file prompt trong lúc `make eval-record` chạy, bản ghi ra v11 trong khi prompt v12.
+        self.prompt_version = load_agents()[agent_id].version
 
     def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
                  cache_key: str | None = None, tools: list[ToolSpec] | None = None,
@@ -69,9 +78,18 @@ class RecordingClient:
         return c
 
     def save(self) -> Path:
-        spec = load_agents()[self.agent_id]
-        data = {"agent": self.agent_id, "prompt_version": spec.version, "recorded_at": datetime.now(UTC).isoformat(),
-                "models": sorted({e["model"] for e in self.entries.values()}), "cases": self.entries}
+        """Gộp vào bản ghi cũ, KHÔNG ghi đè cả file.
+
+        Một ca lỗi giữa chừng (model từ chối, mạng đứt, hết hạn mức) thì lượt ghi chỉ có phần ca chạy được.
+        Ghi đè lúc đó xoá luôn những ca đang tốt, và lần replay sau báo "bản ghi lệch prompt" cho một ca mà
+        chẳng ai đụng tới — mất bằng chứng vì một sự cố không liên quan. Đo được 2026-09-05 trên qa-debugger.
+
+        Khoá cũ không còn khớp prompt hiện tại thì nằm lại vô hại: `stale_recordings` chấm theo việc khoá
+        HIỆN TẠI có mặt hay không, nên rác cũ không che được tín hiệu "phải ghi lại"."""
+        cu = load_recording(self.agent_id) or {}
+        cases = {**(cu.get("cases") or {}), **self.entries}
+        data = {"agent": self.agent_id, "prompt_version": self.prompt_version, "recorded_at": datetime.now(UTC).isoformat(),
+                "models": sorted({e["model"] for e in cases.values()}), "cases": cases}
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
         p = recording_path(self.agent_id)
         p.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8", newline="\n")
@@ -184,6 +202,10 @@ def check(payload: dict[str, Any], expect: dict[str, Any]) -> list[str]:
         if len(_get(payload, f) or []) > n: fails.append(f"len({f}) ≤ {n}, thực tế {len(_get(payload, f) or [])}")
     for f, vs in (expect.get("one_of") or {}).items():
         if _get(payload, f) not in vs: fails.append(f"{f} ∈ {vs}")
+    for nhanh in (expect.get("any_of") or []):
+        con = [check(payload, alt) for alt in nhanh]
+        if all(c for c in con):  # mọi nhánh đều hỏng → báo lý do của TỪNG nhánh, không chỉ nhánh đầu
+            fails.append("không nhánh nào của any_of đạt: " + " | ".join("; ".join(c) for c in con))
     return fails
 
 

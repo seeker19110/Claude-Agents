@@ -449,13 +449,16 @@ class _NoDupLoader(yaml.SafeLoader):
 
 def test_eval_files_have_no_duplicate_keys_and_known_criteria():
     from company.evals import EVALS_DIR
-    known = {"equals", "contains", "min_len", "max_len", "one_of"}
+    known = {"equals", "contains", "min_len", "max_len", "one_of", "any_of"}
     for f in sorted(EVALS_DIR.glob("*.yaml")):
         data = yaml.load(f.read_text(encoding="utf-8"), Loader=_NoDupLoader)
         for case in data["cases"]:
             unknown = set(case.get("expect", {})) - known
             assert not unknown, (f.name, case["name"], unknown)
             assert case.get("expect"), f"{f.name}/{case['name']}: ca không có tiêu chí chấm nào"
+            for nhanh in case["expect"].get("any_of", []):  # mỗi nhánh của any_of cũng là một khối expect
+                for alt in nhanh:
+                    assert not set(alt) - known, (f.name, case["name"], set(alt) - known)
 
 
 def test_run_eval_offline_with_fake_client():

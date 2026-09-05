@@ -13,7 +13,7 @@ import pytest
 
 import company.evals as evals_mod
 from company.bus import InMemoryBus
-from company.evals import RecordingClient, ReplayClient, run_eval, stale_recordings
+from company.evals import RecordingClient, ReplayClient, recording_path, run_eval, stale_recordings
 from company.evals import main as evals_main
 from company.events import Envelope
 from company.llm import AnthropicClient, FakeClient, LLMConfig, LLMError, OpenAICompatClient, Refused, TransientError
@@ -961,3 +961,42 @@ def test_chuoi_la_o_truong_nullable_van_hong_nhu_cu() -> None:
             topic="pull-requests", key="T1", actor="backend",
             payload={"ticket_id": "T1", "branch": "b", "pr_ref": "#1", "local_checks": {"lint": True, "tests": False}}),
             "review-results")
+
+
+def test_ban_ghi_mang_phien_ban_luc_BAT_DAU_ghi(tmp_path, monkeypatch):
+    """Lượt ghi kéo dài nhiều phút. File prompt đổi giữa chừng (sửa tiếp, `git stash`, đổi nhánh) thì bản ghi
+    phải mang phiên bản nó THẬT SỰ được ghi bằng — không phải phiên bản tình cờ nằm trên đĩa lúc `save()`.
+
+    Đo được 2026-09-05: stash file prompt trong lúc `make eval-record` chạy → bản ghi ra v11 trong khi agent
+    đã v12, `outdated_versions` đỏ mà nội dung bản ghi hoàn toàn đúng."""
+    monkeypatch.setattr(evals_mod, "RECORDINGS_DIR", tmp_path)
+    rec = RecordingClient(FakeClient(handler=_reviewer_handler, tokens_per_call=(500, 40)), "reviewer")
+    luc_bat_dau = rec.prompt_version
+    run_eval("reviewer", rec)
+
+    # ai đó sửa prompt trong lúc lượt ghi đang chạy
+    that = evals_mod.load_agents
+    def agents_da_doi(*a, **kw):
+        goc = that(*a, **kw)
+        goc["reviewer"].version += 99
+        return goc
+    monkeypatch.setattr(evals_mod, "load_agents", agents_da_doi)
+
+    data = json.loads(rec.save().read_text(encoding="utf-8"))
+    assert data["prompt_version"] == luc_bat_dau, "phiên bản phải chốt lúc bắt đầu, không đọc lại lúc save()"
+
+
+def test_mot_ca_loi_khong_duoc_xoa_ca_dang_tot_trong_ban_ghi(tmp_path, monkeypatch):
+    """`--record` gộp vào bản ghi cũ. Một ca lỗi (model từ chối, mạng đứt) mà ghi đè cả file thì ca đang tốt
+    biến mất, và replay sau báo "lệch prompt" cho một ca chẳng ai đụng tới. Đo được 2026-09-05 trên qa-debugger."""
+    monkeypatch.setattr(evals_mod, "RECORDINGS_DIR", tmp_path)
+    day_du = RecordingClient(FakeClient(handler=_reviewer_handler, tokens_per_call=(500, 40)), "reviewer")
+    run_eval("reviewer", day_du); day_du.save()
+    assert len(json.loads(recording_path("reviewer").read_text(encoding="utf-8"))["cases"]) == 2
+
+    # lượt sau chỉ ghi được MỘT ca (ca kia lỗi giữa chừng)
+    mot_ca = RecordingClient(FakeClient(handler=lambda s, u: {"ok": True}), "reviewer")
+    mot_ca.complete(system="ca moi", user="ca moi", schema={}, model_tier="standard")
+    data = json.loads(mot_ca.save().read_text(encoding="utf-8"))
+    assert len(data["cases"]) == 3, "hai ca cũ phải còn nguyên, ca mới thêm vào"
+    assert all(r.passed for r in run_eval("reviewer", ReplayClient("reviewer"))), "replay vẫn chạy được"

@@ -89,3 +89,51 @@ def test_supervisor_tinh_null_la_chua_xac_minh():
         "local_checks": {"lint": True, "tests": True, "verified_by": "workspace"}}))
     r = sup.sprint_report()
     assert r["prs"] == 2 and r["prs_unverified"] == 1
+
+
+# ---------- object hoàn chỉnh rồi thừa dấu đóng ở cuối ----------
+
+def test_thua_dau_dong_o_CUOI_thi_lay_object_da_hoan_chinh():
+    """Trượt quan sát được ở bản ghi eval `researcher` (14.5k ký tự JSON, thừa đúng một `}`).
+    Object đứng trước đã đóng đủ và không mơ hồ — bỏ cả lượt vì một dấu thừa là phí."""
+    assert _c('{"payload": {"a": 1}}}').json() == {"payload": {"a": 1}}
+    assert _c('{"a": 1}]  \n }').json() == {"a": 1}
+
+
+def test_json_hong_GIUA_cau_truc_van_phai_do():
+    """Model đóng sớm rồi viết tiếp `,{...}`: không biết nó định gộp phần sau vào đâu, đoán là bịa."""
+    with pytest.raises(LLMError):
+        _c('{"context_writes": [{"namespace": "prd"}},{"namespace": "design"}]}').json()
+
+
+@pytest.mark.parametrize("text", [
+    '{"a": 1} {"b": 2}',      # hai object: không biết lấy cái nào
+    '{"a": 1} rác',           # chữ thừa, không phải dấu đóng
+    '{"a": 1} }rác{',         # có dấu đóng nhưng lẫn chữ
+])
+def test_khong_noi_long_ngoai_dung_mot_truong_hop(text: str):
+    with pytest.raises(LLMError):
+        _c(text).json()
+
+
+def test_mang_tran_khong_phai_viec_cua_lop_nay():
+    """`[1,2,3]` là JSON hợp lệ nên `.json()` trả về nó; "phải là object" do runner chặn, không phải ở đây."""
+    assert _c("[1, 2, 3]").json() == [1, 2, 3]
+
+
+# ---------- any_of trong ngôn ngữ chấm eval ----------
+
+def test_any_of_dat_khi_mot_nhanh_dat():
+    """Hệ chấp nhận nhiều cách diễn đạt cho cùng một yêu cầu (vd. glossary viết thẳng hay ghi artifact rồi trỏ tới);
+    ép đúng một cách là chấm khác biệt mà hệ không định nghĩa."""
+    from company.evals import check
+    p = {"data": {"domain": {"glossary_ref": "glossary/P1-v1"}}}
+    hai_cach = [{"min_len": {"data.domain.glossary": 3}}, {"min_len": {"data.domain.glossary_ref": 1}}]
+    assert check(p, {"any_of": [hai_cach]}) == []
+    assert check({"data": {"domain": {"glossary": [1, 2, 3]}}}, {"any_of": [hai_cach]}) == []
+
+
+def test_any_of_hong_thi_noi_ly_do_cua_TUNG_nhanh():
+    from company.evals import check
+    fails = check({"data": {}}, {"any_of": [[{"min_len": {"a": 1}}, {"min_len": {"b": 2}}]]})
+    assert len(fails) == 1 and "len(a) ≥ 1" in fails[0] and "len(b) ≥ 2" in fails[0]
