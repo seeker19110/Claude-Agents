@@ -612,6 +612,63 @@ def test_human_comment_and_takeover_with_repo(tmp_path, capsys, monkeypatch):
     assert orch_main(["--db", str(db), "show", "architecture"]) == 0 and "architecture v1" in capsys.readouterr().out
 
 
+def test_task_cu_trong_hang_doi_bi_vuot_khi_nguoi_da_takeover(tmp_path, monkeypatch):
+    """Task `tasks` còn nằm trong hàng đợi (hoãn vì paused/transient, phát lại khi gate escalation được duyệt) mà
+    ticket đã `in_review` vì người tiếp quản (ADR-0012) thì KHÔNG giao cho backend nữa. Nếu giao: backend chạy trên
+    worktree đã commit → "không sửa file nào" ×3 → blocked → review PR của người bị bỏ. Đo được: QLKH-004 mở lại
+    7 lần (2026-09-04/05). Chiều ngược (task đúng lúc, ticket `dispatched` → backend vẫn chạy) nằm ở
+    `test_human_comment_and_takeover_with_repo`: backend nhận hint sau `comment`."""
+    monkeypatch.setenv("COMPANY_LLM_PROVIDER", "fake")
+    repo = _init_repo(tmp_path / "repo"); db = tmp_path / "c3.sqlite"
+    bus = SQLiteBus(db); client = FakeClient(handler=handler, tool_handler=lambda m, t: [])
+    orch = Orchestrator(bus, client, repo=repo, base="main")
+    orch._rework_after_error = lambda *a, **k: True  # type: ignore[method-assign]
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    assert orch.lead.state["T1"] == "dispatched"
+    # thứ tự thật: task retry của delivery-lead vào bus TRƯỚC, PR tiếp quản của người vào SAU; orchestrator xử lý task trước
+    stale = orch.lead.tickets["T1"].model_copy(update={"retry": 1, "hint": "hàng cũ"})
+    bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=stale.model_dump()))
+    ws = orch.workspace("T1"); (ws.path / "f_t1.py").write_text("def t1():\n    return 1\n", encoding="utf-8")
+    orch.takeover("T1", "human:lead")
+    assert orch.lead.state["T1"] == "in_review"
+    def backend_t1() -> int:
+        return len([c for c in client.calls if _agent_of(c["system"]) == "backend" and _inp(c["user"])["ticket_id"] == "T1"])
+    n_backend = backend_t1()
+    results = orch.run()
+    assert backend_t1() == n_backend, "backend không được gọi lại cho T1 (T2 được dispatch sau khi T1 tích hợp là hợp lệ)"
+    assert any(a == "superseded:T1:tasks" for r in results for a in r.actions)
+    t1 = [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload.get("ticket_id") == "T1"]
+    assert "tasks.superseded" in t1 and "invalid_output" not in t1[t1.index("human.takeover"):]
+    assert orch.lead.state["T1"] == "merged", "PR của người vẫn đi trọn vòng review → tích hợp"
+
+
+def test_pr_cu_trong_hang_doi_bi_vuot_khi_co_pr_moi_hon(tmp_path, monkeypatch):
+    """Hai PR của cùng ticket còn trong hàng đợi (PR tiếp quản trước hoãn vì reviewer transient, người tiếp quản lại lần
+    hai): chỉ PR MỚI NHẤT được review. Review PR cũ là chấm commit cũ rồi ghi verdict vào vòng review mà `_on_pr` đã
+    đặt lại theo PR mới. Đo được sau khi mở lại bus của QLKH-004 (2026-09-05)."""
+    monkeypatch.setenv("COMPANY_LLM_PROVIDER", "fake")
+    repo = _init_repo(tmp_path / "repo"); db = tmp_path / "c4.sqlite"
+    bus = SQLiteBus(db); client = FakeClient(handler=handler, tool_handler=lambda m, t: [])
+    orch = Orchestrator(bus, client, repo=repo, base="main")
+    orch._rework_after_error = lambda *a, **k: True  # type: ignore[method-assign]
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    ws = orch.workspace("T1")
+    (ws.path / "f_a.py").write_text("def a():\n    return 1\n", encoding="utf-8")
+    old = orch.takeover("T1", "human:lead")
+    (ws.path / "f_b.py").write_text("def b():\n    return 2\n", encoding="utf-8")
+    new = orch.takeover("T1", "human:lead")
+    assert old.payload["pr_ref"] != new.payload["pr_ref"] and orch.lead.state["T1"] == "in_review"
+    results = orch.run()
+    reviewed = [_inp(c["user"])["pr_ref"] for c in client.calls if _agent_of(c["system"]) == "reviewer"
+                and _inp(c["user"]).get("ticket_id") == "T1"]
+    assert reviewed == [new.payload["pr_ref"]], "reviewer chỉ chấm PR mới nhất, đúng một lần"
+    assert any(a == "superseded:T1:pull-requests" for r in results for a in r.actions)
+    sup = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log")
+           if e.payload["action"] == "pull-requests.superseded"]
+    assert len(sup) == 1 and sup[0]["pr_ref"] == old.payload["pr_ref"] and sup[0]["newest_pr_ref"] == new.payload["pr_ref"]
+    assert orch.lead.state["T1"] == "merged"
+
+
 def test_cli_comment_va_takeover_thanh_cong_in_ket_qua(tmp_path, capsys, monkeypatch):
     """CLI `comment`/`takeover` đường thành công phải in đúng dòng tóm tắt (orchestrator.py dòng 1142, 1145-1146)."""
     monkeypatch.setenv("COMPANY_LLM_PROVIDER", "fake")
