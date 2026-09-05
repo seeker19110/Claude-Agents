@@ -326,8 +326,17 @@ class DeliveryLead:
 
     def request_changes(self, tid: str, hint: str) -> None:
         """Ticket đã approved nhưng không tích hợp được (xung đột với nhánh tích hợp): làm lại với hint, tính một retry.
-        Release candidate đang chứa ticket này do orchestrator huỷ (không đi tiếp)."""
+        Release candidate đang chứa ticket này do orchestrator huỷ (không đi tiếp). Dùng khi xung đột đã LẶP LẠI quá
+        `MAX_CONFLICT_RETRIES` (orchestrator.py) — coi là bế tắc thật, tính vào retry nội dung như trước."""
         self._set(tid, "changes_requested"); self._retry(tid, hint)
+
+    def request_changes_no_retry_bump(self, tid: str, hint: str) -> None:
+        """Như `request_changes` nhưng KHÔNG tính vào retry nội dung: dùng khi xung đột merge còn dưới ngưỡng
+        `MAX_CONFLICT_RETRIES` — ticket thua cuộc đua merge (ticket khác gộp trước lúc nó đang review) không phải
+        lỗi của nó. Không giới hạn số lần: `orchestrator.conflict_retries` (đếm riêng, durable qua `_rehydrate`) mới
+        là nơi quyết định khi nào xung đột lặp đủ nhiều để coi là bế tắc thật."""
+        self._set(tid, "changes_requested")
+        self.tickets[tid] = self.tickets[tid].model_copy(update={"hint": hint}); self._publish_task(self.tickets[tid])
 
     def blocked(self) -> list[str]:
         return [tid for tid, st in self.state.items() if st == "blocked"]
