@@ -43,6 +43,12 @@ class DeliveryLead:
         self.abandoned: set[str] = set()  # ticket người từ chối ở gate escalation: KHÔNG thoả depends_on của ticket khác
         self.release_qa: dict[str, ReviewResult] = {}
         self.release_reviews: dict[str, dict[str, ReviewResult]] = defaultdict(dict)
+        # release_id → nguồn đã được NGƯỜI chấp nhận dù verdict != pass (finding không có code để sửa: DPIA, license,
+        # IaC...). Tách khỏi ticket: trước đây MỌI lần release-review fail đều đá TOÀN BỘ ticket đã merged trong
+        # release về changes_requested + đốt retry, kể cả khi finding chẳng liên quan gì tới code của ticket nào.
+        # Đo được 2026-09-05: DPIA (RISK-6, không có code sửa được) làm QLKH-010/011/012/014 bị bounce lặp đi lặp
+        # lại — dev sửa xong việc thật, code đã đúng, cứ bị hỏi lại vì lý do y hệt không phải của nó.
+        self.release_waived: dict[str, set[str]] = defaultdict(set)
         self.acceptance: dict[str, AcceptanceResult] = {}
         self.replaying = False  # True khi dựng lại trạng thái từ log: đổi state nhưng không publish/xin gate lại
         self.handlers = {"review-results": self._on_review, "pull-requests": self._on_pr,
@@ -307,22 +313,56 @@ class DeliveryLead:
     def release_needs_security(self, rid: str) -> bool:
         return any(self.tickets[t].risk_tags for t in self.release_tickets.get(rid, []) if t in self.tickets)
 
-    def _on_release_qa(self, r: ReviewResult) -> None:
-        """Review trên release (ticket_id = release_id): QA hồi quy/perf/a11y trên staging, và security (DAST/license)
-        khi release có ticket risk_tags. Đủ nguồn và tất cả pass → mới xin gate 3."""
-        rid = r.ticket_id; self.release_reviews[rid][r.source] = r
-        if r.source == "qa": self.release_qa[rid] = r
-        if r.verdict != "pass":
-            hint = r.root_cause or "; ".join(f.text for f in r.findings if f.level == "block") or f"{r.source} trên release fail"
-            for tid in self.release_tickets[rid]:
-                if self.state.get(tid) == "merged":
-                    self._set(tid, "changes_requested"); self._retry(tid, hint)
-            return
+    def _gate_kind_approved(self, subject_id: str, kind: str) -> bool:
+        """Như `HumanGate.is_approved` nhưng CÓ phân biệt kind: escalation của một release và gate release (Gate 3)
+        của CHÍNH release đó dùng chung `subject_id` (đọc rõ hơn trong `gate_cli`/`gate_brief` là REL-xxx), nên
+        `is_approved` gốc (không phân biệt kind) coi duyệt escalation cũng là đã duyệt luôn Gate 3 — chặn gate
+        release không bao giờ mở được nữa sau khi escalation được chấp nhận."""
+        return any(g.subject_id == subject_id and g.kind == kind and g.decision == "approve" for g in self.gate.history)
+
+    def _maybe_open_release_gate(self, rid: str) -> None:
         need = {"qa"} | ({"security"} if self.release_needs_security(rid) else set())
-        got = {s for s, x in self.release_reviews[rid].items() if x.verdict == "pass"}
-        if need <= got and not self.replaying and rid not in self.gate.pending and not self.gate.is_approved(rid):
+        got = {s for s, x in self.release_reviews[rid].items() if x.verdict == "pass"} | self.release_waived.get(rid, set())
+        if need <= got and not self.replaying and rid not in self.gate.pending and not self._gate_kind_approved(rid, "release"):
             self.gate.request(GateRequest(kind="release", subject_id=rid, created_by="delivery-lead",
                                           checklist=["tests", "scan", "regression-staging", "perf", "a11y", "runbook", "rollback"]))
+
+    def _on_release_qa(self, r: ReviewResult) -> None:
+        """Review trên release (ticket_id = release_id): QA hồi quy/perf/a11y trên staging, và security (DAST/license)
+        khi release có ticket risk_tags. Đủ nguồn và tất cả pass (hoặc đã được người chấp nhận, xem `release_waived`)
+        → mới xin gate 3. Fail mà chưa được chấp nhận → xin gate escalation cho CHÍNH RELEASE (không đụng ticket nào;
+        xem `waive_release_findings`/`rework_release_tickets` — người quyết định có sửa code hay chấp nhận rủi ro)."""
+        rid = r.ticket_id; self.release_reviews[rid][r.source] = r
+        if r.source == "qa": self.release_qa[rid] = r
+        if r.verdict != "pass" and r.source not in self.release_waived.get(rid, set()):
+            # Bằng chứng (finding của reviewer/qa/security) đã nằm trong topic `review-results`, `gate_brief` đọc
+            # trực tiếp từ đó — không cần chép lại vào GateRequest.
+            if not self.replaying and rid not in self.gate.pending and not self._gate_kind_approved(rid, "escalation"):
+                self.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="delivery-lead",
+                                              checklist=["root_cause", "decision:reopen|close", "hint"]))
+            return
+        self._maybe_open_release_gate(rid)
+
+    def waive_release_findings(self, rid: str) -> list[str]:
+        """Người duyệt escalation của một RELEASE (không phải ticket riêng): finding không có code để sửa (compliance/
+        policy như DPIA) được coi là rủi ro đã chấp nhận. KHÔNG đụng trạng thái ticket nào. Trả về các nguồn vừa được
+        chấp nhận (để audit); đủ nguồn (pass + waived) thì mở luôn gate release cho Gate 3."""
+        sources = sorted(s for s, x in self.release_reviews.get(rid, {}).items() if x.verdict != "pass")
+        for s in sources:
+            self.release_waived[rid].add(s)
+            self._emit(Envelope(topic="audit-log", key="delivery-lead", actor="delivery-lead",
+                                payload=AuditLog(actor="delivery-lead", action="release.finding_waived",
+                                                 evidence=json.dumps({"release_id": rid, "source": s},
+                                                                     ensure_ascii=False)).model_dump()))
+        self._maybe_open_release_gate(rid)
+        return sources
+
+    def rework_release_tickets(self, rid: str, hint: str) -> None:
+        """Người TỪ CHỐI escalation của release: finding LÀ lỗi code thật, không phải rủi ro chấp nhận được — đá các
+        ticket đã merged trong release về changes_requested (hành vi cũ, giờ chỉ chạy khi người quyết định rõ ràng)."""
+        for tid in self.release_tickets.get(rid, []):
+            if self.state.get(tid) == "merged":
+                self._set(tid, "changes_requested"); self._retry(tid, hint)
 
     def request_changes(self, tid: str, hint: str) -> None:
         """Ticket đã approved nhưng không tích hợp được (xung đột với nhánh tích hợp): làm lại với hint, tính một retry.

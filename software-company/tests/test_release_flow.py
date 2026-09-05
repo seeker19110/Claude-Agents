@@ -83,13 +83,41 @@ def test_release_requires_staging_qa_before_gate_and_human_before_production():
     assert lead.state["T1"] == "released"
 
 
-def test_staging_qa_fail_sends_tickets_back_with_hint():
+def test_staging_qa_fail_opens_release_escalation_khong_dung_ticket():
+    """QA fail trên release KHÔNG còn tự động đá ticket về rework (đo được 2026-09-05: DPIA — finding không có code
+    để sửa — làm nhiều ticket đã merged đúng bị bounce lặp lại, đốt retry oan). Mở gate escalation cho CHÍNH
+    release; ticket giữ nguyên tới khi người quyết định waive hay rework."""
     bus, gate, lead = _setup()
     lead.dispatch(_task(), "PLAN"); _approve_ticket(bus); rid = lead.releases[0]
     _release_event(bus, rid, "staging", "deployed")
     _rev(bus, rid, "qa", "fail", findings=[{"level": "block", "text": "p95 480ms > NFR 300ms"}])
-    assert rid not in gate.pending
+    assert rid in gate.pending and gate.pending[rid].kind == "escalation"
+    assert lead.state["T1"] == "merged" and lead.tickets["T1"].retry == 0, "ticket không bị đụng khi chưa có quyết định"
+
+
+def test_release_escalation_tu_choi_thi_moi_day_ticket_ve_rework():
+    """Người TỪ CHỐI escalation (finding là lỗi code thật) — CHỈ khi đó ticket mới về rework, và là quyết định rõ
+    ràng của người, không phải mặc định tự động."""
+    bus, _gate, lead = _setup()
+    lead.dispatch(_task(), "PLAN"); _approve_ticket(bus); rid = lead.releases[0]
+    _release_event(bus, rid, "staging", "deployed")
+    _rev(bus, rid, "qa", "fail", findings=[{"level": "block", "text": "p95 480ms > NFR 300ms"}])
+    lead.rework_release_tickets(rid, "p95 480ms > NFR 300ms")
     assert lead.state["T1"] == "dispatched" and lead.tickets["T1"].retry == 1 and "p95" in lead.tickets["T1"].hint
+
+
+def test_release_escalation_chap_nhan_thi_khong_dung_ticket_va_mo_gate3():
+    """Người CHẤP NHẬN (waive) một finding không có code để sửa (vd. DPIA): ticket đã merged giữ nguyên, không đốt
+    retry; đủ nguồn (pass + waived) thì mở luôn gate release (Gate 3) như bình thường."""
+    bus, gate, lead = _setup()
+    lead.dispatch(_task(), "PLAN"); _approve_ticket(bus); rid = lead.releases[0]
+    _release_event(bus, rid, "staging", "deployed")
+    _rev(bus, rid, "qa", "fail", findings=[{"level": "block", "text": "DPIA chưa xong"}])
+    gate.decide(rid, "approve", by="human:owner")  # đóng gate escalation trước, đúng thứ tự thật (orchestrator làm vậy)
+    waived = lead.waive_release_findings(rid)
+    assert waived == ["qa"]
+    assert lead.state["T1"] == "merged" and lead.tickets["T1"].retry == 0
+    assert rid in gate.pending and gate.pending[rid].kind == "release"
 
 
 def test_production_rollback_reopens_tickets():

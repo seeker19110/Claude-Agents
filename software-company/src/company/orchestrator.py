@@ -461,6 +461,8 @@ class Orchestrator:
                         self._dispatch_plan(d["subject_id"], replaying=True)
                 elif a["action"] == "integration.conflict":
                     self.conflict_retries[str(d["ticket_id"])] += 1
+                elif a["action"] == "release.finding_waived":
+                    self.lead.release_waived[str(d["release_id"])].add(str(d["source"]))
             elif env.topic == "supervisor-actions": self._track_pause(env)
             elif env.topic == "shared-context": self.blackboard._on(env)
             else:
@@ -1279,6 +1281,18 @@ class Orchestrator:
                                               checklist=["root_cause", "decision:reopen|close", "hint"]))
 
     def _on_escalation_decided(self, tid: str, decision: str, by: str, reason: str, res: StepResult) -> None:
+        if tid in self.lead.release_tickets:  # escalation của một RELEASE (không phải ticket): xem docstring
+            # `Delivery.waive_release_findings`/`rework_release_tickets` — người quyết định chấp nhận rủi ro (finding
+            # không có code để sửa: DPIA, license...) hay đúng là lỗi code thật cần các ticket merged làm lại.
+            if decision == "approve":
+                sources = self.lead.waive_release_findings(tid)
+                self.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
+                                          payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
+                res.actions.append(f"release_waived:{tid}:{','.join(sources)}")
+            else:
+                self.lead.rework_release_tickets(tid, reason or "người từ chối escalation release: cần sửa nội dung thật")
+                res.actions.append(f"release_reworked:{tid}")
+            return
         if tid in self.stalled:  # escalation cấp dự án (chuỗi nghiên cứu lỗi): retry event hoặc đóng dự án
             if decision == "approve":
                 self.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
