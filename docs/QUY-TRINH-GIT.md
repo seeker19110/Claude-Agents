@@ -100,8 +100,17 @@ chỉ là lời hứa: PR #29 merge 23 giây sau khi mở, job `quality` xanh **
    **Copilot code review** (`copilot_code_review`, không review khi push và không review PR nháp) ·
    **không ai được bypass, kể cả admin** (`bypass_actors` rỗng) · **tắt** "up to date" (`strict: false`) để PR khác
    merge không bắt mọi PR đang mở gộp `main` rồi chờ CI lại.
-2. **Job `protection-guard` trong CI** đọc rule đang áp lên nhánh mặc định qua API và **đỏ khi thiếu** bất kỳ mục
-   nào ở trên. `quality` cần nó xanh. Nghĩa là: chưa import ruleset thì mọi PR đỏ — đó là chủ đích.
+2. **Job `protection-guard` trong CI**, hai vế. `quality` cần nó xanh.
+   - **Vế 1 — đã có hiệu lực chưa:** đọc rule đang áp lên nhánh mặc định qua API, **đỏ khi thiếu** bốn rule bất
+     biến hoặc thiếu bất kỳ required status check nào **khai trong file**. Chưa import ruleset thì mọi PR đỏ —
+     đó là chủ đích. Danh sách check đọc từ file chứ không hard-code, nên thêm/bớt check không cần sửa workflow.
+   - **Vế 2 — file và ruleset thật có khớp không (đối chiếu hai chiều):**
+     rule khai trong file mà **không** áp trên nhánh ⇒ **đỏ** (bảo vệ yếu hơn thứ repo khai);
+     rule đang áp mà **không** có trong file ⇒ **cảnh báo** (không yếu đi, nhưng import lại sẽ xoá mất nó).
+
+   > **Vì sao cần vế 2.** Sửa ruleset trong UI có thể **làm rơi một rule mà không báo gì**. Đã xảy ra thật ngày
+   > 2026-09-05: lần đổi `required_approving_review_count` về 0 làm mất `copilot_code_review`, và guard bản cũ
+   > **vẫn xanh** vì nó chỉ kiểm bốn rule bất biến. Kiểu trôi này không ai phát hiện cho tới khi cần đến rule đó.
 
 Hai nút vẫn phải bật tay trong Settings → General (không thuộc ruleset): **Allow auto-merge** và
 **Automatically delete head branches**.
