@@ -32,6 +32,7 @@ TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
     "approved-specs": frozenset({"spec-writer"}),
     "tasks": frozenset({"delivery-lead"}),
     "pull-requests": ENGINEERING_ACTORS,
+    "test-suites": frozenset({"test-author"}),  # ADR-0028: bộ test do một vai KHÁC người viết code phát
     "review-results": REVIEW_PRODUCERS,
     "release-candidates": frozenset({"delivery-lead"}),
     "release-events": frozenset({"release-engineer"}),

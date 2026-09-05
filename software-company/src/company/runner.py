@@ -348,8 +348,44 @@ class AgentRunner:
                          cache_hit_ratio=c.cache_hit_ratio, turns=turns, tool_calls=tools.summary() if tools else {},
                          cost_usd=round(usd, 6), priced=priced, duration_ms=duration)
 
+    def author_tests(self, agent_id: str, inp: Envelope, ws: TicketWorkspace, budget: int | None = None,
+                     max_turns: int = 25) -> tuple[Generated, str]:
+        """ADR-0028: test-author viết bộ test TRƯỚC khi có code, chỉ ghi được vùng test của stack.
+
+        Trả về `(Generated, tests_status)`. Chạy test ngay sau lượt này và **đỏ là kết quả ĐÚNG**: nó là bằng
+        chứng duy nhất cho thấy bộ test ràng buộc một hành vi chưa tồn tại. Xanh ngay khi chưa có code mới là
+        dấu hiệu đáng ngờ (test rỗng, assert vô nghĩa) — cờ đi theo payload để reviewer đọc được.
+        `branch`, `commit`, `files`, `tests_status` do CODE điền, model khai gì ở đó cũng bị thay."""
+        spec = self.agents[agent_id]
+        ws.create()
+        if ws.reset():
+            self._audit(spec, "workspace_reset", inp, evidence=f"worktree {ws.branch} còn thay đổi chưa commit từ lần trước; đã bỏ")
+        tools = WorkspaceTools(ws, allow_write=True, write_scope="tests").toolbox()
+        g = self.generate(agent_id, inp, "test-suites", tools=tools, max_turns=max_turns, budget=budget)
+        if not ws.dirty():
+            self._audit(spec, "invalid_output", inp, evidence="worktree không có file test nào sau vòng tool", tokens=g.tokens, cost=g.cost_usd)
+            raise RunnerError(f"{agent_id}: không viết file test nào trong worktree {ws.branch}")
+        checks = ws.run_checks()
+        # Stack không có lệnh test (vd. node không khai script `test`) thì `tests=False` không nói lên điều gì:
+        # `unknown` thay vì "đỏ" giả, đúng tinh thần `local_checks.unverified` của ADR-0010.
+        status = "unknown" if ws.stack().test is None else ("green" if checks.get("tests") else "red")
+        try:
+            sha = ws.commit_all(f"test({inp.key}): {str(inp.payload.get('title') or inp.key)[:72]}")
+        except WorkspaceError as e:
+            raise RunnerError(f"{agent_id}: commit bộ test thất bại: {e}") from e
+        files = ws.changed_files()  # sau commit: `git diff --name-only <base>` không thấy file chưa được theo dõi
+        p = dict(g.payloads[0])
+        p.update(ticket_id=inp.payload.get("ticket_id") or inp.key, branch=ws.branch, commit=sha,
+                 files=files, tests_status=status, blind=inp.topic == "tasks")
+        if assignee := inp.payload.get("assignee"): p["assignee"] = assignee
+        g.payloads = [p]
+        self._audit(spec, "tests_green_before_code" if status == "green" else "tests_red_as_expected", inp,
+                    evidence=json.dumps({"files": files, "commit": sha, "tests": checks.get("tests"),
+                                         "output": (checks.get("test_output") or "")[-800:]}, ensure_ascii=False))
+        return g, status
+
     def generate_in_workspace(self, agent_id: str, inp: Envelope, ws: TicketWorkspace, budget: int | None = None,
-                              max_turns: int = 25) -> Generated:
+                              max_turns: int = 25, write_scope: str = "all") -> Generated:
         """Khối kỹ thuật: agent sửa code trong worktree của ticket bằng tool, rồi CODE điền bằng chứng vào PR.
 
         Sau vòng tool: worktree không đổi → invalid_output (không có PR rỗng); có đổi → chạy lint/test thật, commit,
@@ -359,7 +395,7 @@ class AgentRunner:
         ws.create()
         if ws.reset():  # lần chạy trước lỗi giữa chừng để lại file dở: dọn về HEAD, không để lần này commit luôn rác đó
             self._audit(spec, "workspace_reset", inp, evidence=f"worktree {ws.branch} còn thay đổi chưa commit từ lần trước; đã bỏ")
-        tools = WorkspaceTools(ws, allow_write=True).toolbox()
+        tools = WorkspaceTools(ws, allow_write=True, write_scope=write_scope).toolbox()
         g = self.generate(agent_id, inp, "pull-requests", tools=tools, max_turns=max_turns, budget=budget)
         if not ws.dirty():  # so với HEAD của branch: lần làm lại mà ghi y hệt lần trước cũng là "không sửa gì"
             self._audit(spec, "invalid_output", inp, evidence="worktree không có thay đổi sau vòng tool", tokens=g.tokens, cost=g.cost_usd)

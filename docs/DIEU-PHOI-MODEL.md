@@ -36,7 +36,7 @@ không còn lựa chọn).
 Tiêu chí xếp: (a) độ sâu suy luận cần thiết; (b) hậu quả nếu sai và có lớp nào bắt lỗi phía sau không (gate người,
 code kiểm định, agent review khác); (c) độ dài/độ phức tạp đầu ra; (d) tần suất chạy (agent chạy nhiều lượt kéo chi phí).
 
-### software-company (20 agent)
+### software-company (21 agent)
 
 | Agent | Tier | Vì sao |
 |---|---|---|
@@ -44,6 +44,7 @@ code kiểm định, agent review khác); (c) độ dài/độ phức tạp đ�
 | backend, frontend, mobile, database, platform, data | strong | Viết code thật trong worktree, tool-use nhiều lượt, PR phải qua lint/test thật |
 | reviewer | strong | Đọc diff, bắt lỗi bảo mật/logic; là lớp bắt lỗi cho khối kỹ thuật nên không được yếu hơn |
 | qa-debugger | strong | Phân tích nguyên nhân gốc khi test fail; suy luận nhiều bước |
+| test-author | standard | Viết test từ đặc tả, không nhìn code (ADR-0028). Đầu vào hẹp và có cấu trúc (acceptance + api-contract), đầu ra là file test chạy được — không phải suy luận nhiều bước. Hậu quả sai lộ ra ngay ở vòng tranh chấp với assignee, không lọt tới production. Sau 4 tuần đối chiếu `review_catch_rate`: bỏ sót ca biên rõ rệt thì nâng `strong` kèm bằng chứng eval, như đã làm với `researcher` |
 | security-engineer | strong | Threat model STRIDE, DAST; hậu quả sai cao, chạy ít lượt |
 | synthesizer, spec-writer | strong | Khử mâu thuẫn yêu cầu, viết PRD + Gherkin làm chuẩn nghiệm thu cho cả vòng đời |
 | risk | strong | Rà khả thi/pháp lý/bảo mật sơ bộ; đầu vào cho `risk_tags` → quyết định có cần security review |

@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "software-company/topics/test-suites",
+  "title": "test-suites",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "topic": {
+      "const": "test-suites"
+    },
+    "key": {
+      "type": "string",
+      "description": "= ticket_id"
+    },
+    "actor": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "ticket_id": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "assignee": {
+          "enum": [
+            "backend",
+            "frontend",
+            "mobile",
+            "database",
+            "platform",
+            "data"
+          ],
+          "description": "agent sẽ viết code cho tới khi bộ test này xanh"
+        },
+        "branch": {
+          "type": "string",
+          "description": "nhánh ticket đã commit bộ test"
+        },
+        "commit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "sha commit chứa bộ test"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "đường dẫn file test đã ghi"
+        },
+        "acceptance_covered": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "acceptance": {
+                "type": "string"
+              },
+              "tests": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "acceptance",
+              "tests"
+            ],
+            "additionalProperties": true
+          },
+          "description": "ánh xạ 1-1 với `acceptance` của ticket: mỗi tiêu chí có test nào phủ"
+        },
+        "blind": {
+          "type": "boolean",
+          "description": "true = lượt viết mù (chưa thấy code/diff)"
+        },
+        "tests_status": {
+          "enum": [
+            "red",
+            "green",
+            "unknown"
+          ],
+          "description": "kết quả chạy test ngay sau lượt này: `red` là kết quả ĐÚNG (ADR-0028); `green` là đáng ngờ"
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticket_id",
+        "assignee",
+        "acceptance_covered",
+        "files"
+      ],
+      "additionalProperties": true
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "phiên bản envelope+payload của topic"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "event gốc của cả chuỗi (project/ticket)"
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "event trực tiếp sinh ra event này"
+    }
+  },
+  "required": [
+    "event_id",
+    "topic",
+    "key",
+    "actor",
+    "ts",
+    "payload"
+  ],
+  "additionalProperties": false
+}

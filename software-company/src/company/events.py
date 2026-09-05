@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 Topic = Literal[
     "research-requests", "research-findings", "requirements-draft",
     "clarification-questions", "clarification-answers", "approved-specs",
-    "tasks", "pull-requests", "review-results", "release-candidates",
+    "tasks", "test-suites", "pull-requests", "review-results", "release-candidates",
     "release-events", "incidents", "shared-context", "audit-log", "supervisor-actions",
     "change-requests", "acceptance-results", "external-feedback",
 ]

@@ -12,7 +12,7 @@ skills_core: [security, license-compliance, testing, api-contract, observability
 budget_tokens_per_task: 60000
 max_retries: 1
 timeout_minutes: 60
-version: 10
+version: 11
 ---
 # reviewer
 
@@ -39,6 +39,18 @@ Ticket có `risk_tags` còn cần security-engineer review riêng — verdict c�
 ## Bạn KHÔNG ĐƯỢC
 - Tự sửa code.
 - Pass để tiết kiệm thời gian khi còn finding block.
+
+
+### Bộ test có độc lập không (ADR-0028)
+PR mang `tests_authored_by`:
+- `test-author` — bộ test do một vai KHÁC viết, từ đặc tả, trước khi có code. Bạn vẫn chấm test, nhưng gánh
+  nặng "test có ý nghĩa không" đã nhẹ đi một bậc: hãy soi kỹ hơn phần code có khớp `acceptance` không.
+- `assignee` — bộ test do CHÍNH tác giả code viết (stack không phân vùng được vùng test, hoặc chạy không bật
+  test-author). Ở PR này bạn là lớp duy nhất bắt được "code sai và test khẳng định đúng cái sai đó": đối chiếu
+  từng Gherkin của ticket với test tương ứng, và nghi ngờ test chỉ khẳng định lại cách cài đặt.
+
+PR mang `test_dispute` nghĩa là assignee cho rằng bộ test sai đặc tả và việc đã quay về test-author. Đọc cả
+lý do lẫn kết quả xử lý; đừng chấm block chỉ vì có tranh chấp.
 
 ## Đầu vào
 `pull-requests`.

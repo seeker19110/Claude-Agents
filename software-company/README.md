@@ -1,6 +1,6 @@
 # Software Company — Multi-Agent phòng gia công phần mềm
 
-Mô phỏng một công ty gia công phần mềm bằng hệ đa agent event-driven: 7 khối, 20 agent,
+Mô phỏng một công ty gia công phần mềm bằng hệ đa agent event-driven: 7 khối, 21 agent,
 mọi trao đổi đi qua topic có key, tri thức chung nằm trên blackboard, con người duyệt ở
 4 điểm cố định. Nguyên tắc: tính toán xác định, guardrail có hạn mức, đo token thật,
 cô lập workspace theo ticket, prompt là code. Đây là "công ty AI" đầu tiên trong hub X-Agents.
@@ -38,7 +38,7 @@ skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu c
 gates/         checklist 4 human gate + gate bất thường `escalation` (ticket và cấp dự án); GateKind = spec|plan|release|acceptance|escalation
                — nửa "Người tự kiểm thêm" của mỗi gate được `gate_checklists.py` parse thành trợ lý `sc-gate-<kind>` và hồ sơ `gate_brief`
 templates/     PRD, ticket, PR, bug report, postmortem, ADR, threat model, data contract
-topics/        18 JSON Schema topic + bảng owner namespace
+topics/        19 JSON Schema topic + bảng owner namespace
 src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, gate_cli, blackboard (artifact store),
                llm (ModelClient + adapter anthropic/openai/claude-code/codex/fake, tool-use, retry, bảng giá), routing (nhiều gói tài
                khoản, chọn theo tier, xoay khi hết quota — ADR-0019), runner (vòng lặp tool, guard, cắt ngữ cảnh),
@@ -53,10 +53,10 @@ examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--rela
                yeu-cau-mau-web-app.json (yêu cầu mẫu để publish vào `research-requests`: đủ mục tiêu, người dùng,
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng intake cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
-evals/         ca eval prompt theo agent (YAML) — đủ 20 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
-tests/         pytest 642 ca / 33 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+evals/         ca eval prompt theo agent (YAML) — đủ 21 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
+tests/         pytest 672 ca / 34 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
-               guard/blackboard, schema consistency, golden 20 agent + 5 hồ sơ gate, bộ sinh subagent, hồ sơ gate, rà soát bảo mật);
+               guard/blackboard, schema consistency, golden 21 agent + 5 hồ sơ gate, bộ sinh subagent, hồ sơ gate, rà soát bảo mật);
                coverage fail_under=98
 ```
 
@@ -95,7 +95,7 @@ uv run python -m company.runner reviewer review-results input.json --db company.
 # Chạy tự động cả công ty (ADR-0007): orchestrator nối topic → agent → topic, dừng ở human gate / supervisor / khách
 uv run python -m company.orchestrator publish research-requests req.json --actor human:sales
 uv run python -m company.orchestrator run --watch 5     # hoặc: make watch (một lượt: make run; --max-steps N giới hạn số bước)
-#   cờ chung đặt trước subcommand: --db company.sqlite --repo --base --integration --artifacts --workers --web --batch-release
+#   cờ chung đặt trước subcommand: --db company.sqlite --repo --base --integration --artifacts --workers --web --batch-release --test-author
 uv run python -m company.orchestrator run --repo ../khach --base main   # làm THẬT: khối kỹ thuật sửa code
 #   --repo là MẶC ĐỊNH; từng dự án tự chỉ repo riêng bằng `repo`/`base` trong research-requests (ADR-0025) — một tiến
 #   trình phục vụ nhiều khách, mỗi khách một repo; console giao việc kèm "nơi lưu dự án"
@@ -113,6 +113,10 @@ uv run python -m company.orchestrator --repo ../khach --deliver [--push-remote o
 uv run python -m company.orchestrator publish clarification-answers ans.json --actor human:po
 uv run python -m company.orchestrator decide-change CR-1 accepted --by human:po   # sau khi delivery-lead ước lượng impact
 uv run python -m company.orchestrator run --workers 4 --web   # ticket khác key chạy song song; researcher có web
+uv run python -m company.orchestrator --repo ../khach --test-author run
+#   ADR-0028: test-author viết bộ test từ acceptance TRƯỚC (lượt mù, chỉ ghi được file test), rồi assignee viết code
+#   cho tới khi xanh mà KHÔNG ghi/xoá được file test. Thêm một lượt model mỗi ticket. Stack không phân vùng được vùng
+#   test (UNKNOWN) → ticket đi đường cũ và PR mang `tests_authored_by: assignee` để reviewer biết bộ test không độc lập
 uv run python -m company.orchestrator run --batch-release   # gom ticket approved của dự án vào một RC (một staging, một gate 3, một UAT)
 uv run python -m company.orchestrator status              # hàng đợi, hoãn, ticket, gate chờ, blackboard, chi phí,
                                                                         # backend nào sẵn sàng/đang nghỉ (routing.status) — make status
@@ -222,7 +226,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   research → ticket → code → review → release → nghiệm thu bằng client giả, model thật (`--real`) hoặc relay qua file
   (`--relay DIR`, `examples/relay_client.py`: một phiên Claude Code khác trả lời `<n>.req.json`); `--resume` chạy tiếp.
   Phát hiện F13–F19 từ mô phỏng đều đã sửa (bảng trong báo cáo).
-- Test: 314 ca pytest gồm golden 20 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
+- Test: 672 ca pytest gồm golden 21 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
   vòng tool, orchestrator với repo git thật, eval ghi/phát lại, adapter tool-use (server HTTP giả), guard, cắt ngữ cảnh,
   artifact store, retry, bảng giá, tool web (fetcher giả), song song, metrics, comment/takeover, routing nhiều backend,
   release flow và replay; ruff + mypy sạch, coverage ≥ 90% (`graph.py` không tính).
@@ -264,7 +268,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   `gate_brief` cạnh nút duyệt (mới có ở CLI và `/gate-brief`).
 
 ### Bước tiếp theo
-1. Chạy `make eval-record AGENT=<id>` cho 20 agent với model thật, commit bản ghi để CI eval có răng.
+1. Chạy `make eval-record AGENT=<id>` cho 21 agent với model thật, commit bản ghi để CI eval có răng.
 2. Deploy hạ tầng thật cho sản phẩm khách (release-engineer chạy CI/CD, container) nối tiếp tag/nhánh release của ADR-0027.
 3. Sandbox container cho `run`; adapter bus Redis Streams/Kafka giữ interface hiện tại (kể cả `poll`) để chạy nhiều tiến trình.
 4. Console hiện hồ sơ `gate_brief` cạnh nút duyệt; thông báo webhook khi gate mở/quá hạn; giao diện UAT cho khách.

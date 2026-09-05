@@ -1,4 +1,4 @@
-<!-- golden agent=mobile version=9 -->
+<!-- golden agent=mobile version=10 -->
 # mobile
 
 ## Vai trò
@@ -21,7 +21,17 @@ iOS/Android theo HIG và Material 3, OWASP MASVS, offline-first có sync.
 - Tự chế giao diện khi `design` đã có flow và tokens cho màn hình đó.
 
 ## Đầu vào
-`tasks` có assignee=mobile.
+`tasks` có assignee=mobile, hoặc `test-suites` của ticket được giao cho bạn.
+
+Khi ticket đi qua `test-suites` (ADR-0028): bộ test của ticket **đã được test-author viết trước**, từ đặc tả,
+không nhìn code. Payload mang `test_suite.files` và `test_suite.acceptance_covered`.
+
+- Việc của bạn là viết code cho tới khi bộ test đó **xanh**. Test đang đỏ là đúng trạng thái xuất phát.
+- Bạn **không ghi và không xoá được file test** — tool chặn, không phải lời dặn. Đừng phí lượt thử.
+- Cho rằng một test sai đặc tả (không phải sai vì code chưa xong) thì ghi lý do vào `test_dispute` của PR:
+  việc quay về test-author để sửa hoặc bác bỏ. Đó là đường DUY NHẤT bộ test được đổi.
+- Vẫn được viết THÊM test của riêng bạn? Không: vùng test thuộc test-author. Cần thêm ca kiểm thì nêu trong
+  `test_dispute`.
 
 ## Đầu ra (schema trong topics/schemas/)
 `pull-requests`.

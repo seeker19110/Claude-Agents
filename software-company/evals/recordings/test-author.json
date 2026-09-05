@@ -1,0 +1,22 @@
+{
+ "agent": "test-author",
+ "prompt_version": 1,
+ "recorded_at": "2026-09-05T05:56:56.560326+00:00",
+ "models": [
+  "claude-sonnet-5"
+ ],
+ "cases": {
+  "602ec2ef6bad881c4a649d25": {
+   "text": "{\"ticket_id\": \"TCK-1\", \"project_id\": \"P1\", \"assignee\": \"backend\", \"branch\": \"test/TCK-1-get-orders-id\", \"commit\": null, \"files\": [\"tests/integration/orders/test_get_order_by_id.py\"], \"acceptance_covered\": [{\"acceptance\": \"Given đơn hàng ORD-1 tồn tại, When GET /orders/ORD-1, Then trả 200 kèm id và total\", \"tests\": [\"test_get_order_existing_returns_200_with_id_and_total\", \"test_get_order_existing_response_shape_has_no_extra_error_fields\"]}, {\"acceptance\": \"Given đơn hàng ORD-9 không tồn tại, When GET /orders/ORD-9, Then trả 404 theo RFC 9457\", \"tests\": [\"test_get_order_nonexistent_returns_404_problem_details\", \"test_get_order_nonexistent_problem_details_has_required_fields\", \"test_get_order_nonexistent_content_type_is_problem_json\"]}], \"blind\": true, \"tests_status\": \"red\", \"notes\": \"Viết mù chỉ dựa trên acceptance + summary api-contract (chưa đọc được nội dung đầy đủ openapi.yaml, chỉ có summary). Giả định:\\\\n- Endpoint: GET /orders/{id}, id dạng chuỗi như \\\\\\\"ORD-1\\\\\\\".\\\\n- 200: body JSON tối thiểu có khóa \\\\\\\"id\\\\\\\" (== path param) và \\\\\\\"total\\\\\\\" (number). Không giả định thêm field khác ngoài 2 field bắt buộc này để tránh suy diễn ngoài đặc tả — test chỉ assert sự tồn tại và kiểu của id/total, không assert toàn bộ shape.\\\\n- 404: theo RFC 9457 nên response Content-Type phải là application/problem+json, body có tối thiểu các field chuẩn \\\\\\\"type\\\\\\\", \\\\\\\"title\\\\\\\", \\\\\\\"status\\\\\\\" (=404); không giả định \\\\\\\"detail\\\\\\\"/\\\\\\\"instance\\\\\\\" bắt buộc vì đặc tả không nói rõ, nhưng có test kiểm tra nếu có thì không lộ thông tin nội bộ (không chứa stacktrace).\\\\n- Ca biên thêm: id có ký tự đặc biệt/rỗng chưa được đặc tả rõ trong acceptance -> KHÔNG viết test cho case đó, ghi nhận thiếu thông tin ở đây thay vì bịa hành vi.\\\\n- Không mock nội bộ; test gọi thẳng HTTP client tới app test instance, dữ liệu ORD-1 phải được seed/fixture riêng, tự dọn sau test để đảm bảo độc lập.\\\\nCần backend xác nhận: (1) format lỗi 404 có bắt buộc field \\\\\\\"detail\\\\\\\" không, (2) response 200 có field nào khác ngoài id/total mà consumer khác đang phụ thuộc không (đọc theo api-contract đầy đủ nếu có thể).\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 7694,
+   "output_tokens": 1191
+  },
+  "41e1bc59c222279451005e95": {
+   "text": "{\"ticket_id\": \"TCK-2\", \"project_id\": \"P1\", \"assignee\": \"backend\", \"branch\": \"ticket/TCK-2\", \"commit\": null, \"files\": [\"tests/orders/test_get_order_by_id.py\"], \"acceptance_covered\": [{\"acceptance\": \"GET /orders/{id} trả 200 và dữ liệu order khi id tồn tại\", \"tests\": [\"test_get_order_by_id_returns_200_with_order_body\"]}, {\"acceptance\": \"GET /orders/{id} trả 404 theo RFC 9457 khi order không tồn tại\", \"tests\": [\"test_get_order_by_id_returns_404_problem_details_when_not_found\", \"test_get_order_by_id_404_content_type_is_problem_json\", \"test_get_order_by_id_404_body_has_type_title_status_detail_fields\"]}, {\"acceptance\": \"GET /orders/{id} trả lỗi hợp lệ (RFC 9457) khi id sai định dạng\", \"tests\": [\"test_get_order_by_id_invalid_format_returns_400_problem_details\"]}], \"blind\": false, \"tests_status\": \"red\", \"notes\": \"Xử lý test_dispute từ backend: dispute HỢP LỆ. Acceptance của TCK-2 yêu cầu lỗi theo RFC 9457, nên test cũ khẳng định body 404 rỗng là sai đặc tả — đã sửa. Test 404 giờ assert: status=404, Content-Type=application/problem+json, body có đủ các trường type/title/status/detail (không rỗng), status field khớp 404, không lộ thông tin nội bộ (stack trace/DB error). Đồng thời bổ sung test cho ca 400 (id sai định dạng) cũng phải theo RFC 9457 để nhất quán toàn bộ error path của endpoint này — nếu ticket không có acceptance riêng cho ca này thì bỏ qua test đó, nhưng vì api-contract chuẩn RFC 9457 áp cho mọi lỗi nên giữ lại để không tạo lỗ hổng. Không có quyền truy cập blackboard chứa acceptance đầy đủ ở lượt này (trống) nên đã tái tạo tiêu chí dựa trên summary/dispute; nếu có acceptance khác (VD: quyền truy cập, phân trang) cần bổ sung ở lượt sau. Không sửa gì khác ngoài test bị dispute; không đụng file nguồn.\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 7606,
+   "output_tokens": 1483
+  }
+ }
+}

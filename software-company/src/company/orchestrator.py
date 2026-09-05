@@ -82,7 +82,7 @@ PAUSING = frozenset({"pause", "budget_cut", "escalate"})
 RESEARCH_TOPICS = frozenset({"research-requests", "research-findings", "requirements-draft", "clarification-answers"})
 CONTROL_TOPICS = frozenset({"audit-log", "shared-context", "supervisor-actions"})
 REVIEW_AGENT = {"reviewer": "reviewer", "qa": "qa-debugger", "security": "security-engineer"}
-KEY_FIELD = {"tasks": "ticket_id", "pull-requests": "ticket_id", "review-results": "ticket_id", "incidents": "incident_id",
+KEY_FIELD = {"tasks": "ticket_id", "pull-requests": "ticket_id", "test-suites": "ticket_id", "review-results": "ticket_id", "incidents": "incident_id",
              "change-requests": "change_id", "release-candidates": "release_id", "release-events": "release_id",
              "acceptance-results": "release_id"}  # topic khác (project_id) giữ key của event nguồn
 
@@ -90,6 +90,9 @@ KEY_FIELD = {"tasks": "ticket_id", "pull-requests": "ticket_id", "review-results
 def key_for(topic: str, payload: dict[str, Any], default: str) -> str:
     return str(payload.get(KEY_FIELD.get(topic, ""), "") or default)
 ACTIVE_STATES = frozenset({"dispatched", "in_progress", "in_review"})
+# Trường bị gỡ khỏi payload trước khi đưa cho test-author (ADR-0028: lượt MÙ). `hint` là phản hồi review vòng
+# trước — nó nói về CODE, đọc nó là hết mù.
+BLIND_STRIP = frozenset({"hint", "retry", "test_suite", "diff", "chan_doan"})
 
 When = Callable[[Envelope, "Orchestrator"], bool]
 Enrich = Callable[[Envelope, "Orchestrator"], dict[str, Any]]
@@ -228,6 +231,42 @@ def _with_chan_doan(e: Envelope, o: Orchestrator) -> dict[str, Any]:
                           "gate_dang_cho": d["gate"]["dang_cho"]}}
 
 
+def _test_scope_ok(o: Orchestrator, tid: str) -> bool:
+    """Có worktree cho ticket và stack của repo khách khai được vùng test không (ADR-0028 §3, fail closed)."""
+    ws = o.workspace(tid)
+    if ws is None: return False
+    try:
+        ws.create()
+    except Exception:  # không dựng được worktree thì cứ đi đường cũ, `_engineer` sẽ báo lỗi thật
+        return False
+    return bool(ws.stack().test_globs)
+
+
+def _can_author_tests(e: Envelope, o: Orchestrator) -> bool:
+    if not o.test_author: return False
+    tid = str(e.payload.get("ticket_id") or e.key)
+    if _test_scope_ok(o, tid): return True
+    o._audit("tests_authored_by_assignee", {"ticket_id": tid, "reason": "không phân vùng được vùng test của stack"},
+             ticket_id=tid, project_id=e.payload.get("project_id"), once=f"no-test-author:{tid}")
+    return False
+
+
+def _no_test_author(e: Envelope, o: Orchestrator) -> bool:
+    return not _can_author_tests(e, o)
+
+
+def _has_dispute(e: Envelope, _o: Orchestrator) -> bool:
+    return bool(str(e.payload.get("test_dispute") or "").strip())
+
+
+def _with_task(e: Envelope, o: Orchestrator) -> dict[str, Any]:
+    """Assignee nhận lại toàn bộ ticket (acceptance, scope, hint...) kèm bộ test vừa được viết."""
+    t = o.latest("tasks", str(e.payload.get("ticket_id") or e.key))
+    base = dict(t.payload) if t is not None else {}
+    return {**base, "test_suite": {k: e.payload.get(k) for k in ("files", "acceptance_covered", "tests_status", "commit", "notes")},
+            "tests_authored_by": "test-author"}
+
+
 ROUTES: tuple[Route, ...] = (
     # khối nghiên cứu: intake → researcher → synthesizer → risk → clarifier → (người trả lời) → spec-writer
     Route("research-requests", "intake", "research-findings"),
@@ -238,7 +277,15 @@ ROUTES: tuple[Route, ...] = (
     Route("clarification-answers", "clarifier", "clarification-questions", _answers_incomplete, enrich=_with_draft),
     Route("clarification-answers", "spec-writer", "approved-specs", _spec_ready, enrich=_with_draft),
     # kỹ thuật + chất lượng
-    Route("tasks", "$assignee", "pull-requests", tools="rw"),
+    # ADR-0028: có repo và phân vùng được vùng test → test-author viết test MÙ trước, rồi assignee viết code cho
+    # tới khi xanh mà KHÔNG ghi được file test. Không phân vùng được (stack lạ, không repo) → đường cũ, và PR mang
+    # `tests_authored_by: "assignee"` để reviewer biết bộ test này không độc lập.
+    Route("tasks", "test-author", "test-suites", _can_author_tests, tools="tests"),
+    Route("tasks", "$assignee", "pull-requests", _no_test_author, tools="rw"),
+    Route("test-suites", "$assignee", "pull-requests", enrich=_with_task, tools="rw"),
+    # Assignee không sửa được test (tool chặn): nó ghi `test_dispute` và việc quay về test-author — lượt DUY NHẤT
+    # bộ test được đổi sau khi đã viết, và lượt duy nhất test-author được xem diff.
+    Route("pull-requests", "test-author", "test-suites", _has_dispute, enrich=_with_diff, tools="tests"),
     Route("pull-requests", "reviewer", "review-results", enrich=_with_diff),
     Route("pull-requests", "qa-debugger", "review-results", _needs_qa,
           enrich=lambda e, o: {**_with_diff(e, o), **_with_chan_doan(e, o)}, tools="ro"),
@@ -298,8 +345,12 @@ class Orchestrator:
                  batch_releases: bool = False,
                  integration: str = "company/integration", workers: int = 1, web: WebTools | bool = False,
                  artifacts: Path | None = None, project_budget_usd: float | None = None,
-                 deliver: bool = False, push_remote: str | None = None, release_branch: str = "company/release"):
+                 deliver: bool = False, push_remote: str | None = None, release_branch: str = "company/release",
+                 test_author: bool = False):
         self.bus = bus
+        # ADR-0028: bật vai viết test độc lập. Mặc định TẮT — nó thêm một lượt model mỗi ticket, nên phải là
+        # lựa chọn có ý thức của người vận hành, không phải thứ tự bật lên sau một lần `git pull`.
+        self.test_author = bool(test_author)
         self.repo, self.max_turns = (Path(repo) if repo else None), max_turns
         self.workers = max(1, int(workers))
         self.web = web if isinstance(web, WebTools) else (WebTools() if web else None)
@@ -717,6 +768,9 @@ class Orchestrator:
             inp = env.model_copy(update={"payload": {**env.payload, **extra}}) if extra else env
             if r.target_env:
                 out = self._release(agent, inp, r); res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
+            elif r.tools == "tests":
+                ts = self._author_tests(agent, inp, r)
+                res.actions.append(f"{agent}→{r.topic_out}:{ts.key}" if ts is not None else f"{agent}→bỏ:{inp.key}")
             elif r.tools == "rw":
                 pr = self._engineer(agent, inp, r)
                 res.actions.append(f"{agent}→{r.topic_out}:{pr.key}" if pr is not None else f"{agent}→rework:{inp.key}")
@@ -910,6 +964,25 @@ class Orchestrator:
             return WorkspaceTools(integ.path, allow_write=False).toolbox()
         return None
 
+    def _author_tests(self, agent: str, task: Envelope, r: Route) -> Envelope | None:
+        """ADR-0028: lượt viết test MÙ. Đầu vào bị cắt còn đặc tả — không `hint`, không diff, không nhắc gì tới
+        cách cài đặt — vì test viết theo cách cài đặt là test không ràng buộc được gì."""
+        tid = str(task.payload.get("ticket_id") or task.key)
+        ws = self.workspace(tid)
+        if ws is None: return None
+        # Chỉ lượt đi từ `tasks` mới mù; lượt tranh chấp (`pull-requests` mang `test_dispute`) ĐƯỢC xem diff.
+        inp = task if task.topic != "tasks" else task.model_copy(
+            update={"payload": {k: v for k, v in task.payload.items() if k not in BLIND_STRIP}})
+        g, status = self.runner.author_tests(agent, inp, ws, max_turns=self.max_turns)
+        p = g.payloads[0]
+        if status == "green":
+            # Test xanh khi code chưa có: có thể là test rỗng/assert vô nghĩa. Không chặn (bộ test vẫn có thể
+            # đúng — ticket sửa lỗi trên hành vi đã tồn tại), nhưng cờ đi theo PR để reviewer đọc được.
+            self._audit("tests_green_before_code", {"ticket_id": tid, "agent": agent, "files": p.get("files", [])},
+                        actor=agent, ticket_id=tid, project_id=task.payload.get("project_id"))
+        return self.runner.publish(agent, task, r.topic_out, p, key=key_for(r.topic_out, p, task.key),
+                                   tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
+
     def _engineer(self, agent: str, task: Envelope, r: Route) -> Envelope | None:
         """Ticket → PR. Có repo: agent làm trong worktree, bằng chứng do code điền. Không repo: PR đi tiếp nhưng
         `local_checks` của model bị thay bằng `{"unverified": true}` và ghi audit — không có bằng chứng giả."""
@@ -921,8 +994,12 @@ class Orchestrator:
             # ngân sách bằng 0 ngay từ lần làm lại đầu tiên (đo được: output 18868 nhưng tổng 734862).
             budget = max(b.limit - b.output_used, 0)
         ws = self.workspace(tid)
+        # ADR-0028: đi từ `test-suites` nghĩa là bộ test đã do test-author viết — assignee viết code cho tới khi
+        # xanh nhưng KHÔNG ghi (và không xoá) được file test. Đi thẳng từ `tasks` thì bộ test vẫn là của chính nó.
+        doc_lap = task.topic == "test-suites"
         if ws is not None:
-            g = self.runner.generate_in_workspace(agent, task, ws, budget=budget, max_turns=self.max_turns)
+            g = self.runner.generate_in_workspace(agent, task, ws, budget=budget, max_turns=self.max_turns,
+                                                  write_scope="src" if doc_lap else "all")
             p = g.payloads[0]
             lc = p["local_checks"]
             if lc.get("lint") is False or lc.get("tests") is False:
@@ -940,6 +1017,7 @@ class Orchestrator:
             p = {**g.payloads[0], "local_checks": {"unverified": True}}
             self._audit("local_checks.unverified", {"ticket_id": tid, "agent": agent, "claimed": g.payloads[0].get("local_checks")},
                         actor=agent, ticket_id=tid)
+        p = {**p, "tests_authored_by": "test-author" if doc_lap else "assignee"}
         return self.runner.publish(agent, task, r.topic_out, p, key=key_for(r.topic_out, p, task.key),
                                    tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
 
@@ -1468,6 +1546,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="gom mọi ticket approved của dự án vào một RC khi không còn ticket đang chạy (mặc định: mỗi ticket một RC)")
     ap.add_argument("--deliver", action="store_true",
                     help="ADR-0027: production duyệt + deploy → tag v<version> và fast-forward nhánh release trong repo khách")
+    ap.add_argument("--test-author", action="store_true",
+                    help="ADR-0028: test-author viết test từ đặc tả TRƯỚC khi assignee viết code; assignee không ghi "
+                         "được file test. Thêm một lượt model mỗi ticket. Stack không phân vùng được vùng test thì "
+                         "ticket đi đường cũ và PR mang tests_authored_by=assignee")
     ap.add_argument("--push-remote", help="remote của repo khách để push nhánh release + tag sau khi giao (mặc định: không push)")
     ap.add_argument("--release-branch", default="company/release", help="nhánh 'đang chạy production' trong repo khách")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -1522,7 +1604,8 @@ def main(argv: list[str] | None = None) -> int:
     # Chỉ `run` gọi model; status/report/show/comment/takeover là việc của người và của code, không được đòi SDK/API key.
     orch = Orchestrator(bus, make_client() if ns.cmd == "run" else FakeClient(), repo=ns.repo, base=ns.base, integration=ns.integration, workers=ns.workers,
                         web=ns.web, batch_releases=ns.batch_release, artifacts=ns.artifacts or artifact_store(ns.db),
-                        deliver=ns.deliver, push_remote=ns.push_remote, release_branch=ns.release_branch)
+                        deliver=ns.deliver, push_remote=ns.push_remote, release_branch=ns.release_branch,
+                        test_author=ns.test_author)
     if ns.cmd == "status":
         print(json.dumps(orch.status(), ensure_ascii=False, indent=2)); return 0
     if ns.cmd == "report":

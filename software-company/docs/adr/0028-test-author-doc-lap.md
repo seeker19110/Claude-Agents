@@ -1,6 +1,6 @@
 # ADR-0028: Vai viết test độc lập (`test-author`) — test sinh từ đặc tả, không sinh từ diff
 
-Trạng thái: Đề xuất · Ngày: 2026-09-05 · Bổ sung ADR-0010, ADR-0021 · Liên quan ADR-0003, ADR-0016
+Trạng thái: Chấp nhận (đã cài) · Ngày: 2026-09-05 · Bổ sung ADR-0010, ADR-0021 · Liên quan ADR-0003, ADR-0016
 
 > Đã đối chiếu với `main` tại `6f72cd4`: ADR-0026 (adapter CLI) và ADR-0027 (giao hàng git sau production)
 > không đụng luồng ticket. Bốn dữ kiện ADR này dựa vào vẫn đúng ở đó: route `tasks → $assignee` với `tools="rw"`,
@@ -143,10 +143,18 @@ Topic mới `test-suites` (thứ 19), key = `ticket_id`, payload: `ticket_id`, `
 - `UNKNOWN` stack mất lớp bảo vệ này. Chấp nhận, nhưng phải **nhìn thấy được** (`tests_authored_by`).
 
 **Việc cần làm tiếp (tách PR như ADR-0020 → ADR-0021)**
-1. **PR 1 (ADR này)** — chốt thiết kế.
-2. **PR 2** — `Stack.test_globs` + `Toolbox.write_scope` + test cưỡng chế ranh giới (ghi sai vùng ⇒ `ToolError`).
-3. **PR 3** — agent `test-author`, topic + schema `test-suites`, route, `make golden`, `make eval-record`.
-4. **PR 4** — cờ `tests_authored_by` / `test_dispute` vào payload PR + prompt reviewer đọc chúng; cập nhật
-   `docs/architecture.md` (bảng topic, vòng đời ticket) và `docs/DIEU-PHOI-MODEL.md` (bảng agent → tier).
+1. ~~**PR 1 (ADR này)** — chốt thiết kế.~~ xong.
+2. ~~**PR 2** — `Stack.test_globs` + `Toolbox.write_scope` + test cưỡng chế ranh giới.~~ xong. Ranh giới kiểm ở
+   `WorkspaceTools._check_write_scope`, gọi từ cả `_path(for_write=True)` lẫn `delete_file` — xoá test cũng là
+   một cách làm test hết đỏ.
+3. ~~**PR 3** — agent `test-author`, topic + schema `test-suites`, route, `make golden`, `make eval-record`.~~ xong.
+4. ~~**PR 4** — cờ `tests_authored_by` / `test_dispute` + prompt reviewer + docs.~~ xong.
 5. Sau 4 tuần: đối chiếu `review_catch_rate` và số lỗi lọt; nếu test-author `standard` bỏ sót ca biên rõ rệt
    thì nâng `strong` — ghi lại kèm bằng chứng eval như đã làm với `researcher`.
+
+## Đã cài khác thiết kế ở hai chỗ
+
+- **Mặc định TẮT.** Cờ `--test-author` (và `Orchestrator(test_author=...)`) phải được bật có ý thức: nó thêm một
+  lượt model mỗi ticket, nên không được tự bật lên sau một lần `git pull`.
+- **`test_globs` của PY rộng hơn ADR.** Thêm `test/**` bên cạnh `tests/**`: repo Python dùng `test/` số ít không
+  hiếm, và bỏ sót nó nghĩa là assignee ghi đè được bộ test — hỏng đúng thứ ADR này bảo vệ.
