@@ -924,3 +924,40 @@ def test_test_globs_theo_tung_stack() -> None:
     assert GRADLE.is_test_path("src/test/java/A.java") and not GRADLE.is_test_path("src/main/java/A.java")
     assert MAVEN.is_test_path("src/test/java/A.java")
     assert UNKNOWN.test_globs == () and not UNKNOWN.is_test_path("tests/a.py")
+
+
+# --- chuỗi "null" ở trường schema cho phép null -----------------------------
+
+def test_nullable_fields_doc_tu_schema() -> None:
+    b = InMemoryBus()
+    assert {"mutation_score", "root_cause", "project_id"} <= b.nullable_fields("review-results")
+    assert "verdict" not in b.nullable_fields("review-results"), "enum không có null thì không được sửa"
+    assert b.nullable_fields("khong-co-topic-nay") == frozenset()
+
+
+def test_chuoi_null_thanh_none_o_dung_truong_va_de_lai_vet() -> None:
+    """Model muốn nói "không đo được" nhưng viết CHUỖI "null": sửa cú pháp ở trường schema cho phép null,
+    ghi audit, và KHÔNG đụng trường khác — bỏ cả lượt vì một chữ là phí, sửa im lặng là mất dấu."""
+    bus = InMemoryBus()
+    out = {"ticket_id": "T1", "source": "qa", "verdict": "block", "mutation_score": "null",
+           "root_cause": "  N/A ", "test_summary": "42 passed"}
+    client = FakeClient(handler=lambda s, u: out)
+    g = AgentRunner(bus, client).generate("qa-debugger", Envelope(
+        topic="pull-requests", key="T1", actor="backend",
+        payload={"ticket_id": "T1", "branch": "b", "pr_ref": "#1", "local_checks": {"lint": True, "tests": False}}),
+        "review-results")
+    p = g.payloads[0]
+    assert p["mutation_score"] is None and p["root_cause"] is None
+    assert p["test_summary"] == "42 passed" and p["verdict"] == "block", "chỉ sửa chuỗi mang nghĩa rỗng"
+    ev = next(e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "null_string_normalized")
+    assert ev["evidence"] == "mutation_score,root_cause"
+
+
+def test_chuoi_la_o_truong_nullable_van_hong_nhu_cu() -> None:
+    """Chỉ chuỗi mang nghĩa "không có" mới được sửa; một con số viết sai kiểu vẫn phải là đầu ra không hợp lệ."""
+    client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "source": "qa", "verdict": "block", "mutation_score": "bảy mươi"})
+    with pytest.raises(RunnerError, match="không hợp lệ"):
+        AgentRunner(InMemoryBus(), client).generate("qa-debugger", Envelope(
+            topic="pull-requests", key="T1", actor="backend",
+            payload={"ticket_id": "T1", "branch": "b", "pr_ref": "#1", "local_checks": {"lint": True, "tests": False}}),
+            "review-results")

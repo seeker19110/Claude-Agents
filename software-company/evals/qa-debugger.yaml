@@ -1,6 +1,6 @@
 # Eval cho qa-debugger. Chạy: python -m company.evals qa-debugger
 cases:
-  - name: test-local-fail-phai-fail-va-co-root-cause
+  - name: test-local-fail-khong-cho-di-tiep-va-co-root-cause
     topic_out: review-results
     input:
       topic: pull-requests
@@ -13,7 +13,12 @@ cases:
         summary: "Cache kết quả GET /orders bằng dict toàn cục; test_concurrent_reads fail ngẫu nhiên: KeyError khi 2 request cùng ghi/xóa key"
         local_checks: {lint: true, tests: false, test_output: "FAILED tests/test_orders.py::test_concurrent_reads - KeyError: 'ORD-9'"}
     expect:
-      equals: {ticket_id: TCK-3, source: qa, verdict: fail}
+      # `fail` hay `block` đều đúng: không có chỗ nào trong hệ phân biệt hai giá trị này — `delivery.py` chỉ hỏi
+      # `verdict == "pass"` hay không, và prompt qa-debugger cũng chỉ nói "verdict=block/fail CHỈ khi có bằng chứng
+      # hỏng". Ép đúng một trong hai là chấm một khác biệt hệ thống không định nghĩa; điều PHẢI đúng là: không cho
+      # PR đi tiếp, và nói được nguyên nhân gốc chứ không chỉ mô tả triệu chứng.
+      equals: {ticket_id: TCK-3, source: qa}
+      one_of: {verdict: [fail, block]}
       min_len: {root_cause: 10}
 
   - name: test-xanh-va-phu-ca-bien-thi-phai-pass

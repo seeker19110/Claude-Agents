@@ -340,6 +340,13 @@ class AgentRunner:
                                                        for w in writes):
                 raise BusError("context_writes phải là [{namespace, content_ref, summary, content}]")
             for p in payloads:
+                if fixed := self._normalize_nulls(topic_out, p):
+                    # Trượt cố hữu của model: nó muốn nói "không đo được" nhưng viết CHUỖI "null"/"n/a" thay vì JSON
+                    # null. Bỏ cả lượt vì một chữ là phí (đo được 2026-09-05: eval qa-debugger hỏng vì đúng chỗ này,
+                    # trong khi mọi trường còn lại — verdict, root_cause, bug_reports — đều đúng và có giá trị).
+                    # Chỉ sửa ở trường mà SCHEMA đã cho phép null, và luôn để lại vết: đây là sửa cú pháp, không
+                    # phải điền hộ nội dung. Trường không cho null vẫn hỏng như cũ.
+                    self._audit(spec, "null_string_normalized", inp, evidence=",".join(fixed))
                 self.bus.validate(topic_out, p)
         except (LLMError, BusError, KeyError, TypeError) as e:
             self._audit(spec, "invalid_output", inp, evidence=str(e)[:500], tokens=total, cost=usd)
@@ -414,6 +421,18 @@ class AgentRunner:
         self._audit(spec, "local_checks", inp, evidence=json.dumps(
             {"lint": checks["lint"], "tests": checks["tests"], "files": len(p["impact"]["files"]), "commit": sha}, ensure_ascii=False))
         return g
+
+    NULL_WORDS = frozenset({"null", "none", "nil", "n/a", "na", "không có", "khong co", "chưa đo", "chua do", ""})
+
+    def _normalize_nulls(self, topic: str, payload: dict[str, Any]) -> list[str]:
+        """Đổi chuỗi mang nghĩa "không có" thành `None`, CHỈ ở trường schema cho phép null. Trả về tên trường đã sửa."""
+        fixed = []
+        for name in self.bus.nullable_fields(topic):
+            v = payload.get(name)
+            if isinstance(v, str) and v.strip().lower() in self.NULL_WORDS:
+                payload[name] = None
+                fixed.append(name)
+        return sorted(fixed)
 
     def write_context(self, agent_id: str, inp: Envelope, writes: list[dict[str, Any]]) -> list[str]:
         """Ghi các artifact lên blackboard dưới danh nghĩa agent; namespace không thuộc agent bị bỏ và ghi audit.

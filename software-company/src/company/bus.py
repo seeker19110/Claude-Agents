@@ -83,6 +83,24 @@ class InMemoryBus:
             detail = "; ".join(f"{'/'.join(str(x) for x in e.absolute_path) or '$'}: {e.message}" for e in errs[:5])
             raise BusError(f"{topic} không hợp lệ theo JSON Schema: {detail}")
 
+    def nullable_fields(self, topic: str) -> frozenset[str]:
+        """Trường ở tầng đầu của payload mà schema cho phép giá trị `null`.
+
+        Dùng để nhận ra một kiểu trượt cố hữu của model: nó muốn nói "không đo được" nhưng viết CHUỖI `"null"`
+        thay vì JSON `null`. Chỉ những trường được liệt kê ở đây mới được sửa (xem `normalize_nulls`)."""
+        props = (self._schemas.get(topic, {}).get("properties", {}).get("payload", {}).get("properties", {}))
+        out = set()
+        for name, spec in props.items():
+            if not isinstance(spec, dict): continue
+            t = spec.get("type")
+            alts = spec.get("anyOf") or spec.get("oneOf") or []
+            enum = spec.get("enum") or []
+            if t == "null" or (isinstance(t, list) and "null" in t) \
+                    or any(isinstance(x, dict) and x.get("type") == "null" for x in alts) \
+                    or None in enum:
+                out.add(name)
+        return frozenset(out)
+
     def validate(self, topic: str, payload: dict) -> None:
         """Kiểm payload theo pydantic model (nếu có) và TOÀN BỘ JSON Schema của topic (type, enum, required...);
         ném BusError. Schema là nguồn sự thật; pydantic là lớp tiện dụng cho code."""
