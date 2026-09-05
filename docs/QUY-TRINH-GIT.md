@@ -95,7 +95,7 @@ chỉ là lời hứa: PR #29 merge 23 giây sau khi mở, job `quality` xanh **
 
 1. **Ruleset import được** — `.github/rulesets/main.json` là nguồn sự thật, đi qua PR như code.
    Bật: Settings → Rules → Rulesets → **New ruleset → Import a ruleset** → chọn file đó → Create.
-   Nội dung: bắt buộc PR (**1 approval**, người duyệt ≠ người push, thread review phải resolve, chỉ **squash**) ·
+   Nội dung: bắt buộc PR (**0 approval** — xem ô dưới, thread review phải resolve, chỉ **squash**) ·
    required status checks `quality` + `metadata` · cấm xoá và cấm force-push `main` ·
    **không ai được bypass, kể cả admin** (`bypass_actors` rỗng) · **tắt** "up to date" (`strict: false`) để PR khác
    merge không bắt mọi PR đang mở gộp `main` rồi chờ CI lại.
@@ -105,5 +105,24 @@ chỉ là lời hứa: PR #29 merge 23 giây sau khi mở, job `quality` xanh **
 Hai nút vẫn phải bật tay trong Settings → General (không thuộc ruleset): **Allow auto-merge** và
 **Automatically delete head branches**.
 
-Muốn đổi số approval (vd còn một người trực): sửa `required_approving_review_count` trong file JSON qua PR, rồi
-import lại (ruleset cùng tên sẽ được cập nhật). Guard không kiểm số approval, chỉ kiểm có rule `pull_request`.
+### Vì sao `required_approving_review_count` = 0
+
+> **Không phải hạ tiêu chuẩn — là ghi nhận thực tế.** Repo hiện có **đúng một cộng tác viên**. GitHub không cho
+> tự duyệt PR của chính mình, và `bypass_actors` cố ý để rỗng, nên đặt 1 approval sẽ **khoá vĩnh viễn mọi PR**
+> vào `main` — auto-merge bật cũng không kích hoạt. Lần đầu import với số 1 đã tạo đúng thế kẹt đó (PR #40).
+
+Đặt 0 **vẫn chặn nguyên hai vấn đề** mà đường cơ sở đo được ngày 2026-09-04:
+
+| Vấn đề đo được | Rule nào chặn |
+|---|---|
+| PR #29 merge sau 23 giây, `quality` xanh **3 phút sau khi merge** | `required_status_checks` |
+| **35% commit** đẩy thẳng vào `main` | rule `pull_request` — nó bắt buộc phải qua PR; số approval chỉ là **một tham số** của rule đó |
+
+Thứ mất đi là **four-eyes**, và four-eyes vốn không tồn tại khi chỉ có một người.
+
+**Nâng lại lên 1 (hoặc 2) ngay khi có người thứ hai thật** trong repo — lúc đó nó mới có nghĩa. Cách đổi: sửa
+`required_approving_review_count` trong file JSON qua PR **rồi import lại** (ruleset cùng tên sẽ được cập nhật).
+Guard không kiểm số approval, chỉ kiểm **có** rule `pull_request` — nên đổi số không làm CI đỏ.
+
+⚠️ **Thứ tự bắt buộc nếu lỡ khoá lại:** file JSON trong repo chỉ là bản nguồn để nhập; sửa nó cũng cần một PR,
+mà PR thì đang bị khoá. Phải **sửa ruleset đang chạy trong Settings trước**, rồi mới sửa được file.
