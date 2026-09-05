@@ -104,8 +104,8 @@ topic (JSON Schema, có key) ──► registry: agent nào nhận topic nào
 ## Phát triển
 
 - CI (`.github/workflows/ci.yml`, Python 3.11 và 3.13): cả bốn package chạy ruff + mypy + pytest có ngưỡng coverage
-  (`fail_under` 90 / 84 / 73 / 84 cho software-company / Studio-creators / gateway / console, đặt ở mức đang đạt để chặn
-  tụt lùi); hai công ty chạy thêm `evals all --replay --strict`. Job `golden-check` chạy `make golden` rồi so
+  (`fail_under` 100 cho cả bốn package: cả bốn đang phủ 100% dòng, ngưỡng bằng đúng mức đạt được nên mất một
+  dòng phủ là CI đỏ); hai công ty chạy thêm `evals all --replay --strict`. Job `golden-check` chạy `make golden` rồi so
   `git diff --exit-code`; `asset-scan` quét tài sản prompt và ngân sách token của cả hai công ty (ADR-0022); `audit` chạy
   `pip-audit --strict` + gitleaks trên cả lịch sử; `quality` gom kết quả — tên job này là bất biến (required status check
   của `main`), thêm job con mới thì phải nối vào `needs` của nó. `pr-policy.yml` kiểm tra quy ước PR.

@@ -716,10 +716,27 @@ def test_write_token_file_tao_va_ghi_de_tren_moi_he_dieu_hanh(tmp_path: Path) ->
 
 # --- ConsoleServer với host IPv6 không ngoặc ---------------------------------
 
-def test_server_host_ipv6_khong_ngoac_dung_af_inet6(static_dir: Path) -> None:
+def test_server_host_ipv6_khong_ngoac_dung_af_inet6(static_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Chọn AF_INET6 là quyết định của CODE, không phải của môi trường: container CI thường tắt IPv6 và
+    `socket(AF_INET6)` ném `OSError` ngay — test cũ đỏ ở đó dù code đúng. Ở đây socket được thay bằng bản
+    giả chạy trên IPv4 nên chỉ còn đo đúng thứ cần đo: `address_family` mà server tự đặt."""
+    import socketserver
+
+    class _SocketGia(socket.socket):
+        """Ghi lại address family được yêu cầu, nhưng luôn mở/bind bằng IPv4 (môi trường nào cũng có)."""
+
+        def __init__(self, family: int = -1, type: int = -1, proto: int = -1, fileno: int | None = None) -> None:
+            super().__init__(socket.AF_INET, socket.SOCK_STREAM)
+            self.duoc_yeu_cau = family
+
+        def bind(self, _address: object) -> None:  # type: ignore[override]
+            super().bind(("127.0.0.1", 0))
+
+    monkeypatch.setattr(socketserver.socket, "socket", _SocketGia)
     server = srv.make_server("::1", 0, static_dir=static_dir)
     try:
         assert server.address_family == socket.AF_INET6
+        assert server.socket.duoc_yeu_cau == socket.AF_INET6  # family thật sự truyền xuống socket
     finally:
         server.server_close()
 
