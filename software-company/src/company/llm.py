@@ -775,8 +775,10 @@ def cli_lacks_mcp(err: str) -> bool:
 # đã có --json-schema). `--no-session-persistence`: mỗi lượt `-p` mặc định ghi transcript (chứa nội dung repo khách)
 # ra ~/.claude/projects; agent gọi hàng trăm lượt thì đó là hàng trăm bản sao nằm ngoài worktree — tắt.
 CLI_BASE_FLAGS = ("--no-session-persistence",)
-# Lượt cho `claude -p` KHÔNG tool: 1 lượt trả lời + lượt CLI ép `--json-schema` (+1 dự phòng khi model sửa JSON).
-CLI_NO_TOOL_TURNS = 3
+# Lượt cho `claude -p` KHÔNG tool: 1 lượt trả lời + lượt CLI ép `--json-schema`. 3 (1 trả lời + ép + 1 dự phòng)
+# vẫn chạm error_max_turns khi model cần sửa JSON nhiều vòng (đo được 2026-09-05: reviewer trên QLKH-011, effort
+# low, review-results có payload lớn/nhiều trường enum) — nâng 6 để còn dư khi model sửa JSON 2-3 lần.
+CLI_NO_TOOL_TURNS = 6
 
 # `subtype` trong JSON của `claude -p` nói vì sao phiên dừng; `result` có thể vắng ở các subtype lỗi. Trước đây adapter
 # chỉ nhìn `result` nên hết lượt bị báo thành "thiếu trường result" — người vận hành không biết phải tăng gì.
