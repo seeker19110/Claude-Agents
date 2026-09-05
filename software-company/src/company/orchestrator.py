@@ -701,7 +701,7 @@ class Orchestrator:
         pid = env.payload.get("project_id")
         if pid and pid in self.paused:  # supervisor pause cả dự án (vượt ngân sách tiền)
             return self._defer(env, res, f"paused:{pid}")
-        if env.topic == "tasks" and self._task_superseded(env, res): return res
+        if env.topic in {"tasks", "pull-requests"} and self._superseded(env, res): return res
         if env.topic == "research-requests": self._learn_repo(env)  # repo riêng của dự án (ADR-0025), trước khi intake chạy
         if env.topic in PLAN_INPUTS and PLAN_INPUTS[env.topic](env, self):
             return self._plan(env, res)
@@ -739,21 +739,31 @@ class Orchestrator:
         self._mark(env, res)
         return res
 
-    def _task_superseded(self, env: Envelope, res: StepResult) -> bool:
-        """Event `tasks` chỉ còn giá trị khi ticket vẫn `dispatched` — trạng thái mà chính event đó đặt. Ticket đã đi
-        tiếp (người tiếp quản publish PR theo ADR-0012 → `in_review`, hoặc đã approved/merged/blocked) thì task này
-        là hàng cũ trong hàng đợi (hoãn vì paused/transient, phát lại khi gate escalation được duyệt). Giao nó cho
-        backend nữa là backend chạy trên worktree đã commit → "không sửa file nào" ×3 → `blocked` → review PR của
-        người bị bỏ vì ticket không còn `in_review`. Đo được (2026-09-04/05): QLKH-004 mở lại 7 lần, 13 lần review
-        block, 10.7M token, cùng một PR tiếp quản bị vòng này đè ba lượt."""
+    def _superseded(self, env: Envelope, res: StepResult) -> bool:
+        """Event `tasks`/`pull-requests` còn trong hàng đợi (hoãn vì paused/transient, hoặc mở lại bus) mà ticket đã
+        đi tiếp thì là hàng cũ: bỏ, audit `<topic>.superseded`, không giao agent.
+
+        - `tasks` chỉ còn giá trị khi ticket vẫn `dispatched` — trạng thái mà chính event đó đặt. Người tiếp quản
+          publish PR (ADR-0012 → `in_review`) hay ticket đã approved/blocked thì task này đã bị vượt. Giao nó cho
+          backend là backend chạy trên worktree đã commit → "không sửa file nào" ×3 → `blocked` → review PR của
+          người bị bỏ vì ticket không còn `in_review`.
+        - `pull-requests` chỉ còn giá trị khi là PR MỚI NHẤT của ticket: `_on_pr` đã đặt lại vòng review theo PR
+          sau, review PR trước là chấm commit cũ rồi ghi verdict vào vòng của PR mới.
+        Đo được (2026-09-04/05): QLKH-004 mở lại 7 lần, 13 lần review block, 10.7M token; sau khi mở lại bus,
+        PR tiếp quản 04:10 (đã có 2/3 verdict, hoãn vì qa transient) vẫn nằm hàng đợi cạnh PR tiếp quản mới."""
         tid = str(env.payload.get("ticket_id") or env.key)
-        if tid not in self.lead.tickets: return False  # event tasks ngoài delivery-lead (test/relay): không có trạng thái để so
+        if tid not in self.lead.tickets: return False  # event ngoài delivery-lead (test/relay): không có trạng thái để so
         st = self.lead.state.get(tid)
-        if st == "dispatched": return False
-        self._audit("task.superseded", {"ticket_id": tid, "state": st, "event_id": env.event_id,
-                                        "retry": env.payload.get("retry", 0)},
+        if env.topic == "tasks":
+            if st == "dispatched": return False
+            why = {"state": st, "retry": env.payload.get("retry", 0)}
+        else:
+            newest = self.latest("pull-requests", tid)
+            if newest is None or newest.event_id == env.event_id: return False
+            why = {"state": st, "pr_ref": env.payload.get("pr_ref"), "newest_pr_ref": newest.payload.get("pr_ref")}
+        self._audit(f"{env.topic}.superseded", {"ticket_id": tid, "event_id": env.event_id, **why},
                     ticket_id=tid, project_id=self.project_for(env))
-        res.actions.append(f"superseded:{tid}:{st}")
+        res.actions.append(f"superseded:{tid}:{env.topic}")
         self._mark(env, res)
         return True
 

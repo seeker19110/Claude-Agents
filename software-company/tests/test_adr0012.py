@@ -636,10 +636,37 @@ def test_task_cu_trong_hang_doi_bi_vuot_khi_nguoi_da_takeover(tmp_path, monkeypa
     n_backend = backend_t1()
     results = orch.run()
     assert backend_t1() == n_backend, "backend không được gọi lại cho T1 (T2 được dispatch sau khi T1 tích hợp là hợp lệ)"
-    assert any(a == "superseded:T1:in_review" for r in results for a in r.actions)
+    assert any(a == "superseded:T1:tasks" for r in results for a in r.actions)
     t1 = [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload.get("ticket_id") == "T1"]
-    assert "task.superseded" in t1 and "invalid_output" not in t1[t1.index("human.takeover"):]
+    assert "tasks.superseded" in t1 and "invalid_output" not in t1[t1.index("human.takeover"):]
     assert orch.lead.state["T1"] == "merged", "PR của người vẫn đi trọn vòng review → tích hợp"
+
+
+def test_pr_cu_trong_hang_doi_bi_vuot_khi_co_pr_moi_hon(tmp_path, monkeypatch):
+    """Hai PR của cùng ticket còn trong hàng đợi (PR tiếp quản trước hoãn vì reviewer transient, người tiếp quản lại lần
+    hai): chỉ PR MỚI NHẤT được review. Review PR cũ là chấm commit cũ rồi ghi verdict vào vòng review mà `_on_pr` đã
+    đặt lại theo PR mới. Đo được sau khi mở lại bus của QLKH-004 (2026-09-05)."""
+    monkeypatch.setenv("COMPANY_LLM_PROVIDER", "fake")
+    repo = _init_repo(tmp_path / "repo"); db = tmp_path / "c4.sqlite"
+    bus = SQLiteBus(db); client = FakeClient(handler=handler, tool_handler=lambda m, t: [])
+    orch = Orchestrator(bus, client, repo=repo, base="main")
+    orch._rework_after_error = lambda *a, **k: True  # type: ignore[method-assign]
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    ws = orch.workspace("T1")
+    (ws.path / "f_a.py").write_text("def a():\n    return 1\n", encoding="utf-8")
+    old = orch.takeover("T1", "human:lead")
+    (ws.path / "f_b.py").write_text("def b():\n    return 2\n", encoding="utf-8")
+    new = orch.takeover("T1", "human:lead")
+    assert old.payload["pr_ref"] != new.payload["pr_ref"] and orch.lead.state["T1"] == "in_review"
+    results = orch.run()
+    reviewed = [_inp(c["user"])["pr_ref"] for c in client.calls if _agent_of(c["system"]) == "reviewer"
+                and _inp(c["user"]).get("ticket_id") == "T1"]
+    assert reviewed == [new.payload["pr_ref"]], "reviewer chỉ chấm PR mới nhất, đúng một lần"
+    assert any(a == "superseded:T1:pull-requests" for r in results for a in r.actions)
+    sup = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log")
+           if e.payload["action"] == "pull-requests.superseded"]
+    assert len(sup) == 1 and sup[0]["pr_ref"] == old.payload["pr_ref"] and sup[0]["newest_pr_ref"] == new.payload["pr_ref"]
+    assert orch.lead.state["T1"] == "merged"
 
 
 def test_cli_comment_va_takeover_thanh_cong_in_ket_qua(tmp_path, capsys, monkeypatch):
