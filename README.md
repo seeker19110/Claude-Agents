@@ -14,7 +14,7 @@ Nguyên tắc chung cho mọi công ty:
 
 | Thư mục | Vai trò | Quy mô |
 |---|---|---|
-| [`software-company/`](software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 21 agent, 45 skill, 19 topic, 14 template, 4 human gate (+ gate `escalation`) có trợ lý kiểm duyệt chỉ đọc (26 subagent + hồ sơ bằng chứng `gate_brief`, `/gate-brief`), giao hàng thật bằng tag + nhánh `company/release` (`--deliver`), ADR 0001–0028, 713 test |
+| [`software-company/`](software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 21 agent, 45 skill, 19 topic, 14 template, 4 human gate (+ gate `escalation`) có trợ lý kiểm duyệt chỉ đọc (26 subagent + hồ sơ bằng chứng `gate_brief`, `/gate-brief`), giao hàng thật bằng tag + nhánh `company/release` (`--deliver`), ADR 0001–0028, 714 test |
 | [`Studio-creators/`](Studio-creators/) | Phòng ban sáng tạo video (YouTube): kế hoạch → kịch bản → fact-check → render (TTS + ảnh + ghép) → sửa từng cảnh → review → đăng → số liệu thật nuôi chiến lược. Approval-first, media trung lập provider | 7 khối, 14 agent, 24 skill, 19 topic, 7 template, 4 human gate, ADR 0001–0009 (0007 tool web, 0008 adapter YouTube thật, 0009 render pipeline v2), 424 test |
 | [`gateway/`](gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code | daemon `127.0.0.1:1123/v1`, CLI `python -m gateway start/stop/status/login/logout/reset/setup/models`, 206 test |
 | [`console/`](console/) | Trực ban hợp nhất: một trang web cục bộ nhìn cả hai công ty — hàng đợi human gate, ticket, dây chuyền video, token và chi phí, gói tài khoản đang xoay — duyệt gate ngay tại chỗ khi bật `--allow-decide`, đổi model/backend từng công ty khi bật `--allow-config`, giao việc mới ngay trong màn của từng xưởng (yêu cầu phần mềm kèm nơi lưu dự án, brief kênh video) khi bật `--allow-submit`. Cập nhật tức thì bằng SSE, địa chỉ deep-link tới từng gate/ticket, tìm và lọc mọi bảng, cài được thành app (PWA). Đọc bus SQLite ở chế độ chỉ đọc; quyết định đi qua đúng `HumanGate`, việc mới đi qua đúng bus + schema của từng công ty | `127.0.0.1:8200`, chỉ thư viện chuẩn (`http.server`), 6 màn hình, chỉ đọc mặc định + token mỗi lần chạy, ADR 0001–0002 |
@@ -104,7 +104,7 @@ topic (JSON Schema, có key) ──► registry: agent nào nhận topic nào
 ## Phát triển
 
 - CI (`.github/workflows/ci.yml`, Python 3.11 và 3.13): cả bốn package chạy ruff + mypy + pytest có ngưỡng coverage
-  (`fail_under` 100 cho cả bốn package: cả bốn đang phủ 100% dòng, ngưỡng bằng đúng mức đạt được nên mất một
+  (`fail_under` 100 / 100 / 100 / 100 cho software-company / Studio-creators / gateway / console: cả bốn đang phủ 100% dòng, ngưỡng bằng đúng mức đạt được nên mất một
   dòng phủ là CI đỏ); hai công ty chạy thêm `evals all --replay --strict`. Job `golden-check` chạy `make golden` rồi so
   `git diff --exit-code`; `asset-scan` quét tài sản prompt và ngân sách token của cả hai công ty (ADR-0022); `audit` chạy
   `pip-audit --strict` + gitleaks trên cả lịch sử; `quality` gom kết quả — tên job này là bất biến (required status check
