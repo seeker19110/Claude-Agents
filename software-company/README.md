@@ -217,7 +217,9 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 - **Metrics** (`metrics.py`, `orchestrator metrics [--prometheus]`): gọi/token/USD/thời gian/cache/tool theo agent, model,
   ticket, dự án; sự kiện sức khoẻ; thời gian chờ gate; lead time ticket; xuất Prometheus text.
 - **Người can thiệp giữa vòng**: `comment` (hint cho ticket đang chạy, không tính retry), `takeover` (người sửa tay trong
-  worktree, code chạy lint/test, PR dưới tên người thay PR của agent, review làm lại).
+  worktree, code chạy lint/test, PR dưới tên người thay PR của agent, review làm lại). Event `tasks` còn trong hàng đợi
+  mà ticket không còn `dispatched` (đã `in_review` vì PR của người, hoặc approved/blocked) bị bỏ với audit
+  `task.superseded` — không giao backend chạy lại trên worktree đã commit rồi "không sửa gì" ×3 → blocked.
 - **Ngân sách review tách khỏi ngân sách ticket** (F16, commit e26139b): token của reviewer/qa-debugger/security-engineer
   (`Supervisor.REVIEW_ACTORS`) ghi vào `Budget.review_used`, có trong `sprint_report`/lesson (`review_tokens`), không kích
   hoạt warn/cut của engineer. **Replay dựng RC từ log** (F19): delivery-lead subscribe `release-candidates`, mở lại bus thì
