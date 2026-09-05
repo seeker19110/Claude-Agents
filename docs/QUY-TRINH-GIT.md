@@ -97,6 +97,7 @@ chỉ là lời hứa: PR #29 merge 23 giây sau khi mở, job `quality` xanh **
    Bật: Settings → Rules → Rulesets → **New ruleset → Import a ruleset** → chọn file đó → Create.
    Nội dung: bắt buộc PR (**0 approval** — xem ô dưới, thread review phải resolve, chỉ **squash**) ·
    required status checks `quality` + `metadata` · cấm xoá và cấm force-push `main` ·
+   **Copilot code review** (`copilot_code_review`, không review khi push và không review PR nháp) ·
    **không ai được bypass, kể cả admin** (`bypass_actors` rỗng) · **tắt** "up to date" (`strict: false`) để PR khác
    merge không bắt mọi PR đang mở gộp `main` rồi chờ CI lại.
 2. **Job `protection-guard` trong CI** đọc rule đang áp lên nhánh mặc định qua API và **đỏ khi thiếu** bất kỳ mục
@@ -126,3 +127,19 @@ Guard không kiểm số approval, chỉ kiểm **có** rule `pull_request` — 
 
 ⚠️ **Thứ tự bắt buộc nếu lỡ khoá lại:** file JSON trong repo chỉ là bản nguồn để nhập; sửa nó cũng cần một PR,
 mà PR thì đang bị khoá. Phải **sửa ruleset đang chạy trong Settings trước**, rồi mới sửa được file.
+
+### File và ruleset thật phải khớp
+
+File này được **đối chiếu với `GET /repos/:owner/:repo/rulesets/:id`** ngày 2026-09-05, không viết theo trí nhớ.
+Ba thứ GitHub tự thêm khi tạo ruleset mà bản viết tay ban đầu thiếu — nay đã bổ sung: rule `copilot_code_review`,
+và hai tham số `required_reviewers` + `require_extra_approval_for_unattributed_changes` của rule `pull_request`.
+Nếu không bổ sung, lần import lại từ file sẽ **âm thầm gỡ mất Copilot review**.
+
+Sau khi bổ sung, lệch duy nhất còn lại giữa file và ruleset đang chạy là `required_approving_review_count`
+(file 0, đang chạy 1) — đúng thứ cần đổi trong Settings.
+
+🔍 **Điểm cần theo dõi:** `require_extra_approval_for_unattributed_changes = true` đòi **thêm một approval** khi PR
+chứa thay đổi không gán được cho một tài khoản. Hiện không cắn: commit trên nhánh này gán đúng vào tài khoản
+`claude` (kiểm bằng trường `author.login` của API commit). Nhưng nếu sau khi hạ approval về 0 mà PR **vẫn**
+`blocked` dù mọi check xanh, hãy nghi tham số này trước tiên — nhất là khi người mở PR và người tạo commit là
+hai tài khoản khác nhau.
