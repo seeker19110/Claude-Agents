@@ -31,9 +31,6 @@ jobs:
   unit:
     name: unit
     runs-on: ${{ matrix.os }}
-    # Job Windows mới thêm, chưa từng chạy trong CI: cho phép đỏ mà không chặn merge cho tới khi ổn định.
-    # Bỏ `continue-on-error` (và dòng `experimental` dưới) ngay khi nó xanh vài lần liên tiếp.
-    continue-on-error: ${{ matrix.experimental == true }}
     timeout-minutes: 20
     permissions:
       contents: read
@@ -46,9 +43,9 @@ jobs:
         include:
           # Code có nhánh riêng cho Windows (bảng mã CLI, SystemRoot của cầu MCP, creationflags, _alive)
           # mà trước đây không CI nào chạy: một job Windows đủ để chúng không mục đi.
+          # Chân Windows đã xanh liên tiếp kể từ khi thêm, nên đã bỏ `continue-on-error`: từ đây nó CHẶN merge.
           - os: windows-latest
             python: "3.13"
-            experimental: true
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -133,10 +130,17 @@ jobs:
 
   studio-unit:
     name: studio-unit
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Studio cũng sinh tiến trình con (lệnh TTS, ffmpeg) và cũng ghi/đọc văn bản tiếng Việt qua stdio.
+        # Trước đây chỉ chạy trên ubuntu, nên lỗi bảng mã của tiến trình con trên Windows sống được lâu:
+        # nó không làm lệnh thất bại, chỉ làm giọng đọc sai. Một chân Windows đóng cả lớp lỗi đó.
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -144,9 +148,16 @@ jobs:
           enable-cache: true
           python-version: "3.13"
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg   # test ghép video thật; thiếu thì test tự bỏ qua
+        if: runner.os != 'Windows'
       - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
       - run: uv run pytest -q --cov --cov-report=term-missing
+        if: runner.os != 'Windows'
+        working-directory: Studio-creators
+      # Windows: chạy test, không đo coverage — nhánh riêng của POSIX không chạy ở đây nên ngưỡng sẽ lệch.
+      # (Không cài ffmpeg: test ghép video thật tự bỏ qua khi thiếu, chân ubuntu vẫn chạy chúng.)
+      - run: uv run pytest -q
+        if: runner.os == 'Windows'
         working-directory: Studio-creators
 
   studio-eval-replay:
