@@ -698,6 +698,25 @@ def cli_budget_args(cfg: LLMConfig) -> list[str]:
     return ["--max-budget-usd", f"{cap:g}"]
 
 
+def cli_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Schema cho `--json-schema` của `claude -p`: CLI kiểm bằng ajv `strictTypes`, chấp nhận `type: [X, "null"]`
+    (nullable) nhưng từ chối union ≥ 2 kiểu không-null (`type: ["string", "object", "null"]`) với
+    "strict mode: use allowUnionTypes" — thoát mã 1 TRƯỚC khi gọi model. Đo được (2026-09-05): security-engineer
+    trên `release-candidates` REL-004 chết vì `review-results.scan_summary`/`test_summary`, escalation mở dù không
+    agent nào lỗi. Chuyển union đó thành `anyOf` từng kiểu; bản sao, schema gốc (nhúng vào prompt) giữ nguyên."""
+    def walk(node: Any) -> Any:
+        if isinstance(node, list):
+            return [walk(x) for x in node]
+        if not isinstance(node, dict):
+            return node
+        out = {k: walk(v) for k, v in node.items()}
+        t = out.get("type")
+        if isinstance(t, list) and len([x for x in t if x != "null"]) > 1:
+            out.pop("type"); out["anyOf"] = [{"type": x} for x in t]
+        return out
+    return walk(schema)
+
+
 def cli_effort_args(effort: dict[str, str], tier: str) -> list[str]:
     """`--effort <mức>` cho tier; không khai tier → không thêm cờ (CLI dùng mặc định của nó); khai sai → lỗi rõ."""
     level = effort.get(tier)
@@ -842,7 +861,7 @@ class ClaudeCodeClient:
         # ADR-0026: effort, structured output và tắt lưu phiên ở cả ba chế độ tool. Schema vẫn được nhúng vào prompt
         # (`hint`) để model thấy mô tả từng trường; `--json-schema` là lớp ÉP, không phải lớp giải thích.
         args = [self.binary, "-p", "--output-format", "json", "--model", model, *CLI_BASE_FLAGS,
-                "--json-schema", json.dumps(schema, ensure_ascii=False), *cli_effort_args(self.cfg.effort, model_tier),
+                "--json-schema", json.dumps(cli_json_schema(schema), ensure_ascii=False), *cli_effort_args(self.cfg.effort, model_tier),
                 *cli_budget_args(self.cfg)]
         if mcp:
             c = self._complete_mcp(args=args, system=system, stdin=prompt + hint + MCP_TOOL_NOTE, workdir=workdir)
