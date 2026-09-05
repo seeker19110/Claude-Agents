@@ -716,6 +716,34 @@ def cli_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
         return out
     return walk(schema)
 
+def cli_exit_error(code: int, stdout: str, stderr: str) -> LLMError:
+    """Lỗi cho `claude -p` thoát mã ≠ 0: phân loại tạm thời/hẳn theo CHÍNH thông điệp lỗi, không theo đuôi output.
+
+    CLI in một JSON kết quả rồi mới thoát mã 1; đuôi JSON đó là telemetry (`"refused":{"depth_limit":0,
+    "concurrency_limit":0,...}`) nên soi 500 ký tự cuối tìm "limit" là MỌI lần thoát mã 1 đều thành "hết quota":
+    routing cho backend nghỉ, tick sau thử lại, lặp mãi với cùng một lỗi thật không ai đọc được. Đo được
+    (2026-09-05): 20 phút `TransientError: hết quota` mỗi 44s trong khi `claude -p` gọi tay chạy bình thường.
+    Đọc JSON: `result`/`error` là thông điệp, `api_error_status` là mã HTTP; không có JSON thì mới dùng stderr."""
+    data: dict[str, Any] = {}
+    if "{" in stdout:
+        try:
+            parsed = json.loads(stdout[stdout.index("{"):])
+            if isinstance(parsed, dict): data = parsed
+        except json.JSONDecodeError:
+            data = {}
+    if data:
+        msg = str(data.get("result") or data.get("error") or "")[:300]
+        status = data.get("api_error_status")
+        head = (f"claude -p thoát mã {code} (subtype={data.get('subtype') or '?'}, api_error_status={status}): "
+                f"{msg or '(không có thông điệp)'}")
+        if status in (429, 502, 503, 529) or any(s in msg.lower() for s in ("limit", "rate", "overloaded", "quota")):
+            return TransientError(head)
+        return LLMError(head)
+    err = (stderr or stdout)[-500:]
+    if any(s in err.lower() for s in ("limit", "rate", "overloaded", "529", "503")):
+        return TransientError(f"claude -p thoát mã {code}: {err}")
+    return LLMError(f"claude -p thoát mã {code}: {err}")
+
 
 def cli_effort_args(effort: dict[str, str], tier: str) -> list[str]:
     """`--effort <mức>` cho tier; không khai tier → không thêm cờ (CLI dùng mặc định của nó); khai sai → lỗi rõ."""
@@ -832,10 +860,7 @@ class ClaudeCodeClient:
         except subprocess.TimeoutExpired as e:
             raise TransientError(f"claude -p quá {self.timeout}s") from e
         if r.returncode != 0:
-            err = (r.stderr or r.stdout)[-500:]
-            if any(s in err.lower() for s in ("limit", "rate", "overloaded", "529", "503")):
-                raise TransientError(f"claude -p thoát mã {r.returncode}: {err}")
-            raise LLMError(f"claude -p thoát mã {r.returncode}: {err}")
+            raise cli_exit_error(r.returncode, r.stdout or "", r.stderr or "")
         return r.stdout
 
     def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
