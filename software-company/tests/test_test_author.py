@@ -3,7 +3,6 @@ thứ tự (test trước code), ranh giới ghi (ai được chạm vùng nào)
 và tính nhìn thấy được (`tests_authored_by`, `tests_red_as_expected` / `tests_green_before_code`)."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -13,7 +12,6 @@ from company.events import Envelope
 from company.llm import FakeClient
 from company.orchestrator import Orchestrator
 from company.runner import AgentRunner, RunnerError
-from company.tools import ToolCall
 from company.workspace import TicketWorkspace
 from test_orchestrator import T1, _agent_of, _drive_to_plan, _inp
 from test_tools_and_agentic import _first_turn, _init_repo, _pr, _tc
@@ -188,11 +186,10 @@ def test_tranh_chap_test_quay_ve_test_author_va_lan_nay_co_diff(tmp_path: Path) 
                   payload={"ticket_id": "T1", "project_id": "P1", "branch": "ticket/T1", "pr_ref": "abc1234",
                            "local_checks": {"lint": True, "tests": False},
                            "test_dispute": "test khẳng định f() == 1 nhưng acceptance nói 2"})
-    from company.orchestrator import Route, StepResult, _has_dispute
+    from company.orchestrator import ROUTES, StepResult, _has_dispute
     assert _has_dispute(pr, orch) is True
-    res = StepResult("e", "pull-requests", "T1")
-    orch._call("test-author", pr, next(r for r in __import__("company.orchestrator", fromlist=["ROUTES"]).ROUTES
-                                       if r.topic_in == "pull-requests" and r.agent == "test-author"), res)
+    r = next(x for x in ROUTES if x.topic_in == "pull-requests" and x.agent == "test-author")
+    orch._call("test-author", pr, r, StepResult("e", "pull-requests", "T1"))
     out = list(bus.replay(topic="test-suites"))
     assert out and out[0].payload["blind"] is False, "lượt tranh chấp KHÔNG mù"
     assert any("test_dispute" in s for s in seen), "test-author phải đọc được lý do tranh chấp"
