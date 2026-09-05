@@ -323,7 +323,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Rule đang áp lên nhánh mặc định phải khớp .github/rulesets/main.json
+      - uses: actions/checkout@v4
+
+      - name: Bảo vệ nhánh đã có hiệu lực chưa
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -333,20 +335,50 @@ jobs:
           rules=$(curl -sS --fail \
             -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$REPO/rules/branches/$BRANCH")
+          echo "$rules" > /tmp/live-rules.json
           has_rule()  { jq -e --arg t "$1" 'map(select(.type == $t)) | length > 0' <<<"$rules" >/dev/null; }
           has_check() { jq -e --arg c "$1" '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | index($c) != null' <<<"$rules" >/dev/null; }
           fail=0
+          # Bốn rule này là bất biến — thiếu bất kỳ cái nào nghĩa là ruleset chưa được áp.
           for t in pull_request required_status_checks deletion non_fast_forward; do
             has_rule "$t" || { echo "::error::Thiếu rule '$t' trên $BRANCH"; fail=1; }
           done
-          for c in quality metadata; do
+          # Danh sách status check ĐỌC TỪ FILE, không hard-code — thêm/bớt check trong ruleset
+          # mà quên sửa chỗ này từng là một nguồn trôi âm thầm.
+          for c in $(jq -r '.rules[] | select(.type == "required_status_checks")
+                            | .parameters.required_status_checks[].context' .github/rulesets/main.json); do
             has_check "$c" || { echo "::error::Status check '$c' chưa được bắt buộc trên $BRANCH"; fail=1; }
           done
           if [ "$fail" = 1 ]; then
             echo "::error::Bảo vệ nhánh CHƯA có hiệu lực. Import .github/rulesets/main.json: Settings → Rules → Rulesets → New ruleset → Import a ruleset. Chi tiết: docs/QUY-TRINH-GIT.md §8."
             exit 1
           fi
-          echo "OK — $BRANCH đang được bảo vệ đúng ruleset (pull_request, required_status_checks: quality + metadata, deletion, non_fast_forward)."
+          echo "OK — $BRANCH đang được bảo vệ, và mọi required status check khai trong file đều đã bắt buộc."
+
+      - name: File và ruleset thật phải khớp (đối chiếu hai chiều)
+        env:
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          # Vì sao cần vế này: sửa ruleset trong UI có thể LÀM RƠI một rule mà không báo gì.
+          # Đã xảy ra thật ngày 2026-09-05 — lần đổi `required_approving_review_count` về 0 làm mất
+          # `copilot_code_review`, trong khi guard bản cũ vẫn xanh vì nó chỉ kiểm bốn rule bất biến.
+          live=$(jq -r '[.[].type] | sort | unique | .[]' /tmp/live-rules.json)
+          want=$(jq -r '[.rules[].type] | sort | unique | .[]' .github/rulesets/main.json)
+          fail=0
+          for t in $want; do
+            grep -qx "$t" <<<"$live" || {
+              echo "::error::Rule '$t' có trong .github/rulesets/main.json nhưng KHÔNG áp trên $BRANCH."
+              echo "::error::Bảo vệ đang YẾU HƠN thứ repo khai. Bật lại trong Settings → Rules → Rulesets, hoặc bỏ khỏi file nếu đã cố ý không dùng."
+              fail=1; }
+          done
+          for t in $live; do
+            grep -qx "$t" <<<"$want" || {
+              echo "::warning::Rule '$t' đang áp trên $BRANCH nhưng KHÔNG có trong .github/rulesets/main.json."
+              echo "::warning::Không yếu đi, nhưng lần import lại từ file sẽ XOÁ MẤT nó. Thêm vào file cho khớp."; }
+          done
+          [ "$fail" = 0 ] || exit 1
+          echo "OK — mọi rule khai trong file đều đang áp trên $BRANCH."
 
   # Job tổng hợp — TÊN `quality` LÀ BẤT BIẾN (required status check của branch protection `main`).
   # Thêm job con mới thì phải nối vào `needs` dưới đây, nếu không kết quả của nó không được tính.
