@@ -168,6 +168,30 @@ def test_claude_code_client_subprocess_that_tra_ve_stdout(tmp_path):
     assert out.strip() == '{"ok": true}'
 
 
+def test_claude_code_thoat_ma_1_phan_loai_theo_thong_diep_khong_theo_duoi_telemetry():
+    """`claude -p` in JSON kết quả rồi thoát mã 1; đuôi JSON là telemetry chứa `depth_limit`/`concurrency_limit`.
+    Soi đuôi tìm "limit" thì MỌI lỗi thành TransientError "hết quota" và routing lặp mãi (đo được 2026-09-05:
+    20 phút retry mỗi 44s trong khi CLI gọi tay chạy bình thường). Phải đọc `result`/`api_error_status`."""
+    from company.llm import ClaudeCodeClient, TransientError
+    c = ClaudeCodeClient(LLMConfig(provider="claude-code", models={"strong": "m", "standard": "m"}))
+    tail = '"refused":{"depth_limit":0,"concurrency_limit":0,"budget":0},"started_in_background":0,"max_depth":0'
+    hard = ('{"type":"result","subtype":"error_during_execution","is_error":true,"api_error_status":null,'
+            '"result":"Authentication failed. Please run /login",' + tail + "}")
+    with pytest.raises(LLMError, match="Authentication failed") as ei:
+        c._subprocess([sys.executable, "-c", f"import sys; print({hard!r}); sys.exit(1)"], stdin="")
+    assert not isinstance(ei.value, TransientError), "lỗi xác thực không phải lỗi tạm thời"
+    soft = ('{"type":"result","subtype":"error_during_execution","is_error":true,"api_error_status":429,'
+            '"result":"Rate limited",' + tail + "}")
+    with pytest.raises(TransientError, match="api_error_status=429"):
+        c._subprocess([sys.executable, "-c", f"import sys; print({soft!r}); sys.exit(1)"], stdin="")
+    with pytest.raises(LLMError, match="thoát mã 1: boom") as ei2:  # không có JSON: stderr như cũ
+        c._subprocess([sys.executable, "-c", "import sys; sys.stderr.write('boom'); sys.exit(1)"], stdin="")
+    assert not isinstance(ei2.value, TransientError)
+    with pytest.raises(LLMError, match=r"thoát mã 1.*not json") as ei3:  # có `{` nhưng không phải JSON: rơi về đuôi output
+        c._subprocess([sys.executable, "-c", "import sys; print('{not json'); sys.exit(1)"], stdin="")
+    assert not isinstance(ei3.value, TransientError)
+
+
 def test_retrying_client_bind_toolbox_chuyen_tiep_khi_inner_biet():
     class _WithBind(_Raising):
         def __init__(self):
