@@ -95,14 +95,21 @@ chạy bao giờ (chưa có file DB) cũng không sao — trang báo phần đó
 | Màn hình | Nội dung |
 |---|---|
 | **Trực ban** | Hàng đợi human gate của cả hai xưởng, xếp theo mức quá hạn (`over` ≥ 24 giờ, `warn` ≥ 12 giờ — khớp `GATE_TIMEOUT_H`/`GATE_REMIND_H`); ô số event, lời gọi model, token, tỉ lệ làm lại, PR chưa kiểm; chi phí 14 ngày tách theo tier; bảng gói tài khoản đang xoay; 10 bản ghi audit gần nhất |
-| **Xưởng phần mềm** | Bảng ticket theo trạng thái kèm mức tiêu ngân sách, pull request chờ review (lint/test do code chạy thật), kết quả review của reviewer · qa · security |
+| **Phễu sản phẩm** | Một hàng cho MỖI sản phẩm: yêu cầu → đặc tả → ticket → RC → staging (smoke) → production (smoke) → nghiệm thu. Ô không có dữ liệu là **ô xám gạch đứt**, không bao giờ xanh; bậc staging/production chỉ tính khi có `smoke` (bằng chứng máy sinh, ADR-0029 của company) — `status: deployed` do agent tự khai thì bậc đó vẫn xám |
+| **Xưởng phần mềm** | Bảng ticket theo trạng thái kèm mức tiêu ngân sách, pull request chờ review (lint/test do code chạy thật) và cột **commit vượt integration** (`git rev-list --count company/integration..ticket/<id>` — `0` là đã gộp hết, `—` là không đo được), kết quả review của reviewer · qa · security kèm **nguồn ngữ cảnh bị cắt** ngay cạnh verdict |
 | **Xưởng video** | Dây chuyền video theo trạng thái, số liệu sau khi đăng kéo từ YouTube Analytics, đường giữ chân người xem |
 | **Chi phí & hạn mức** | Chi phí dự án so với trần, lời gọi chưa có giá (gói thuê bao), hiệu chỉnh ước lượng, ngân sách token từng ticket, chi phí theo agent, mọi lần supervisor can thiệp |
 | **Nhật ký** | Toàn bộ `audit-log` (tối đa 200 bản ghi mới nhất), lọc theo sản phẩm agent / gate / supervisor / người / lỗi |
 | **Hướng dẫn** | Cách dùng ngay trong trang: hệ thống làm gì, ba quyền và **trạng thái thật của phiên đang chạy** (cờ nào đang bật, cờ nào chưa), các bước giao việc, bốn điểm dừng chờ người, cách duyệt gate, lệnh dòng lệnh tương đương, ba lỗi hay gặp |
 
-Bấm vào một gate mở ngăn kéo: hồ sơ, checklist phải tick hết mới duyệt được, ô ghi tên người duyệt và
-lý do (bắt buộc với mọi quyết định không phải `approve`).
+Đầu màn **Trực ban** có hai cảnh báo đỏ tách riêng: *bế tắc im lặng* (ticket kẹt mà **không gate nào chờ** — không
+ai được hỏi, loại duy nhất sẽ không tự kêu) đứng trên bảng bế tắc chung.
+
+Bấm vào một gate mở ngăn kéo: hồ sơ, checklist phải tick hết mới duyệt được, **hậu quả cả hai chiều** (duyệt thì
+agent nào chạy lại, từ chối thì ticket về trạng thái nào), nút **Dựng hồ sơ bằng chứng** (`gate_brief` — cùng một
+văn bản với `/gate-brief` của CLI, `GET`, không cần `--allow-decide`), ô ghi tên người duyệt và lý do (bắt buộc với
+mọi quyết định không phải `approve`; escalation cần ≥ 20 ký tự vì lý do đi thẳng cho agent làm hint — có nút chèn
+mẫu `root_cause` / `decision` / `hint`, và ô xem trước **nguyên văn** chuỗi agent sẽ nhận).
 
 Trang tự làm mới **10 giây một lần**, có nút tạm dừng, và tự ngưng làm mới khi ngăn kéo đang mở.
 Mất liên lạc với server thì hiện dải cảnh báo trên cùng và **giữ nguyên số liệu lần đọc cuối** — không
@@ -112,8 +119,11 @@ bao giờ thay dữ liệu thật bằng số rỗng.
 
 ```
 src/console/collect.py   đọc SQLite bus của hai công ty + trạng thái gateway → dict thuần
+src/console/truth.py     "sự thật giao hàng": phễu release, phễu sản phẩm, bế tắc im lặng, quyết định chưa áp
+src/console/git_truth.py commit vượt nhánh tích hợp (`git rev-list --count`, chỉ đọc; repo lấy từ bus)
+src/console/brief.py     hồ sơ gate_brief cho trang, gọi thẳng company.gate_brief (chỉ đọc)
 src/console/decide.py    ghi quyết định gate qua HumanGate của từng công ty
-src/console/server.py    ThreadingHTTPServer stdlib: trang tĩnh + /api/state + /api/gate/decide
+src/console/server.py    ThreadingHTTPServer stdlib: trang tĩnh + /api/state + /api/gate/{decide,brief}
 src/console/static/      trang trực ban (HTML + CSS + JS thuần, không phụ thuộc ngoài)
 API.md                   hợp đồng nội bộ giữa ba lớp — đọc trước khi sửa bất kỳ lớp nào
 ```
@@ -129,4 +139,6 @@ uv run mypy src/console --ignore-missing-imports
 uv run pytest -q --cov --cov-report=term
 ```
 
-Quyết định thiết kế: [`docs/adr/0001-console-hop-nhat.md`](docs/adr/0001-console-hop-nhat.md).
+Quyết định thiết kế: [`docs/adr/0001-console-hop-nhat.md`](docs/adr/0001-console-hop-nhat.md) ·
+[`0002` đẩy trạng thái bằng SSE](docs/adr/0002-day-trang-thai-va-dia-chi-la-trang-thai.md) ·
+[`0003` mỗi ô trả lời một câu hỏi, ô rỗng là ô xám](docs/adr/0003-moi-o-tra-loi-mot-cau-hoi-o-rong-la-o-xam.md).

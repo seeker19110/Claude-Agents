@@ -23,7 +23,7 @@ orchestrator thì việc giao và quyết định nằm im trên bus.
    nguyên); việc mới đi qua `SQLiteBus` của công ty và bị kiểm JSON Schema y như CLI `publish`.
 2. **Chỉ đọc là mặc định**: không cờ `--allow-*` thì mọi POST 403 và nút khoá; token phiên sinh mới mỗi lần chạy;
    service worker **không** cache `/api/*` và `/` — số liệu cũ trên mặt kính trực ban là thứ tệ nhất.
-3. **Mỗi con số phải nói nó đo cái gì.** Nhãn FSM (`merged`) tách khỏi sự thật git; `delivery` phải hiện "đã giao
+3. **Mỗi ô trả lời một câu hỏi của người trực; ô không có dữ liệu là ô XÁM** (ADR-0003). Mỗi con số phải nói nó đo cái gì. Nhãn FSM (`merged`) tách khỏi sự thật git; `delivery` phải hiện "đã giao
    n/m"; xanh vì rỗng phải có cảnh báo. Xem `TRAPS.md` — 10 chỗ đã đánh lừa người trực một đêm.
 
 ## Sửa cái gì phải làm gì
@@ -31,9 +31,11 @@ orchestrator thì việc giao và quyết định nằm im trên bus.
 | Sửa | Phải |
 |---|---|
 | đọc thêm dữ liệu từ bus | `src/console/collect.py`; hợp đồng trong `API.md` |
-| phễu release, bế tắc im lặng, quyết định chưa áp | `src/console/truth.py` ("sự thật giao hàng", #76) |
+| phễu release / phễu sản phẩm, bế tắc im lặng, quyết định chưa áp | `src/console/truth.py` ("sự thật giao hàng", #76; ADR-0003) |
+| cột "commit vượt integration" | `src/console/git_truth.py` — `git rev-list --count`, **không** `branch --contains` |
+| hồ sơ bằng chứng cạnh nút duyệt | `src/console/brief.py` → `company.gate_brief`; route `GET /api/gate/brief` |
 | quyết định gate | `src/console/decide.py` — gọi `HumanGate` công ty; lý do ≥ 20 ký tự |
 | form giao việc | `src/console/submit.py` — payload theo schema topic của công ty |
 | giao diện | `src/console/static/index.html` (một file); route hash `#/<màn>/gate/<id>`… trong `API.md` |
 | đổi hợp đồng giữa lớp | `API.md` cùng PR |
-| kiến trúc | `docs/adr/` (0001–0002) |
+| kiến trúc | `docs/adr/` (0001–0003) |
