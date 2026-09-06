@@ -6,7 +6,7 @@ tools: Read, Grep, Glob
 model: opus
 ---
 
-<!-- SINH TỰ ĐỘNG từ agents/engineering/frontend.md version=12 — sửa nguồn rồi chạy make subagents -->
+<!-- SINH TỰ ĐỘNG từ agents/engineering/frontend.md version=13 — sửa nguồn rồi chạy make subagents -->
 
 ## Ranh giới
 

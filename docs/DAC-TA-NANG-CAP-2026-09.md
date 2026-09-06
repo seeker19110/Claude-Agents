@@ -8,6 +8,12 @@ Tài liệu này là **kế hoạch + đặc tả mức epic**. Mỗi mục là 
 mục đó (ghi trong cột "ADR"). Cách dùng: lấy một mục, đọc tiêu chí nghiệm thu, mở nhánh, làm, PR; xong thì đánh dấu
 ở bảng theo dõi cuối file.
 
+> **Thứ tự đã bị đặt lại (2026-09-06, sau khi người chủ chọn kịch bản B).** Bốn câu hỏi Q1–Q4 và nội dung từng
+> mục dưới đây vẫn có hiệu lực, nhưng **thứ tự thi công** theo `docs/DAC-TA-KICH-BAN-B.md` §2: đợt 0 = K0 · **E1 kéo
+> lên thành K1** (tách `orchestrator.py`, làm trước mọi đợt tính năng) · **D2 lên P0 thành K2** (sandbox) · E4 xong ·
+> E5 nhập K8 · **E2 (Redis) hoãn vô hạn**, thay bằng K4 · E3 xây trên K5 · **S1 làm sau K3 bước 3** · **C9 làm sau
+> K7** · D1/D3/D4/D5 xếp sau K3 · B6 và B8 giữ nguyên. Đọc kịch bản B trước khi lấy mục ở đây làm việc.
+
 ## 0. "Hoàn thiện" nghĩa là gì — bốn câu hỏi đo được
 
 Dự án được coi là hoàn thiện khi trả lời **có, kèm bằng chứng máy sinh** cho cả bốn câu:
@@ -175,6 +181,7 @@ Tổng khoảng 20–22 ngày-phiên tuần tự, rút còn ~12 ngày lịch n�
 |---|---|---|---|
 | V1–V5 | chưa | | |
 | B1–B8 | B2 xong; B3 xong — ADR-0029 mở rộng, spec có `kind`, qa-debugger v13; B4 xong; B5 xong; B7 xong | B2: #97, B3: #102, B4: #100, B5: #103, B7: #99 | B3 dùng lại `run_smoke`. B4: mục `acceptance.da-chay` + mục "Đã chạy" trong hồ sơ; cần `--repo`. B5: ADR-0032, `test_no_kien_truc_adr0032.py`, ngưỡng `llm.yaml debt_reviews`. B7: `orchestrator trace <id> [--json]`, `src/company/trace.py` |
+| B1–B8 | B6 xong — DoD ba agent điều phối + ảnh chụp của frontend; **không** thêm tool playwright (lý do + giới hạn ở ADR-0033) | B6: #111 | B6: ADR-0033, `pull-requests.payload.evidence.screenshots[]`, delivery-lead v11 / release-engineer v8 / account-manager v8 / frontend v13, `test_dod_san_pham_chay_duoc.py`. Ảnh sinh bằng lệnh khai trong `runtime` của spec, không có tool chụp → `skipped` kèm lý do |
 | B1–B8 | B1 xong, B4 xong, B5 xong, B7 xong; B2 wip (ADR-0030 nhánh `feat/so-ruling-adr-0030`) | B1: #104, B4: #100, B5: #103, B7: #99 | B1: ADR-0031, `spec_runtime_gap` chặn trước gate, spec-writer v9, gate_brief `spec.runtime`. B4: mục `acceptance.da-chay` + mục "Đã chạy" trong hồ sơ; cần `--repo`. B5: ADR-0032, `test_no_kien_truc_adr0032.py`, ngưỡng `llm.yaml debt_reviews`. B7: `orchestrator trace <id> [--json]`, `src/company/trace.py` |
 | D1–D5 | chưa | | |
 | C1–C10 | C1–C8 + C10 xong; **C9 còn lại** (màn Xưởng video — chờ đợt 4 studio) | C1–C8,C10: #107 | console ADR-0003 "mỗi ô trả lời một câu hỏi, ô rỗng là ô xám": màn `#/phieu` phễu sản phẩm (bậc staging/production neo vào `smoke`), hậu quả gate hai chiều + `gate_brief` tại chỗ (`GET /api/gate/brief`), cảnh báo bế tắc im lặng đầu trang, cột commit vượt integration (`src/console/git_truth.py`), `trim_src` cạnh verdict, mẫu hint 3 dòng |

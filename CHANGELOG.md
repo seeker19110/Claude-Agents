@@ -8,6 +8,9 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 - docs: đặc tả kịch bản B (`docs/DAC-TA-KICH-BAN-B.md`, 9 epic K0–K9, thước đo T1–T4) và đặc tả triển khai PR theo PR (`docs/DAC-TA-TRIEN-KHAI-KICH-BAN-B.md`, 31 PR, file:dòng)
 - docs: đánh giá sâu và tầm nhìn phát triển 09/2026 — bảy vấn đề cấu trúc ngoài đặc tả, ba kịch bản, ba chân trời, bốn quyết định phải ký (`docs/DANH-GIA-VA-TAM-NHIN-2026-09.md`)
+- docs: đặc tả nâng cấp tháng 9 ghi rõ thứ tự đã bị kịch bản B đặt lại (E1→K1, D2→K2, S1 sau K3, C9 sau K7, E2 hoãn)
+- docs: nhật ký phiên 2026-09-06 (đặc tả nâng cấp + đợt 0/1/3, 11 PR); gitignore `var/` log orchestrator
+- feat(company): DoD của delivery-lead / release-engineer / account-manager gồm "sản phẩm khởi động bằng một lệnh ghi trong README và trả lời một request thật"; frontend đính ảnh chụp giao diện vào `evidence.screenshots[]`, không chụp được thì phải trả `skipped` kèm lý do (B6, ADR-0033) (#111)
 - fix(company): lịch sử hồ sơ escalation xếp theo thứ tự ghi vào bus khi trùng dấu thời gian — hết test chập chờn 1/6 lần, và lỗi không còn hiện sau lần retry mà nó gây ra (TRAPS khuôn 5)
 - chore: `.gitattributes` đặt `merge=union` cho CHANGELOG và bảng theo dõi đặc tả — nhiều phiên song song thêm dòng cùng lúc thì gộp, không dừng rebase
 - feat(company): regression-staging mang evidence.run do orchestrator tự chạy — verdict không có bằng chứng thì hạ fail (B3, ADR-0029) (#102)

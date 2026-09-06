@@ -6,7 +6,7 @@ tools: Read, Grep, Glob
 model: opus
 ---
 
-<!-- SINH TỰ ĐỘNG từ agents/delivery/delivery-lead.md version=10 — sửa nguồn rồi chạy make subagents -->
+<!-- SINH TỰ ĐỘNG từ agents/delivery/delivery-lead.md version=11 — sửa nguồn rồi chạy make subagents -->
 
 ## Ranh giới
 

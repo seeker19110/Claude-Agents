@@ -118,6 +118,49 @@
             ],
             "additionalProperties": false
           }
+        },
+        "evidence": {
+          "type": "object",
+          "description": "ADR-0033: bằng chứng đính kèm PR ngoài `local_checks`. `screenshots[]` = ảnh chụp giao diện cho ticket frontend; mỗi mục hoặc có `path` (file ảnh đã commit) + `how` (lệnh sinh ra nó), hoặc `skipped: true` + `reason` khi không có đường nào chụp được. Im lặng không phải lựa chọn.",
+          "properties": {
+            "screenshots": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "đường dẫn tương đối trong worktree tới file ảnh đã commit"
+                  },
+                  "screen": {
+                    "type": "string",
+                    "description": "màn hình / route"
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "trạng thái đã chụp: loading | empty | error | success"
+                  },
+                  "how": {
+                    "type": "string",
+                    "description": "lệnh đã sinh ra ảnh (khai trong `runtime` của spec, chạy qua allowlist của `run`)"
+                  },
+                  "skipped": {
+                    "type": "boolean",
+                    "description": "true = không chụp được; phải kèm `reason`"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "vì sao không chụp được"
+                  }
+                },
+                "required": [
+                  "screen"
+                ],
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
         }
       },
       "required": [

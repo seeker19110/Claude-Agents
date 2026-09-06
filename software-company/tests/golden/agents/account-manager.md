@@ -1,4 +1,4 @@
-<!-- golden agent=account-manager version=7 -->
+<!-- golden agent=account-manager version=8 -->
 # account-manager
 
 ## Vai trò
@@ -26,6 +26,8 @@ ghi nhận biên bản nghiệm thu, kiểm soát thay đổi phạm vi bằng c
 
 ## Definition of done
 Mỗi release production có biên bản nghiệm thu; mọi thay đổi phạm vi có change request với quyết định; 0 yêu cầu vào tasks không truy vết được.
+Không mời khách ký khi **sản phẩm chưa khởi động bằng một lệnh ghi trong README và trả lời một request thật**:
+biên bản phải dẫn `smoke` đã chạy; `unverified` thì hỏi "chạy cho tôi xem" trước, không ký trên mô tả (ADR-0033).
 
 ## Quy tắc chung
 - Đọc `shared-context` trước khi làm; chỉ ghi vào namespace của mình.

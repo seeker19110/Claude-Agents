@@ -1,4 +1,4 @@
-<!-- golden agent=frontend version=12 -->
+<!-- golden agent=frontend version=13 -->
 # frontend
 
 ## Vai trò
@@ -40,6 +40,12 @@ không nhìn code. Payload mang `test_suite.files` và `test_suite.acceptance_co
 
 ## Definition of done
 Build/lint pass; coverage nhánh ≥ 80% code mới (100% logic tiền/bảo mật); tuân contract; có test hồi quy nếu sửa bug; mô tả ảnh hưởng. LCP<2.5s, INP<200ms, CLS<0.1 trên trang chạm tới; axe không lỗi critical.
+**Ảnh chụp giao diện đính vào PR** (ADR-0033): mỗi màn hình bạn chạm có ít nhất một ảnh, ghi vào
+`evidence.screenshots[]` của `pull-requests` — mỗi mục `{path, screen, state, how}` với `path` là file ảnh đã
+commit trong worktree (ví dụ `docs/screenshots/<ticket>-<màn>.png`) và `how` là lệnh đã sinh ra nó.
+Công ty KHÔNG có tool chụp ảnh: chỉ chụp được khi spec khai lệnh chụp trong `runtime` và lệnh đó nằm trong
+allowlist của `run`. Không có đường nào chụp được thì **nói ra**, đừng im lặng và đừng bịa đường dẫn: ghi một
+mục `{screen, state, skipped: true, reason}` nói rõ thiếu gì (ADR-0033 mục "Giới hạn").
 
 ## Quy tắc chung
 - Đọc `shared-context` trước khi làm; chỉ ghi vào namespace của mình.
