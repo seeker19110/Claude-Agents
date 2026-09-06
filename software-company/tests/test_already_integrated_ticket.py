@@ -8,7 +8,9 @@ escalation → người duyệt → lặp. QLKH-010 quay 7 vòng; 011/014 vào �
 """
 from __future__ import annotations
 
-from company.events import Task
+import json
+
+from company.events import AuditLog, Envelope, Task
 from company.gates import GateRequest
 from company.llm import FakeClient
 from company.orchestrator import Orchestrator
@@ -63,13 +65,22 @@ def test_ticket_chua_tich_hop_van_duoc_giao_lai_nhu_cu(tmp_path):
 
 
 def test_danh_dau_xong_song_sot_qua_restart_bus(tmp_path):
+    """Bản ghi `ticket.blocked` CŨ nằm TRƯỚC `ticket.already_integrated` trong log: nếu `_rehydrate` không dựng lại
+    quyết định "đã xong", bản ghi cũ thắng và ticket quay về `blocked` — đúng lỗi đo được trên QLKH-010/011 sau khi
+    khởi động lại orchestrator (2026-09-06). Test phải phát bản ghi `ticket.blocked` THẬT, không chỉ đặt state."""
     bus = SQLiteBus(tmp_path / "c.sqlite")
     orch = Orchestrator(bus, FakeClient(handler=handler), repo=None)
     tid = _blocked_ticket(orch, tid="T3")
+    # đúng thứ tự thật: delivery-lead ghi `ticket.blocked` trước, quyết định "đã xong" đến sau
+    bus.publish(Envelope(topic="audit-log", key="delivery-lead", actor="delivery-lead",
+                         payload=AuditLog(actor="delivery-lead", action="ticket.blocked", ticket_id=tid,
+                                          evidence=json.dumps({"ticket_id": tid, "retry": 3, "max_retries": 3})).model_dump()))
     orch.gate.decide(tid, "approve", by="human:lead", reason="d")
     orch.run()
     assert orch.lead.state[tid] == "merged"
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert acts.index("ticket.blocked") < acts.index("ticket.already_integrated"), "dựng đúng thứ tự gây lỗi"
     bus.close()
 
     o2 = Orchestrator(SQLiteBus(tmp_path / "c.sqlite"), FakeClient(handler=handler), repo=None)
-    assert o2.lead.state.get(tid) != "blocked", "mở lại bus không được kéo ticket đã xong về `blocked` lần nữa"
+    assert o2.lead.state.get(tid) == "merged", "mở lại bus không được kéo ticket đã xong về `blocked` lần nữa"
