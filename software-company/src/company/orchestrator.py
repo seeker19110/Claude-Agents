@@ -56,11 +56,10 @@ from typing import TYPE_CHECKING, Any
 from .blackboard import Blackboard
 from .bus import InMemoryBus
 from .delivery import DONE_STATES, DeliveryLead
-from .events import BUDGET_FACTOR, Envelope, Task
+from .events import Envelope
 from .gate_cli import PersistentGate
-from .gates import GateRequest
 from .llm import LLMError, ModelClient, TransientError
-from .orch import gates_flow, rehydrate, scheduler, verify, worktree_flow
+from .orch import gates_flow, rehydrate, release_fsm, scheduler, ticket_fsm, verify, worktree_flow
 from .orch.cli import main, source_fingerprint
 
 # Không dùng trong file này nhưng là hợp đồng công khai của module (gate_brief.py, test) — giữ re-export tường
@@ -70,30 +69,28 @@ from .orch.routes import ENGINEERING as ENGINEERING
 from .orch.routes import MAX_CONFLICT_RETRIES as MAX_CONFLICT_RETRIES
 from .orch.routes import (
     PLAN_INPUTS,
-    PROD_ROUTE,
     ROUTES,
-    SPEC_RUNTIME_REWORKS,
-    STAGING_ROUTE,
     Route,
     _dict_of,
-    _with_draft,
     check_routes,
     key_for,
-    spec_runtime_gap,
 )
+from .orch.routes import SPEC_RUNTIME_REWORKS as SPEC_RUNTIME_REWORKS
 from .orch.routes import THREAT_ROUTE as THREAT_ROUTE
 from .orch.routes import _can_author_tests as _can_author_tests
 from .orch.routes import _has_dispute as _has_dispute
 from .orch.routes import _test_scope_ok as _test_scope_ok
 from .orch.routes import _with_chan_doan as _with_chan_doan
 from .orch.routes import _with_diff as _with_diff
+from .orch.routes import spec_runtime_gap as spec_runtime_gap
 from .orch.state import OrchState, install_aliases
+from .orch.ticket_fsm import _cycle as _cycle
 from .registry import AgentSpec, load_agents
 from .routing import retry_after_seconds
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError
 from .supervisor import Supervisor
 from .web import WebTools, research_toolbox
-from .workspace import Integration, WorkspaceError
+from .workspace import Integration
 
 
 @dataclass
@@ -296,42 +293,29 @@ class Orchestrator:
         self._mark(env, res)
         return res
 
-    def _superseded(self, env: Envelope, res: StepResult) -> bool:
-        """Event `tasks`/`pull-requests` còn trong hàng đợi (hoãn vì paused/transient, hoặc mở lại bus) mà ticket đã
-        đi tiếp thì là hàng cũ: bỏ, audit `<topic>.superseded`, không giao agent.
+    # ---------- máy trạng thái TICKET (ADR-0034: orch/ticket_fsm.py) ----------
 
-        - `tasks` chỉ còn giá trị khi ticket vẫn `dispatched` — trạng thái mà chính event đó đặt. Người tiếp quản
-          publish PR (ADR-0012 → `in_review`) hay ticket đã approved/blocked thì task này đã bị vượt. Giao nó cho
-          backend là backend chạy trên worktree đã commit → "không sửa file nào" ×3 → `blocked` → review PR của
-          người bị bỏ vì ticket không còn `in_review`.
-        - `pull-requests` chỉ còn giá trị khi là PR MỚI NHẤT của ticket: `_on_pr` đã đặt lại vòng review theo PR
-          sau, review PR trước là chấm commit cũ rồi ghi verdict vào vòng của PR mới.
-        Đo được (2026-09-04/05): QLKH-004 mở lại 7 lần, 13 lần review block, 10.7M token; sau khi mở lại bus,
-        PR tiếp quản 04:10 (đã có 2/3 verdict, hoãn vì qa transient) vẫn nằm hàng đợi cạnh PR tiếp quản mới."""
-        tid = str(env.payload.get("ticket_id") or env.key)
-        if tid not in self.lead.tickets: return False  # event ngoài delivery-lead (test/relay): không có trạng thái để so
-        st = self.lead.state.get(tid)
-        if env.topic == "tasks":
-            if st == "dispatched": return False
-            why = {"state": st, "retry": env.payload.get("retry", 0)}
-        else:
-            newest = self.latest("pull-requests", tid)
-            if newest is None or newest.event_id == env.event_id: return False
-            why = {"state": st, "pr_ref": env.payload.get("pr_ref"), "newest_pr_ref": newest.payload.get("pr_ref")}
-        self._audit(f"{env.topic}.superseded", {"ticket_id": tid, "event_id": env.event_id, **why},
-                    ticket_id=tid, project_id=self.project_for(env))
-        res.actions.append(f"superseded:{tid}:{env.topic}")
-        self._mark(env, res)
-        return True
+    _superseded = ticket_fsm._superseded
+    _note_closed = ticket_fsm._note_closed
+    _plan = ticket_fsm._plan
+    _spec_runtime_missing = ticket_fsm._spec_runtime_missing
+    _threat_model = ticket_fsm._threat_model
+    _check_plan = ticket_fsm._check_plan
+    _dispatch_plan = ticket_fsm._dispatch_plan
 
-    def _note_closed(self) -> None:
-        """Ghi `ticket.closed` cho ticket vừa vào trạng thái cuối. `metrics.collect` tính lead time (tasks đầu → closed)
-        từ chính action này; không ai phát thì `ticket_lead_seconds` luôn rỗng và gauge Prometheus không bao giờ hiện."""
-        for tid, st in list(self.lead.state.items()):
-            if st != "closed": continue
-            t = self.lead.tickets.get(tid)
-            self._audit("ticket.closed", {"ticket_id": tid, "retry": t.retry if t else 0}, once=f"closed:{tid}",
-                        ticket_id=tid, project_id=t.project_id if t else None)
+    # ---------- máy trạng thái RELEASE (ADR-0034: orch/release_fsm.py) ----------
+
+    _integrate = release_fsm._integrate
+    _void = release_fsm._void
+    _release = release_fsm._release
+    _deliver = release_fsm._deliver
+    _rollback_delivery = release_fsm._rollback_delivery
+    redeploy = release_fsm.redeploy
+    _check_paused_releases = release_fsm._check_paused_releases
+    _superseded_release = release_fsm._superseded_release
+    _release_paused = release_fsm._release_paused
+    _recall = release_fsm._recall
+    _rerun_release = release_fsm._rerun_release
 
     def project_for(self, env: Envelope) -> str | None:
         """Dự án của một event, kể cả khi payload không nói: release và ticket đều truy ngược được về dự án.
@@ -445,26 +429,7 @@ class Orchestrator:
 
 
 
-    def _integrate(self, rc: Envelope, res: StepResult) -> bool:
-        """Mọi ticket của RC phải nằm trên nhánh tích hợp (thường đã merge lúc approved). Trả về False nếu RC bị huỷ."""
-        if not self._has_integration(): return True
-        rid = rc.payload["release_id"]
-        if rid in self.void_releases: return False
-        for tid in rc.payload.get("tickets", []):
-            if tid in self.integrated and not self._branch_ahead(tid): continue
-            if self.lead.state.get(tid) not in {"approved", "merged"}:  # đã bị trả về (xung đột lúc approved): RC vô nghĩa
-                self._audit("release.void", {"release_id": rid, "ticket_id": tid, "reason": f"ticket đang {self.lead.state.get(tid)}"}, ticket_id=tid)
-                self._void(rid); res.actions.append(f"void:{rid}")
-                return False
-            if not self._merge_ticket(tid, res, release_id=rid):
-                self._audit("release.void", {"release_id": rid, "ticket_id": tid}, ticket_id=tid)
-                self._void(rid)
-                return False
-        return True
 
-    def _void(self, rid: str) -> None:
-        self.void_releases.add(rid)
-        self.lead.void_release(rid)  # gom release: ticket approved trong RC huỷ phải vào RC kế tiếp
 
 
 
@@ -472,49 +437,6 @@ class Orchestrator:
 
     _release_evidence = verify.release_evidence
 
-    def _release(self, agent: str, rc: Envelope, r: Route) -> Envelope:
-        """release-engineer nhận RC kèm `target_env`; đầu ra phải đúng env và release_id, nếu không thì coi là invalid."""
-        rid = rc.payload["release_id"]
-        integ = self._integration_of_release(rc)
-        extra: dict[str, Any] = ({"integration_branch": integ.branch, "integration_sha": integ.sha()}
-                                 if integ is not None else {})
-        if r.target_env == "production":
-            # `gate_release` CHỈ có nghĩa với production: Gate 3 gác cửa production, không gác staging.
-            # Trước đây gửi cho cả hai env và staging luôn thấy `false` (Gate 3 chưa thể duyệt vì chưa có qa hồi quy),
-            # release-engineer đọc đó là "chưa được phép" nên TỪ CHỐI deploy staging — khoá kín cả dây chuyền:
-            # staging không `deployed` → qa hồi quy không chạy → Gate 3 không đủ nguồn để mở → `gate_release` mãi
-            # false. Đo được 2026-09-06 (QLKH): 18/18 release-candidate chết ở đây, 0 lần ra production, 0 tag giao
-            # hàng, dù 14/14 ticket đã vào nhánh tích hợp. Staging là nơi QA hồi quy TRƯỚC khi xin Gate 3 (ADR-0006).
-            extra["gate_release"] = self.gate.is_approved(rid)
-            # Lượt production phải THẤY bằng chứng staging/QA/security/gate ngay trong payload: agent không có tool
-            # đọc bus; thiếu thì nó "không được tự suy diễn" và dừng chờ người. Đo được 2026-09-06 (REL-025): staging
-            # deployed 06:01, QA pass 06:02, Gate 3 ký 06:04 — lượt production 06:04 vẫn trả pending_human với lý do
-            # "chưa qua deploy staging thật".
-            extra["evidence"] = self._release_evidence(rid)
-        inp = rc.model_copy(update={"payload": {**rc.payload, "target_env": r.target_env, **extra}})
-        if r.target_env == "staging" and integ is not None and (full := integ.rev(integ.branch)):
-            # Sha mà QA sẽ hồi quy — và sha sẽ được giao khi production duyệt (ADR-0027). Ghi audit để bền qua restart.
-            with self._lock: self.release_sha[rid] = full
-            self._audit("release.staged", {"release_id": rid, "sha": full, "branch": integ.branch}, project_id=self.project_for(rc))
-        g = self.runner.generate(agent, inp, r.topic_out)
-        p = g.payloads[0]
-        if p.get("env") != r.target_env or p.get("release_id") != rid:
-            # `env` và `release_id` là của ROUTE và của RC, KHÔNG phải lời khai của model — cùng nguyên tắc với
-            # `version` ngay dưới. Trước đây output lệch bị ném RunnerError: agent trả `env=staging` ở lượt
-            # production (nhầm lẫn dễ hiểu vì hai lượt nhận payload gần giống nhau) → invalid_output → escalation,
-            # và bước CUỐI của dây chuyền giao hàng chết ngay sau khi người đã ký Gate 3. Đo được 2026-09-06
-            # (QLKH REL-019): hai lần liên tiếp, không deploy được production dù mọi cổng đã qua.
-            self._audit("release.env_overridden", {"release_id": rid, "expected_env": r.target_env,
-                                                   "claimed_env": p.get("env"), "claimed_release_id": p.get("release_id")},
-                        actor=agent, tokens=g.tokens)
-            p = {**p, "env": r.target_env, "release_id": rid}
-        if (want := rc.payload.get("version")) and p.get("version") != want:
-            # Phiên bản là của RC (delivery-lead suy từ nội dung release), không phải lời khai của model.
-            self._audit("release.version_overridden", {"release_id": rid, "claimed": p.get("version"), "version": want}, actor=agent)
-            p = {**p, "version": want}
-        if r.target_env == "staging" and p.get("status") == "deployed":
-            p = self._smoke(agent, rc, rid, p, integ)
-        return self.runner.publish(agent, rc, r.topic_out, p, key=rid, tokens=g.tokens, model=g.model, generated=g)
 
 
     _smoke = verify.smoke
@@ -523,181 +445,10 @@ class Orchestrator:
 
     # ---------- kế hoạch: gate spec → threat model → delivery-lead sinh ticket → gate plan → dispatch ----------
 
-    def _plan(self, env: Envelope, res: StepResult) -> StepResult:
-        project = env.payload.get("project_id") or env.key
-        if env.topic == "approved-specs":
-            sid = f"SPEC-{project}"
-            if not self.gate.is_approved(sid):
-                decided = [g for g in self.gate.history if g.subject_id == sid]
-                if sid not in self.gate.pending and not decided:
-                    if (gap := spec_runtime_gap(env.payload)) is not None:
-                        return self._spec_runtime_missing(env, project, gap, res)
-                    self.gate.request(GateRequest(kind="spec", subject_id=sid, created_by=env.actor,
-                                                  checklist=["prd", "acceptance-criteria", "ux-flow", "risks"]))
-                if decided and sid not in self.gate.pending:
-                    res.actions.append(f"gate:{sid}:{decided[-1].decision}"); self._mark(env, res); return res
-                return self._defer(env, res, f"gate:{sid}")
-            if not self._threat_model(env, sid, res):
-                self._mark(env, res); return res
-            live = [pid for pid, p in self.plans.items() if p["project_id"] == project and p["source_topic"] == "approved-specs"
-                    and (pid in self.gate.pending or self.gate.is_approved(pid))]
-            if live:
-                # Spec publish lặp (spec-writer chạy lại, người publish hai lần) không được sinh plan thứ hai cho cùng
-                # dự án: ticket trùng, hai gate plan cho một việc. Muốn lập lại thì reject plan cũ trước.
-                self._audit("plan.duplicate_spec", {"project_id": project, "event_id": env.event_id, "existing": live}, project_id=project)
-                res.actions.append(f"plan_skipped:{','.join(live)}"); self._mark(env, res); return res
-        cal = self.supervisor.calibration()  # vòng học: bài học estimate-vs-actual quay lại người ước lượng
-        inp = env.model_copy(update={"payload": {**env.payload, "estimate_calibration": cal}}) if cal else env
-        try:
-            g = self.runner.generate("delivery-lead", inp, "tasks", many=True)
-        except TransientError as e:
-            res.actions.append(f"transient:delivery-lead:{str(e)[:120]}")
-            with self._lock: self.stats["transient"] += 1
-            return self._defer(env, res, "transient:delivery-lead")
-        except (RunnerError, LLMError) as e:
-            res.actions.append(f"error:delivery-lead:{str(e)[:120]}")
-            with self._lock: self.stats["errors"] += 1
-            self._mark(env, res); return res
-        if g.context_writes:  # C4, API contract lên blackboard TRƯỚC khi xin gate plan để người duyệt đọc được
-            self.runner.write_context("delivery-lead", env, g.context_writes)
-        tickets = [Task.model_validate(p) for p in g.payloads]
-        problems = self._check_plan(tickets)
-        n = 1 + sum(1 for p in self.plans.values() if p["project_id"] == project)
-        plan_id = f"PLAN-{project}-{n}"
-        plan = {"plan_id": plan_id, "project_id": project, "source_event": env.event_id, "source_topic": env.topic,
-                "tickets": [t.model_dump() for t in tickets], "problems": problems,
-                "threat_model": "missing" if f"SPEC-{project}" in self.missing_threat_model else "ok"}
-        if problems:
-            self._audit("plan_rejected", plan, actor="delivery-lead", tokens=g.tokens, cost=g.cost_usd, project_id=project)
-            res.actions.append(f"plan_rejected:{'; '.join(problems)[:120]}")
-            with self._lock: self.stats["errors"] += 1
-            # Kế hoạch bị từ chối là ngõ cụt: không ticket nào được tạo, không gate nào mở, và không có cơ chế
-            # tự lập lại. Trước đây dự án đứng im ở đây mà `status` vẫn báo mọi chỉ số xanh (đo được với dự án
-            # DHCB: `tickets: []` → "kế hoạch rỗng" → im lặng vĩnh viễn). Phải hiện ra cho người quyết.
-            self.supervisor.escalate_gate(project, f"kế hoạch {plan_id} bị từ chối: {'; '.join(problems)[:200]}",
-                                          once_key=f"plan_rejected:{env.event_id}")
-            # Duyệt escalation này = lập lại kế hoạch: ghi vào `unhandled` để `_retry_unhandled` chạy lại đúng event
-            # nguồn (change-request / approved-specs). Trước đây duyệt rơi xuống nhánh ticket → "reopen" một ticket
-            # không tồn tại, không gì xảy ra. Đo được 2026-09-06 (CR-STAGE-001, PLAN-QLKH-5 rỗng): duyệt xong hàng
-            # đợi rỗng, phải phát lại decide-change bằng tay.
-            with self._lock:
-                self.unhandled[project] = {"agent": "delivery-lead", "topic": env.topic, "event_id": env.event_id,
-                                           "subject": project, "error": f"plan_rejected: {'; '.join(problems)[:200]}"}
-            if project not in self.gate.pending:
-                self.gate.request(GateRequest(kind="escalation", subject_id=project, created_by="delivery-lead",
-                                              checklist=["plan_problems", "decision:retry|close"]))
-        else:
-            self.plans[plan_id] = plan
-            self._audit("plan.proposed", plan, actor="delivery-lead", tokens=g.tokens, cost=g.cost_usd, project_id=project)
-            self.gate.request(GateRequest(kind="plan", subject_id=plan_id, created_by="delivery-lead",
-                                          checklist=["tickets", "estimate_tokens", "risk_tags", "depends_on", "threat-model",
-                                                     "architecture", "api-contract"]))
-            res.actions.append(f"plan:{plan_id}:{len(tickets)} ticket")
-            with self._lock: self.stats["plans"] += 1
-        self._mark(env, res)
-        return res
 
-    def _spec_runtime_missing(self, env: Envelope, project: str, gap: str, res: StepResult) -> StepResult:
-        """ADR-0031: spec ứng dụng không có `runtime` hợp lệ thì KHÔNG mở gate spec — người ký Gate 1 không được đặt
-        trước một PRD mà câu "chạy cho tôi xem" chưa có câu trả lời. Thay vào đó trả về spec-writer với lý do (`hint`)
-        đúng như `request_changes` của người; quá `SPEC_RUNTIME_REWORKS` lần vẫn thiếu → escalation cấp dự án, cùng
-        khuôn với kế hoạch bị `_check_plan` từ chối (approve = chạy lại event nguồn, reject = bỏ).
-        Khoá theo `event_id` của spec (mỗi lần spec-writer publish là một event mới, không nuốt lần hai — khuôn 3
-        `TRAPS.md`); bộ đếm theo dự án dựng lại từ audit (khuôn 2)."""
-        with self._lock:
-            self.spec_runtime_reworks[project] += 1; n = self.spec_runtime_reworks[project]
-        cause = next((e for t in ("clarification-answers", "requirements-draft", "clarification-questions")
-                      for e in self.bus.replay(topic=t) if e.event_id == env.causation_id), None) if env.causation_id else None
-        if cause is None:
-            cause = self.latest("requirements-draft", project)
-        self._audit("spec.runtime_missing", {"project_id": project, "event_id": env.event_id, "kind": env.payload.get("kind"),
-                                             "runtime": env.payload.get("runtime"), "reason": gap, "attempt": n,
-                                             "source_event": cause.event_id if cause else None}, project_id=project)
-        if cause is not None and n <= SPEC_RUNTIME_REWORKS:
-            hint = f"orchestrator từ chối mở gate spec (lần {n}): {gap}"
-            prev = {k: env.payload.get(k) for k in ("kind", "runtime", "artifacts")}
-            inp = cause.model_copy(update={"payload": {**cause.payload, "hint": hint, "previous_spec": prev}})
-            self._recall("spec-writer", cause)  # `partial` đã ghi spec-writer cho event nguồn: gọi lại là CHỦ Ý
-            route = Route(cause.topic, "spec-writer", "approved-specs",
-                          enrich=None if cause.topic == "requirements-draft" else _with_draft)
-            self._call("spec-writer", inp, route, res)
-            res.actions.append(f"spec_runtime_missing:{project}:rework:{n}")
-            self._mark(env, res); return res
-        why = gap if cause is not None else f"{gap}; không có requirements-draft để spec-writer làm lại"
-        self._audit("spec.runtime_escalated", {"project_id": project, "event_id": env.event_id, "attempts": n, "reason": why,
-                                               "source_event": cause.event_id if cause else None,
-                                               "source_topic": cause.topic if cause else None}, project_id=project)
-        res.actions.append(f"spec_runtime_missing:{project}:escalated")
-        with self._lock: self.stats["errors"] += 1
-        self.supervisor.escalate_gate(project, f"spec thiếu runtime sau {n} lần: {gap[:200]}", once_key=f"spec_runtime:{env.event_id}")
-        if cause is not None:
-            with self._lock:
-                self.unhandled[project] = {"agent": "spec-writer", "topic": cause.topic, "event_id": cause.event_id,
-                                           "subject": project, "error": f"spec_runtime_missing: {gap[:200]}"}
-        if project not in self.gate.pending:
-            self.gate.request(GateRequest(kind="escalation", subject_id=project, created_by="spec-writer",
-                                          checklist=["spec_runtime", "decision:retry|close"]))
-        self._mark(env, res); return res
 
-    def _threat_model(self, env: Envelope, sid: str, res: StepResult) -> bool:
-        """Security-engineer đọc spec đã duyệt: threat model v1 lên blackboard + review-results key=SPEC-*.
-        Verdict block → không lập kế hoạch (người sửa spec rồi publish lại). Trả về True nếu được đi tiếp."""
-        prior = self.latest("review-results", sid)
-        if prior is not None and prior.payload.get("verdict") != "block":
-            return True
-        try:
-            g = self.runner.generate("security-engineer", env, "review-results")
-            p = {**g.payloads[0], "ticket_id": sid, "source": "security"}
-            self.runner.publish("security-engineer", env, "review-results", p, key=sid, tokens=g.tokens, model=g.model,
-                                context_writes=g.context_writes, generated=g)
-            with self._lock: self.stats["runs"] += 1
-        except TransientError as e:
-            res.actions.append(f"transient:security-engineer:{str(e)[:120]}")
-            with self._lock: self.stats["transient"] += 1
-            return True  # threat model không chặn plan; lần lập kế hoạch sau (nếu có) sẽ thử lại
-        except (RunnerError, LLMError) as e:
-            # Không chặn kế hoạch (người duyệt gate plan vẫn quyết được), nhưng phải hiện ra: audit riêng + đánh dấu
-            # vào plan để mục `threat-model` trong checklist gate không bị tick nhầm là đã có.
-            self._audit("threat_model.missing", {"subject_id": sid, "error": str(e)[:300]},
-                        project_id=env.payload.get("project_id"))
-            with self._lock: self.missing_threat_model.add(sid)
-            res.actions.append(f"error:security-engineer:{str(e)[:120]}")
-            with self._lock: self.stats["errors"] += 1
-            return True
-        if p["verdict"] == "block":
-            self._audit("spec_blocked_by_security", {"subject_id": sid, "findings": p.get("findings", [])}, project_id=env.payload.get("project_id"))
-            res.actions.append(f"spec_blocked:{sid}"); return False
-        res.actions.append(f"threat-model:{sid}:{p['verdict']}"); return True
 
-    def _check_plan(self, tickets: list[Task]) -> list[str]:
-        ids = {t.ticket_id for t in tickets}; known = ids | set(self.lead.tickets)
-        problems = ["kế hoạch rỗng"] if not tickets else []
-        if len(ids) != len(tickets): problems.append("ticket_id trùng")
-        for t in tickets:
-            if t.ticket_id in self.lead.tickets: problems.append(f"{t.ticket_id} đã tồn tại")
-            if t.estimate_tokens is None: problems.append(f"{t.ticket_id} thiếu estimate_tokens")
-            elif t.budget_tokens < t.estimate_tokens * BUDGET_FACTOR: problems.append(f"{t.ticket_id} budget < estimate×{BUDGET_FACTOR}")
-            if not t.acceptance: problems.append(f"{t.ticket_id} thiếu acceptance")
-            unknown = [d for d in t.depends_on if d not in known]
-            if unknown or t.ticket_id in t.depends_on: problems.append(f"{t.ticket_id} depends_on sai {unknown or 'chính nó'}")
-        cyc = _cycle({t.ticket_id: [d for d in t.depends_on if d in ids] for t in tickets})
-        if cyc: problems.append("depends_on vòng: " + " → ".join(cyc))
-        return problems
 
-    def _dispatch_plan(self, plan_id: str, replaying: bool = False) -> list[str]:
-        plan = self.plans[plan_id]
-        pending = [Task.model_validate(t) for t in plan["tickets"] if t["ticket_id"] not in self.lead.tickets]
-        done: list[str] = []
-        prev, self.lead.replaying = self.lead.replaying, replaying
-        try:
-            while pending:
-                ready = [t for t in pending if all(d in self.lead.tickets for d in t.depends_on)]
-                if not ready: raise ValueError(f"{plan_id}: depends_on vòng hoặc chưa biết: {[t.ticket_id for t in pending]}")
-                for t in sorted(ready, key=lambda x: x.priority):
-                    self.lead.dispatch(t, plan_id); pending.remove(t); done.append(t.ticket_id)
-        finally:
-            self.lead.replaying = prev
-        return done
 
     # ---------- gate decide: plan → dispatch; release → production; escalation → mở lại / đóng ----------
 
@@ -707,63 +458,7 @@ class Orchestrator:
 
     # ---------- giao hàng thật (ADR-0027) ----------
 
-    def _deliver(self, env: Envelope, res: StepResult) -> None:
-        """Production đã deploy và gate release đã duyệt → tag `v<version>` + fast-forward `company/release` trong repo của
-        dự án. Tắt (`--deliver` không bật) hoặc không có repo thì không làm gì; đã giao rồi thì không giao lại."""
-        if not self.deliver: return
-        rid = env.key
-        if rid in self.delivered: return
-        integ = self._integration_of_release(env)
-        if integ is None or integ.rev(integ.branch) is None:
-            self._audit("delivery.skipped", {"release_id": rid, "reason": "không có nhánh tích hợp (dự án chạy không repo)"},
-                        project_id=self.project_for(env), once=f"delivery.skipped:{rid}")
-            return
-        if not self.gate.is_approved(rid):  # delivery-lead đã chặn trước (PermissionError); đây là lớp sau, không tin lời khai
-            self._audit("delivery.skipped", {"release_id": rid, "reason": "gate release chưa duyệt"}, project_id=self.project_for(env))
-            return
-        version = str(env.payload.get("version") or "")
-        tickets = self.lead.release_tickets.get(rid, [])
-        message = f"release {rid} v{version}\n\ntickets: {', '.join(tickets) or '-'}\nintegration: {integ.branch}"
-        try:
-            r = integ.deliver(version, message, sha=self.release_sha.get(rid), push_remote=self.push_remote)
-        except WorkspaceError as e:
-            self._audit("delivery.error", {"release_id": rid, "version": version, "error": str(e)[:300]}, project_id=self.project_for(env))
-            res.actions.append(f"delivery_error:{rid}"); return
-        rec = {"release_id": rid, "version": version, "tag": r.tag, "sha": r.sha, "short": r.short, "branch": r.branch,
-               "previous": r.previous, "tag_created": r.tag_created, "branch_moved": r.branch_moved, "problems": r.problems,
-               "pushed": r.pushed, "push_error": r.push_error, "repo": str(integ.repo)}
-        with self._lock: self.delivered[rid] = rec
-        self._audit("delivery.done", rec, project_id=self.project_for(env))
-        for pr in r.problems:  # mỗi vấn đề một dòng audit riêng để `diagnose`/console thấy ngay, không phải bới evidence
-            kind_, _, detail = pr.partition(":")
-            self._audit(f"delivery.{kind_}", {"release_id": rid, "tag": r.tag, "detail": detail}, project_id=self.project_for(env))
-        if r.pushed is False:
-            self._audit("delivery.push_failed", {"release_id": rid, "remote": self.push_remote, "error": r.push_error},
-                        project_id=self.project_for(env))
-        res.actions.append(f"delivered:{rid}@{r.tag}" + (f"({','.join(r.problems)})" if r.problems else ""))
 
-    def _rollback_delivery(self, env: Envelope, res: StepResult) -> None:
-        """Production rolled_back/failed của một release đã giao → `company/release` lùi về lần giao trước; tag giữ nguyên."""
-        if not self.deliver: return
-        rid = env.key
-        d = self.delivered.get(rid)
-        if d is None: return
-        integ = self._integration_of_release(env)
-        if integ is None: return
-        try:
-            r = integ.rollback_delivery(d.get("previous"), expected=str(d["sha"]), push_remote=self.push_remote)
-        except WorkspaceError as e:
-            self._audit("delivery.error", {"release_id": rid, "error": str(e)[:300]}, project_id=self.project_for(env))
-            res.actions.append(f"rollback_error:{rid}"); return
-        with self._lock: self.delivered.pop(rid, None)
-        self._audit("delivery.rolled_back", {"release_id": rid, "from": d["sha"], "to": d.get("previous"), "tag": d["tag"],
-                                             "branch": r.branch, "problems": r.problems, "pushed": r.pushed,
-                                             "push_error": r.push_error, "status": env.payload.get("status")},
-                    project_id=self.project_for(env))
-        if r.pushed is False:
-            self._audit("delivery.push_failed", {"release_id": rid, "remote": self.push_remote, "error": r.push_error},
-                        project_id=self.project_for(env))
-        res.actions.append(f"rolled_back:{rid}" + (f"({','.join(r.problems)})" if r.problems else ""))
 
     # ---------- vòng học ----------
 
@@ -774,82 +469,11 @@ class Orchestrator:
 
 
 
-    def redeploy(self, release_id: str, by: str) -> Envelope:
-        """Chạy lại lượt STAGING cho một release-candidate đã có — dùng khi dây chuyền từng kẹt vì lỗi hạ tầng và
-        RC nằm lại giữa đường.
 
-        Sự kiện `release-candidates` chỉ được xử lý MỘT lần (`processed`), nên sau khi sửa một lỗi hạ tầng, các RC
-        đang kẹt không có đường nào chạy lại: chỉ RC mới mới hưởng bản vá, mà RC mới chỉ sinh ra khi có ticket
-        approved chưa nằm trong RC nào. Đo được 2026-09-06 (QLKH): sau khi vá deadlock `gate_release` ở staging,
-        18 RC cũ vẫn kẹt vĩnh viễn vì 14/14 ticket đều đã nằm trong một RC hợp lệ — không gì sinh RC mới nữa.
 
-        Người vận hành gọi lệnh này (bus không cho người tự phát `release-candidates`: topic đó của delivery-lead)."""
-        if not by.split(":", 1)[0] == "human": raise ValueError("by phải là human:<tên>")
-        rc = self.latest("release-candidates", release_id)
-        if rc is None: raise ValueError(f"không có release-candidate {release_id}")
-        if release_id in self.void_releases: raise ValueError(f"{release_id}: RC đã bị huỷ, không chạy lại")
-        self._audit("release.redeploy", {"release_id": release_id, "by": by}, actor=by,
-                    project_id=self.project_for(rc))
-        res = StepResult(rc.event_id, rc.topic, rc.key)
-        self._recall("release-engineer", rc)
-        self._call("release-engineer", rc, STAGING_ROUTE, res)  # cùng route như lượt đầu, chỉ khác là do người gọi
-        return rc
 
-    def _check_paused_releases(self) -> None:
-        """Quét mọi RC mà release-event CUỐI là `pending_human` và không gate nào chờ → mở gate escalation. Cần vì
-        `_release_paused` chỉ chạy lúc XỬ LÝ event: RC kẹt từ trước bản vá (event đã `processed`) hay orchestrator
-        mở lại sau khi gate đã quyết mà lượt chạy lại vẫn dừng — không có sweep thì chúng nằm im mãi như cũ."""
-        for rid in list(self.lead.releases):
-            if rid in self.void_releases or rid in self.gate.pending: continue
-            last = self.latest("release-events", rid)
-            if last is None or last.payload.get("status") != "pending_human": continue
-            key = f"release.pending_human:{rid}:{last.event_id}"
-            if key in self.once: continue
-            self._remember(key)
-            self._audit("release.pending_human", {"release_id": rid, "env": last.payload.get("env"),
-                                                  "summary": str(last.payload.get("summary") or "")[:300]},
-                        actor="release-engineer", project_id=self.project_for(last))
-            self.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="release-engineer",
-                                          checklist=["root_cause", "decision:redeploy|close", "hint"]))
 
-    def _superseded_release(self, rid: str) -> bool:
-        """RC chưa giao, nhưng mọi ticket của nó đã ở nhánh tích hợp (hoặc đã xong) và đã có một bản giao SAU nó →
-        nội dung RC này đã tới tay khách trong bản giao đó; RC chỉ còn là sổ sách."""
-        if rid in self.delivered or rid not in self.lead.release_tickets: return False
-        if rid not in self.lead.releases: return False
-        later = [d for d in self.delivered if d in self.lead.releases and self.lead.releases.index(d) > self.lead.releases.index(rid)]
-        if not later: return False
-        return all(t in self.integrated or self.lead.state.get(t) in DONE_STATES for t in self.lead.release_tickets[rid])
 
-    def _release_paused(self, env: Envelope, res: StepResult) -> None:
-        """release-engineer TỰ DỪNG (`status=pending_human`): xem `_check_paused_releases` — sweep đó chạy ở mọi nhịp
-        (kể cả ngay sau lượt vừa phát event này, trước khi event được lấy khỏi hàng đợi), nên ở đây chỉ còn ghi
-        hành động để `orchestrated` của event nói rõ gate đã mở."""
-        rid = str(env.payload.get("release_id") or env.key)
-        self._check_paused_releases()
-        if rid in self.gate.pending: res.actions.append(f"gate:escalation:{rid}")
-
-    def _recall(self, agent: str, env: Envelope) -> None:
-        """Cho phép gọi LẠI một agent trên cùng event một cách chủ ý. `partial[event_id]` ghi agent đã chạy để event
-        bị hoãn transient không chạy lại — nhưng nó cũng nuốt mọi lần gọi lại có chủ đích trên cùng envelope (RC):
-        Gate 3 ký lần hai, chạy lại lượt release-engineer vừa tự dừng. Đo được 2026-09-06: lead ký lại Gate 3
-        REL-019 lúc 03:06 chỉ chạy được vì orchestrator vừa restart (partial trong RAM trống)."""
-        with self._lock:
-            if env.event_id in self.partial: self.partial[env.event_id].discard(agent)
-
-    def _rerun_release(self, rid: str, by: str, reason: str, res: StepResult) -> bool:
-        """Chạy lại lượt release-engineer mà nó vừa tự dừng: env lấy từ release-event cuối; production chỉ khi Gate 3
-        đã ký. Lý do người duyệt đi vào payload làm `human_hint`. Trả False nếu không có gì để chạy lại."""
-        last = self.latest("release-events", rid); rc = self.latest("release-candidates", rid)
-        if last is None or rc is None or last.payload.get("status") != "pending_human": return False
-        env_ = last.payload.get("env")
-        route = STAGING_ROUTE if env_ == "staging" else PROD_ROUTE
-        if route is PROD_ROUTE and not self.lead._gate_kind_approved(rid, "release"): return False
-        self._audit("release.rerun", {"release_id": rid, "env": env_, "by": by}, actor=by, project_id=self.project_for(rc))
-        inp = rc.model_copy(update={"payload": {**rc.payload, "human_hint": reason}}) if reason else rc
-        self._recall("release-engineer", rc)
-        self._call("release-engineer", inp, route, res)
-        return True
 
     # ---------- hoãn / đánh dấu / audit ----------
 
@@ -926,20 +550,6 @@ class Orchestrator:
                 "delivery": {rid: {k: d.get(k) for k in ("version", "tag", "short", "branch", "problems", "pushed")}
                              for rid, d in sorted(self.delivered.items())},
                 "stats": dict(self.stats), "events": len(self.bus)}
-
-
-def _cycle(graph: dict[str, list[str]]) -> list[str]:
-    """Một chu trình trong đồ thị phụ thuộc (rỗng nếu không có) — bắt ở bước lập kế hoạch, trước gate, không để tới dispatch."""
-    state: dict[str, int] = {}; stack: list[str] = []
-    def visit(n: str) -> list[str]:
-        state[n] = 1; stack.append(n)
-        for m in graph.get(n, []):
-            if state.get(m) == 1: return [*stack[stack.index(m):], m]
-            if m not in state and (c := visit(m)): return c
-        stack.pop(); state[n] = 2; return []
-    for n in graph:
-        if n not in state and (c := visit(n)): return c
-    return []
 
 
 def _evidence(a: dict[str, Any]) -> dict[str, Any]:

@@ -1,0 +1,221 @@
+"""Máy trạng thái RELEASE: merge RC vào nhánh tích hợp, gọi release-engineer (staging/production), giao hàng
+thật (tag + fast-forward `company/release`), rollback, huỷ RC xung đột/vượt, mở lại release bị pause vì
+ngân sách (ADR-0034, tách khỏi orchestrator.py).
+
+Mỗi hàm nhận `o: Orchestrator` làm tham số đầu, gán làm method trên `Orchestrator`
+(`_release = release_fsm._release`, …) — bề mặt gọi cũ không đổi.
+"""
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from ..delivery import DONE_STATES
+from ..events import Envelope
+from ..gates import GateRequest
+from ..workspace import WorkspaceError
+from .routes import PROD_ROUTE, STAGING_ROUTE, Route
+
+if TYPE_CHECKING:
+    from ..orchestrator import StepResult
+
+
+def _integrate(o, rc: Envelope, res: StepResult) -> bool:
+    """Mọi ticket của RC phải nằm trên nhánh tích hợp (thường đã merge lúc approved). Trả về False nếu RC bị huỷ."""
+    if not o._has_integration(): return True
+    rid = rc.payload["release_id"]
+    if rid in o.void_releases: return False
+    for tid in rc.payload.get("tickets", []):
+        if tid in o.integrated and not o._branch_ahead(tid): continue
+        if o.lead.state.get(tid) not in {"approved", "merged"}:  # đã bị trả về (xung đột lúc approved): RC vô nghĩa
+            o._audit("release.void", {"release_id": rid, "ticket_id": tid, "reason": f"ticket đang {o.lead.state.get(tid)}"}, ticket_id=tid)
+            o._void(rid); res.actions.append(f"void:{rid}")
+            return False
+        if not o._merge_ticket(tid, res, release_id=rid):
+            o._audit("release.void", {"release_id": rid, "ticket_id": tid}, ticket_id=tid)
+            o._void(rid)
+            return False
+    return True
+
+def _void(o, rid: str) -> None:
+    o.void_releases.add(rid)
+    o.lead.void_release(rid)  # gom release: ticket approved trong RC huỷ phải vào RC kế tiếp
+
+def _release(o, agent: str, rc: Envelope, r: Route) -> Envelope:
+    """release-engineer nhận RC kèm `target_env`; đầu ra phải đúng env và release_id, nếu không thì coi là invalid."""
+    rid = rc.payload["release_id"]
+    integ = o._integration_of_release(rc)
+    extra: dict[str, Any] = ({"integration_branch": integ.branch, "integration_sha": integ.sha()}
+                             if integ is not None else {})
+    if r.target_env == "production":
+        # `gate_release` CHỈ có nghĩa với production: Gate 3 gác cửa production, không gác staging.
+        # Trước đây gửi cho cả hai env và staging luôn thấy `false` (Gate 3 chưa thể duyệt vì chưa có qa hồi quy),
+        # release-engineer đọc đó là "chưa được phép" nên TỪ CHỐI deploy staging — khoá kín cả dây chuyền:
+        # staging không `deployed` → qa hồi quy không chạy → Gate 3 không đủ nguồn để mở → `gate_release` mãi
+        # false. Đo được 2026-09-06 (QLKH): 18/18 release-candidate chết ở đây, 0 lần ra production, 0 tag giao
+        # hàng, dù 14/14 ticket đã vào nhánh tích hợp. Staging là nơi QA hồi quy TRƯỚC khi xin Gate 3 (ADR-0006).
+        extra["gate_release"] = o.gate.is_approved(rid)
+        # Lượt production phải THẤY bằng chứng staging/QA/security/gate ngay trong payload: agent không có tool
+        # đọc bus; thiếu thì nó "không được tự suy diễn" và dừng chờ người. Đo được 2026-09-06 (REL-025): staging
+        # deployed 06:01, QA pass 06:02, Gate 3 ký 06:04 — lượt production 06:04 vẫn trả pending_human với lý do
+        # "chưa qua deploy staging thật".
+        extra["evidence"] = o._release_evidence(rid)
+    inp = rc.model_copy(update={"payload": {**rc.payload, "target_env": r.target_env, **extra}})
+    if r.target_env == "staging" and integ is not None and (full := integ.rev(integ.branch)):
+        # Sha mà QA sẽ hồi quy — và sha sẽ được giao khi production duyệt (ADR-0027). Ghi audit để bền qua restart.
+        with o._lock: o.release_sha[rid] = full
+        o._audit("release.staged", {"release_id": rid, "sha": full, "branch": integ.branch}, project_id=o.project_for(rc))
+    g = o.runner.generate(agent, inp, r.topic_out)
+    p = g.payloads[0]
+    if p.get("env") != r.target_env or p.get("release_id") != rid:
+        # `env` và `release_id` là của ROUTE và của RC, KHÔNG phải lời khai của model — cùng nguyên tắc với
+        # `version` ngay dưới. Trước đây output lệch bị ném RunnerError: agent trả `env=staging` ở lượt
+        # production (nhầm lẫn dễ hiểu vì hai lượt nhận payload gần giống nhau) → invalid_output → escalation,
+        # và bước CUỐI của dây chuyền giao hàng chết ngay sau khi người đã ký Gate 3. Đo được 2026-09-06
+        # (QLKH REL-019): hai lần liên tiếp, không deploy được production dù mọi cổng đã qua.
+        o._audit("release.env_overridden", {"release_id": rid, "expected_env": r.target_env,
+                                               "claimed_env": p.get("env"), "claimed_release_id": p.get("release_id")},
+                    actor=agent, tokens=g.tokens)
+        p = {**p, "env": r.target_env, "release_id": rid}
+    if (want := rc.payload.get("version")) and p.get("version") != want:
+        # Phiên bản là của RC (delivery-lead suy từ nội dung release), không phải lời khai của model.
+        o._audit("release.version_overridden", {"release_id": rid, "claimed": p.get("version"), "version": want}, actor=agent)
+        p = {**p, "version": want}
+    if r.target_env == "staging" and p.get("status") == "deployed":
+        p = o._smoke(agent, rc, rid, p, integ)
+    return o.runner.publish(agent, rc, r.topic_out, p, key=rid, tokens=g.tokens, model=g.model, generated=g)
+
+def _deliver(o, env: Envelope, res: StepResult) -> None:
+    """Production đã deploy và gate release đã duyệt → tag `v<version>` + fast-forward `company/release` trong repo của
+    dự án. Tắt (`--deliver` không bật) hoặc không có repo thì không làm gì; đã giao rồi thì không giao lại."""
+    if not o.deliver: return
+    rid = env.key
+    if rid in o.delivered: return
+    integ = o._integration_of_release(env)
+    if integ is None or integ.rev(integ.branch) is None:
+        o._audit("delivery.skipped", {"release_id": rid, "reason": "không có nhánh tích hợp (dự án chạy không repo)"},
+                    project_id=o.project_for(env), once=f"delivery.skipped:{rid}")
+        return
+    if not o.gate.is_approved(rid):  # delivery-lead đã chặn trước (PermissionError); đây là lớp sau, không tin lời khai
+        o._audit("delivery.skipped", {"release_id": rid, "reason": "gate release chưa duyệt"}, project_id=o.project_for(env))
+        return
+    version = str(env.payload.get("version") or "")
+    tickets = o.lead.release_tickets.get(rid, [])
+    message = f"release {rid} v{version}\n\ntickets: {', '.join(tickets) or '-'}\nintegration: {integ.branch}"
+    try:
+        r = integ.deliver(version, message, sha=o.release_sha.get(rid), push_remote=o.push_remote)
+    except WorkspaceError as e:
+        o._audit("delivery.error", {"release_id": rid, "version": version, "error": str(e)[:300]}, project_id=o.project_for(env))
+        res.actions.append(f"delivery_error:{rid}"); return
+    rec = {"release_id": rid, "version": version, "tag": r.tag, "sha": r.sha, "short": r.short, "branch": r.branch,
+           "previous": r.previous, "tag_created": r.tag_created, "branch_moved": r.branch_moved, "problems": r.problems,
+           "pushed": r.pushed, "push_error": r.push_error, "repo": str(integ.repo)}
+    with o._lock: o.delivered[rid] = rec
+    o._audit("delivery.done", rec, project_id=o.project_for(env))
+    for pr in r.problems:  # mỗi vấn đề một dòng audit riêng để `diagnose`/console thấy ngay, không phải bới evidence
+        kind_, _, detail = pr.partition(":")
+        o._audit(f"delivery.{kind_}", {"release_id": rid, "tag": r.tag, "detail": detail}, project_id=o.project_for(env))
+    if r.pushed is False:
+        o._audit("delivery.push_failed", {"release_id": rid, "remote": o.push_remote, "error": r.push_error},
+                    project_id=o.project_for(env))
+    res.actions.append(f"delivered:{rid}@{r.tag}" + (f"({','.join(r.problems)})" if r.problems else ""))
+
+def _rollback_delivery(o, env: Envelope, res: StepResult) -> None:
+    """Production rolled_back/failed của một release đã giao → `company/release` lùi về lần giao trước; tag giữ nguyên."""
+    if not o.deliver: return
+    rid = env.key
+    d = o.delivered.get(rid)
+    if d is None: return
+    integ = o._integration_of_release(env)
+    if integ is None: return
+    try:
+        r = integ.rollback_delivery(d.get("previous"), expected=str(d["sha"]), push_remote=o.push_remote)
+    except WorkspaceError as e:
+        o._audit("delivery.error", {"release_id": rid, "error": str(e)[:300]}, project_id=o.project_for(env))
+        res.actions.append(f"rollback_error:{rid}"); return
+    with o._lock: o.delivered.pop(rid, None)
+    o._audit("delivery.rolled_back", {"release_id": rid, "from": d["sha"], "to": d.get("previous"), "tag": d["tag"],
+                                         "branch": r.branch, "problems": r.problems, "pushed": r.pushed,
+                                         "push_error": r.push_error, "status": env.payload.get("status")},
+                project_id=o.project_for(env))
+    if r.pushed is False:
+        o._audit("delivery.push_failed", {"release_id": rid, "remote": o.push_remote, "error": r.push_error},
+                    project_id=o.project_for(env))
+    res.actions.append(f"rolled_back:{rid}" + (f"({','.join(r.problems)})" if r.problems else ""))
+
+def redeploy(o, release_id: str, by: str) -> Envelope:
+    """Chạy lại lượt STAGING cho một release-candidate đã có — dùng khi dây chuyền từng kẹt vì lỗi hạ tầng và
+    RC nằm lại giữa đường.
+
+    Sự kiện `release-candidates` chỉ được xử lý MỘT lần (`processed`), nên sau khi sửa một lỗi hạ tầng, các RC
+    đang kẹt không có đường nào chạy lại: chỉ RC mới mới hưởng bản vá, mà RC mới chỉ sinh ra khi có ticket
+    approved chưa nằm trong RC nào. Đo được 2026-09-06 (QLKH): sau khi vá deadlock `gate_release` ở staging,
+    18 RC cũ vẫn kẹt vĩnh viễn vì 14/14 ticket đều đã nằm trong một RC hợp lệ — không gì sinh RC mới nữa.
+
+    Người vận hành gọi lệnh này (bus không cho người tự phát `release-candidates`: topic đó của delivery-lead)."""
+    from ..orchestrator import StepResult  # nhập lười: orchestrator.py nhập module này trước khi định nghĩa StepResult
+    if not by.split(":", 1)[0] == "human": raise ValueError("by phải là human:<tên>")
+    rc = o.latest("release-candidates", release_id)
+    if rc is None: raise ValueError(f"không có release-candidate {release_id}")
+    if release_id in o.void_releases: raise ValueError(f"{release_id}: RC đã bị huỷ, không chạy lại")
+    o._audit("release.redeploy", {"release_id": release_id, "by": by}, actor=by,
+                project_id=o.project_for(rc))
+    res = StepResult(rc.event_id, rc.topic, rc.key)
+    o._recall("release-engineer", rc)
+    o._call("release-engineer", rc, STAGING_ROUTE, res)  # cùng route như lượt đầu, chỉ khác là do người gọi
+    return rc
+
+def _check_paused_releases(o) -> None:
+    """Quét mọi RC mà release-event CUỐI là `pending_human` và không gate nào chờ → mở gate escalation. Cần vì
+    `_release_paused` chỉ chạy lúc XỬ LÝ event: RC kẹt từ trước bản vá (event đã `processed`) hay orchestrator
+    mở lại sau khi gate đã quyết mà lượt chạy lại vẫn dừng — không có sweep thì chúng nằm im mãi như cũ."""
+    for rid in list(o.lead.releases):
+        if rid in o.void_releases or rid in o.gate.pending: continue
+        last = o.latest("release-events", rid)
+        if last is None or last.payload.get("status") != "pending_human": continue
+        key = f"release.pending_human:{rid}:{last.event_id}"
+        if key in o.once: continue
+        o._remember(key)
+        o._audit("release.pending_human", {"release_id": rid, "env": last.payload.get("env"),
+                                              "summary": str(last.payload.get("summary") or "")[:300]},
+                    actor="release-engineer", project_id=o.project_for(last))
+        o.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="release-engineer",
+                                      checklist=["root_cause", "decision:redeploy|close", "hint"]))
+
+def _superseded_release(o, rid: str) -> bool:
+    """RC chưa giao, nhưng mọi ticket của nó đã ở nhánh tích hợp (hoặc đã xong) và đã có một bản giao SAU nó →
+    nội dung RC này đã tới tay khách trong bản giao đó; RC chỉ còn là sổ sách."""
+    if rid in o.delivered or rid not in o.lead.release_tickets: return False
+    if rid not in o.lead.releases: return False
+    later = [d for d in o.delivered if d in o.lead.releases and o.lead.releases.index(d) > o.lead.releases.index(rid)]
+    if not later: return False
+    return all(t in o.integrated or o.lead.state.get(t) in DONE_STATES for t in o.lead.release_tickets[rid])
+
+def _release_paused(o, env: Envelope, res: StepResult) -> None:
+    """release-engineer TỰ DỪNG (`status=pending_human`): xem `_check_paused_releases` — sweep đó chạy ở mọi nhịp
+    (kể cả ngay sau lượt vừa phát event này, trước khi event được lấy khỏi hàng đợi), nên ở đây chỉ còn ghi
+    hành động để `orchestrated` của event nói rõ gate đã mở."""
+    rid = str(env.payload.get("release_id") or env.key)
+    o._check_paused_releases()
+    if rid in o.gate.pending: res.actions.append(f"gate:escalation:{rid}")
+
+def _recall(o, agent: str, env: Envelope) -> None:
+    """Cho phép gọi LẠI một agent trên cùng event một cách chủ ý. `partial[event_id]` ghi agent đã chạy để event
+    bị hoãn transient không chạy lại — nhưng nó cũng nuốt mọi lần gọi lại có chủ đích trên cùng envelope (RC):
+    Gate 3 ký lần hai, chạy lại lượt release-engineer vừa tự dừng. Đo được 2026-09-06: lead ký lại Gate 3
+    REL-019 lúc 03:06 chỉ chạy được vì orchestrator vừa restart (partial trong RAM trống)."""
+    with o._lock:
+        if env.event_id in o.partial: o.partial[env.event_id].discard(agent)
+
+def _rerun_release(o, rid: str, by: str, reason: str, res: StepResult) -> bool:
+    """Chạy lại lượt release-engineer mà nó vừa tự dừng: env lấy từ release-event cuối; production chỉ khi Gate 3
+    đã ký. Lý do người duyệt đi vào payload làm `human_hint`. Trả False nếu không có gì để chạy lại."""
+    last = o.latest("release-events", rid); rc = o.latest("release-candidates", rid)
+    if last is None or rc is None or last.payload.get("status") != "pending_human": return False
+    env_ = last.payload.get("env")
+    route = STAGING_ROUTE if env_ == "staging" else PROD_ROUTE
+    if route is PROD_ROUTE and not o.lead._gate_kind_approved(rid, "release"): return False
+    o._audit("release.rerun", {"release_id": rid, "env": env_, "by": by}, actor=by, project_id=o.project_for(rc))
+    inp = rc.model_copy(update={"payload": {**rc.payload, "human_hint": reason}}) if reason else rc
+    o._recall("release-engineer", rc)
+    o._call("release-engineer", inp, route, res)
+    return True
