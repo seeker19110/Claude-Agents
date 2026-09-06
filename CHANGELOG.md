@@ -6,6 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(gateway): 3 ADR (xoay vòng, giữ cổng, ranh giới bảo mật) + bộ khung CLAUDE/TRAPS/CODEMAP/ARCHITECTURE (E4) (#101)
 - chore: đợt 0 đặc tả nâng cấp — CHANGELOG đủ số PR, gitignore `*.yaml.bak*`, mốc lịch sử repo trong ARCHITECTURE, CI `PR policy` bắt PR phải có dòng CHANGELOG (nhãn `no-changelog` để miễn) (#98)
 - fix(company): `watch()` không nuốt `ReloadRequested` thành `tick_error` (#95)
 - fix(company): audit `invalid_output` ghi kèm lời agent — "không sửa file nào" phải nói vì sao (#94)
