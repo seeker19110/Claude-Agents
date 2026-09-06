@@ -55,11 +55,13 @@ jobs:
       - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
       # --durations: test git/worktree chậm dần thì thấy ngay trong log, không phải đoán.
-      - run: uv run pytest -q --cov --cov-report=term-missing --durations=10
+      # -n auto (pytest-xdist): test git/worktree nặng I/O, chạy tuần tự 346 s trên Windows; đo cục bộ
+      # 4 worker còn 97 s, 730/730 xanh (2026-09-06). Runner GitHub 4 nhân nên auto = 4.
+      - run: uv run pytest -q -n auto --cov --cov-report=term-missing --durations=10
         if: runner.os != 'Windows'
         working-directory: software-company
       # Windows: chạy test, không đo coverage (nhánh riêng của POSIX không chạy ở đây nên ngưỡng sẽ lệch).
-      - run: uv run pytest -q --durations=10
+      - run: uv run pytest -q -n auto --durations=10
         if: runner.os == 'Windows'
         working-directory: software-company
 
