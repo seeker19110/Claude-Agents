@@ -424,11 +424,22 @@ class AgentRunner:
         # HEAD vẫn là commit WIP chưa từng thành PR → PR chính là HEAD, để reviewer chấm. Đo được 2026-09-06
         # (TCK-CR-DEV-001-02): giữ WIP xong, hai lượt kế tiếp đều "không sửa file nào" → blocked lần nữa.
         if not ws.dirty() and not kept and not ws.head_is_wip():  # so với HEAD của branch: làm lại mà y hệt = "không sửa gì"
-            # Ghi kèm lời agent: nó không sửa gì thường VÌ một lý do (thiếu quyết định, tưởng đã có sẵn, cần người) — không
-            # ghi thì người chỉ thấy "không sửa file nào" ×3 rồi blocked (TCK-CR-STAGE-001-01, 2026-09-06: 0 tool call, 44 s).
-            self._audit(spec, "invalid_output", inp, evidence=f"worktree không có thay đổi sau vòng tool; agent nói: {_said(g)}",
-                        tokens=g.tokens, cost=g.cost_usd)
-            raise RunnerError(f"{agent_id}: không sửa file nào trong worktree {ws.branch} (so với lần trước)")
+            # Đường hợp lệ (cùng tinh thần `test_dispute`, ADR-0028): việc đã xong từ lượt trước (commit thật,
+            # không phải WIP dở) và agent lượt này xác nhận đúng là không còn gì để sửa. Chỉ chấp nhận khi lý do
+            # đủ cụ thể (>= 20 ký tự, cùng ngưỡng `min_len.reason` ở evals/supervisor.yaml) — "ok"/rỗng vẫn bị
+            # coi là invalid_output. Đo được 2026-09-06 (TCK-CR-RUNTIME-01): runtime.yaml đã đủ từ lượt trước,
+            # agent bị tính invalid_output rồi blocked dù việc đúng là đã xong.
+            no_changes_reason = str((g.payloads[0] if g.payloads else {}).get("no_changes_reason") or "").strip()
+            if len(no_changes_reason) >= 20:
+                self._audit(spec, "no_changes_confirmed", inp,
+                            evidence=f"worktree không có thay đổi sau vòng tool; agent xác nhận đã xong: {no_changes_reason[:300]}",
+                            tokens=g.tokens, cost=g.cost_usd)
+            else:
+                # Ghi kèm lời agent: nó không sửa gì thường VÌ một lý do (thiếu quyết định, tưởng đã có sẵn, cần người) — không
+                # ghi thì người chỉ thấy "không sửa file nào" ×3 rồi blocked (TCK-CR-STAGE-001-01, 2026-09-06: 0 tool call, 44 s).
+                self._audit(spec, "invalid_output", inp, evidence=f"worktree không có thay đổi sau vòng tool; agent nói: {_said(g)}",
+                            tokens=g.tokens, cost=g.cost_usd)
+                raise RunnerError(f"{agent_id}: không sửa file nào trong worktree {ws.branch} (so với lần trước)")
         checks = ws.run_checks()
         title = str(inp.payload.get("title") or inp.key)[:72]
         try:  # WIP đã đủ và lượt này không thêm gì → PR chính là HEAD (WIP), không commit rỗng
