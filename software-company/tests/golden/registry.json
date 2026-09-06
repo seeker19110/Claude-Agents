@@ -163,7 +163,7 @@
       "customer-acceptance"
     ],
     "timeout_minutes": 120,
-    "version": 9,
+    "version": 10,
     "writes": [
       "tasks",
       "release-candidates",
