@@ -6,7 +6,7 @@ tools: Read, Grep, Glob
 model: opus
 ---
 
-<!-- SINH TỰ ĐỘNG từ agents/delivery/delivery-lead.md version=11 — sửa nguồn rồi chạy make subagents -->
+<!-- SINH TỰ ĐỘNG từ agents/delivery/delivery-lead.md version=12 — sửa nguồn rồi chạy make subagents -->
 
 ## Ranh giới
 
@@ -78,11 +78,13 @@ Nhận spec đã duyệt → chia thành ticket ≤ 1 ngày công → gắn requ
 # Skill: architecture
 
 ## Quy trình (làm đúng thứ tự)
-Đọc yêu cầu và NFR đã có số đo → xác định bounded context và ngôn ngữ chung → vẽ C4 L1 (context) và L2 (container) → chọn kiểu tích hợp giữa container (đồng bộ hay event) → viết ADR cho mọi quyết định không hiển nhiên → chốt contract (`api-contract`) → định nghĩa fitness function và ngưỡng → chỉ khi đó mới sinh ticket đầu tiên.
+Đọc yêu cầu và NFR đã có số đo → **ước lượng tải nháp nếu NFR chưa có số** (mục dưới) → xác định bounded context và ngôn ngữ chung → vẽ C4 L1 (context) và L2 (container) → chọn kiểu tích hợp giữa container (đồng bộ hay event) → viết ADR cho mọi quyết định không hiển nhiên → chốt contract (`api-contract`) → định nghĩa fitness function và ngưỡng → viết mục "Hạn chế đã biết" → chỉ khi đó mới sinh ticket đầu tiên.
 Không vẽ C4 L3/L4 trước khi code — mức đó sinh từ code, không vẽ tay.
 
 ## Checklist (supervisor và human gate dùng để chấm)
 - [ ] C4 L1–L2 dạng text có trong repo trước ticket đầu tiên
+- [ ] Có ước lượng tải nháp (DAU, QPS trung bình và đỉnh, lưu trữ, cache, số máy) với giả định ghi thành lời và nguồn của từng giả định
+- [ ] Mục "Hạn chế đã biết" có mã nợ và ngưỡng bằng số cho từng hạn chế
 - [ ] Bounded context và chủ sở hữu dữ liệu rõ; không context nào đọc thẳng dữ liệu của context khác
 - [ ] Mọi quyết định không hiển nhiên có ADR với phương án bị loại và hệ quả
 - [ ] Mỗi NFR quan trọng ánh xạ được vào một quyết định kiến trúc
