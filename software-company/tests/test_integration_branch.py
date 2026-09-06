@@ -271,3 +271,34 @@ def test_ticket_lam_lai_sau_khi_da_merge_thi_ban_sua_van_vao_nhanh_tich_hop(tmp_
     assert integ.rev_list_count(ws.branch) == 1, "bản sửa là commit mới → phải merge tiếp"
     assert integ.merge(ws.branch, "merge(T1) lần 2").ok
     assert (integ.path / "f.py").read_text(encoding="utf-8") == "v = 2\n"
+
+
+def test_integrate_approved_merge_lai_ticket_da_integrated_khi_co_commit_moi(tmp_path):
+    """Vòng `_integrate_approved` phải merge LẠI ticket đã nằm trong `self.integrated` nếu branch có commit mới.
+    Đây là chỗ hỏng thật: ticket bị trả về làm lại rồi approved lần nữa, tập `integrated` nhớ lần trước nên bản sửa
+    không bao giờ vào nhánh tích hợp. Tắt điều kiện `_branch_ahead` → assert cuối đỏ (nhánh tích hợp vẫn giữ v1)."""
+    from company.orchestrator import StepResult
+    repo = _init_repo(tmp_path / "repo")
+    bus = InMemoryBus(); client = FakeClient(handler=handler, tool_handler=_repo_tool_handler)
+    orch = Orchestrator(bus, client, repo=repo, base="main")
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    assert "T1" in orch.integrated and orch.lead.state["T1"] == "merged"
+    ws = orch.workspace("T1"); assert ws is not None
+    (ws.path / "f_t1.py").write_text("BAN_SUA = 2\n", encoding="utf-8"); ws.commit_all("fix(T1): bản sửa sau khi bị trả về")
+    orch.lead.state["T1"] = "approved"  # trả về làm lại rồi approved lần nữa
+    orch._integrate_approved(StepResult(event_id="e-rework", topic="ticket-updates", key="T1"))
+    assert orch.integration is not None
+    assert (orch.integration.path / "f_t1.py").read_text(encoding="utf-8") == "BAN_SUA = 2\n", "bản sửa phải vào nhánh tích hợp"
+
+
+def test_branch_ahead_khong_no_khi_ref_branch_bien_mat(tmp_path):
+    """`_branch_ahead` là điều kiện phụ của vòng merge lại: nếu git không trả lời được (ref branch đã bị xoá, worktree
+    hỏng) thì phải coi như KHÔNG có gì mới và đi tiếp, chứ không được ném WorkspaceError làm chết cả lượt run()."""
+    repo = _init_repo(tmp_path / "repo")
+    bus = InMemoryBus(); client = FakeClient(handler=handler, tool_handler=_repo_tool_handler)
+    orch = Orchestrator(bus, client, repo=repo, base="main")
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    ws = orch.workspace("T1"); assert ws is not None and ws.path.exists()
+    _git(repo, "update-ref", "-d", f"refs/heads/{ws.branch}")
+    assert orch._branch_ahead("T1") is False, "git lỗi → False, không ném"
+    assert orch._branch_ahead("KHONG-CO-TICKET-NAY") is False, "không có workspace → False"
