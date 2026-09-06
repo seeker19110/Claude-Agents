@@ -551,9 +551,20 @@ def _bo_dau_thoi_gian(v):
     return v
 
 
+def _khoa_so_sanh(a) -> list[str]:
+    """Tên thuộc tính cần so sánh — `state` (OrchState, ADR-0034) được TRẢI ra từng trường.
+
+    So nguyên khối `OrchState` thì một trường cố ý không dựng lại (`queue`, `deferred`, `stats`...) làm cả
+    khối lệch, và thông báo lỗi chỉ nói 'state khác state' — mất đúng thứ test này sinh ra để chỉ tên."""
+    khoa = [k for k in vars(a) if k != "state"]
+    if is_dataclass(getattr(a, "state", None)):   # `lead.state` là dict, không phải OrchState
+        khoa += [f.name for f in fields(type(a.state))]
+    return sorted(khoa)
+
+
 def _thuoc_tinh_lech(a, b) -> list[str]:
     lech = []
-    for k in sorted(vars(a)):
+    for k in _khoa_so_sanh(a):
         if k in _BO_QUA or k.startswith("_"):
             continue
         va, vb = getattr(a, k, None), getattr(b, k, None)
