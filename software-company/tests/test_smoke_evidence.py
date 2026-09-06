@@ -164,6 +164,7 @@ def test_khong_co_repo_thi_unverified_noi_ro_ly_do(tmp_path):
 def test_run_smoke_communicate_qua_gio_khong_lam_hong_bang_chung(tmp_path, monkeypatch):
     """Tiến trình bị kill mà `communicate` vẫn treo (pipe stderr bị con giữ) → bỏ qua stderr, bằng chứng còn lại giữ nguyên."""
     import subprocess as sp
+
     from company import smoke as sm
 
     class Proc:
