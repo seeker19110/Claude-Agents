@@ -1100,9 +1100,15 @@ class Orchestrator:
         g = self.runner.generate(agent, inp, r.topic_out)
         p = g.payloads[0]
         if p.get("env") != r.target_env or p.get("release_id") != rid:
-            self._audit("invalid_output", {"agent": agent, "expected_env": r.target_env, "got": p.get("env")},
+            # `env` và `release_id` là của ROUTE và của RC, KHÔNG phải lời khai của model — cùng nguyên tắc với
+            # `version` ngay dưới. Trước đây output lệch bị ném RunnerError: agent trả `env=staging` ở lượt
+            # production (nhầm lẫn dễ hiểu vì hai lượt nhận payload gần giống nhau) → invalid_output → escalation,
+            # và bước CUỐI của dây chuyền giao hàng chết ngay sau khi người đã ký Gate 3. Đo được 2026-09-06
+            # (QLKH REL-019): hai lần liên tiếp, không deploy được production dù mọi cổng đã qua.
+            self._audit("release.env_overridden", {"release_id": rid, "expected_env": r.target_env,
+                                                   "claimed_env": p.get("env"), "claimed_release_id": p.get("release_id")},
                         actor=agent, tokens=g.tokens)
-            raise RunnerError(f"{agent}: đầu ra env={p.get('env')} release_id={p.get('release_id')}, cần {r.target_env}/{rid}")
+            p = {**p, "env": r.target_env, "release_id": rid}
         if (want := rc.payload.get("version")) and p.get("version") != want:
             # Phiên bản là của RC (delivery-lead suy từ nội dung release), không phải lời khai của model.
             self._audit("release.version_overridden", {"release_id": rid, "claimed": p.get("version"), "version": want}, actor=agent)
