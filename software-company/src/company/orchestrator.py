@@ -410,6 +410,7 @@ class Orchestrator:
         self.stalled: dict[str, dict[str, Any]] = {}  # project_id → {event_id, agent, topic, error}: dự án kẹt chờ người
         self.unhandled: dict[str, dict[str, Any]] = {}  # subject → {event_id, agent, topic}: event lỗi không nhánh nào nhận, chờ người
         self.source_fp = source_fingerprint()  # mã nguồn lúc khởi động — `watch(reload=True)` so với đây
+        self.reload_on_change = False  # `watch(reload=True)` bật: `run()` kiểm mã đổi GIỮA hai lô, không chỉ lúc rỗng
         self.stall_count: Counter[str] = Counter()  # event_id → số lần kẹt (mỗi lần một gate mới, không im lặng lần hai)
         self.agents = agents or load_agents()
         bad = check_routes(self.agents)
@@ -677,6 +678,9 @@ class Orchestrator:
             # vẫn coi gate đang chờ. Đo được 2026-09-06 (QLKH): 4 gate escalation REL-020..023 ký 10:55–11:01, hàng
             # đợi bận liên tục từ 10:50, chưa cái nào được áp sau 12 phút; lead ký 03:06 lúc hàng đợi rỗng thì áp trong 1 s.
             if hasattr(self.bus, "poll"): self.bus.poll()
+            # Reload GIỮA hai lô (không lượt model nào đang chạy) chứ không đợi hàng đợi rỗng: công ty bận thì hàng
+            # đợi hiếm khi rỗng, bản vá đã merge nằm chờ hàng giờ. Hàng đợi không mất — tiến trình mới dựng lại từ bus.
+            self._maybe_reload()
             room = workers if max_steps is None else max(1, min(workers, max_steps - len(out)))
             batch = self._take_batch(room)
             if len(batch) == 1:
@@ -749,12 +753,18 @@ class Orchestrator:
             except Exception as e:  # một nhịp lỗi (bus/git/handler) không được giết vòng watch
                 self._audit("tick_error", {"error": f"{type(e).__name__}: {str(e)[:300]}"})
                 print(f"tick_error: {type(e).__name__}: {str(e)[:120]}", file=sys.stderr)
-            if reload and not self.queue and (fp := source_fingerprint()) != self.source_fp:
-                self._audit("orchestrator.reload", {"changed": fp[1], "files": fp[0]})
-                print(f"mã nguồn đổi ({fp[1]}) — khởi động lại với mã mới", file=sys.stderr)
-                raise ReloadRequested(fp[1])
+            self.reload_on_change = reload
+            self._maybe_reload()
             n += 1
             if max_ticks is None or n < max_ticks: time.sleep(interval)
+
+    def _maybe_reload(self) -> None:
+        if not self.reload_on_change: return
+        fp = source_fingerprint()
+        if fp == self.source_fp: return
+        self._audit("orchestrator.reload", {"changed": fp[1], "files": fp[0], "queue": len(self.queue)})
+        print(f"mã nguồn đổi ({fp[1]}) — khởi động lại với mã mới", file=sys.stderr)
+        raise ReloadRequested(fp[1])
 
     def process(self, env: Envelope) -> StepResult | None:
         if env.event_id in self.processed: return None
