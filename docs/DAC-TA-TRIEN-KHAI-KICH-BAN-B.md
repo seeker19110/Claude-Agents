@@ -36,6 +36,15 @@ README package — đừng làm trùng, chỉ canh README gốc.
 
 ## K1 — Tách máy trạng thái · ADR-0037 + 7 PR
 
+**Trạng thái (2026-09-06)**: một phần đã làm, gộp trong một PR thay vì 7 (ADR thực tế đánh số 0034, không phải
+0037 — số 0035–0036 chưa dùng ở nhánh này). Đã tách `orch/routes.py` (K1.2), `orch/verify.py` +
+`orch/cli.py` (K1.1), `orch/rehydrate.py` (một phần của K1.3) — code THUẦN, không chia sẻ lock/thứ tự gọi.
+`orchestrator.py` 2269 → 1600 dòng. **Chưa làm**: `OrchState` dataclass + property alias (phần còn lại của
+K1.3), `worktree_flow.py` (K1.4), `scheduler.py` (K1.5), `gates_flow.py` (K1.6), `ticket_fsm.py`/
+`release_fsm.py` + bảng chuyển trạng thái (K1.7) — chạm vòng lặp chính (`process`/`run`/`tick`/`watch`/`_call`,
+khoá merge, FSM ticket/release), rủi ro cao hơn nhiều bậc; để phiên sau làm riêng, có thời gian viết test
+rehydrate tham số hoá theo từng trường trước khi đổi cấu trúc trạng thái.
+
 ### ADR-0037 (viết trước, PR `docs(company): ADR-0037 tách máy trạng thái`)
 
 Bối cảnh: 22/30 PR gần nhất cùng họ; §1 bản đồ file (110 hàm, 10 nhóm). Quyết định: gói `orch/`, `OrchCtx`
