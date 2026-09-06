@@ -16,6 +16,10 @@ Làm đúng thứ tự sau, trong phiên chính (không giao bước 1 cho subag
    `cd software-company && uv run python -m company.gate_brief $ARGUMENTS`
    Lệnh in hồ sơ Markdown ra stdout và ghi `company.artifacts/<project>/gate-brief/<subject>.{md,json}`. Exit 2 nghĩa là
    subject không nằm trong hàng đợi gate (xem `uv run python -m company.gate_cli list`); gate đã đóng thì thêm `--closed`.
+   Với gate `acceptance` (`UAT-REL-xxx`) LUÔN truyền `--repo <repo khách>`: hồ sơ tự khởi động sản phẩm theo `runtime`
+   của spec trong worktree tích hợp và gọi một request thật (mục "Đã chạy": lệnh, mã thoát, mã HTTP,
+   `verified_by=orchestrator` — ADR-0029, B4). Thiếu `runtime` hay thiếu `--repo` thì mục đó ghi "KHÔNG THỂ CHẠY" kèm
+   lý do; khi ấy khách chỉ ký trên lời khai — hỏi "chạy cho tôi xem" trước khi ký.
 2. Đọc `kind` trong hồ sơ, rồi gọi subagent `sc-gate-<kind>` với đường dẫn hồ sơ `.md` vừa ghi. Gọi song song các
    trợ lý chuyên môn mà hồ sơ/subagent gợi ý (mục "Trợ lý chuyên môn nên gọi cùng hồ sơ" trong `.claude/agents/sc-gate-<kind>.md`;
    với escalation thêm `sc-<assignee>` của ticket). Mọi subagent này chỉ có Read/Grep/Glob.

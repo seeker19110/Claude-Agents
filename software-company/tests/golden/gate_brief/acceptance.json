@@ -9,6 +9,11 @@
   "extra": {
     "release_id": "REL-001",
     "rulings": [],
+    "smoke": {
+      "reason": "spec không có `runtime` (lệnh khởi động, cổng, đường health), không thể chạy",
+      "unverified": true,
+      "verified_by": "orchestrator"
+    },
     "tickets": [
       "T1"
     ]
@@ -33,6 +38,23 @@
         }
       ],
       "verdict": "ok"
+    },
+    {
+      "facts": [
+        "KHÔNG THỂ CHẠY: spec không có `runtime` (lệnh khởi động, cổng, đường health), không thể chạy"
+      ],
+      "id": "acceptance.da-chay",
+      "question": "Sản phẩm khởi động được và trả lời một request thật — `gate_brief` tự chạy theo `runtime` của spec (ADR-0029), khách ký trên thứ đã chạy chứ không trên lời khai `deployed`",
+      "sources": [
+        {
+          "cwd": null,
+          "kind": "smoke",
+          "ref": "REL-001",
+          "url": null,
+          "verified_by": "orchestrator"
+        }
+      ],
+      "verdict": "unknown"
     },
     {
       "facts": [
@@ -61,5 +83,10 @@
   ],
   "status": "pending",
   "subject_id": "UAT-REL-001",
-  "unavailable": []
+  "unavailable": [
+    {
+      "id": "acceptance.da-chay",
+      "reason": "spec không có `runtime` (lệnh khởi động, cổng, đường health), không thể chạy"
+    }
+  ]
 }

@@ -51,6 +51,10 @@ Mỗi mục phải xuất hiện trong báo cáo với đúng một kết luận
   - nguồn: acceptance-results — finding thiếu requirement_id (`REQ-…`)
   - nguồn: prd@latest — danh sách requirement_id
   - nguồn: change-requests — CR sinh từ nghiệm thu
+- **Sản phẩm khởi động được và trả lời một request thật — `gate_brief` tự chạy theo `runtime` của spec (ADR-0029), khách ký trên thứ đã chạy chứ không trên lời khai `deployed`** (`acceptance.da-chay`)
+  - nguồn: approved-specs@latest — `runtime` (lệnh khởi động, cổng, đường health); thiếu thì KHÔNG THỂ CHẠY, hồ sơ nói thẳng
+  - nguồn: worktree tích hợp (`--repo`) — `gate_brief` khởi động sản phẩm ở đó và gọi một request thật: lệnh, mã thoát, mã HTTP, `verified_by=orchestrator` (mục "Đã chạy" của hồ sơ)
+  - nguồn: release-events{staging}.smoke — lần orchestrator tự chạy lúc deploy staging, để đối chiếu
 
 ## Trợ lý chuyên môn nên gọi cùng hồ sơ
 

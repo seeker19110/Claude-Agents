@@ -106,6 +106,13 @@ SELF_CHECK_SOURCES: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {
                 "acceptance-results — finding thiếu requirement_id (`REQ-…`)",
                 "prd@latest — danh sách requirement_id",
                 "change-requests — CR sinh từ nghiệm thu")),
+        "Sản phẩm khởi động được và trả lời một request thật — `gate_brief` tự chạy theo `runtime` của spec (ADR-0029), "
+        "khách ký trên thứ đã chạy chứ không trên lời khai `deployed`": (
+            "acceptance.da-chay", (
+                "approved-specs@latest — `runtime` (lệnh khởi động, cổng, đường health); thiếu thì KHÔNG THỂ CHẠY, hồ sơ nói thẳng",
+                "worktree tích hợp (`--repo`) — `gate_brief` khởi động sản phẩm ở đó và gọi một request thật: lệnh, mã thoát, "
+                "mã HTTP, `verified_by=orchestrator` (mục \"Đã chạy\" của hồ sơ)",
+                "release-events{staging}.smoke — lần orchestrator tự chạy lúc deploy staging, để đối chiếu")),
     },
     "escalation": {
         "Ngân sách còn": ("escalation.ngan-sach", (
