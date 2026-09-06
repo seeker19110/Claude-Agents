@@ -23,7 +23,7 @@
       "risk-analysis"
     ],
     "timeout_minutes": 120,
-    "version": 7,
+    "version": 8,
     "writes": [
       "change-requests",
       "acceptance-results",
@@ -163,7 +163,7 @@
       "customer-acceptance"
     ],
     "timeout_minutes": 120,
-    "version": 10,
+    "version": 11,
     "writes": [
       "tasks",
       "release-candidates",
@@ -194,7 +194,7 @@
       "security"
     ],
     "timeout_minutes": 180,
-    "version": 12,
+    "version": 13,
     "writes": [
       "pull-requests"
     ]
@@ -326,7 +326,7 @@
       "security"
     ],
     "timeout_minutes": 120,
-    "version": 7,
+    "version": 8,
     "writes": [
       "release-events"
     ]

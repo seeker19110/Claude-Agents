@@ -6,7 +6,7 @@ tools: Read, Grep, Glob
 model: sonnet
 ---
 
-<!-- SINH TỰ ĐỘNG từ agents/operations/account-manager.md version=7 — sửa nguồn rồi chạy make subagents -->
+<!-- SINH TỰ ĐỘNG từ agents/operations/account-manager.md version=8 — sửa nguồn rồi chạy make subagents -->
 
 ## Ranh giới
 
