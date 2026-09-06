@@ -68,6 +68,10 @@ class Task(BaseModel):
     depends_on: list[str] = []
     retry: int = 0
     hint: str | None = None
+    # Hướng dẫn của NGƯỜI (gate escalation `reopen`, `comment`). Tách khỏi `hint` vì `hint` bị delivery-lead ghi
+    # đè bằng thông điệp máy mỗi lần retry ("lần trước lỗi: ..."), nên chẩn đoán của người — thứ giá trị nhất —
+    # là thứ mất đầu tiên. Đo được 2026-09-06 (QLKH-012): hint chi tiết sống đúng MỘT lượt rồi bị thay.
+    human_hint: str | None = None
     estimate_tokens: int | None = None
     budget_tokens: int = 120_000
     risk_tags: list[str] = []

@@ -91,6 +91,13 @@
             "null"
           ]
         },
+        "human_hint": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "hướng dẫn của NGƯỜI (gate escalation/comment) — delivery-lead KHÔNG ghi đè khi retry, khác `hint`"
+        },
         "budget_tokens": {
           "type": "integer"
         },
