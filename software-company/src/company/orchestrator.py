@@ -1557,23 +1557,12 @@ class Orchestrator:
                                           checklist=["root_cause", "decision:redeploy|close", "hint"]))
 
     def _release_paused(self, env: Envelope, res: StepResult) -> None:
-        """release-engineer TỰ DỪNG (`status=pending_human`) ở staging hay production: trước đây không có gì xử lý
-        trạng thái này — không gate nào mở, `status` xanh, RC nằm im vô hạn; muốn chạy lại phải dừng orchestrator để
-        gọi `redeploy` (lease). Đo được 2026-09-06 (QLKH): 10 RC (REL-004/005/007/008/012/018/021 staging,
-        REL-019/020/023 production) kẹt đúng kiểu này, `gates_pending={}`. Chế độ hỏng phải khai báo: mở gate
-        `escalation` cho chính release — duyệt = chạy lại lượt đó (lý do người ghi thành hint cho agent), từ chối =
-        trả ticket của RC về làm lại."""
+        """release-engineer TỰ DỪNG (`status=pending_human`): xem `_check_paused_releases` — sweep đó chạy ở mọi nhịp
+        (kể cả ngay sau lượt vừa phát event này, trước khi event được lấy khỏi hàng đợi), nên ở đây chỉ còn ghi
+        hành động để `orchestrated` của event nói rõ gate đã mở."""
         rid = str(env.payload.get("release_id") or env.key)
-        if rid in self.void_releases or rid in self.gate.pending: return
-        key = f"release.pending_human:{rid}:{env.event_id}"
-        if key in self.once: return
-        self._remember(key)
-        self._audit("release.pending_human", {"release_id": rid, "env": env.payload.get("env"),
-                                              "summary": str(env.payload.get("summary") or "")[:300]},
-                    actor="release-engineer", project_id=self.project_for(env))
-        self.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="release-engineer",
-                                      checklist=["root_cause", "decision:redeploy|close", "hint"]))
-        res.actions.append(f"gate:escalation:{rid}")
+        self._check_paused_releases()
+        if rid in self.gate.pending: res.actions.append(f"gate:escalation:{rid}")
 
     def _recall(self, agent: str, env: Envelope) -> None:
         """Cho phép gọi LẠI một agent trên cùng event một cách chủ ý. `partial[event_id]` ghi agent đã chạy để event
