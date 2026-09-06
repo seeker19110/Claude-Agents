@@ -17,6 +17,7 @@ import company.orchestrator as om
 from company.bus import InMemoryBus
 from company.events import Envelope
 from company.llm import FakeClient
+from company.orch import cli as ocli
 from company.orchestrator import Orchestrator, ReloadRequested, source_fingerprint
 from company.orchestrator import main as orch_main
 from test_orchestrator import handler
@@ -58,7 +59,7 @@ def test_fingerprint_bo_qua_file_khong_stat_duoc(tmp_path: Path, monkeypatch: py
 
 
 def test_watch_xin_khoi_dong_lai_khi_ma_doi_va_hang_doi_rong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    root = _tree(tmp_path); monkeypatch.setattr(om, "COMPANY_ROOT", root)
+    root = _tree(tmp_path); monkeypatch.setattr(ocli, "COMPANY_ROOT", root)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))  # ghi dấu mã nguồn lúc khởi động
     orch.watch(interval=0, max_ticks=2, reload=True)  # không đổi → chạy hết 2 nhịp, không ném
     _bump(root / "src" / "company" / "a.py")
@@ -73,7 +74,7 @@ def test_khoi_dong_lai_giua_hai_lo_khi_hang_doi_con_viec(tmp_path: Path, monkeyp
     """Hàng đợi hiếm khi rỗng khi công ty bận; reload phải xảy ra GIỮA hai lô (không lượt model nào đang chạy) — hàng
     đợi không mất vì tiến trình mới dựng lại từ bus. Đo được 2026-09-06: PR #88 merge lúc 15:30, hàng đợi 5 event
     liên tục, bản vá nằm chờ."""
-    root = _tree(tmp_path); monkeypatch.setattr(om, "COMPANY_ROOT", root)
+    root = _tree(tmp_path); monkeypatch.setattr(ocli, "COMPANY_ROOT", root)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
     for k in ("P8", "P9"):
         bus.publish(Envelope(topic="research-requests", key=k, actor="human:sales", payload={"project_id": k, "description": "việc"}))
@@ -97,11 +98,11 @@ def test_main_exec_lai_chinh_lenh_sau_khi_tra_lease(tmp_path: Path, monkeypatch:
     db = tmp_path / "c.sqlite"
     monkeypatch.setenv("COMPANY_LLM_PROVIDER", "fake")
     called: dict = {}
-    monkeypatch.setattr(om, "_reexec", lambda argv: called.setdefault("argv", argv))
+    monkeypatch.setattr(ocli, "_reexec", lambda argv: called.setdefault("argv", argv))
     monkeypatch.setattr(om.Orchestrator, "watch", lambda self, interval, reload: (_ for _ in ()).throw(ReloadRequested("x")))
-    monkeypatch.setattr(om.sys, "argv", ["orchestrator.py", "--db", str(db), "run", "--watch", "1"])
+    monkeypatch.setattr(ocli.sys, "argv", ["orchestrator.py", "--db", str(db), "run", "--watch", "1"])
     assert orch_main(["--db", str(db), "run", "--watch", "1"]) == 0
-    assert called["argv"] == [om.sys.executable, "-u", "-m", "company.orchestrator", "--db", str(db), "run", "--watch", "1"]
+    assert called["argv"] == [ocli.sys.executable, "-u", "-m", "company.orchestrator", "--db", str(db), "run", "--watch", "1"]
     assert not (tmp_path / "c.sqlite.lock").exists() or (tmp_path / "c.sqlite.lock").read_text() == "", "lease phải được trả trước khi exec"
 
 
@@ -117,8 +118,8 @@ def test_no_reload_tat_tu_khoi_dong_lai(tmp_path: Path, monkeypatch: pytest.Monk
 
 def test_reexec_goi_execv(monkeypatch: pytest.MonkeyPatch) -> None:
     got: dict = {}
-    monkeypatch.setattr(om.os, "execv", lambda exe, argv: got.update(exe=exe, argv=argv))
-    om._reexec(["py", "-m", "x"])
+    monkeypatch.setattr(ocli.os, "execv", lambda exe, argv: got.update(exe=exe, argv=argv))
+    ocli._reexec(["py", "-m", "x"])
     assert got == {"exe": "py", "argv": ["py", "-m", "x"]}
 
 
@@ -126,7 +127,7 @@ def test_reload_giua_hai_lo_khong_bi_watch_nuot_thanh_tick_error(tmp_path: Path,
     """`_maybe_reload` ném từ trong `run()` → `tick()` → `watch()`; `watch` bắt Exception chung để một nhịp lỗi không giết
     vòng lặp, nên trước đây nuốt luôn ReloadRequested thành `tick_error` rồi mới reload ở lần kiểm sau (đo được 16:23
     2026-09-06: hai audit reload + một tick_error cho cùng một lần). Phải ném thẳng, không ghi tick_error."""
-    root = _tree(tmp_path); monkeypatch.setattr(om, "COMPANY_ROOT", root)
+    root = _tree(tmp_path); monkeypatch.setattr(ocli, "COMPANY_ROOT", root)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
     bus.publish(Envelope(topic="research-requests", key="P1", actor="human:sales", payload={"project_id": "P1", "description": "x"}))
     _bump(root / "src" / "company" / "a.py")

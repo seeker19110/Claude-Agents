@@ -6,6 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(company): K1 kịch bản B (một phần) — ADR-0034 tách máy trạng thái; `orchestrator.py` 2269→1600 dòng, bốn module mới `orch/{routes,verify,cli,rehydrate}.py` không đổi hành vi. Phần rủi ro cao hơn (`worktree_flow`, `scheduler`, `gates_flow`, `ticket_fsm`/`release_fsm`, `OrchState`) để lại phiên sau (#115)
 - chore: K0 kịch bản B — vệ sinh số liệu trôi (agent/ADR/test) giữa README gốc và đĩa, sửa cổng gateway mặc định trong `.env.example` (8100 → 1123), thêm `docs/adr/README.md` cho ADR cấp repo, test `console/tests/test_readme_goc.py` canh README gốc khớp `software-company/agents/` và `docs/adr/` (#114)
 - docs: đặc tả kịch bản B (`docs/DAC-TA-KICH-BAN-B.md`, 9 epic K0–K9, thước đo T1–T4) và đặc tả triển khai PR theo PR (`docs/DAC-TA-TRIEN-KHAI-KICH-BAN-B.md`, 31 PR, file:dòng)
 - docs: đánh giá sâu và tầm nhìn phát triển 09/2026 — bảy vấn đề cấu trúc ngoài đặc tả, ba kịch bản, ba chân trời, bốn quyết định phải ký (`docs/DANH-GIA-VA-TAM-NHIN-2026-09.md`)

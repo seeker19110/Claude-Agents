@@ -45,14 +45,11 @@ khách (`Integration.deliver`); production rolled_back/failed → lùi con trỏ
 """
 from __future__ import annotations
 
-import argparse
 import json
-import os
 import sys
 import threading
 import time
 from collections import Counter
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -60,308 +57,52 @@ from pathlib import Path
 from typing import Any
 
 from .blackboard import Blackboard
-from .bus import InMemoryBus, is_human
+from .bus import InMemoryBus
 from .delivery import DONE_STATES, DeliveryLead
 from .events import BUDGET_FACTOR, AuditLog, Envelope, Task
 from .gate_cli import PersistentGate, trusted_decision
 from .gates import Decision, GateRequest
 from .llm import LLMError, ModelClient, TransientError
+from .orch import rehydrate, verify
+from .orch.cli import _fmt, main, source_fingerprint
+from .orch.routes import (
+    ACTIVE_STATES,
+    ACTOR,
+    BLIND_STRIP,
+    CONTROL_TOPICS,
+    MAX_CONFLICT_RETRIES,
+    PAUSING,
+    PLAN_INPUTS,
+    PROD_ROUTE,
+    RESEARCH_TOPICS,
+    REVIEW_AGENT,
+    ROUTES,
+    SPEC_RUNTIME_REWORKS,
+    STAGING_ROUTE,
+    Route,
+    _dict_of,
+    _with_draft,
+    check_routes,
+    key_for,
+    spec_runtime_gap,
+)
+
+# Không dùng trong file này nhưng là hợp đồng công khai của module (gate_brief.py, test) — giữ re-export tường
+# minh bằng alias cùng tên để ruff không coi là import thừa.
+from .orch.routes import ENGINEERING as ENGINEERING
+from .orch.routes import THREAT_ROUTE as THREAT_ROUTE
+from .orch.routes import _can_author_tests as _can_author_tests
+from .orch.routes import _has_dispute as _has_dispute
+from .orch.routes import _test_scope_ok as _test_scope_ok
+from .orch.routes import _with_chan_doan as _with_chan_doan
+from .orch.routes import _with_diff as _with_diff
 from .registry import AgentSpec, load_agents
 from .routing import retry_after_seconds
-from .runner import CONTEXT_ONLY, AgentRunner, RunnerError, artifact_store
-from .smoke import parse_runtime, run_smoke, unverified
+from .runner import CONTEXT_ONLY, AgentRunner, RunnerError
 from .supervisor import Supervisor
 from .tools import ToolBox, WorkspaceTools
 from .web import WebTools, research_toolbox
 from .workspace import Integration, TicketWorkspace, WorkspaceError, _git
-
-ACTOR = "orchestrator"
-MAX_CLARIFY_ROUNDS = 2  # khớp `clarification-questions.round` (maximum 2) và prompt clarifier
-ENGINEERING = ("backend", "frontend", "mobile", "database", "platform", "data")
-PAUSING = frozenset({"pause", "budget_cut", "escalate"})
-
-MAX_CONFLICT_RETRIES = 6  # xung đột merge thứ 7 liên tiếp cho một ticket mới tính vào retry nội dung (xem conflict_retries)
-# Chuỗi nghiên cứu chạy theo key=project, không có ticket/retry/blocked: một agent lỗi là cả dự án đứng mà không ai
-# thấy. Lỗi ở các topic này mở gate `escalation` cấp dự án (approve = chạy lại event, reject = đóng dự án).
-RESEARCH_TOPICS = frozenset({"research-requests", "research-findings", "requirements-draft", "clarification-answers"})
-CONTROL_TOPICS = frozenset({"audit-log", "shared-context", "supervisor-actions"})
-REVIEW_AGENT = {"reviewer": "reviewer", "qa": "qa-debugger", "security": "security-engineer"}
-KEY_FIELD = {"tasks": "ticket_id", "pull-requests": "ticket_id", "test-suites": "ticket_id", "review-results": "ticket_id", "incidents": "incident_id",
-             "change-requests": "change_id", "release-candidates": "release_id", "release-events": "release_id",
-             "acceptance-results": "release_id"}  # topic khác (project_id) giữ key của event nguồn
-
-
-def key_for(topic: str, payload: dict[str, Any], default: str) -> str:
-    return str(payload.get(KEY_FIELD.get(topic, ""), "") or default)
-ACTIVE_STATES = frozenset({"dispatched", "in_progress", "in_review"})
-# Trường bị gỡ khỏi payload trước khi đưa cho test-author (ADR-0028: lượt MÙ). `hint` là phản hồi review vòng
-# trước — nó nói về CODE, đọc nó là hết mù.
-BLIND_STRIP = frozenset({"hint", "retry", "test_suite", "diff", "chan_doan"})
-
-When = Callable[[Envelope, "Orchestrator"], bool]
-Enrich = Callable[[Envelope, "Orchestrator"], dict[str, Any]]
-
-
-@dataclass(frozen=True)
-class Route:
-    topic_in: str
-    agent: str  # id agent, hoặc "$assignee" = lấy từ payload.assignee (khối kỹ thuật)
-    topic_out: str  # topic, hoặc CONTEXT_ONLY = chỉ ghi blackboard
-    when: When | None = None
-    target_env: str | None = None  # route release: đầu ra phải có env đúng như yêu cầu
-    many: bool = False  # 0..n payload một lượt (agent được quyền "không có gì để phát")
-    enrich: Enrich | None = None  # thêm dữ liệu vào payload đầu vào (vd. bản draft mới nhất cho spec-writer)
-    tools: str | None = None  # "rw": sửa code trong worktree (kỹ thuật); "ro": chỉ đọc + chạy test (QA); "research": đọc repo khách + web
-
-    def agents(self) -> tuple[str, ...]:
-        return ENGINEERING if self.agent == "$assignee" else (self.agent,)
-
-
-def _from(*actors: str) -> When:
-    return lambda e, _o: e.actor in actors
-
-
-def _field(name: str, *values: Any) -> When:
-    return lambda e, _o: e.payload.get(name) in values
-
-
-def _needs_security(e: Envelope, o: Orchestrator) -> bool:
-    tid = e.payload.get("ticket_id") or e.key
-    return tid in o.lead.tickets and "security" in o.lead.required_reviews(tid)
-
-
-def _needs_qa(e: Envelope, o: Orchestrator) -> bool:
-    """ADR-0021: QA ở lượt PR chỉ cho ticket có risk_tags; ticket thường reviewer kiêm chấm test."""
-    tid = e.payload.get("ticket_id") or e.key
-    return tid in o.lead.tickets and "qa" in o.lead.required_reviews(tid)
-
-
-def _release_needs_security(e: Envelope, o: Orchestrator) -> bool:
-    return o.lead.release_needs_security(e.payload["release_id"])
-
-
-def _dict_of(v: Any) -> dict[str, Any]:
-    return v if isinstance(v, dict) else {}
-
-
-def _deployed(env_name: str) -> When:
-    return lambda e, _o: e.payload.get("env") == env_name and e.payload.get("status") == "deployed"
-
-
-def _answers_complete(e: Envelope, o: Orchestrator) -> bool:
-    """Người đã trả lời hết câu hỏi của vòng gần nhất (hoặc clarifier đã hết vòng) → đi thẳng spec-writer.
-    Thiếu câu trả lời mà vẫn viết spec thì spec dựa trên giả định người chưa xác nhận.
-
-    Câu trả lời TÍCH LUỸ trong vòng hiện tại, không chỉ tính event này: người trả lời bổ sung một câu ở lượt
-    sau (vd. sau khi security-engineer nêu thêm câu hỏi mở) không phải gửi lại toàn bộ câu cũ. Trước đây chỉ
-    đọc `e.payload`, nên lượt bổ sung luôn bị coi là "thiếu hết các câu trước" và spec-writer không bao giờ
-    chạy lại — câu trả lời nằm im trong bus, không audit, không báo ai (đo được khi chạy thật 2026-09-04)."""
-    pid = str(e.payload.get("project_id") or e.key)
-    q = o.latest("clarification-questions", pid)
-    if q is None: return True
-    asked = {str(x.get("id")) for x in q.payload.get("questions", [])}
-    answered = {str(a.get("question_id")) for a in e.payload.get("answers", [])}
-    for prev in o.bus.replay(topic="clarification-answers", key=pid):
-        # chỉ tính câu trả lời của ĐÚNG vòng này: id có thể trùng giữa các vòng, câu cũ không được
-        # vô tình thoả mãn câu hỏi mới.
-        if prev.ts >= q.ts:
-            answered |= {str(a.get("question_id")) for a in prev.payload.get("answers", [])}
-    return not (asked - answered) or int(q.payload.get("round", 1)) >= MAX_CLARIFY_ROUNDS
-
-
-def _answers_incomplete(e: Envelope, o: Orchestrator) -> bool:
-    return not _answers_complete(e, o)
-
-
-def _spec_ready(e: Envelope, o: Orchestrator) -> bool:
-    """Spec-writer chỉ chạy khi đã trả lời hết câu hỏi VÀ dự án có `requirements-draft`. Trước đây câu trả lời gửi cho
-    một dự án chưa có bản nháp (chuỗi nghiên cứu chết, hoặc gửi nhầm dự án) vẫn sinh PRD từ đầu vào trống."""
-    if not _answers_complete(e, o): return False
-    pid = str(e.payload.get("project_id") or e.key)
-    if o.latest("requirements-draft", pid) is not None: return True
-    o._audit("spec_writer.no_draft", {"project_id": pid, "event_id": e.event_id,
-                                      "reason": "clarification-answers nhưng dự án chưa có requirements-draft"},
-             once=f"no_draft:{e.event_id}", project_id=pid)
-    return False
-
-
-def _cr_accepted_needs_research(e: Envelope, _o: Orchestrator) -> bool:
-    return e.payload.get("decision") == "accepted" and bool(e.payload.get("affects_requirements"))
-
-
-def _cr_accepted_direct(e: Envelope, _o: Orchestrator) -> bool:
-    return e.payload.get("decision") == "accepted" and not e.payload.get("affects_requirements")
-
-
-SPEC_KINDS = ("application", "library", "docs")   # `approved-specs.payload.kind`; thiếu = application (không khai ≠ được miễn)
-SPEC_RUNTIME_REWORKS = 1  # số lần tự trả spec về spec-writer vì thiếu runtime trước khi hỏi người (= max_retries của nó)
-
-
-def spec_runtime_gap(payload: dict[str, Any]) -> str | None:
-    """ADR-0031: Gate 1 chỉ mở khi spec trả lời được "chạy ở đâu". Trả về lý do thiếu (để gửi lại spec-writer), None
-    khi đủ. `kind=library|docs` được miễn `runtime` nhưng phải KHAI RÕ — thiếu `kind` tính là ứng dụng, vì im lặng
-    chính là cách QLKH đi qua bốn gate mà không có điểm vào nào (báo cáo 2026-09-06-ban-giao-khong-chay-duoc)."""
-    kind = payload.get("kind") or "application"
-    if kind not in SPEC_KINDS:
-        return f"`kind`={kind!r} không hợp lệ; phải là một trong {', '.join(SPEC_KINDS)}"
-    if kind != "application":
-        return None
-    if parse_runtime(payload) is not None:
-        return None
-    rt = payload.get("runtime")
-    what = "thiếu `runtime`" if not isinstance(rt, dict) else "`runtime.command` rỗng hoặc `port`/`timeout_s`/`expect_status` không phải số"
-    return (f"spec kind=application {what}: Gate 1 cần lệnh khởi động (`runtime.command`, có thể chứa {{port}}), "
-            "`port` (0 = tự chọn), `health` (đường GET trả 200) và phụ thuộc ngoài; nếu sản phẩm là thư viện hay tài liệu "
-            "thì khai `kind: library|docs` thay vì bỏ trống")
-
-
-def _with_draft(e: Envelope, o: Orchestrator) -> dict[str, Any]:
-    d = o.latest("requirements-draft", e.payload.get("project_id") or e.key)
-    return {"requirements_draft": d.payload} if d else {}
-
-
-def _with_intake(e: Envelope, o: Orchestrator) -> dict[str, Any]:
-    """Synthesizer cần CẢ báo cáo intake lẫn báo cáo 4 mục của researcher (ADR-0006), nhưng nó chỉ được đánh thức bởi
-    báo cáo của researcher. Không đính kèm đề bài của intake thì tiêu chí bắt đầu không bao giờ đủ và draft luôn rỗng."""
-    key = e.payload.get("project_id") or e.key
-    found = [x for x in o.bus.replay("research-findings", key) if x.payload.get("kind") == "intake"]
-    return {"intake": found[-1].payload.get("data")} if found and found[-1].payload.get("data") else {}
-
-
-def _with_diff(e: Envelope, o: Orchestrator) -> dict[str, Any]:
-    """Reviewer/QA/security đọc diff thật của branch ticket (khi có repo) thay vì tin `summary` của PR."""
-    ws = o.workspace(e.payload.get("ticket_id") or e.key)
-    if ws is None or not ws.path.exists(): return {}
-    try: return {"diff": ws.diff(), "changed_files": ws.changed_files()}
-    except WorkspaceError as ex: return {"diff_error": str(ex)[:300]}
-
-
-def _with_chan_doan(e: Envelope, o: Orchestrator) -> dict[str, Any]:
-    """qa-debugger nhận thêm LỊCH SỬ HỎNG của chính ticket này, phạm vi hẹp và chỉ-đọc.
-
-    Agent chỉ thấy PR trước mặt nên mỗi vòng lại chẩn đoán từ đầu, không biết mình đang xem lần thứ mấy. Đo
-    được ở lần chạy thật 2026-09-04: QLKH-001 quay 8 vòng với `blocked 3× / reopen 8× / review_block 13×`, và
-    179/193 lỗi của cả dự án là CÙNG MỘT sự cố hết quota — không agent nào biết điều đó vì chỉ `supervisor`
-    đăng ký đọc `audit-log`.
-
-    Cố ý bơm bản LÁT CẮT THEO TICKET chứ không phải toàn cảnh: khuôn lỗi của dự án khác là nhiễu cho việc chấm
-    một PR, và `max_input_chars` của qa-debugger chỉ có 50k. Vẫn chỉ-đọc: agent không được cấp thêm tool nào,
-    không sửa được mã công ty — đây là bậc thấp nhất có ích, để kiểm xem nó chẩn đoán có đúng không trước khi
-    tính chuyện cho nhiều quyền hơn."""
-    tid = str(e.payload.get("ticket_id") or e.key)
-    try:
-        from .metrics import diagnose
-        d = diagnose(o.bus, top=30)
-    except Exception as ex:  # chẩn đoán hỏng không được làm hỏng lượt review
-        return {"chan_doan_error": str(ex)[:200]}
-    vong = d["ticket_quay_vong"].get(tid)
-    khuon = [k for k in d["loi_theo_khuon"] if tid in k["tickets"]][:3]
-    if not vong and not khuon: return {}
-    return {"chan_doan": {"lich_su_ticket": vong, "khuon_loi_cua_ticket": khuon,
-                          "gate_dang_cho": d["gate"]["dang_cho"]}}
-
-
-def _test_scope_ok(o: Orchestrator, tid: str) -> bool:
-    """Có worktree cho ticket và stack của repo khách khai được vùng test không (ADR-0028 §3, fail closed)."""
-    ws = o.workspace(tid)
-    if ws is None: return False
-    try:
-        ws.create()
-    except Exception:  # không dựng được worktree thì cứ đi đường cũ, `_engineer` sẽ báo lỗi thật
-        return False
-    return bool(ws.stack().test_globs)
-
-
-def _can_author_tests(e: Envelope, o: Orchestrator) -> bool:
-    if not o.test_author: return False
-    tid = str(e.payload.get("ticket_id") or e.key)
-    if _test_scope_ok(o, tid): return True
-    o._audit("tests_authored_by_assignee", {"ticket_id": tid, "reason": "không phân vùng được vùng test của stack"},
-             ticket_id=tid, project_id=e.payload.get("project_id"), once=f"no-test-author:{tid}")
-    return False
-
-
-def _no_test_author(e: Envelope, o: Orchestrator) -> bool:
-    return not _can_author_tests(e, o)
-
-
-def _has_dispute(e: Envelope, _o: Orchestrator) -> bool:
-    return bool(str(e.payload.get("test_dispute") or "").strip())
-
-
-def _with_task(e: Envelope, o: Orchestrator) -> dict[str, Any]:
-    """Assignee nhận lại toàn bộ ticket (acceptance, scope, hint...) kèm bộ test vừa được viết."""
-    t = o.latest("tasks", str(e.payload.get("ticket_id") or e.key))
-    base = dict(t.payload) if t is not None else {}
-    return {**base, "test_suite": {k: e.payload.get(k) for k in ("files", "acceptance_covered", "tests_status", "commit", "notes")},
-            "tests_authored_by": "test-author"}
-
-
-STAGING_ROUTE = Route("release-candidates", "release-engineer", "release-events", target_env="staging")
-ROUTES: tuple[Route, ...] = (
-    # khối nghiên cứu: intake → researcher → synthesizer → risk → clarifier → (người trả lời) → spec-writer
-    Route("research-requests", "intake", "research-findings"),
-    Route("research-findings", "researcher", "research-findings", _from("intake"), tools="research"),
-    Route("research-findings", "synthesizer", "requirements-draft", _from("researcher"), enrich=_with_intake),
-    Route("requirements-draft", "risk", "requirements-draft", _from("synthesizer")),
-    Route("requirements-draft", "clarifier", "clarification-questions", _from("risk")),
-    Route("clarification-answers", "clarifier", "clarification-questions", _answers_incomplete, enrich=_with_draft),
-    Route("clarification-answers", "spec-writer", "approved-specs", _spec_ready, enrich=_with_draft),
-    # kỹ thuật + chất lượng
-    # ADR-0028: có repo và phân vùng được vùng test → test-author viết test MÙ trước, rồi assignee viết code cho
-    # tới khi xanh mà KHÔNG ghi được file test. Không phân vùng được (stack lạ, không repo) → đường cũ, và PR mang
-    # `tests_authored_by: "assignee"` để reviewer biết bộ test này không độc lập.
-    Route("tasks", "test-author", "test-suites", _can_author_tests, tools="tests"),
-    Route("tasks", "$assignee", "pull-requests", _no_test_author, tools="rw"),
-    Route("test-suites", "$assignee", "pull-requests", enrich=_with_task, tools="rw"),
-    # Assignee không sửa được test (tool chặn): nó ghi `test_dispute` và việc quay về test-author — lượt DUY NHẤT
-    # bộ test được đổi sau khi đã viết, và lượt duy nhất test-author được xem diff.
-    Route("pull-requests", "test-author", "test-suites", _has_dispute, enrich=_with_diff, tools="tests"),
-    # Reviewer và security cũng có tool CHỈ ĐỌC trên worktree như QA: diff dài hơn `max_input_chars` bị cắt giữa,
-    # agent "không được suy diễn" nên BLOCK vì "diff không có trong đầu vào" — không phải lỗi code. Đo được
-    # 2026-09-06 (TCK-CR-DEV-001-02, PR 877 dòng): security chặn vì thiếu diff `http_adapter.py`, ticket bị trả
-    # về làm lại dù reviewer + QA pass. Có tool thì nó đọc đúng file bị cắt rồi mới chấm.
-    Route("pull-requests", "reviewer", "review-results", enrich=_with_diff, tools="ro"),
-    Route("pull-requests", "qa-debugger", "review-results", _needs_qa,
-          enrich=lambda e, o: {**_with_diff(e, o), **_with_chan_doan(e, o)}, tools="ro"),
-    Route("pull-requests", "security-engineer", "review-results", _needs_security, enrich=_with_diff, tools="ro"),
-    # vận hành: RC → staging (+ security DAST/license khi có risk) → QA hồi quy; production đi qua gate 3 (PROD_ROUTE)
-    STAGING_ROUTE,
-    Route("release-candidates", "security-engineer", "review-results", _release_needs_security),
-    Route("release-events", "qa-debugger", "review-results", _deployed("staging"), tools="ro"),  # tool trên worktree tích hợp
-    Route("release-events", "support-docs", CONTEXT_ONLY, _deployed("production")),  # docs, release notes, runbook
-    # khách và hậu release
-    Route("external-feedback", "account-manager", "change-requests"),
-    Route("external-feedback", "support-docs", "incidents", many=True),
-    Route("incidents", "support-docs", "research-requests", _field("root_cause_class", "requirement"), many=True),
-    Route("acceptance-results", "account-manager", "change-requests", _field("verdict", "conditional"), many=True),
-    Route("change-requests", "delivery-lead", "audit-log", _field("decision", "pending")),  # ước lượng impact → người quyết
-    Route("change-requests", "intake", "research-findings", _cr_accepted_needs_research),
-)
-PROD_ROUTE = Route("release-candidates", "release-engineer", "release-events", target_env="production")
-THREAT_ROUTE = Route("approved-specs", "security-engineer", "review-results")  # threat model trước ticket đầu (ADR-0003)
-
-# Đầu vào khiến delivery-lead lập kế hoạch (sinh nhiều ticket một lượt) → gate `plan` → dispatch.
-PLAN_INPUTS: dict[str, When] = {
-    "approved-specs": lambda e, _o: True,
-    "incidents": _field("root_cause_class", "code", "ops", "design"),
-    "change-requests": _cr_accepted_direct,
-}
-
-
-def check_routes(agents: dict[str, AgentSpec]) -> list[str]:
-    """Bảng route phải khớp front matter reads/writes; trả về danh sách vi phạm (rỗng = ổn)."""
-    bad = []
-    for r in (*ROUTES, PROD_ROUTE, THREAT_ROUTE):
-        for a in r.agents():
-            spec = agents[a]
-            if r.topic_in not in spec.reads and "*" not in spec.reads: bad.append(f"{a} không đọc {r.topic_in}")
-            if r.topic_out == CONTEXT_ONLY:
-                if not spec.namespaces_write: bad.append(f"{a} không có namespace để ghi blackboard")
-            elif r.topic_out not in spec.writes: bad.append(f"{a} không ghi {r.topic_out}")
-    lead = agents["delivery-lead"]
-    bad += [f"delivery-lead không đọc {t}" for t in PLAN_INPUTS if t not in lead.reads]
-    return bad
 
 
 @dataclass
@@ -377,23 +118,6 @@ class StepResult:
 class ReloadRequested(Exception):
     """Vòng watch xin khởi động lại tiến trình vì mã nguồn đã đổi (xem `Orchestrator.watch`)."""
 
-
-COMPANY_ROOT = Path(__file__).resolve().parents[2]  # thư mục software-company (như registry.ROOT)
-SOURCE_GLOBS = ("src/company/**/*.py", "agents/**/*.md", "skills/**/*.md", "gates/*.md", "llm.yaml")
-
-
-def source_fingerprint(root: Path | None = None) -> tuple[int, str]:
-    """(số file, mô tả file mới nhất) của mọi thứ orchestrator nạp lúc khởi động. So sánh hai lần gọi là biết mã đổi;
-    không cần git (worktree có thể đang ở nhánh bất kỳ)."""
-    base = root or COMPANY_ROOT
-    latest, n, name = 0.0, 0, ""
-    for pat in SOURCE_GLOBS:
-        for f in base.glob(pat):
-            try: m = f.stat().st_mtime
-            except OSError: continue
-            n += 1
-            if m > latest: latest, name = m, f.relative_to(base).as_posix()
-    return n, f"{name}@{int(latest)}"
 
 
 class Orchestrator:
@@ -482,139 +206,10 @@ class Orchestrator:
 
     # ---------- khôi phục từ log ----------
 
-    def _rehydrate(self) -> None:
-        # Một lần duyệt log, không hai: `replay()` trên bus bền vững parse lại từng envelope, nên quét đôi là nhân đôi
-        # thời gian mở lại một dự án đã chạy lâu.
-        log = list(self.bus.replay())
-        # Thứ tự trong log của lần `orchestrated` / `project.retried` gần nhất cho từng event: dùng ở cuối hàm
-        # để nhận lại lệnh thử-lại chưa kịp chạy (xem chú thích ở đó).
-        last_done: dict[str, int] = {}
-        last_retry: dict[str, tuple[int, dict[str, Any]]] = {}   # event_id → (thứ tự trong log, bản ghi stalled)
-        hen: dict[str, tuple[str, str]] = {}                     # event_id → (mốc hẹn ISO, lý do hoãn)
-        for i, env in enumerate(log):
-            if env.topic == "audit-log":
-                a = env.payload; d = _evidence(a)
-                if a["action"] == "project.retried" and d.get("event_id"): last_retry[str(d["event_id"])] = (i, d)
-                if a["actor"] == ACTOR and a["action"] == "orchestrated":
-                    self.processed.add(d["event_id"]); last_done[str(d["event_id"])] = i
-                elif a["actor"] == ACTOR and a["action"] == "once": self.once.add(d["key"])
-                elif a["action"] == "plan.proposed": self.plans[d["plan_id"]] = d
-                elif a["action"] == "release.void": self._void(d["release_id"])
-                elif a["action"] == "release.staged": self.release_sha[d["release_id"]] = d["sha"]
-                elif a["action"] == "delivery.done": self.delivered[d["release_id"]] = d
-                elif a["action"] == "delivery.rolled_back": self.delivered.pop(d["release_id"], None)
-                elif a["action"] == "ticket.abandoned": self.lead.abandon(d["ticket_id"])
-                elif a["action"] == "defer.until" and d.get("event_id"):
-                    hen[str(d["event_id"])] = (str(d.get("until") or ""), str(d.get("reason") or "transient:?"))
-                elif a["action"] == "ticket.blocked":
-                    # xem chú thích ở `DeliveryLead._retry`: không dựng lại `blocked` thì ticket quay về
-                    # `dispatched` và người duyệt escalation bấm approve cũng không mở lại được nó.
-                    self.lead.state[str(d["ticket_id"])] = "blocked"
-                elif a["action"] == "ticket.already_integrated" and d.get("state"):
-                    # Đối xứng với `ticket.blocked` ở trên: người đã quyết "việc này xong rồi" (code đã ở nhánh
-                    # tích hợp, xem `DeliveryLead.mark_done_already_integrated`). Không dựng lại thì mở lại bus là
-                    # `ticket.blocked` CŨ (nằm trước trong log) thắng, ticket quay về `blocked` và vòng lặp
-                    # escalation → duyệt → agent không có gì sửa → block mở lại từ đầu.
-                    self.lead.state[str(d["ticket_id"])] = str(d["state"])
-                elif a["action"] == "integration.merged":
-                    self.integrated.add(d["ticket_id"])
-                    prev_r, self.lead.replaying = self.lead.replaying, True
-                    try: self.lead.mark_integrated(d["ticket_id"])
-                    finally: self.lead.replaying = prev_r
-                elif a["action"] == "threat_model.missing": self.missing_threat_model.add(d["subject_id"])
-                elif a["action"] == "project.stalled":
-                    self.stalled[d["project_id"]] = d; self.stall_count[d["event_id"]] += 1
-                elif a["action"] in {"project.retried", "project.closed"}: self.stalled.pop(d["project_id"], None)
-                elif a["action"] == "agent_error_unhandled" and d.get("subject"): self.unhandled[str(d["subject"])] = d
-                elif a["action"] == "plan_rejected" and d.get("source_event"):
-                    self.unhandled[str(d["project_id"])] = {"agent": "delivery-lead", "topic": d.get("source_topic"),
-                                                            "event_id": d["source_event"], "subject": str(d["project_id"])}
-                elif a["action"] == "spec.runtime_missing": self.spec_runtime_reworks[str(d["project_id"])] += 1
-                elif a["action"] == "spec.runtime_escalated" and d.get("source_event"):
-                    self.unhandled[str(d["project_id"])] = {"agent": "spec-writer", "topic": d.get("source_topic"),
-                                                            "event_id": d["source_event"], "subject": str(d["project_id"]),
-                                                            "error": f"spec_runtime_missing: {str(d.get('reason', ''))[:200]}"}
-                elif a["action"] in {"event.retried", "event.abandoned"}:
-                    self.unhandled.pop(str(d.get("subject")), None)
-                    self.spec_runtime_reworks.pop(str(d.get("subject")), None)
-                elif a["action"] == "gate.decide":
-                    if d.get("subject_id"): self.escalation_decided[str(d["subject_id"])] += 1
-                    if d.get("decision") == "approve" and d.get("subject_id") in self.plans \
-                            and trusted_decision(env) is not None:
-                        self._dispatch_plan(d["subject_id"], replaying=True)
-                elif a["action"] == "integration.conflict":
-                    self.conflict_retries[str(d["ticket_id"])] += 1
-                elif a["action"] == "release.finding_waived":
-                    self.lead.release_waived[str(d["release_id"])].add(str(d["source"]))
-                elif a["action"] == "debt.escalated": self.debt_gate[str(d["project_id"])] = d
-                elif a["action"] == "debt.decided": self.debt_gate.pop(str(d["project_id"]), None)
-            elif env.topic == "supervisor-actions": self._track_pause(env)
-            elif env.topic == "shared-context": self.blackboard._on(env)
-            else:
-                if env.topic == "research-requests": self._learn_repo(env, replaying=True)
-                self.lead.replay(env)
-            if env.actor in self.agents and env.causation_id:
-                # Đầu ra agent đã publish cho event chưa được đánh dấu xong (crash giữa hai route): agent đó KHÔNG chạy
-                # lại khi mở lại — tốn token và sinh PR/review trùng. `partial` được dựng lại từ causation_id.
-                self.partial.setdefault(env.causation_id, set()).add(env.actor)
-            self.supervisor.replay(env)
-        # Lệnh thử-lại chỉ sống trong RAM: `_retry_stalled` bỏ dấu `processed` rồi đẩy event vào `self.queue`.
-        # Restart giữa lúc đó là mất trắng — event vẫn mang dấu `orchestrated` của LẦN LỖI, nên hàng đợi dựng lại
-        # loại nó ra và dự án nằm im vĩnh viễn dù người đã bấm duyệt. Đo được khi chạy thật (2026-09-04): duyệt
-        # gate escalation lúc 06:51:31, restart lúc 06:51:45, sau đó không một dòng `orchestrated` nào nữa.
-        # Ai đã bảo "chạy lại" mà event chưa được xử lý lại thì phải bỏ dấu để hàng đợi nhận lại — TRỪ khi việc
-        # đó đã có người khác làm xong trong lúc chờ (xem `_retry_con_can`).
-        reopened = {eid for eid, (idx, rec) in last_retry.items()
-                    if idx > last_done.get(eid, -1) and self._retry_con_can(log, idx, rec)}
-        # KHÔNG audit ở đây: `_rehydrate` chạy trong MỌI tiến trình, kể cả lệnh chỉ-đọc (`status`, `report`,
-        # `show`, console). Ghi bus từ đường đọc là mỗi lần xem trạng thái lại thêm một dòng rác — chính tôi
-        # đã mắc và thấy nó trong log. Việc mở lại sẽ tự hiện ra ở dòng `orchestrated` khi event thật sự chạy.
-        self.processed -= reopened
-        self.partial = {k: v for k, v in self.partial.items() if k not in self.processed}
-        self.queue = [e for e in log if self._actionable(e) and e.event_id not in self.processed]
-        self._nap_lai_hen(hen)
+    _rehydrate = rehydrate.rehydrate
+    _nap_lai_hen = rehydrate._nap_lai_hen
+    _retry_con_can = rehydrate._retry_con_can
 
-    def _nap_lai_hen(self, hen: dict[str, tuple[str, str]]) -> None:
-        """Event còn hẹn chờ thì vào `deferred`, KHÔNG vào hàng đợi chạy ngay.
-
-        Không có bước này thì bản ghi `defer.until` chỉ là một dòng log đẹp: `_rehydrate` vẫn đẩy event vào
-        `self.queue` và nhịp chạy đầu tiên gọi thẳng backend đang cạn quota.
-
-        Mốc hẹn lưu theo GIỜ TƯỜNG nên quy được về `monotonic` của tiến trình này; hẹn đã qua thì bỏ, để event
-        chạy bình thường. Event đã xong không nằm trong hàng đợi nên hẹn cũ của nó vô hại."""
-        if not hen: return
-        gio, mono = datetime.now(UTC), time.monotonic()
-        giu: list[Envelope] = []
-        for e in self.queue:
-            moc, ly_do = hen.get(e.event_id, ("", ""))
-            con = 0.0
-            if moc:
-                try: con = (datetime.fromisoformat(moc) - gio).total_seconds()
-                except ValueError: con = 0.0          # mốc hỏng: thà chạy còn hơn kẹt vĩnh viễn
-            if con > 0:
-                self.deferred[e.event_id] = (e, ly_do or "transient:?")
-                self.defer_until[e.event_id] = mono + con
-            else:
-                giu.append(e)
-        self.queue = giu
-
-    def _retry_con_can(self, log: list[Envelope], idx: int, rec: dict[str, Any]) -> bool:
-        """Lệnh chạy lại còn ý nghĩa không, hay việc đã có người khác làm xong trong lúc chờ?
-
-        Lệnh chạy lại chỉ sống trong RAM nên có thể nằm chờ rất lâu (người duyệt gate xong, tiến trình chết,
-        hết hạn mức model...). Trong lúc đó dự án vẫn có thể đi tiếp bằng đường khác. Chạy lại một việc đã xong
-        là đốt một lượt model đắt tiền để sinh ra bản trùng. Đo được khi chạy thật (2026-09-04): lệnh chạy lại
-        ghi lúc 07:00:48, `spec-writer` sau đó thành công ba lần (08:15, 08:22, 08:28), nhưng lệnh cũ vẫn nổ
-        lúc 09:54:42 và tiêu 317 giây `claude-opus-5` chỉ để hệ thống báo `plan.duplicate_spec` ở bước sau.
-
-        Cách nhận biết: tra ROUTES xem event đó lẽ ra sinh ra topic nào; nếu topic đó đã có event mới cho cùng
-        khoá SAU thời điểm ra lệnh, thì việc đã xong."""
-        outs = {r.topic_out for r in ROUTES
-                if r.topic_in == rec.get("topic") and r.agent in {rec.get("agent"), "$assignee"}}
-        outs.discard(CONTEXT_ONLY)
-        if not outs: return True          # không suy ra được route → giữ nguyên hành vi cũ, thà chạy lại còn hơn kẹt
-        key = str(rec.get("project_id") or "")
-        return not any(e.topic in outs and e.key == key for e in log[idx + 1:])
 
     # ---------- repo theo từng dự án (ADR-0025) ----------
 
@@ -1233,18 +828,8 @@ class Orchestrator:
         return self.runner.publish(agent, task, r.topic_out, p, key=key_for(r.topic_out, p, task.key),
                                    tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
 
-    def _release_evidence(self, rid: str) -> dict[str, Any]:
-        staging = next((e for e in reversed(list(self.bus.replay(topic="release-events", key=rid)))
-                        if e.payload.get("env") == "staging"), None)
-        reviews = {s: {"verdict": x.verdict, "findings": len(x.findings)} for s, x in self.lead.release_reviews.get(rid, {}).items()}
-        gate = next((g for g in reversed(self.gate.history) if g.subject_id == rid and g.kind == "release"), None)
-        return {"staging": ({"status": staging.payload.get("status"), "version": staging.payload.get("version"),
-                             "at": staging.ts.isoformat(timespec="seconds"),
-                             "smoke": staging.payload.get("smoke")} if staging is not None else None),
-                "reviews": reviews, "waived": sorted(self.lead.release_waived.get(rid, set())),
-                "gate_release_by": (gate.decided_by if gate is not None else None),
-                "gate_release_reason": ((gate.reason or "")[:300] if gate is not None else None),
-                "delivered_sha": self.release_sha.get(rid)}
+
+    _release_evidence = verify.release_evidence
 
     def _release(self, agent: str, rc: Envelope, r: Route) -> Envelope:
         """release-engineer nhận RC kèm `target_env`; đầu ra phải đúng env và release_id, nếu không thì coi là invalid."""
@@ -1290,93 +875,10 @@ class Orchestrator:
             p = self._smoke(agent, rc, rid, p, integ)
         return self.runner.publish(agent, rc, r.topic_out, p, key=rid, tokens=g.tokens, model=g.model, generated=g)
 
-    def _smoke(self, agent: str, rc: Envelope, rid: str, p: dict[str, Any], integ: Integration | None) -> dict[str, Any]:
-        """`status=deployed` ở staging là LỜI KHAI của release-engineer (nó không có tool deploy). ADR-0029: orchestrator
-        tự khởi động sản phẩm theo `runtime` của spec trong worktree tích hợp và gọi một request thật; kết quả vào
-        `payload.smoke` (`verified_by=orchestrator`). Không có `runtime` hay không có worktree → `smoke.unverified`
-        kèm lý do, status giữ nguyên (không chặn dự án chưa khai, nhưng bằng chứng nói rõ là chưa kiểm). Có `runtime`
-        mà khởi động không được / không trả lời đúng → status thành `failed`: bốn gate xanh không được phép che một
-        sản phẩm không chạy (đo được 2026-09-06 QLKH: 25 release, 0 điểm vào)."""
-        pid = self.project_for(rc)
-        spec = self.latest("approved-specs", pid) if pid else None
-        rt = parse_runtime(spec.payload if spec is not None else None)
-        if rt is None:
-            smoke = unverified("spec không khai `runtime` (lệnh khởi động, cổng, đường health)")
-            self._audit("release.smoke_unverified", {"release_id": rid, "reason": smoke["reason"]}, project_id=pid,
-                        once=f"smoke.unverified:{rid}")
-            return {**p, "smoke": smoke}
-        if integ is None or not integ.path.exists():
-            smoke = unverified("không có worktree tích hợp (dự án chạy không repo)")
-            self._audit("release.smoke_unverified", {"release_id": rid, "reason": smoke["reason"]}, project_id=pid,
-                        once=f"smoke.unverified:{rid}")
-            return {**p, "smoke": smoke}
-        smoke = run_smoke(integ.path, rt)
-        self._audit("release.smoke", {"release_id": rid, **smoke}, actor=agent, project_id=pid)
-        if smoke.get("ok"):
-            return {**p, "smoke": smoke}
-        self._audit("release.smoke_failed", {"release_id": rid, "claimed_status": p.get("status"),
-                                             "http_status": smoke.get("http_status"), "exit_code": smoke.get("exit_code"),
-                                             "error": smoke.get("error")}, project_id=pid)
-        # RC `failed` ở staging không có route nào tiếp: không mở gate thì nó nằm im như `pending_human` từng nằm.
-        if rid not in self.gate.pending:
-            self.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="release-engineer",
-                                          checklist=["root_cause", "decision:redeploy|close", "hint"]))
-        return {**p, "status": "failed", "smoke": smoke}
 
-    def _regression_run(self, env: Envelope) -> dict[str, Any]:
-        """ADR-0029 mục "regression-staging": trước lượt QA hồi quy, orchestrator TỰ khởi động sản phẩm theo `runtime`
-        của spec trên worktree tích hợp (đúng sha RC đã staged) và gọi một request thật. Kết quả (lệnh, mã thoát, mã
-        HTTP, `verified_by=orchestrator`) là `evidence.run` — bằng chứng của máy, đưa vào input để QA dẫn và đối chiếu
-        với verdict sau lượt (`_verdict_with_run`). Không có `runtime`/worktree → `unverified` kèm lý do và `spec_kind`:
-        spec khai `kind=application` mà không có `runtime` thì đó là lỗi của spec, không phải "chưa kiểm".
-        Bằng chứng sống trong payload `review-results` trên bus, không giữ trong RAM; khoá `once` mang event_id của
-        lượt deployed nên RC redeploy (lần hợp lệ thứ hai) vẫn được ghi lại."""
-        rid = str(env.payload.get("release_id") or env.key)
-        pid = self.project_for(env)
-        spec = self.latest("approved-specs", pid) if pid else None
-        kind = (spec.payload.get("kind") if spec is not None else None) or None
-        rt = parse_runtime(spec.payload if spec is not None else None)
-        integ = self._integration_of_release(env)
-        if rt is None:
-            run = {**unverified("spec không khai `runtime` (lệnh khởi động, cổng, đường health)"), "spec_kind": kind}
-        elif integ is None or not integ.path.exists():
-            run = {**unverified("không có worktree tích hợp (dự án chạy không repo)"), "spec_kind": kind}
-        else:
-            run = {**run_smoke(integ.path, rt), "sha": self.release_sha.get(rid) or integ.sha(), "spec_kind": kind}
-            self._audit("regression.run", {"release_id": rid, **run}, project_id=pid)
-            return run
-        self._audit("regression.run_unverified", {"release_id": rid, "reason": run["reason"], "spec_kind": kind},
-                    project_id=pid, once=f"regression.unverified:{rid}:{env.event_id}")
-        return run
-
-    def _verdict_with_run(self, agent: str, env: Envelope, p: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
-        """Gắn `evidence.run` do orchestrator chạy vào verdict QA (ghi đè mọi `evidence.run` model tự khai) và đối chiếu:
-        smoke fail → verdict `fail`; `unverified` với spec `kind=application` → `fail` (spec phải khai `runtime`);
-        `unverified` với kind khác (library, hoặc chưa khai) → giữ verdict, bằng chứng nói thẳng là chưa kiểm.
-        Ba kết cục, không có kết cục thứ tư — như `_smoke` với `deployed`."""
-        rid = str(env.payload.get("release_id") or env.key)
-        pid = self.project_for(env)
-        ev = _dict_of(p.get("evidence"))
-        if "run" in ev:  # model tự khai `evidence.run`: bỏ, ghi lại — bằng chứng chạy chỉ có một nguồn là orchestrator
-            self._audit("regression.run_claimed_ignored", {"release_id": rid, "claimed": ev.get("run")}, actor=agent, project_id=pid)
-        p = {**p, "evidence": {**ev, "run": run}}
-        if run.get("ok"):
-            return p
-        if run.get("unverified"):
-            if run.get("spec_kind") != "application":
-                return p
-            reason = f"spec khai kind=application nhưng không smoke được: {run.get('reason')} — RC không đi tiếp cho tới khi spec khai `runtime`"
-        else:
-            reason = (f"smoke do orchestrator chạy trên worktree RC không đạt: http_status={run.get('http_status')} "
-                      f"exit_code={run.get('exit_code')} error={run.get('error')} — lệnh {run.get('command')}")
-        self._audit("regression.run_failed", {"release_id": rid, "claimed_verdict": p.get("verdict"), "reason": reason},
-                    project_id=pid)
-        if p.get("verdict") == "pass":
-            self._audit("regression.verdict_overridden", {"release_id": rid, "claimed": "pass", "verdict": "fail", "reason": reason},
-                        actor=agent, project_id=pid)
-            p = {**p, "verdict": "fail", "root_cause": p.get("root_cause") or reason,
-                 "findings": [*(p.get("findings") or []), {"level": "block", "location": run.get("url"), "text": reason}]}
-        return p
+    _smoke = verify.smoke
+    _regression_run = verify.regression_run
+    _verdict_with_run = verify.verdict_with_run
 
     # ---------- kế hoạch: gate spec → threat model → delivery-lead sinh ticket → gate plan → dispatch ----------
 
@@ -2092,177 +1594,6 @@ def _evidence(a: dict[str, Any]) -> dict[str, Any]:
         return {}
     return d if isinstance(d, dict) else {}
 
-
-def _fmt(r: StepResult) -> str:
-    tail = f"  hoãn: {r.deferred}" if r.deferred else "  " + "; ".join(r.actions)
-    return f"{r.topic:<22} {r.key:<14}{tail}"
-
-
-def main(argv: list[str] | None = None) -> int:
-    """python -m company.orchestrator run [--db] [--max-steps N] [--watch GIÂY] [--workers N] [--web]
-       python -m company.orchestrator publish <topic> <file.json> --actor human:po [--key K]
-       python -m company.orchestrator decide-change <change_id> accepted|rejected|deferred --by human:po
-       python -m company.orchestrator comment <ticket> --by human:x --text "..."   # hint giữa vòng, không tính retry
-       python -m company.orchestrator takeover <ticket> --by human:x [--message]   # người sửa tay trong worktree rồi giao lại
-       python -m company.orchestrator status | report | metrics [--prometheus] | show <namespace> [--db]
-       python -m company.orchestrator trace <TICKET|REL-xxx|PROJECT> [--json]   # dòng thời gian intake → deploy"""
-    ap = argparse.ArgumentParser(description="Orchestrator: vòng lặp tự động topic → agent → topic")
-    ap.add_argument("--db", type=Path, default=Path("company.sqlite"))
-    ap.add_argument("--repo", type=Path, help="git repo của khách: khối kỹ thuật sửa code thật trong worktree ticket/<id>")
-    ap.add_argument("--base", default="HEAD", help="nhánh/commit gốc để tạo nhánh tích hợp lần đầu (mặc định HEAD)")
-    ap.add_argument("--integration", default="company/integration", help="nhánh tích hợp: ticket rẽ từ đây, merge vào đây")
-    ap.add_argument("--artifacts", type=Path, help="artifact store của blackboard (mặc định <db>.artifacts/)")
-    ap.add_argument("--workers", type=int, default=1, help="số event khác key chạy song song (mặc định 1)")
-    ap.add_argument("--web", action="store_true", help="cho researcher tool web_search/fetch_url (mạng ra ngoài)")
-    ap.add_argument("--batch-release", action="store_true",
-                    help="gom mọi ticket approved của dự án vào một RC khi không còn ticket đang chạy (mặc định: mỗi ticket một RC)")
-    ap.add_argument("--deliver", action="store_true",
-                    help="ADR-0027: production duyệt + deploy → tag v<version> và fast-forward nhánh release trong repo khách")
-    ap.add_argument("--test-author", action="store_true",
-                    help="ADR-0028: test-author viết test từ đặc tả TRƯỚC khi assignee viết code; assignee không ghi "
-                         "được file test. Thêm một lượt model mỗi ticket. Stack không phân vùng được vùng test thì "
-                         "ticket đi đường cũ và PR mang tests_authored_by=assignee")
-    ap.add_argument("--push-remote", help="remote của repo khách để push nhánh release + tag sau khi giao (mặc định: không push)")
-    ap.add_argument("--release-branch", default="company/release", help="nhánh 'đang chạy production' trong repo khách")
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    rn = sub.add_parser("run"); rn.add_argument("--max-steps", type=int); rn.add_argument("--no-reload", action="store_true",
-                                                help="không tự khởi động lại khi mã nguồn đổi (mặc định: có, chỉ ở --watch)")
-    rn.add_argument("--watch", type=float,
-        help="chạy liên tục, mỗi N giây nạp event mới (gate CLI, publish) rồi xử lý")
-    pb = sub.add_parser("publish"); pb.add_argument("topic"); pb.add_argument("file", type=Path)
-    pb.add_argument("--actor", required=True); pb.add_argument("--key")
-    dc = sub.add_parser("decide-change", help="khách quyết định change request (sau khi delivery-lead ước lượng impact)")
-    dc.add_argument("change_id"); dc.add_argument("decision", choices=["accepted", "rejected", "deferred"])
-    dc.add_argument("--by", required=True); dc.add_argument("--reason", default="")
-    cm = sub.add_parser("comment", help="người nhận xét ticket đang chạy: phát lại task với hint, không tính retry")
-    cm.add_argument("ticket_id"); cm.add_argument("--by", required=True); cm.add_argument("--text", required=True)
-    tk = sub.add_parser("takeover", help="người đã sửa tay trong worktree ticket: chạy lint/test, commit, publish PR dưới tên người")
-    tk.add_argument("ticket_id"); tk.add_argument("--by", required=True); tk.add_argument("--message")
-    rd = sub.add_parser("redeploy", help="chạy lại lượt staging cho một release-candidate đang kẹt (sau khi sửa lỗi hạ tầng)")
-    rd.add_argument("release_id"); rd.add_argument("--by", required=True)
-    sub.add_parser("status"); sub.add_parser("report", help="sprint report: estimate vs actual, chi phí, hành động supervisor")
-    ru = sub.add_parser("rulings", help="sổ Ruling (ADR-0030): quyết định agent tự đưa ra thay vì chờ người, kèm 'sai thì mất gì'")
-    ru.add_argument("--project"); ru.add_argument("--ticket")
-    dg = sub.add_parser("diagnose", help="chẩn đoán: gom lỗi thô thành khuôn lặp lại, ticket quay vòng, gate chờ quyết")
-    dg.add_argument("--top", type=int, default=10, help="số khuôn lỗi in ra (mặc định 10)")
-    tr = sub.add_parser("trace", help="dòng thời gian một ticket/REL-xxx/dự án từ intake tới deploy: agent, tier/model, token/USD, tool, gate, chờ, retry")
-    tr.add_argument("subject"); tr.add_argument("--json", action="store_true", help="in JSON thay vì bảng chữ")
-    mt = sub.add_parser("metrics", help="metrics từ audit-log: gọi/token/USD/thời gian theo agent, model, ticket; gate chờ")
-    mt.add_argument("--prometheus", action="store_true", help="xuất text exposition format cho Prometheus")
-    sh = sub.add_parser("show", help="in toàn văn artifact mới nhất của một namespace blackboard"); sh.add_argument("namespace")
-    sh.add_argument("--project", help="dự án của artifact (ADR-0018); bỏ qua nếu chỉ có một dự án dùng namespace đó")
-    ns = ap.parse_args(argv)
-    for stream in (sys.stdout, sys.stderr):  # Windows console cp1252
-        if hasattr(stream, "reconfigure"): stream.reconfigure(encoding="utf-8")
-    from .sqlite_bus import Lease, LeaseError, SQLiteBus
-    bus = SQLiteBus(ns.db)
-    if ns.cmd == "publish":
-        if not is_human(ns.actor):  # CLI là cửa của người; giả danh agent/orchestrator từ đây là vượt quyền producer của bus
-            print(f"--actor phải là người (human:<tên>), không phải {ns.actor!r}", file=sys.stderr); return 2
-        payload = json.loads(ns.file.read_text(encoding="utf-8"))
-        key = ns.key or payload.get("ticket_id") or payload.get("release_id") or payload.get("change_id") or payload.get("project_id")
-        if not key: print("cần --key", file=sys.stderr); return 2
-        env = bus.publish(Envelope(topic=ns.topic, key=key, actor=ns.actor, payload=payload))
-        print(f"published {env.topic} key={env.key} event={env.event_id}"); return 0
-    if ns.cmd == "decide-change":
-        cr = next(reversed(list(bus.replay(topic="change-requests", key=ns.change_id))), None)
-        if cr is None: print(f"không có change-request {ns.change_id}", file=sys.stderr); return 2
-        impact = next((_evidence(e.payload) for e in reversed(list(bus.replay(topic="audit-log")))
-                       if e.payload.get("action") == "change.impact" and _evidence(e.payload).get("change_id") == ns.change_id), {})
-        payload = {**cr.payload, "decision": ns.decision, "impact": {**cr.payload.get("impact", {}), **impact.get("impact", {}),
-                                                                       "decided_by": ns.by, "reason": ns.reason}}
-        env = bus.publish(Envelope(topic="change-requests", key=ns.change_id, actor=ns.by, payload=payload))
-        print(f"{ns.change_id}: {ns.decision} by {ns.by} event={env.event_id}"); return 0
-    if ns.cmd == "metrics":
-        from .metrics import collect, prometheus
-        m = collect(bus)
-        print(prometheus(m) if ns.prometheus else json.dumps(m, ensure_ascii=False, indent=2)); return 0
-    if ns.cmd == "diagnose":
-        from .metrics import diagnose
-        print(json.dumps(diagnose(bus, top=ns.top), ensure_ascii=False, indent=2)); return 0
-    if ns.cmd == "trace":
-        from .trace import run as trace_run
-        return trace_run(bus, ns.subject, ns.json)
-    from .llm import FakeClient, make_client
-    # `run` và `redeploy` GỌI MODEL (redeploy chạy lại lượt staging của release-engineer) nên cần client thật;
-    # status/report/show/comment/takeover là việc của người và của code, không được đòi SDK/API key.
-    # Thiếu `redeploy` ở đây thì lệnh chạy bằng FakeClient và chết "FakeClient hết câu trả lời" — đo được 2026-09-06.
-    orch = Orchestrator(bus, make_client() if ns.cmd in {"run", "redeploy"} else FakeClient(), repo=ns.repo, base=ns.base, integration=ns.integration, workers=ns.workers,
-                        web=ns.web, batch_releases=ns.batch_release, artifacts=ns.artifacts or artifact_store(ns.db),
-                        deliver=ns.deliver, push_remote=ns.push_remote, release_branch=ns.release_branch,
-                        test_author=ns.test_author)
-    if ns.cmd == "status":
-        print(json.dumps(orch.status(), ensure_ascii=False, indent=2)); return 0
-    if ns.cmd == "rulings":
-        rows = orch.rulings(project_id=ns.project, ticket_id=ns.ticket)
-        for ru_ in rows:
-            who = ru_.get("ticket_id") or ru_.get("project_id") or "-"
-            print(f"{ru_['at']}  {ru_['by']:<18} {who:<14} {ru_['decision']}")
-            print(f"{'':40} vì: {ru_['why']}")
-            print(f"{'':40} sai thì: {ru_['cost_if_wrong']}")
-        print(f"({len(rows)} ruling)"); return 0
-    if ns.cmd == "report":
-        print(json.dumps(orch.supervisor.sprint_report(), ensure_ascii=False, indent=2)); return 0
-    if ns.cmd == "show":
-        sc = orch.blackboard.read(ns.namespace, ns.project)
-        if sc is None and ns.project is None:
-            # Blackboard phân vùng theo dự án: không nêu --project thì chỉ đoán được khi đúng một dự án có namespace này.
-            found = [c for (pid, nsp), c in orch.blackboard._latest.items() if nsp == ns.namespace]
-            if len(found) == 1: sc = found[0]
-            elif len(found) > 1:
-                projects = ", ".join(sorted(str(c.project_id) for c in found))
-                print(f"{ns.namespace} có ở nhiều dự án ({projects}); nêu --project", file=sys.stderr); return 2
-        if sc is None: print(f"chưa có namespace {ns.namespace}", file=sys.stderr); return 2
-        scope = f" [{sc.project_id}]" if sc.project_id else ""
-        print(f"# {ns.namespace} v{sc.version}{scope} — {sc.content_ref}\n# {sc.summary}\n")
-        print(sc.content if sc.content is not None else "(chỉ có con trỏ, không có toàn văn)"); return 0
-    if ns.cmd == "redeploy":
-        try:
-            lease = Lease(ns.db); lease.acquire()
-        except LeaseError as e:
-            print(str(e), file=sys.stderr); return 3
-        try:
-            rc = orch.redeploy(ns.release_id, ns.by)
-            print(f"{rc.key}: đã chạy lại lượt staging (by={ns.by})")
-        except ValueError as e:
-            print(str(e), file=sys.stderr); return 2
-        finally:
-            lease.release()
-        return 0
-    if ns.cmd in {"comment", "takeover"}:
-        try:
-            if ns.cmd == "comment":
-                t = orch.comment(ns.ticket_id, ns.by, ns.text); print(f"{t.ticket_id}: phát lại với hint (retry={t.retry})")
-            else:
-                env = orch.takeover(ns.ticket_id, ns.by, ns.message)
-                print(f"{env.key}: PR {env.payload['pr_ref']} của {ns.by}, lint={env.payload['local_checks']['lint']} "
-                      f"tests={env.payload['local_checks']['tests']} event={env.event_id}")
-        except (ValueError, WorkspaceError) as e:
-            print(str(e), file=sys.stderr); return 2
-        return 0
-    try:
-        lease = Lease(ns.db); lease.acquire()
-    except LeaseError as e:
-        print(str(e), file=sys.stderr); return 3
-    reload = False
-    try:
-        if ns.watch:
-            try: orch.watch(interval=ns.watch, reload=not ns.no_reload)
-            except KeyboardInterrupt: pass
-            except ReloadRequested: reload = True
-        else:
-            for r in orch.tick() if ns.max_steps is None else orch.run(ns.max_steps): print(_fmt(r))
-    finally:
-        lease.release()  # trả lease TRƯỚC khi exec: tiến trình mới phải lấy được lease
-    if reload:
-        argv = [sys.executable, "-u", "-m", "company.orchestrator", *sys.argv[1:]]  # -u: stdout không bị buffer (URL/token/log)
-        _reexec(argv)
-    print(json.dumps(orch.status(), ensure_ascii=False))
-    return 0
-
-
-def _reexec(argv: list[str]) -> None:  # tách ra để test thay được; execv không trở về
-    os.execv(argv[0], argv)
 
 
 if __name__ == "__main__":  # pragma: no cover

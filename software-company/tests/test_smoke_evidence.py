@@ -193,13 +193,14 @@ def _acts(bus):
 
 
 def _fake_smoke(monkeypatch, results):
-    """Runtime giả: `run_smoke` của orchestrator trả lần lượt từng kết quả (lượt deployed rồi lượt QA hồi quy)."""
-    from company import orchestrator as om
+    """Runtime giả: `run_smoke` của `company.orch.verify` (K1: tách khỏi orchestrator.py, ADR-0034) trả lần lượt
+    từng kết quả (lượt deployed rồi lượt QA hồi quy)."""
+    from company.orch import verify as ov
     calls: list[Path] = []
     def fake(root, rt):
         calls.append(root)
         return dict(results[min(len(calls), len(results)) - 1])
-    monkeypatch.setattr(om, "run_smoke", fake)
+    monkeypatch.setattr(ov, "run_smoke", fake)
     return calls
 
 
