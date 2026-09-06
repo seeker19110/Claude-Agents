@@ -157,7 +157,7 @@ class DeliveryLead:
         st = self.state.get(tid)
         if tid not in self.tickets or st not in {"in_review", "dispatched", "in_progress", "changes_requested"}:
             raise ValueError(f"{tid}: không can thiệp được ở trạng thái {st} (blocked/escalated → gate escalation)")
-        nt = self.tickets[tid].model_copy(update={"hint": hint}); self.tickets[tid] = nt
+        nt = self.tickets[tid].model_copy(update={"hint": hint, "human_hint": hint}); self.tickets[tid] = nt
         if st == "in_review": self._set(tid, "changes_requested")
         elif st != "changes_requested": self.state[tid] = "changes_requested"  # dispatched/in_progress: agent chưa nộp gì
         self.review_since.pop(tid, None)
@@ -385,7 +385,7 @@ class DeliveryLead:
         """Người duyệt escalation: mở lại ticket blocked/escalated với hint, đếm retry lại từ 0."""
         if self.state.get(tid) not in {"blocked", "escalated"}:
             raise ValueError(f"{tid}: chỉ mở lại ticket blocked/escalated (đang {self.state.get(tid)})")
-        nt = self.tickets[tid].model_copy(update={"retry": 0, "hint": hint}); self.tickets[tid] = nt
+        nt = self.tickets[tid].model_copy(update={"retry": 0, "hint": hint, "human_hint": hint}); self.tickets[tid] = nt
         self._publish_task(nt); return nt
 
     def mark_done_already_integrated(self, tid: str) -> None:

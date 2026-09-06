@@ -56,6 +56,15 @@ def _git(repo: Path, *args: str, stdin: str | None = None) -> str:
 # Rác do agent chạy lint/test sinh ra trong worktree. `commit_all` dùng `git add -A`: không loại thì `.pyc` của hai
 # ticket cùng vào branch rồi xung đột nhị phân lúc merge (mô phỏng donghanhcungban, F14). Ghi vào `.git/info/exclude`
 # (áp cho mọi worktree, không chạm `.gitignore` của khách) và không bao giờ add vào index.
+# File sinh tự động / hợp đồng: vẫn gửi reviewer nhưng XUỐNG CUỐI diff, để khi cắt thì mã nguồn còn nguyên.
+GENERATED_PATTERNS = ("openapi", ".lock", "-lock.json", ".snap", ".min.js", ".map", "sbom", "third-party")
+
+
+def is_generated(path: str) -> bool:
+    low = path.lower()
+    return any(pat in low for pat in GENERATED_PATTERNS)
+
+
 JUNK_PATTERNS = (".worktrees/", "__pycache__/", "*.pyc", "*.pyo", ".ruff_cache/", ".pytest_cache/", ".mypy_cache/",
                  ".hypothesis/", ".venv/", "*.egg-info/")
 
@@ -182,9 +191,33 @@ class TicketWorkspace:
         return bool(_git(self.path, "status", "--porcelain"))
 
     def diff(self, max_chars: int = 20_000) -> str:
-        """Diff so với điểm rẽ nhánh (gồm cả phần chưa commit) để reviewer/QA đọc; cắt để không phá ngữ cảnh."""
-        d = _git(self.path, "diff", self.base_sha())
-        return d if len(d) <= max_chars else d[:max_chars] + f"\n… (cắt, còn {len(d) - max_chars} ký tự)"
+        """Diff so với điểm rẽ nhánh (gồm cả phần chưa commit) để reviewer/QA đọc; cắt để không phá ngữ cảnh.
+
+        Ghép theo TỪNG FILE, mã nguồn trước — file sinh tự động/hợp đồng (openapi, lockfile, snapshot) xuống cuối
+        — rồi mới cắt, và NÓI RÕ file nào bị bỏ. `git diff` xếp theo đường dẫn nên `api/QLKH/openapi.yaml` đứng
+        trước `qlkh/**.py`: đo được 2026-09-06 (QLKH-012) một lần sinh lại openapi.yaml 804 dòng ăn hết hạn mức,
+        đẩy toàn bộ code thật ra ngoài; security-engineer kết luận "thiếu diff của erasure_*.py" — đọc đúng cái nó
+        nhận được, nhưng cái nó nhận được không phải sự thật. Reviewer bị cắt mà KHÔNG BIẾT mình bị cắt là chỗ hại
+        nhất: nó kết luận thiếu bằng chứng, ticket bị chặn oan."""
+        files = [f for f in _git(self.path, "diff", "--name-only", self.base_sha()).splitlines() if f]
+        if not files:
+            return ""
+        ordered = sorted(files, key=lambda f: (1 if is_generated(f) else 0, f))
+        parts: list[str] = []
+        used, bo_qua = 0, []
+        for f in ordered:
+            d = _git(self.path, "diff", self.base_sha(), "--", f)
+            if not d:
+                continue
+            if used + len(d) > max_chars:
+                bo_qua.append(f)
+                continue
+            parts.append(d); used += len(d)
+        out = "\n".join(parts)
+        if bo_qua:
+            out += ("\n… (cắt cho vừa hạn mức; KHÔNG có diff của: " + ", ".join(bo_qua) +
+                    " — đừng kết luận các file này thiếu, hãy đọc `changed_files` hoặc xin diff riêng)")
+        return out
 
 
 @dataclass
