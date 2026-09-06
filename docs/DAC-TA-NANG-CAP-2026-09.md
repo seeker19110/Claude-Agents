@@ -179,7 +179,7 @@ Tổng khoảng 20–22 ngày-phiên tuần tự, rút còn ~12 ngày lịch n�
 
 | Mã | Trạng thái | PR | Ghi chú |
 |---|---|---|---|
-| V1–V5 | chưa | | |
+| V1–V5 | V1 xong (#94 đã merge); V2 xong #98; V3 thủ công, không kiểm được từ repo; V4 xong #98; V5 xong #98 | #98 | |
 | B1–B8 | B2 xong; B3 xong — ADR-0029 mở rộng, spec có `kind`, qa-debugger v13; B4 xong; B5 xong; B7 xong | B2: #97, B3: #102, B4: #100, B5: #103, B7: #99 | B3 dùng lại `run_smoke`. B4: mục `acceptance.da-chay` + mục "Đã chạy" trong hồ sơ; cần `--repo`. B5: ADR-0032, `test_no_kien_truc_adr0032.py`, ngưỡng `llm.yaml debt_reviews`. B7: `orchestrator trace <id> [--json]`, `src/company/trace.py` |
 | B1–B8 | B6 xong — DoD ba agent điều phối + ảnh chụp của frontend; **không** thêm tool playwright (lý do + giới hạn ở ADR-0033) | B6: #111 | B6: ADR-0033, `pull-requests.payload.evidence.screenshots[]`, delivery-lead v11 / release-engineer v8 / account-manager v8 / frontend v13, `test_dod_san_pham_chay_duoc.py`. Ảnh sinh bằng lệnh khai trong `runtime` của spec, không có tool chụp → `skipped` kèm lý do |
 | B1–B8 | B1 xong, B4 xong, B5 xong, B7 xong; B2 wip (ADR-0030 nhánh `feat/so-ruling-adr-0030`) | B1: #104, B4: #100, B5: #103, B7: #99 | B1: ADR-0031, `spec_runtime_gap` chặn trước gate, spec-writer v9, gate_brief `spec.runtime`. B4: mục `acceptance.da-chay` + mục "Đã chạy" trong hồ sơ; cần `--repo`. B5: ADR-0032, `test_no_kien_truc_adr0032.py`, ngưỡng `llm.yaml debt_reviews`. B7: `orchestrator trace <id> [--json]`, `src/company/trace.py` |
