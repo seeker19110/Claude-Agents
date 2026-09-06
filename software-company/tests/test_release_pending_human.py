@@ -13,13 +13,13 @@ from test_orchestrator import _agent_of, _drive_to_plan, _inp, handler
 
 
 def _pausing_release_engineer(pause_envs: dict[str, int]):
-    """release-engineer trả `pending_human` `n` lần đầu cho mỗi env rồi mới `deployed`."""
+    """release-engineer trả `pending_human` `n` lần đầu cho mỗi (env, release) rồi mới `deployed`."""
     seen: dict[str, int] = {}
     def h(system, user):
         a, p = _agent_of(system), _inp(user)
         if a == "release-engineer":
-            env = p["target_env"]; seen[env] = seen.get(env, 0) + 1
-            if seen[env] <= pause_envs.get(env, 0):
+            env = p["target_env"]; k = f"{env}:{p['release_id']}"; seen[k] = seen.get(k, 0) + 1
+            if seen[k] <= pause_envs.get(env, 0):
                 return {"release_id": p["release_id"], "version": "1.0.0", "env": env, "status": "pending_human",
                         "summary": f"dừng {env}: chờ người ({p.get('human_hint') or 'không hint'})"}
         return handler(system, user)
@@ -112,3 +112,42 @@ def test_ky_lai_gate_3_chay_lai_duoc_luot_production_khong_can_restart():
     orch.gate.request(GateRequest(kind="release", subject_id="REL-001", created_by="delivery-lead", checklist=["tests"]))
     orch.gate.decide("REL-001", "approve", by="human:lead", reason="ký lại"); orch.run()
     assert _events(bus, "REL-001", "production") == ["pending_human", "deployed"]
+
+
+def test_mo_lai_bus_thi_rc_dang_pending_human_tu_truoc_van_duoc_mo_gate(tmp_path):
+    """RC kẹt `pending_human` từ TRƯỚC bản vá (event đã processed, không gate): mở lại orchestrator phải thấy gate,
+    không cần chờ event mới. Và gate đã quyết rồi mà lượt chạy lại vẫn dừng → gate mới (khoá theo event_id)."""
+    from company.sqlite_bus import SQLiteBus
+    h = _pausing_release_engineer({"staging": 2})
+    bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient(handler=h))
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    assert orch.gate.pending["REL-001"].kind == "escalation"
+    # giả lập "trước bản vá": xoá gate khỏi RAM và khoá once, rồi mở lại bus bằng orchestrator mới
+    bus.close()
+    bus2 = SQLiteBus(tmp_path / "c.sqlite"); orch2 = Orchestrator(bus2, FakeClient(handler=h))
+    assert "REL-001" in orch2.gate.pending, "gate bền qua restart (replay audit)"
+    orch2.gate.decide("REL-001", "approve", by="human:lead", reason="chạy lại"); orch2.run()
+    # lượt chạy lại (lần 2) vẫn pending_human → gate MỚI cho event mới, không bị `once` của event cũ nuốt
+    assert _events(bus2, "REL-001", "staging") == ["pending_human", "pending_human"]
+    assert orch2.gate.pending["REL-001"].kind == "escalation"
+    orch2.gate.decide("REL-001", "approve", by="human:lead", reason="chạy lại lần nữa"); orch2.run()
+    assert _events(bus2, "REL-001", "staging") == ["pending_human", "pending_human", "deployed"]
+
+
+def test_sweep_mo_gate_cho_rc_pending_khong_co_gate(tmp_path):
+    """Đường thẳng vào sweep: RC có event pending_human đã processed, không gate, once trống → tick mở gate."""
+    from company.events import Envelope
+    from company.sqlite_bus import SQLiteBus
+    bus = SQLiteBus(tmp_path / "c.sqlite")
+    bus.publish(Envelope(topic="release-candidates", key="REL-001", actor="delivery-lead",
+                         payload={"release_id": "REL-001", "project_id": "P1", "tickets": ["T1"], "version": "1.0.0"}))
+    bus.publish(Envelope(topic="release-events", key="REL-001", actor="release-engineer",
+                         payload={"release_id": "REL-001", "version": "1.0.0", "env": "staging", "status": "pending_human"}))
+    orch = Orchestrator(bus, FakeClient(handler=handler))
+    for e in list(bus.replay()): orch.processed.add(e.event_id)  # coi như đã xử lý hết từ trước bản vá
+    orch.queue.clear()
+    orch.tick()
+    assert orch.gate.pending["REL-001"].kind == "escalation"
+    assert sum(1 for e in bus.replay(topic="audit-log") if e.payload["action"] == "release.pending_human") == 1
+    orch.tick()
+    assert sum(1 for e in bus.replay(topic="audit-log") if e.payload["action"] == "gate.request") == 1, "không mở trùng"
