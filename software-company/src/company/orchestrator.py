@@ -857,7 +857,18 @@ class Orchestrator:
                     # Có tool mà không chạy gì: verdict chỉ là lời khai. Không chặn (người đọc review vẫn quyết), nhưng phải hiện.
                     self._audit("review.no_tool_evidence", {"agent": agent, "topic": env.topic, "key": env.key},
                                 actor=agent, ticket_id=inp.payload.get("ticket_id"), project_id=self.project_for(env))
-                out = self.runner.publish(agent, inp, r.topic_out, g.payloads[0], key=key_for(r.topic_out, g.payloads[0], env.key),
+                p = g.payloads[0]
+                if r.topic_out == "review-results" and env.topic in {"release-candidates", "release-events"}                         and (rid := env.payload.get("release_id")) and p.get("ticket_id") != rid:
+                    # Review trên RELEASE (release-check của security, QA hồi quy trên staging): subject là release_id
+                    # của ROUTE, không phải lời khai của model — cùng nguyên tắc với `env`/`release_id` trong
+                    # `_release`. Model hay điền ticket đầu tiên của RC vào `ticket_id`: review rơi vào ticket ĐÃ
+                    # approved (vô nghĩa), `release_reviews[rid]` thiếu nguồn → Gate 3 không mở, escalation cũng
+                    # không → RC chết im. Đo được 2026-09-06 (QLKH REL-024): security block ghi ticket_id=
+                    # TCK-CR-OPS-001-04, không gate nào mở, `status` xanh.
+                    self._audit("review.subject_overridden", {"release_id": rid, "claimed_ticket_id": p.get("ticket_id"),
+                                                              "source": p.get("source")}, actor=agent, project_id=self.project_for(env))
+                    p = {**p, "ticket_id": rid}
+                out = self.runner.publish(agent, inp, r.topic_out, p, key=key_for(r.topic_out, p, env.key),
                                           tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
                 res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
             with self._lock:
