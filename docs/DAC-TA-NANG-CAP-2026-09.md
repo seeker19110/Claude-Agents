@@ -178,6 +178,6 @@ Tổng khoảng 20–22 ngày-phiên tuần tự, rút còn ~12 ngày lịch n�
 | D1–D5 | chưa | | |
 | C1–C10 | C6 một phần (#80), C1 một phần (#76) | | |
 | S1–S7 | S2 một phần (ADR-0009) | | |
-| E1–E5 | E4 xong | E4: #PRNUM | E4: `gateway/docs/adr/0001–0003`, bộ khung 4 file dẫn `file:dòng` |
+| E1–E5 | E4 xong | E4: #101 | E4: `gateway/docs/adr/0001–0003`, bộ khung 4 file dẫn `file:dòng` |
 
 Cập nhật bảng này trong cùng PR của mục. Mục "xong" phải có số PR và, với B8/S7, đường dẫn báo cáo.
