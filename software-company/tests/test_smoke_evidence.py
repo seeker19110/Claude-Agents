@@ -159,3 +159,19 @@ def test_khong_co_repo_thi_unverified_noi_ro_ly_do(tmp_path):
     st = _staging(bus)
     assert st[-1]["status"] == "deployed" and st[-1]["smoke"]["unverified"] is True
     assert "worktree" in st[-1]["smoke"]["reason"]
+
+
+def test_run_smoke_communicate_qua_gio_khong_lam_hong_bang_chung(tmp_path, monkeypatch):
+    """Tiến trình bị kill mà `communicate` vẫn treo (pipe stderr bị con giữ) → bỏ qua stderr, bằng chứng còn lại giữ nguyên."""
+    import subprocess as sp
+    from company import smoke as sm
+
+    class Proc:
+        returncode = 7
+        def poll(self): return 7
+        def kill(self): raise AssertionError("đã chết thì không kill")
+        def communicate(self, timeout=None): raise sp.TimeoutExpired(cmd="x", timeout=timeout)
+
+    monkeypatch.setattr(sm.subprocess, "Popen", lambda *a, **k: Proc())
+    r = run_smoke(tmp_path, Runtime(("x",), timeout_s=2))
+    assert r["ok"] is False and r["exit_code"] == 7 and "stderr_tail" not in r
