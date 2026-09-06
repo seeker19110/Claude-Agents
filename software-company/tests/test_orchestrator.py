@@ -172,6 +172,25 @@ def test_poll_picks_up_gate_decision_from_other_process(tmp_path):
     assert orch.gate.is_approved("PLAN-P1-1") and orch.lead.state["T1"] == "merged"
 
 
+def test_run_polls_foreign_gate_decision_while_queue_is_busy(tmp_path):
+    """Hàng đợi bận liên tục (agent nào cũng sinh event mới) thì `tick()` không quay lại `poll()`; quyết định gate
+    của tiến trình khác phải được nạp ngay TRONG `run()`, không đợi hàng đợi cạn."""
+    from company.gate_cli import main as gate_main
+    db = tmp_path / "c.sqlite"
+    bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=handler))
+    _drive_to_plan(bus, orch)
+    # Mô phỏng "đang bận": xử lý event đầu tiên trong hàng đợi thì tiến trình khác ký gate.
+    _pub(bus, "research-requests", "P2", "human:pm", {"project_id": "P2", "description": "việc khác đang chạy"})
+    orig = orch.process
+    def busy(env):
+        if env.topic == "research-requests":
+            assert gate_main(["--db", str(db), "approve", "PLAN-P1-1", "--by", "human:pm"]) == 0  # tiến trình khác
+        return orig(env)
+    orch.process = busy
+    orch.run()
+    assert orch.gate.is_approved("PLAN-P1-1") and orch.lead.state["T1"] == "merged",         "quyết định ký giữa lúc hàng đợi bận phải được áp trong cùng lượt run(), không chờ tick() sau"
+
+
 # ---------- supervisor pause / resume ----------
 
 def test_paused_ticket_is_deferred_until_resume():

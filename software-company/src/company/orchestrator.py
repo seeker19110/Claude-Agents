@@ -640,6 +640,12 @@ class Orchestrator:
         workers = workers or self.workers
         out: list[StepResult] = []
         while self.queue and (max_steps is None or len(out) < max_steps):
+            # Nạp event của tiến trình khác ở MỌI vòng, không chỉ ở đầu `tick()`: khi công ty tự nuôi hàng đợi (mỗi
+            # lượt agent sinh event mới), `run()` không bao giờ cạn và `tick()` không quay lại `poll()` — quyết định
+            # gate người ký bằng `gate_cli` nằm trong sqlite hàng chục phút, `gate_cli list` báo trống mà orchestrator
+            # vẫn coi gate đang chờ. Đo được 2026-09-06 (QLKH): 4 gate escalation REL-020..023 ký 10:55–11:01, hàng
+            # đợi bận liên tục từ 10:50, chưa cái nào được áp sau 12 phút; lead ký 03:06 lúc hàng đợi rỗng thì áp trong 1 s.
+            if hasattr(self.bus, "poll"): self.bus.poll()
             room = workers if max_steps is None else max(1, min(workers, max_steps - len(out)))
             batch = self._take_batch(room)
             if len(batch) == 1:
