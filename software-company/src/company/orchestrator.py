@@ -1076,8 +1076,22 @@ class Orchestrator:
         DHCB-5 import `dhcb.layout` của DHCB-2 và đỏ ngay dù DHCB-2 đã approved."""
         if not self._has_integration(): return
         for tid, st in list(self.lead.state.items()):
-            if st != "approved" or tid in self.integrated: continue
+            if st != "approved": continue
+            # `tid in self.integrated` KHÔNG đủ để bỏ qua: ticket bị trả về làm lại (nghiệm thu rejected, review block)
+            # rồi approved lần nữa thì branch có commit MỚI mà tập `integrated` vẫn nhớ lần trước → bản sửa không bao
+            # giờ vào nhánh tích hợp, release sau vẫn mang code cũ. Đo được 2026-09-06 (TCK-CR-STAGE-001-02: bản sửa
+            # deploy.sh nằm ở commit WIP trên branch, v0.18.2 vẫn là bản lỗi `uv sync --frozen`).
+            if tid in self.integrated and not self._branch_ahead(tid): continue
             self._merge_ticket(tid, res, release_id=None)
+
+    def _branch_ahead(self, tid: str) -> bool:
+        """Branch ticket có commit chưa nằm trong nhánh tích hợp? (làm lại sau khi đã merge một lần)."""
+        integ = self._integration_of_ticket(tid); ws = self.workspace(tid)
+        if integ is None or ws is None or not ws.path.exists(): return False
+        try:
+            return bool(integ.rev_list_count(ws.branch))
+        except WorkspaceError:
+            return False
 
     def _merge_ticket(self, tid: str, res: StepResult, release_id: str | None) -> bool:
         """merge --no-ff branch ticket vào nhánh tích hợp. Xung đột → ticket về changes_requested với hint là file xung
@@ -1087,7 +1101,9 @@ class Orchestrator:
 
     def _merge_ticket_locked(self, tid: str, res: StepResult, release_id: str | None) -> bool:
         with self._lock:
-            if tid in self.integrated: return True  # thread khác vừa merge xong trong lúc ta chờ khoá
+            already = tid in self.integrated
+        if already and not self._branch_ahead(tid):
+            return True  # thread khác vừa merge xong, hoặc branch không có gì mới so với nhánh tích hợp
         integration = self._integration_of_ticket(tid)
         ws = self.workspace(tid)
         if integration is None or ws is None or not ws.path.exists():
@@ -1133,7 +1149,7 @@ class Orchestrator:
         rid = rc.payload["release_id"]
         if rid in self.void_releases: return False
         for tid in rc.payload.get("tickets", []):
-            if tid in self.integrated: continue
+            if tid in self.integrated and not self._branch_ahead(tid): continue
             if self.lead.state.get(tid) not in {"approved", "merged"}:  # đã bị trả về (xung đột lúc approved): RC vô nghĩa
                 self._audit("release.void", {"release_id": rid, "ticket_id": tid, "reason": f"ticket đang {self.lead.state.get(tid)}"}, ticket_id=tid)
                 self._void(rid); res.actions.append(f"void:{rid}")
