@@ -22,6 +22,50 @@ test, hoặc nguồn chính thống có ngày truy cập.
   `chore/<slug>`. Có issue thì `feat/<issue>-<slug>`.
 - **Không push thẳng `main`.** Mọi thay đổi vào `main` đều qua pull request, kể cả khi làm một mình.
 
+## 2b. Nhiều phiên cùng lúc: mỗi phiên một worktree
+
+Một clone chỉ có **một** HEAD. Hai phiên agent cùng mở `C:\Users\liend\Claude-Agents` là hai tiến trình
+lần lượt `git checkout` đè lên nhau, và commit của phiên này rơi vào nhánh của phiên kia — không lệnh nào
+báo lỗi.
+
+Chuyện đã xảy ra ngày 2026-09-06, đọc được nguyên vẹn trong `git reflog` (cách nhau vài chục giây):
+
+```
+15:05:42 checkout: moving from fix/wip-head-is-pr to docs/danh-gia-superpowers...   ← phiên A tạo nhánh
+15:06:23 commit: fix(company): HEAD là commit WIP...                                ← phiên B commit vào nhánh A
+15:07:06 reset: moving to b95710d                                                   ← B gỡ, tạo nhánh riêng
+15:07:14 checkout: moving from fix/wip-head-is-pr to main                           ← B chuyển sang main
+15:07:16 commit: docs(company): đối chiếu superpowers...                            ← commit của A rơi vào main
+```
+
+Kết quả: nhánh của A rỗng (`gh pr create` báo *No commits between main and ...*), còn `main` local mang một
+commit chưa qua PR. Phải `git branch -f` hai lần mới trả về đúng chỗ. Không có xung đột, không có cảnh báo —
+chỉ có commit nằm sai nhánh.
+
+**Quy tắc: phiên nào không phải phiên đầu tiên thì làm trong worktree riêng.**
+
+```bash
+git worktree add -b <loại>/<slug> ../Claude-Agents-wt-<slug> origin/main
+```
+
+Rồi `cd` vào đó và làm bình thường; `.venv` ở gốc vẫn dùng được qua `uv run`. Xong việc thì dọn:
+
+```bash
+git worktree remove ../Claude-Agents-wt-<slug>
+```
+
+Kiểm trước khi bắt đầu, mất hai giây:
+
+```bash
+git worktree list
+```
+
+Cách nhận ra mình đang giẫm chân người khác: `git status` hay `git log` cho ra một nhánh mà lượt này không hề
+tạo, hoặc `git reflog` có `checkout` mình không gọi. Gặp thì dừng, **đừng commit**, mở worktree riêng trước.
+
+Điều này áp cho **phiên người lái**. Orchestrator đã cô lập sẵn: mỗi ticket một worktree dưới `.worktrees/`
+(`software-company/src/company/workspace.py`), và nó chạy trên repo của khách (`--repo`), không phải repo này.
+
 ## 3. Commit
 
 - Conventional Commits: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `style`, `perf`,
