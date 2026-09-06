@@ -311,6 +311,70 @@ def test_acceptance_gap_khi_chua_len_production(tmp_path):
     assert _verdicts(b)["acceptance.moi-truong"] == "gap"
 
 
+# ---------- acceptance tự chạy sản phẩm (B4, ADR-0029) ----------
+
+SERVER_OK = "import http.server,sys;http.server.test(http.server.SimpleHTTPRequestHandler,port=int(sys.argv[1]),bind='127.0.0.1')"
+SERVER_DIE = "import sys;sys.stderr.write('config thiếu DATABASE_URL\\n');sys.exit(3)"
+
+
+def _runtime_handler(system, user):
+    """spec-writer khai `runtime` là một http.server thật (fake runtime, không cần file trong repo)."""
+    out = rich_handler(system, user)
+    if _agent_of(system) == "spec-writer":
+        out["payload"]["runtime"] = {"command": ["python", "-c", SERVER_OK, "{port}"], "health": "/", "timeout_s": 20}
+    return out
+
+
+def _smoke_item(b: dict) -> dict:
+    return next(x for x in b["self_check"] if x["id"] == "acceptance.da-chay")
+
+
+def test_acceptance_tu_chay_san_pham_co_ma_http_that(tmp_path):
+    """Có `runtime` + `--repo`: hồ sơ khởi động sản phẩm trong worktree tích hợp, mục "Đã chạy" mang mã HTTP 200 thật,
+    `verified_by=orchestrator`; verdict `moi-truong` lấy từ máy chứ không từ lời khai `deployed`."""
+    repo = _init_repo(tmp_path / "repo")
+    db, _bus, _orch = _scenario(tmp_path, _runtime_handler, repo=repo)
+    b = GB.build(GB.load_state(db, repo=repo), "UAT-REL-001")
+    it = _smoke_item(b); sm = b["extra"]["smoke"]
+    assert it["verdict"] == "ok" and sm["ok"] is True and sm["http_status"] == 200 and sm["verified_by"] == "orchestrator"
+    assert sm["cwd"].endswith("_integration") and sm["release_id"] == "REL-001" and sm["ref"]
+    assert any("mã HTTP: 200" in f for f in it["facts"]) and it["sources"][0]["kind"] == "smoke"
+    assert _verdicts(b)["acceptance.moi-truong"] == "ok" and not b["unavailable"]
+    md = GB.render_md(b)
+    assert "## Đã chạy" in md and "mã HTTP: 200" in md and "verified_by=orchestrator" in md and "kết luận máy: ok" in md
+
+
+def test_acceptance_khong_co_runtime_thi_noi_khong_the_chay(tmp_path, monkeypatch):
+    """Không `runtime` → mục nói thẳng "không thể chạy" (unknown + unavailable), không im lặng; hồ sơ vẫn sinh."""
+    db, _, _ = _scenario(tmp_path)
+    b = GB.build(GB.load_state(db), "UAT-REL-001")
+    it = _smoke_item(b)
+    assert it["verdict"] == "unknown" and any("không thể chạy" in f.lower() for f in it["facts"])
+    assert [u["id"] for u in b["unavailable"]] == ["acceptance.da-chay"] and "runtime" in b["unavailable"][0]["reason"]
+    assert "KHÔNG THỂ CHẠY" in GB.render_md(b) and "chạy cho tôi xem" in GB.render_md(b)
+    # có runtime nhưng không có --repo: cũng nói rõ, lý do là thiếu worktree
+    from company.smoke import Runtime
+    monkeypatch.setattr(GB, "parse_runtime", lambda _p: Runtime(("python", "-c", "x")))
+    b = GB.build(GB.load_state(db), "UAT-REL-001")
+    assert "worktree" in _smoke_item(b)["facts"][0] and _smoke_item(b)["verdict"] == "unknown"
+
+
+def test_acceptance_smoke_fail_van_ra_ho_so_va_verdict_gap(tmp_path, monkeypatch):
+    """Sản phẩm chết lúc khởi động → hồ sơ vẫn sinh, mục `da-chay` gap với mã thoát + stderr, và `moi-truong` KHÔNG còn
+    `ok` dù release-events khai production deployed — chiều đo quan trọng nhất."""
+    repo = _init_repo(tmp_path / "repo")
+    db, _, _ = _scenario(tmp_path, _runtime_handler, repo=repo)
+    from company.smoke import Runtime
+    monkeypatch.setattr(GB, "parse_runtime", lambda _p: Runtime(("python", "-c", SERVER_DIE), timeout_s=10))
+    b = GB.build(GB.load_state(db, repo=repo), "UAT-REL-001")
+    it = _smoke_item(b); sm = b["extra"]["smoke"]
+    assert it["verdict"] == "gap" and sm["ok"] is False and sm["exit_code"] == 3 and sm["http_status"] is None
+    assert any("DATABASE_URL" in f for f in it["facts"])
+    assert _verdicts(b)["acceptance.moi-truong"] == "gap", "lời khai deployed không được che sản phẩm không chạy"
+    md = GB.render_md(b)
+    assert "KHÔNG ĐẠT" in md and "mã thoát: 3" in md
+
+
 # ---------- escalation (§5.6) ----------
 
 def test_escalation_gom_hint_cu_va_lich_su(tmp_path):

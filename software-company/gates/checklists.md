@@ -86,6 +86,7 @@ Code gửi kèm: `uat-script`, `acceptance-criteria`, `known-issues`, `signed_by
 Người tự kiểm thêm:
 - [ ] Chạy trên bản production (hoặc staging nếu hợp đồng quy định) với dữ liệu khách chấp thuận
 - [ ] Finding truy vết về requirement_id; yêu cầu ngoài spec đi vào `change-requests`, không vào biên bản
+- [ ] Sản phẩm khởi động được và trả lời một request thật — `gate_brief` tự chạy theo `runtime` của spec (ADR-0029), khách ký trên thứ đã chạy chứ không trên lời khai `deployed`
 
 Kết quả (ghi vào `acceptance-results`): accepted / conditional(danh sách còn lại + hạn) / rejected(lý do)
 

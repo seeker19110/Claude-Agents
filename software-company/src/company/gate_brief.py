@@ -37,6 +37,7 @@ from .gates import GateRequest
 from .llm import FakeClient
 from .orchestrator import Orchestrator, _evidence
 from .runner import artifact_store
+from .smoke import parse_runtime, run_smoke
 from .workspace import NO_HOOKS, TicketWorkspace, clean_env
 
 SCHEMA_VERSION = 1
@@ -361,12 +362,46 @@ def _brief_release(orch: Orchestrator, g: GateSection, subject: str, pid: str | 
     return out, unavailable, extra
 
 
+def _smoke_for_brief(orch: Orchestrator, pid: str | None, rid: str) -> dict[str, Any]:
+    """B4 / ADR-0029: hồ sơ acceptance TỰ khởi động sản phẩm theo `runtime` của spec trong worktree tích hợp của dự án
+    (cùng chỗ orchestrator chạy smoke lúc deploy staging) và gọi một request thật. Khách ký trên thứ vừa chạy, không
+    trên lời khai `deployed`. Không có `runtime` hay không có worktree → nói thẳng `unverified` kèm lý do — không im lặng.
+    Tiến trình bị giết khi xong; không ghi bus, không ghi repo (I3 vẫn giữ: lệnh chỉ đọc bus, chạy sản phẩm chỉ để đo)."""
+    spec = orch.latest("approved-specs", pid) if pid else None
+    rt = parse_runtime(spec.payload if spec is not None else None)
+    if rt is None:
+        return {"unverified": True, "reason": "spec không có `runtime` (lệnh khởi động, cổng, đường health), không thể chạy",
+                "verified_by": "orchestrator"}
+    integ = orch.integration_for(pid)
+    if integ is None or not integ.path.exists():
+        return {"unverified": True, "reason": "không có worktree tích hợp để khởi động sản phẩm (chạy lại với --repo)",
+                "verified_by": "orchestrator"}
+    res = run_smoke(integ.path, rt)
+    res["ref"] = _git(integ.path, "rev-parse", "--short", "HEAD")
+    res["release_id"] = rid
+    return res
+
+
+def _smoke_facts(sm: dict[str, Any]) -> list[str]:
+    if sm.get("unverified"):
+        return [f"KHÔNG THỂ CHẠY: {sm['reason']}"]
+    facts = [f"lệnh: {excerpt(' '.join(sm.get('command') or []), 160)}",
+             f"cwd={sm.get('cwd')} ref={sm.get('ref')} url={sm.get('url')}",
+             f"mã HTTP: {sm.get('http_status')}; mã thoát: {sm.get('exit_code')}; {sm.get('elapsed_s')}s; "
+             f"verified_by={sm.get('verified_by')}"]
+    if sm.get("error"): facts.append(f"lỗi: {excerpt(sm['error'], 160)}")
+    if sm.get("stderr_tail"): facts.append(f"stderr: {excerpt(sm['stderr_tail'], 160)}")
+    return facts
+
+
 def _brief_acceptance(orch: Orchestrator, g: GateSection, subject: str, pid: str | None) -> tuple[list[dict], list[dict], dict]:
-    items = _by_id(g); out: list[dict[str, Any]] = []
+    items = _by_id(g); out: list[dict[str, Any]] = []; unavailable: list[dict[str, Any]] = []
     rid = subject[4:] if subject.startswith("UAT-") else subject
     events = list(orch.bus.replay(topic="release-events", key=rid))
     last = events[-1].payload if events else None
     contract, k_src = _ns(orch, "contract", pid)
+    smoke = _smoke_for_brief(orch, pid, rid)
+    ran = not smoke.get("unverified")
 
     it = items["acceptance.moi-truong"]
     facts = []
@@ -378,10 +413,21 @@ def _brief_acceptance(orch: Orchestrator, g: GateSection, subject: str, pid: str
         facts.append(f"contract: {len(hits)} dòng nhắc dữ liệu/môi trường UAT")
         facts += [f"vd: {excerpt(x, 120)}" for x in hits[:2]]
     prod = last is not None and last.get("env") == "production" and last.get("status") == "deployed"
-    if prod: verdict = "ok"
+    # `status=deployed` là lời khai của release-engineer; khi hồ sơ tự chạy được sản phẩm thì verdict theo máy, không theo lời.
+    if prod and ran: verdict = "ok" if smoke.get("ok") else "gap"; facts.append("mục `acceptance.da-chay`: " + _smoke_facts(smoke)[2])
+    elif prod: verdict = "ok"
     elif contract and re.search(r"staging", contract, re.I) and last and last.get("env") == "staging": verdict = "unknown"
     else: verdict = "gap"
     out.append(_item(it, verdict, facts, [_topic_src("release-events", rid, events)] + ([k_src] if k_src else [])))
+
+    it = items["acceptance.da-chay"]
+    sm_src: list[dict[str, Any]] = [{"kind": "smoke", "ref": rid, "verified_by": "orchestrator",
+                                     "cwd": smoke.get("cwd"), "url": smoke.get("url")}]
+    if ran:
+        out.append(_item(it, "ok" if smoke.get("ok") else "gap", _smoke_facts(smoke), sm_src))
+    else:
+        out.append(_item(it, "unknown", _smoke_facts(smoke), sm_src))
+        unavailable.append({"id": it.id, "reason": smoke["reason"]})
 
     it = items["acceptance.truy-vet"]
     acc = list(orch.bus.replay(topic="acceptance-results", key=rid))
@@ -402,7 +448,7 @@ def _brief_acceptance(orch: Orchestrator, g: GateSection, subject: str, pid: str
         if untraced: facts += [f"vd: {excerpt(f.get('text'), 120)}" for f in untraced[:3]]
         if unknown_req: facts.append("REQ không có trong prd: " + ", ".join(unknown_req[:5]))
         out.append(_item(it, "gap" if untraced or unknown_req else "ok", facts, srcs))
-    return out, [], {"release_id": rid, "tickets": orch.lead.release_tickets.get(rid, [])}
+    return out, unavailable, {"release_id": rid, "tickets": orch.lead.release_tickets.get(rid, []), "smoke": smoke}
 
 
 # ---------- gate `escalation` (§5.6) ----------
@@ -559,6 +605,14 @@ def render_md(b: dict[str, Any]) -> str:
         lines += [f"- {json.dumps(t, ensure_ascii=False)}" if isinstance(t, dict) else f"- {t}" for t in ex["tickets"]]
         if ex.get("version"): lines.append(f"- phiên bản: {ex['version']}")
         for r in ex.get("staging_reviews", []): lines.append(f"- review staging {r['source']}: {r['verdict']} — {r['metrics']}")
+    if b["kind"] == "acceptance":
+        sm = ex.get("smoke") or {}
+        lines += ["", "## Đã chạy — hồ sơ tự khởi động sản phẩm theo `runtime` của spec (ADR-0029, B4)", ""]
+        if sm.get("unverified"):
+            lines.append(f"- KHÔNG THỂ CHẠY: {sm.get('reason')} — dưới đây khách chỉ ký trên lời khai; hỏi \"chạy cho tôi xem\" trước")
+        else:
+            lines += ["- " + f for f in _smoke_facts(sm)]
+            lines.append(f"- kết luận máy: {'ok' if sm.get('ok') else 'KHÔNG ĐẠT'} (mã HTTP kỳ vọng do spec đặt)")
     rul = ex.get("rulings") or []
     lines += ["", f"## Sổ Ruling — agent đã tự quyết {len(rul)} việc thay vì hỏi người (ADR-0030)", ""]
     lines += [f"- {r['at']} `{r['by']}` [{r.get('ticket_id') or r.get('project_id') or '-'}] **{r['decision']}** — vì: {r['why']} — sai thì: {r['cost_if_wrong']}"
