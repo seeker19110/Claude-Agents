@@ -153,6 +153,15 @@ class Generated:
         return json.dumps(d, ensure_ascii=False)
 
 
+def _said(g: Any) -> str:
+    """Lời giải thích của agent trong đầu ra (summary/notes/reason) — để audit invalid_output nói được VÌ SAO."""
+    p = (g.payloads or [{}])[0] if getattr(g, "payloads", None) else {}
+    for k in ("summary", "notes", "reason", "root_cause", "rationale"):
+        v = p.get(k) if isinstance(p, dict) else None
+        if v: return str(v)[:300]
+    return "(không giải thích)"
+
+
 class AgentRunner:
     def __init__(self, bus: InMemoryBus, client: ModelClient, agents: dict[str, AgentSpec] | None = None,
                  blackboard: Blackboard | None = None, max_input_chars: int | None = None):
@@ -371,7 +380,8 @@ class AgentRunner:
         tools = WorkspaceTools(ws, allow_write=True, write_scope="tests").toolbox()
         g = self.generate(agent_id, inp, "test-suites", tools=tools, max_turns=max_turns, budget=budget)
         if not ws.dirty() and not kept and not ws.head_is_wip():
-            self._audit(spec, "invalid_output", inp, evidence="worktree không có file test nào sau vòng tool", tokens=g.tokens, cost=g.cost_usd)
+            self._audit(spec, "invalid_output", inp, evidence=f"worktree không có file test nào sau vòng tool; agent nói: {_said(g)}",
+                        tokens=g.tokens, cost=g.cost_usd)
             raise RunnerError(f"{agent_id}: không viết file test nào trong worktree {ws.branch}")
         checks = ws.run_checks()
         # Stack không có lệnh test (vd. node không khai script `test`) thì `tests=False` không nói lên điều gì:
@@ -414,7 +424,10 @@ class AgentRunner:
         # HEAD vẫn là commit WIP chưa từng thành PR → PR chính là HEAD, để reviewer chấm. Đo được 2026-09-06
         # (TCK-CR-DEV-001-02): giữ WIP xong, hai lượt kế tiếp đều "không sửa file nào" → blocked lần nữa.
         if not ws.dirty() and not kept and not ws.head_is_wip():  # so với HEAD của branch: làm lại mà y hệt = "không sửa gì"
-            self._audit(spec, "invalid_output", inp, evidence="worktree không có thay đổi sau vòng tool", tokens=g.tokens, cost=g.cost_usd)
+            # Ghi kèm lời agent: nó không sửa gì thường VÌ một lý do (thiếu quyết định, tưởng đã có sẵn, cần người) — không
+            # ghi thì người chỉ thấy "không sửa file nào" ×3 rồi blocked (TCK-CR-STAGE-001-01, 2026-09-06: 0 tool call, 44 s).
+            self._audit(spec, "invalid_output", inp, evidence=f"worktree không có thay đổi sau vòng tool; agent nói: {_said(g)}",
+                        tokens=g.tokens, cost=g.cost_usd)
             raise RunnerError(f"{agent_id}: không sửa file nào trong worktree {ws.branch} (so với lần trước)")
         checks = ws.run_checks()
         title = str(inp.payload.get("title") or inp.key)[:72]
