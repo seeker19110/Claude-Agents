@@ -70,3 +70,43 @@ def test_retry_unhandled_khong_co_gi_de_chay():
     assert orch._retry_unhandled("CR-404", "human:lead", "x") is False
     orch.unhandled["CR-9"] = {"topic": "change-requests", "event_id": "khong-co", "agent": "delivery-lead"}
     assert orch._retry_unhandled("CR-9", "human:lead", "x") is False
+
+
+def _lead_empty_plan_once():
+    n = {"k": 0}
+    def h(system, user):
+        a, p = _agent_of(system), _inp(user)
+        if a == "delivery-lead" and p.get("decision") != "pending":
+            n["k"] += 1
+            if n["k"] == 1: return {"items": []}  # kế hoạch rỗng → plan_rejected
+        return handler(system, user)
+    return h
+
+
+def test_duyet_escalation_plan_rong_thi_lap_lai_ke_hoach():
+    """`plan_rejected` mở gate escalation subject=project; duyệt phải chạy lại event nguồn để delivery-lead lập lại —
+    trước đây rơi xuống nhánh ticket ("reopen" ticket ma), không gì xảy ra (CR-STAGE-001, 2026-09-06)."""
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=_lead_empty_plan_once()))
+    bus.publish(Envelope(topic="research-requests", key="P1", actor="human:sales", payload={"project_id": "P1", "description": "app"}))
+    orch.run()
+    bus.publish(Envelope(topic="clarification-answers", key="P1", actor="human:po",
+                         payload={"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "a"}]}))
+    orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
+    assert orch.gate.pending["P1"].kind == "escalation" and "P1" in orch.unhandled and not orch.plans
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "plan_rejected" in acts
+    orch.gate.decide("P1", "approve", by="human:lead", reason="lập lại"); orch.run()
+    assert orch.plans and "PLAN-P1-1" in orch.gate.pending, "duyệt = delivery-lead lập lại và gate plan mở"
+    assert "P1" not in orch.unhandled
+
+
+def test_mo_lai_bus_van_nho_plan_rejected(tmp_path):
+    bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient(handler=_lead_empty_plan_once()))
+    bus.publish(Envelope(topic="research-requests", key="P1", actor="human:sales", payload={"project_id": "P1", "description": "app"}))
+    orch.run()
+    bus.publish(Envelope(topic="clarification-answers", key="P1", actor="human:po",
+                         payload={"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "a"}]}))
+    orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
+    assert "P1" in orch.unhandled
+    bus.close(); bus2 = SQLiteBus(tmp_path / "c.sqlite"); orch2 = Orchestrator(bus2, FakeClient(handler=handler))
+    assert orch2.unhandled["P1"]["topic"] == "approved-specs"

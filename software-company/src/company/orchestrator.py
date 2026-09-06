@@ -492,6 +492,9 @@ class Orchestrator:
                     self.stalled[d["project_id"]] = d; self.stall_count[d["event_id"]] += 1
                 elif a["action"] in {"project.retried", "project.closed"}: self.stalled.pop(d["project_id"], None)
                 elif a["action"] == "agent_error_unhandled" and d.get("subject"): self.unhandled[str(d["subject"])] = d
+                elif a["action"] == "plan_rejected" and d.get("source_event"):
+                    self.unhandled[str(d["project_id"])] = {"agent": "delivery-lead", "topic": d.get("source_topic"),
+                                                            "event_id": d["source_event"], "subject": str(d["project_id"])}
                 elif a["action"] in {"event.retried", "event.abandoned"}: self.unhandled.pop(str(d.get("subject")), None)
                 elif a["action"] == "gate.decide":
                     if d.get("subject_id"): self.escalation_decided[str(d["subject_id"])] += 1
@@ -1265,6 +1268,13 @@ class Orchestrator:
             # DHCB: `tickets: []` → "kế hoạch rỗng" → im lặng vĩnh viễn). Phải hiện ra cho người quyết.
             self.supervisor.escalate_gate(project, f"kế hoạch {plan_id} bị từ chối: {'; '.join(problems)[:200]}",
                                           once_key=f"plan_rejected:{env.event_id}")
+            # Duyệt escalation này = lập lại kế hoạch: ghi vào `unhandled` để `_retry_unhandled` chạy lại đúng event
+            # nguồn (change-request / approved-specs). Trước đây duyệt rơi xuống nhánh ticket → "reopen" một ticket
+            # không tồn tại, không gì xảy ra. Đo được 2026-09-06 (CR-STAGE-001, PLAN-QLKH-5 rỗng): duyệt xong hàng
+            # đợi rỗng, phải phát lại decide-change bằng tay.
+            with self._lock:
+                self.unhandled[project] = {"agent": "delivery-lead", "topic": env.topic, "event_id": env.event_id,
+                                           "subject": project, "error": f"plan_rejected: {'; '.join(problems)[:200]}"}
             if project not in self.gate.pending:
                 self.gate.request(GateRequest(kind="escalation", subject_id=project, created_by="delivery-lead",
                                               checklist=["plan_problems", "decision:retry|close"]))
