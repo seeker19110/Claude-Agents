@@ -13,7 +13,16 @@
 ## 5. Trải nghiệm người dùng (link `design`)
 | US | Flow | Màn hình | Trạng thái (empty/loading/error/success) | A11y |
 ## 6. Yêu cầu phi chức năng (map ISO 25010)
-| ID | Đặc tính | Số đo |
+| ID | Đặc tính | Số đo | Điều kiện đo (tải, cỡ dữ liệu, phân vị) |
+### 6b. Ước lượng tải nháp (nguồn của cột "Điều kiện đo"; xem skill `architecture`)
+| Đại lượng | Giá trị | Giả định | Nguồn giả định (khách / `knowledge` / đoán) |
+| MAU → DAU | | | |
+| QPS trung bình | | | |
+| QPS đỉnh | | | |
+| Lưu trữ / ngày → sau N năm | | | |
+| Cache (dữ liệu nóng) | | | |
+| Sẵn sàng mục tiêu → thời gian chết/năm | | | |
+Giả định nguồn "đoán" phải xuất hiện lại ở §10 dưới dạng câu hỏi mở.
 ## 7. Dữ liệu cá nhân
 | Trường | Phân loại | Mục đích | Cơ sở pháp lý | Retention |
 ## 8. Quyết định công nghệ (link ADR)

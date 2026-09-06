@@ -11,7 +11,7 @@ skills_core: [api-contract, risk-analysis, release, event-driven-architecture, i
 budget_tokens_per_task: 100000
 max_retries: 3
 timeout_minutes: 120
-version: 11
+version: 12
 ---
 # delivery-lead
 
