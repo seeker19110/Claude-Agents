@@ -448,3 +448,11 @@ def test_readme_goc_khop_nguong_coverage_va_so_test_hai_cong_ty():
         funcs = sum(len(re.findall(r"^def test_", p.read_text(encoding="utf-8"), re.M))
                     for p in (hub / pkg / "tests").glob("*.py"))
         assert funcs <= int(m.group(1)) <= funcs * 2, f"README gốc ghi {m.group(1)} test cho {pkg}, có {funcs} hàm test"
+
+
+def test_reviewer_va_security_co_tool_chi_doc_khi_cham_pr():
+    """Diff dài hơn max_input_chars bị cắt giữa; không có tool thì agent BLOCK vì 'diff không có trong đầu vào'
+    (TCK-CR-DEV-001-02, 2026-09-06). Cả ba nguồn review PR phải đọc được worktree."""
+    from company.orchestrator import ROUTES
+    tools = {r.agent: r.tools for r in ROUTES if r.topic_in == "pull-requests" and r.topic_out == "review-results"}
+    assert tools == {"reviewer": "ro", "qa-debugger": "ro", "security-engineer": "ro"}

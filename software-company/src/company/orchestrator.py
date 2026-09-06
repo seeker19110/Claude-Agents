@@ -290,10 +290,14 @@ ROUTES: tuple[Route, ...] = (
     # Assignee không sửa được test (tool chặn): nó ghi `test_dispute` và việc quay về test-author — lượt DUY NHẤT
     # bộ test được đổi sau khi đã viết, và lượt duy nhất test-author được xem diff.
     Route("pull-requests", "test-author", "test-suites", _has_dispute, enrich=_with_diff, tools="tests"),
-    Route("pull-requests", "reviewer", "review-results", enrich=_with_diff),
+    # Reviewer và security cũng có tool CHỈ ĐỌC trên worktree như QA: diff dài hơn `max_input_chars` bị cắt giữa,
+    # agent "không được suy diễn" nên BLOCK vì "diff không có trong đầu vào" — không phải lỗi code. Đo được
+    # 2026-09-06 (TCK-CR-DEV-001-02, PR 877 dòng): security chặn vì thiếu diff `http_adapter.py`, ticket bị trả
+    # về làm lại dù reviewer + QA pass. Có tool thì nó đọc đúng file bị cắt rồi mới chấm.
+    Route("pull-requests", "reviewer", "review-results", enrich=_with_diff, tools="ro"),
     Route("pull-requests", "qa-debugger", "review-results", _needs_qa,
           enrich=lambda e, o: {**_with_diff(e, o), **_with_chan_doan(e, o)}, tools="ro"),
-    Route("pull-requests", "security-engineer", "review-results", _needs_security, enrich=_with_diff),
+    Route("pull-requests", "security-engineer", "review-results", _needs_security, enrich=_with_diff, tools="ro"),
     # vận hành: RC → staging (+ security DAST/license khi có risk) → QA hồi quy; production đi qua gate 3 (PROD_ROUTE)
     STAGING_ROUTE,
     Route("release-candidates", "security-engineer", "review-results", _release_needs_security),

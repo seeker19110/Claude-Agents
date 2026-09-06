@@ -330,11 +330,12 @@ def test_orchestrator_with_repo_produces_verified_prs_and_reviewers_read_diff(tm
     rev = _inp(by_agent["reviewer"][0]["user"])
     assert "+def t1():" in rev["diff"] and rev["changed_files"] == ["f_t1.py"], "reviewer đọc diff thật"
     sec_pr = [c for c in by_agent["security-engineer"] if _inp(c["user"]).get("branch")]
-    assert len(sec_pr) == 1 and "+def t2():" in _inp(sec_pr[0]["user"])["diff"], "security review PR T2 (risk_tags) đọc diff"
+    # security có tool chỉ-đọc → FakeClient gọi 2 lượt (tool + kết luận) cho cùng PR; diff phải có ở lượt đầu
+    assert sec_pr and "+def t2():" in _inp(sec_pr[0]["user"])["diff"], "security review PR T2 (risk_tags) đọc diff"
     qa_pr = [c for c in by_agent["qa-debugger"] if c["tools"]]
     assert qa_pr and all(c["tools"] == ["read_file", "list_files", "search", "run"] for c in qa_pr), "QA có tool chỉ đọc"
     assert any(m["role"] == "tool" and m["content"].startswith("exit=0") for c in qa_pr for m in c["messages"])
-    assert not by_agent["reviewer"][0]["tools"], "reviewer chỉ đọc diff, không tool"
+    assert {t["name"] if isinstance(t, dict) else t for t in by_agent["reviewer"][0]["tools"]} >= {"read_file", "search"},         "reviewer có tool chỉ-đọc để đọc phần diff bị cắt (2026-09-06)"
     assert orch.supervisor.sprint_report()["prs_unverified"] == 0
 
 
@@ -745,8 +746,10 @@ def test_reviewer_with_tools_but_no_calls_is_audited(tmp_path):
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=lazy), repo=repo, base="main")
     _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
     lazy_qa = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "review.no_tool_evidence"]
-    assert lazy_qa and all(a["agent"] == "qa-debugger" for a in lazy_qa)
+    # reviewer/security giờ cũng có tool trên PR: không gọi tool nào cũng bị ghi "chỉ là lời khai" như QA
+    assert lazy_qa and {a["agent"] for a in lazy_qa} == {"qa-debugger", "reviewer", "security-engineer"}
     assert {a["topic"] for a in lazy_qa} == {"pull-requests", "release-events"}
+    assert all(a["agent"] == "qa-debugger" for a in lazy_qa if a["topic"] == "release-events")
 
 
 def test_pr_with_failing_local_checks_goes_back_to_ticket_not_to_review(tmp_path):
