@@ -1,7 +1,7 @@
 {
  "agent": "qa-debugger",
- "prompt_version": 12,
- "recorded_at": "2026-09-06T09:25:12.170750+00:00",
+ "prompt_version": 13,
+ "recorded_at": "2026-09-06T10:02:57.789230+00:00",
  "models": [
   "claude-sonnet-5"
  ],
@@ -29,6 +29,18 @@
    "model": "claude-sonnet-5",
    "input_tokens": 17821,
    "output_tokens": 1099
+  },
+  "2516c3594dc2d7ce06755d8b": {
+   "text": "{\"ticket_id\": \"TCK-3\", \"source\": \"qa\", \"verdict\": \"fail\", \"findings\": [{\"level\": \"block\", \"location\": \"tests/test_orders.py::test_concurrent_reads\", \"text\": \"Test đỏ: KeyError 'ORD-9' khi 2 request đọc/ghi/xóa cùng key trên dict cache toàn cục — race condition, không phải lỗi hạ tầng.\"}], \"root_cause\": \"Cache dùng dict Python toàn cục không có khóa đồng bộ (lock) cho thao tác đọc-ghi-xóa. Khi 2 request chạy đồng thời: request A đang đọc key 'ORD-9' trong lúc request B xóa/ghi đè key đó (ví dụ do invalidate hoặc eviction), dict thay đổi giữa lúc kiểm tra và truy cập → KeyError. Đây là race condition kinh điển giữa check-then-act trên cấu trúc dữ liệu không thread-safe/không có lock, không phải lỗi mạng hay hạ tầng.\", \"bug_reports\": [\"TCK-3-BUG-1: KeyError 'ORD-9' trong test_concurrent_reads do race condition trên cache dict toàn cục — cần lock (threading.Lock/RLock) hoặc cấu trúc thread-safe (vd. dùng .get(key) thay vì [key], hoặc dùng cachetools.LRUCache có lock) khi đọc/ghi/xóa đồng thời\"], \"test_summary\": {\"total\": null, \"passed\": null, \"failed\": 1, \"detail\": \"tests/test_orders.py::test_concurrent_reads FAILED - KeyError: 'ORD-9'; lint pass\"}, \"mutation_score\": null, \"perf\": null, \"a11y\": null, \"findings_extra\": \"[]\", \"rulings\": [{\"decision\": \"Chấm fail thay vì warn vì có bằng chứng test đỏ cụ thể (không phải thiếu số liệu), lỗi thuộc code khách (race condition trên cache tự viết) chứ không phải lỗi hạ tầng lặp lại.\", \"why\": \"Quy tắc QA: verdict=fail khi có bằng chứng hỏng (test đỏ); phân biệt với lỗi hạ tầng (quota/timeout) không áp dụng ở đây vì nguyên nhân là logic đồng bộ hóa trong code PR.\", \"cost_if_wrong\": \"Nếu sai (thực ra là flaky do môi trường test), backend mất thời gian sửa lock không cần thiết; nhưng rủi ro thấp vì log lỗi khớp đúng với thay đổi PR (thêm cache toàn cục).\"}]}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 16195,
+   "output_tokens": 1227
+  },
+  "00323252f739076c8a77b5b4": {
+   "text": "{\"ticket_id\": \"TCK-4\", \"source\": \"qa\", \"verdict\": \"pass\", \"findings\": [{\"level\": \"warn\", \"location\": \"shared-context\", \"text\": \"shared-context rỗng, không có Gherkin/spec gốc để đối chiếu 100% tiêu chí — cần spec-writer/reviewer bổ sung để lượt sau đối chiếu đầy đủ.\"}, {\"level\": \"warn\", \"location\": \"payload\", \"text\": \"Không có số mutation score cho module lõi (cancel.py) trong payload — cần backend/CI báo cáo mutation testing để đo chuẩn ≥70%.\"}], \"bug_reports\": [], \"metrics\": {\"coverage\": 0.93, \"test_output\": \"42 passed in 3.1s\"}, \"project_id\": null, \"test_summary\": \"\\\"42 passed in 3.1s; local_checks.tests=true, lint=true, coverage=93%. Ca biên 0h/23h/24h/25h trước giờ khám đã có test, kèm property test idempotency và đồng hồ tiêm qua clock (đúng khuyến nghị testing skill).\\\"\", \"mutation_score\": null, \"perf\": null, \"a11y\": null, \"rulings\": [{\"decision\": \"Chấm pass cho TCK-4 dù thiếu mutation score và không có Gherkin gốc để đối chiếu.\", \"why\": \"Quy tắc: thiếu bằng chứng (không đọc được Gherkin do shared-context rỗng, không có số mutation trong payload) là finding warn, không phải block; test xanh, coverage 93%, đã phủ ca biên và idempotency.\", \"cost_if_wrong\": \"Nếu module cancel.py có lỗi logic mutation-test mới bắt được, sẽ phải rework nhỏ ở backend; chi phí thấp vì coverage/test hiện tại đã khá đầy đủ.\"}]}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 16241,
+   "output_tokens": 847
   }
  }
 }
