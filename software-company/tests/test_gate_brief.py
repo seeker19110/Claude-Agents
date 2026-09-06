@@ -448,3 +448,25 @@ def test_cli_all_json_va_out(tmp_path, capsys):
 def test_cli_all_khong_co_gate(tmp_path, capsys):
     db2 = tmp_path / "e.sqlite"; SQLiteBus(db2).close()
     assert GB.main(["--all", "--db", str(db2)]) == 0 and "không có gate chờ" in capsys.readouterr().out
+
+
+def test_history_thu_tu_theo_bus_khi_trung_dau_thoi_gian(tmp_path):
+    """Hai event ghi trong cùng một lượt có thể trùng `ts` tới micro giây. Khi ấy xếp lịch sử theo `ts` không phải
+    thứ tự toàn phần: nó lật giữa hai cách sắp xếp tuỳ đồng hồ có nhích hay không (hồ sơ escalation từng chập chờn
+    ~1/6 lần), và người đọc thấy `tasks retry=N` TRƯỚC lỗi gây ra nó. Thứ tự ghi vào bus mới là thứ tự nhân quả."""
+    from datetime import UTC, datetime
+
+    fixed = datetime(2026, 9, 6, 12, 0, 0, tzinfo=UTC)
+    db, _bus, _orch = _scenario(tmp_path, fail_handler, to="escalation")
+    st = GB.load_state(db)
+    for e in st.bus.replay():          # mọi event CÙNG một ts → chỉ còn thứ tự bus phân biệt được
+        e.ts = fixed
+    b = GB.build(st, "T1")
+    h = b["extra"]["history"]
+    acts = [x["action"] for x in h]
+    assert all(x["at"] == fixed.isoformat() for x in h), "phép thử vô nghĩa nếu ts không trùng"
+    assert "_seq" not in h[0], "khoá phụ trợ không được lọt ra hồ sơ"
+    assert acts[0] == "tasks retry=0", "event ghi sớm nhất phải đứng đầu dù trùng ts"
+    inval = [i for i, a in enumerate(acts) if "invalid_output" in a]
+    assert inval and inval[0] < acts.index("tasks retry=2"), "lỗi phải đứng TRƯỚC lần retry mà nó gây ra"
+    assert acts[-1].endswith("ticket.blocked"), "event ghi muộn nhất phải đứng cuối"
