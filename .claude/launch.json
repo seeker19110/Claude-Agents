@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "console-8201",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["--directory", "console", "run", "python", "-u", "-m", "console", "--port", "8201"],
+      "port": 8201
+    }
+  ]
+}

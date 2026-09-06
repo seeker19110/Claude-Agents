@@ -7,6 +7,7 @@ Xoá file này khi console đã ổn định và hợp đồng chuyển hết v�
 
 ```
 collect.py   đọc SQLite bus của hai công ty + trạng thái gateway  → dict thuần
+truth.py     sự thật giao hàng của software-company: phễu release, quyết định chưa áp, bế tắc im lặng
 decide.py    ghi quyết định gate thật qua HumanGate của từng công ty
 server.py    ThreadingHTTPServer stdlib, phục vụ static/index.html + /api/*
 static/      trang console (đã có thiết kế, chỉ cần nối dữ liệu)
@@ -47,13 +48,15 @@ công ty đó bao giờ).
   "gates": [{
     "id": "PUB-vid-042", "xuong": "Studio-creators", "kind": "publish",
     "by": "desk", "trigger": "human:owner", "hours": 26, "sev": "over",   // over|warn|calm
+    "effect": "Duyệt = … (hậu quả của việc duyệt, theo kind; rỗng khi xưởng không nói)",
     "title": "…", "facts": [["video_id","vid-042"], …],
     "cl": [["review:fact:pass","mô tả ngắn lấy từ checklist/evidence"], …]
   }],
   "tickets": [{"id":"TCK-112","st":"in_review","who":"backend","t":"…",
-               "used":82400,"bud":120000,"est":78000,"retry":0}],
+               "used":82400,"out":9800,"bud":120000,"est":78000,"retry":0,   // used = tổng token; out = đầu ra (ngân sách so với out)
+               "integrated":true,"sha":"b1b3e4b","human_hint":"","hint":"","gate":null}],
   "prs":     [{"id":"TCK-112","br":"…","s":"…","lint":"pass","tests":"pass","v":"workspace"}],
-  "reviews": [{"id":"TCK-112","src":"security","v":"block","f":"block · …"}],
+  "reviews": [{"id":"TCK-112","src":"security","v":"block","f":"block · …","trim":"cắt api-contract 13.170 ký tự","at":"04:07"}],
   "videos":  [{"id":"vid-039","st":"published","t":"…","fmt":"long","used":132000,"bud":150000}],
   "perf":    [{"id":"vid-039","imp":41200,"views":7840,"ctr":0.19,"avd":284}],
   "retention": {"video_id": "vid-039", "points": [[0,100],[15,88], …]},
@@ -62,7 +65,19 @@ công ty đó bao giờ).
   "backends":[{"n":"claude-code","tiers":"strong · standard","tools":"có",
                "ok":true,"st":"Sẵn sàng","calls":128,"fail":2,"note":"…"}],
   "supervisor":[{"t":"TCK-118","a":"budget_cut","r":"…","w":"08:12"}],
-  "log":     [{"t":"08:41","a":"backend","ac":"produced:pull-requests","k":"TCK-112","tok":8420,"c":0.21}]
+  "log":     [{"t":"08:41","a":"backend","ac":"produced:pull-requests","k":"TCK-112","tok":8420,"c":0.21}],
+  // ---- sự thật giao hàng của software-company (console/truth.py) — null/[] khi xưởng không đọc được ----
+  "delivery": {
+    "releases_total": 19, "releases_live": 14, "void": 5, "production": 0, "delivered": 0,
+    "latest_tag": null, "latest_release": null, "integration_sha": "d16289b", "integrated_tickets": 18,
+    "funnel": [{"stage":"void","label":"Bị huỷ","n":5,"ids":["REL-009", …]}, …],   // đủ 12 bậc, thứ tự đi tới
+    "releases": [{"id":"REL-019","stage":"production_pending_human","label":"…","version":"0.11.1",
+                  "tickets":["QLKH-012"],"sha":"964b704","gate":null,"at":"10:06","summary":"…","runbook":"…",
+                  "next":"Agent tự dừng, KHÔNG gate nào mở: …"}]
+  },
+  "pending_decisions": [{"id":"REL-020","decision":"approve","by":"human:lead","kind":"escalation","minutes":12,"reason":"…"}],
+  "running": {"queue": 7, "head": {"topic":"tasks","key":"TCK-…","minutes": 5}, "last_event_minutes": 1, "topics": ["tasks"]},
+  "deadlocks": [{"kind":"ticket|release|idle","id":"QLKH-010","state":"blocked","why":"…","integrated":true}]
 }
 ```
 
@@ -77,6 +92,8 @@ Nguồn của từng phần:
 | `videos`, `perf`, `retention` | `video-briefs`, `performance-snapshots` |
 | `backends` | `routing.status()` nếu đọc được `llm.yaml`, nếu không thì gateway `/auth/status` |
 | `log` | `audit-log`, mới nhất trước, tối đa 200 bản ghi |
+| `delivery`, `pending_decisions`, `running`, `deadlocks` | `truth.py`: `release-candidates` + `release-events` + audit (`delivery.done`, `release.void`, `release.staged`, `integration.merged`, `orchestrated`, `gate.decide`) + `gate.pending/history` |
+| `tickets[].integrated/sha/human_hint/hint/gate`, `reviews[].trim/at`, `gates[].effect` | `truth.py` — sự thật git (merge commit), hint agent đang cầm, ngữ cảnh bị cắt khi chấm, hậu quả khi duyệt |
 
 `hours` làm tròn xuống. `sev`: `over` khi ≥ 24 giờ (quá hạn), `warn` khi ≥ 12 giờ
 (đến hạn nhắc), còn lại `calm` — khớp `GATE_TIMEOUT_H` / `GATE_REMIND_H` của repo.

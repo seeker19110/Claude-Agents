@@ -45,6 +45,8 @@ from studio.events import Envelope as StudioEnvelope
 from studio.registry import load_agents as load_studio_agents
 from studio.supervisor import Supervisor as StudioSupervisor
 
+from console.truth import Truth, gate_effect
+
 COMPANY = "software-company"
 STUDIO = "Studio-creators"
 TIERS = ("strong", "standard", "light")
@@ -168,13 +170,17 @@ class _View:
             sev = "over" if h >= over_h else ("warn" if h >= warn_h else "calm")
             out.append({"id": sid, "xuong": self.name, "kind": r.kind, "by": r.created_by or "-",
                         "trigger": getattr(r, "triggered_by", None) or "", "hours": h, "sev": sev,
-                        "title": self.gate_title(r), "facts": self.gate_facts(r),
+                        "effect": self.gate_effect(r), "title": self.gate_title(r), "facts": self.gate_facts(r),
                         "cl": [[item, self.checklist_note(r, item)] for item in r.checklist]})
         out.sort(key=lambda g: -g["hours"])
         return out
 
     def gate_title(self, r: Any) -> str:
         return f"{r.kind} · {r.subject_id}"
+
+    def gate_effect(self, r: Any) -> str:
+        """Hậu quả của việc duyệt — mỗi xưởng tự nói; mặc định không nói gì còn hơn nói sai."""
+        return ""
 
     def gate_facts(self, r: Any) -> list[list[str]]:
         return [["kind", r.kind], ["subject_id", r.subject_id], ["created_by", r.created_by or "-"]]
@@ -252,6 +258,7 @@ class CompanyView(_View):
             self.sup.replay(env)
         self.report = self.sup.sprint_report()
         self.metrics = company_metrics.collect(self.bus)
+        self.truth = Truth(self.envelopes, self.lead, self.gate, datetime.now(UTC))
 
     def tiers(self) -> dict[str, str]:
         try:
@@ -262,6 +269,9 @@ class CompanyView(_View):
     def gate_title(self, r: Any) -> str:
         t = self.lead.tickets.get(r.subject_id)
         return t.title if t else f"{r.kind} · {r.subject_id}"
+
+    def gate_effect(self, r: Any) -> str:
+        return gate_effect(r.kind, r.subject_id)
 
     def gate_facts(self, r: Any) -> list[list[str]]:
         facts = super().gate_facts(r)
@@ -279,8 +289,11 @@ class CompanyView(_View):
             t = self.lead.tickets.get(tid)
             b = self.sup.budgets.get(tid)
             out.append({"id": tid, "st": st, "who": t.assignee if t else "?", "t": t.title if t else tid,
-                        "used": b.used if b else 0, "bud": t.budget_tokens if t else 0,
-                        "est": (t.estimate_tokens or 0) if t else 0, "retry": t.retry if t else 0})
+                        # `used` = TỔNG token (input+output) của agent làm ticket; ngân sách ticket tính theo token ĐẦU RA
+                        # (`out`). Trang so `out` với `bud`; so `used` với `bud` là so hai đại lượng khác nhau.
+                        "used": b.used if b else 0, "out": b.output_used if b else 0, "bud": t.budget_tokens if t else 0,
+                        "est": (t.estimate_tokens or 0) if t else 0, "retry": t.retry if t else 0,
+                        **self.truth.ticket_extra(tid)})
         return out
 
     def prs(self) -> list[dict[str, Any]]:
@@ -302,8 +315,16 @@ class CompanyView(_View):
             blocking = [f.get("text", "") for f in p.get("findings", []) if f.get("level") == "block"]
             detail = p.get("root_cause") or ("; ".join(blocking) if blocking else "")
             out.append({"id": p.get("ticket_id") or e.key, "src": p.get("source", "?"), "v": p.get("verdict", "?"),
-                        "f": f"{p.get('verdict', '?')} · {detail}" if detail else str(p.get("verdict", "?"))})
+                        "f": f"{p.get('verdict', '?')} · {detail}" if detail else str(p.get("verdict", "?")),
+                        "trim": self.truth.review_trimmed(e), "at": e.ts.astimezone().strftime("%H:%M")})
         return out
+
+    def truth_block(self) -> dict[str, Any]:
+        """Sự thật giao hàng (console/truth.py). Xưởng chưa đọc được → mọi phần rỗng nhưng vẫn đủ khoá."""
+        if not self.ok:
+            return {"delivery": None, "pending_decisions": [], "running": None, "deadlocks": []}
+        return {"delivery": self.truth.delivery(), "pending_decisions": self.truth.pending_decisions(),
+                "running": self.truth.running(), "deadlocks": self.truth.deadlocks()}
 
     def stuck(self) -> int:
         return sum(1 for st in self.lead.state.values() if st in STUCK_STATES) if self.ok else 0
@@ -544,4 +565,5 @@ def collect(company_db: Path | None, studio_db: Path | None,
         "backends": backends,
         "supervisor": [a for v in views for a in v.supervisor_actions()],
         "log": log,
+        **company.truth_block(),
     }
