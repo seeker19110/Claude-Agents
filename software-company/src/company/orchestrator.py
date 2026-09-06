@@ -63,14 +63,12 @@ from .events import BUDGET_FACTOR, AuditLog, Envelope, Task
 from .gate_cli import PersistentGate, trusted_decision
 from .gates import Decision, GateRequest
 from .llm import LLMError, ModelClient, TransientError
-from .orch import rehydrate, verify
+from .orch import rehydrate, verify, worktree_flow
 from .orch.cli import _fmt, main, source_fingerprint
 from .orch.routes import (
     ACTIVE_STATES,
     ACTOR,
-    BLIND_STRIP,
     CONTROL_TOPICS,
-    MAX_CONFLICT_RETRIES,
     PAUSING,
     PLAN_INPUTS,
     PROD_ROUTE,
@@ -89,7 +87,9 @@ from .orch.routes import (
 
 # Không dùng trong file này nhưng là hợp đồng công khai của module (gate_brief.py, test) — giữ re-export tường
 # minh bằng alias cùng tên để ruff không coi là import thừa.
+from .orch.routes import BLIND_STRIP as BLIND_STRIP
 from .orch.routes import ENGINEERING as ENGINEERING
+from .orch.routes import MAX_CONFLICT_RETRIES as MAX_CONFLICT_RETRIES
 from .orch.routes import THREAT_ROUTE as THREAT_ROUTE
 from .orch.routes import _can_author_tests as _can_author_tests
 from .orch.routes import _has_dispute as _has_dispute
@@ -101,9 +101,8 @@ from .registry import AgentSpec, load_agents
 from .routing import retry_after_seconds
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError
 from .supervisor import Supervisor
-from .tools import ToolBox, WorkspaceTools
 from .web import WebTools, research_toolbox
-from .workspace import Integration, TicketWorkspace, WorkspaceError, _git
+from .workspace import Integration, WorkspaceError
 
 
 @dataclass
@@ -201,50 +200,33 @@ class Orchestrator:
     _retry_con_can = rehydrate._retry_con_can
 
 
-    # ---------- repo theo từng dự án (ADR-0025) ----------
+    # ---------- worktree, repo theo dự án, gộp nhánh tích hợp (ADR-0034: orch/worktree_flow.py) ----------
 
-    def _learn_repo(self, env: Envelope, replaying: bool = False) -> None:
-        """`research-requests` mang `repo` (đường dẫn repo git của khách, tuyệt đối hoặc tương đối với cwd) và tuỳ chọn
-        `base` → nhánh tích hợp riêng cho dự án đó. Không có `repo` thì dự án dùng `--repo` mặc định. Repo không phải git
-        → không dừng dự án (nó vẫn chạy được không repo, PR ghi `unverified`), chỉ audit `project.repo_invalid` một lần."""
-        raw = env.payload.get("repo")
-        if not raw or not isinstance(raw, str): return
-        pid = str(env.payload.get("project_id") or env.key)
-        path = Path(raw).expanduser()
-        if not (path / ".git").exists():
-            if pid not in self.bad_repos:
-                self.bad_repos.add(pid)
-                if not replaying:
-                    self._audit("project.repo_invalid", {"project_id": pid, "repo": raw, "fallback": str(self.repo) if self.repo else None},
-                                project_id=pid)
-            return
-        base = str(env.payload.get("base") or self.base)
-        current = self.project_repos.get(pid)
-        if current is not None and current.repo == path.resolve() and current.base == base: return
-        self.project_repos[pid] = Integration(path.resolve(), self.integration_branch, base, self.release_branch)
-        self.bad_repos.discard(pid)
-        self.lead.require_integration = True
-        if not replaying: self._audit("project.repo", {"project_id": pid, "repo": str(path.resolve()), "base": base}, project_id=pid)
+    _learn_repo = worktree_flow.learn_repo
+    integration_for = worktree_flow.integration_for
+    _project_of_ticket = worktree_flow.project_of_ticket
+    _integration_of_ticket = worktree_flow.integration_of_ticket
+    _has_integration = worktree_flow.has_integration
+    workspace = worktree_flow.workspace
+    _integrate_approved = worktree_flow.integrate_approved
+    _branch_ahead = worktree_flow.branch_ahead
+    _merge_ticket = worktree_flow.merge_ticket
+    _merge_ticket_locked = worktree_flow.merge_ticket_locked
+    _read_only_tools = worktree_flow.read_only_tools
+    _author_tests = worktree_flow.author_tests
+    _engineer = worktree_flow.engineer
+    comment = worktree_flow.comment
+    takeover = worktree_flow.takeover
 
-    def integration_for(self, project_id: str | None) -> Integration | None:
-        """Nhánh tích hợp của dự án: repo riêng của dự án nếu có, không thì repo mặc định `--repo` (có thể None)."""
-        if project_id and project_id in self.project_repos: return self.project_repos[project_id]
-        return self.integration
 
-    def _project_of_ticket(self, ticket_id: str) -> str | None:
-        t = self.lead.tickets.get(ticket_id)
-        return t.project_id if t is not None else None
 
-    def _integration_of_ticket(self, ticket_id: str) -> Integration | None:
-        return self.integration_for(self._project_of_ticket(ticket_id))
+
 
     def _integration_of_release(self, env: Envelope) -> Integration | None:
         """RC / release-event → dự án qua ticket đầu tiên của nó (mọi ticket một RC cùng dự án)."""
         tickets = env.payload.get("tickets") or []
         return self._integration_of_ticket(str(tickets[0])) if tickets else self.integration_for(self.project_for(env))
 
-    def _has_integration(self) -> bool:
-        return self.integration is not None or bool(self.project_repos)
 
     def _actionable(self, env: Envelope) -> bool:
         if env.topic == "audit-log": return trusted_decision(env) is not None  # gate.decide giả (actor không phải người) không chạy
@@ -265,12 +247,6 @@ class Orchestrator:
     def latest(self, topic: str, key: str) -> Envelope | None:
         return self.bus.latest(topic, key)
 
-    def workspace(self, ticket_id: str) -> TicketWorkspace | None:
-        """Worktree của ticket, rẽ từ nhánh tích hợp của DỰ ÁN chứa ticket (tạo nhánh tích hợp nếu chưa có)."""
-        integ = self._integration_of_ticket(ticket_id)
-        if integ is None or integ.repo is None: return None
-        with self._ws_lock: integ.ensure()  # nhiều worker cùng tạo nhánh tích hợp lần đầu → tuần tự
-        return TicketWorkspace(integ.repo, ticket_id, base=integ.branch)
 
     # ---------- vòng lặp ----------
 
@@ -655,78 +631,9 @@ class Orchestrator:
         with self._qlock: self.queue.insert(0, env)
         return True
 
-    def _integrate_approved(self, res: StepResult) -> None:
-        """Ticket vừa approved → merge ngay vào nhánh tích hợp, không đợi RC. Ticket phụ thuộc rẽ nhánh từ nhánh tích hợp,
-        nên nếu chỉ merge lúc release (nhất là khi gom release) thì ticket sau không thấy code của ticket trước:
-        DHCB-5 import `dhcb.layout` của DHCB-2 và đỏ ngay dù DHCB-2 đã approved."""
-        if not self._has_integration(): return
-        for tid, st in list(self.lead.state.items()):
-            if st != "approved": continue
-            # `tid in self.integrated` KHÔNG đủ để bỏ qua: ticket bị trả về làm lại (nghiệm thu rejected, review block)
-            # rồi approved lần nữa thì branch có commit MỚI mà tập `integrated` vẫn nhớ lần trước → bản sửa không bao
-            # giờ vào nhánh tích hợp, release sau vẫn mang code cũ. Đo được 2026-09-06 (TCK-CR-STAGE-001-02: bản sửa
-            # deploy.sh nằm ở commit WIP trên branch, v0.18.2 vẫn là bản lỗi `uv sync --frozen`).
-            if tid in self.integrated and not self._branch_ahead(tid): continue
-            self._merge_ticket(tid, res, release_id=None)
 
-    def _branch_ahead(self, tid: str) -> bool:
-        """Branch ticket có commit chưa nằm trong nhánh tích hợp? (làm lại sau khi đã merge một lần)."""
-        integ = self._integration_of_ticket(tid); ws = self.workspace(tid)
-        if integ is None or ws is None or not ws.path.exists(): return False
-        try:
-            return bool(integ.rev_list_count(ws.branch))
-        except WorkspaceError:
-            return False
 
-    def _merge_ticket(self, tid: str, res: StepResult, release_id: str | None) -> bool:
-        """merge --no-ff branch ticket vào nhánh tích hợp. Xung đột → ticket về changes_requested với hint là file xung
-        đột, worktree tạo lại từ nền mới; trả về False."""
-        with self._merge_lock:
-            return self._merge_ticket_locked(tid, res, release_id)
 
-    def _merge_ticket_locked(self, tid: str, res: StepResult, release_id: str | None) -> bool:
-        with self._lock:
-            already = tid in self.integrated
-        if already and not self._branch_ahead(tid):
-            return True  # thread khác vừa merge xong, hoặc branch không có gì mới so với nhánh tích hợp
-        integration = self._integration_of_ticket(tid)
-        ws = self.workspace(tid)
-        if integration is None or ws is None or not ws.path.exists():
-            self._audit("integration.skipped", {"release_id": release_id, "ticket_id": tid, "reason": "không có worktree"}, ticket_id=tid)
-            return True
-        t = self.lead.tickets.get(tid)
-        before = integration.sha()
-        m = integration.merge(ws.branch, f"merge({tid}): {t.title if t else tid}" + (f"\n\nrelease: {release_id}" if release_id else ""))
-        if m.ok and m.sha == before:
-            # Branch không có gì mới so với nhánh tích hợp (vd. vừa `fresh()` sau xung đột, chưa có PR mới): không phải
-            # "đã tích hợp" — đánh dấu thế là mất code của lần làm lại về sau.
-            self._audit("integration.noop", {"release_id": release_id, "ticket_id": tid, "sha": before}, ticket_id=tid)
-            res.actions.append(f"integration_noop:{tid}"); return True
-        if m.ok:
-            with self._lock: self.integrated.add(tid)
-            self._audit("integration.merged", {"release_id": release_id, "ticket_id": tid, "sha": m.sha, "branch": integration.branch,
-                                               "repo": str(integration.repo)}, ticket_id=tid)
-            res.actions.append(f"integrated:{tid}@{m.sha}")
-            started = self.lead.mark_integrated(tid)  # F15: ticket phụ thuộc bắt đầu trên nền đã có code này
-            if started: res.actions.append("dispatch:" + ",".join(started))
-            return True
-        hint = f"xung đột với nhánh tích hợp {integration.branch} ở: {', '.join(m.conflicts or [])}. Làm lại trên nền mới."
-        self._audit("integration.conflict", {"release_id": release_id, "ticket_id": tid, "conflicts": m.conflicts}, ticket_id=tid)
-        with self._lock: self.conflict_retries[tid] += 1; n = self.conflict_retries[tid]
-        try:
-            ws.fresh()
-            # Dưới ngưỡng: xung đột do thua cuộc đua merge, không tính vào retry nội dung (xem docstring
-            # `request_changes_no_retry_bump`). Vượt ngưỡng: lặp quá nhiều lần là dấu hiệu bế tắc cấu trúc
-            # (nhiều ticket cùng sửa một file interface) — tính vào retry nội dung như cũ để cuối cùng mở gate.
-            if n > MAX_CONFLICT_RETRIES:
-                self.lead.request_changes(tid, hint)
-            else:
-                self.lead.request_changes_no_retry_bump(tid, hint)
-        except (ValueError, WorkspaceError) as e:
-            self._audit("handler_error", {"agent": "delivery-lead", "error": str(e)[:300]}, ticket_id=tid)
-        res.actions.append(f"conflict:{tid}")
-        with self._lock: self.stats["conflicts"] += 1
-        return False
 
     def _integrate(self, rc: Envelope, res: StepResult) -> bool:
         """Mọi ticket của RC phải nằm trên nhánh tích hợp (thường đã merge lúc approved). Trả về False nếu RC bị huỷ."""
@@ -749,74 +656,8 @@ class Orchestrator:
         self.void_releases.add(rid)
         self.lead.void_release(rid)  # gom release: ticket approved trong RC huỷ phải vào RC kế tiếp
 
-    def _read_only_tools(self, inp: Envelope) -> ToolBox | None:
-        """Tool chỉ đọc cho QA: worktree của ticket (review PR) hoặc worktree tích hợp (hồi quy sau khi deploy staging —
-        release không có ticket riêng, nhưng code vừa deploy chính là nhánh tích hợp). Không có repo → không tool."""
-        if not self._has_integration(): return None
-        tid = inp.payload.get("ticket_id") or (inp.key if inp.topic in {"tasks", "pull-requests"} else None)
-        if tid and (ws := self.workspace(str(tid))) is not None and ws.path.exists():
-            return WorkspaceTools(ws, allow_write=False).toolbox()
-        integ = self._integration_of_release(inp) if inp.payload.get("release_id") else None
-        if integ is not None and integ.path.exists():
-            return WorkspaceTools(integ.path, allow_write=False).toolbox()
-        return None
 
-    def _author_tests(self, agent: str, task: Envelope, r: Route) -> Envelope | None:
-        """ADR-0028: lượt viết test MÙ. Đầu vào bị cắt còn đặc tả — không `hint`, không diff, không nhắc gì tới
-        cách cài đặt — vì test viết theo cách cài đặt là test không ràng buộc được gì."""
-        tid = str(task.payload.get("ticket_id") or task.key)
-        ws = self.workspace(tid)
-        if ws is None: return None
-        # Chỉ lượt đi từ `tasks` mới mù; lượt tranh chấp (`pull-requests` mang `test_dispute`) ĐƯỢC xem diff.
-        inp = task if task.topic != "tasks" else task.model_copy(
-            update={"payload": {k: v for k, v in task.payload.items() if k not in BLIND_STRIP}})
-        g, status = self.runner.author_tests(agent, inp, ws, max_turns=self.max_turns)
-        p = g.payloads[0]
-        if status == "green":
-            # Test xanh khi code chưa có: có thể là test rỗng/assert vô nghĩa. Không chặn (bộ test vẫn có thể
-            # đúng — ticket sửa lỗi trên hành vi đã tồn tại), nhưng cờ đi theo PR để reviewer đọc được.
-            self._audit("tests_green_before_code", {"ticket_id": tid, "agent": agent, "files": p.get("files", [])},
-                        actor=agent, ticket_id=tid, project_id=task.payload.get("project_id"))
-        return self.runner.publish(agent, task, r.topic_out, p, key=key_for(r.topic_out, p, task.key),
-                                   tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
 
-    def _engineer(self, agent: str, task: Envelope, r: Route) -> Envelope | None:
-        """Ticket → PR. Có repo: agent làm trong worktree, bằng chứng do code điền. Không repo: PR đi tiếp nhưng
-        `local_checks` của model bị thay bằng `{"unverified": true}` và ghi audit — không có bằng chứng giả."""
-        tid = task.payload.get("ticket_id") or task.key
-        budget = self.lead.tickets[tid].budget_tokens if tid in self.lead.tickets else task.payload.get("budget_tokens")
-        if (b := self.supervisor.budgets.get(tid)) is not None:
-            # Lần làm lại chỉ còn phần ngân sách chưa đốt (supervisor cộng dồn theo audit, kể cả phần đã cấp thêm).
-            # Trừ theo ĐẦU RA cho khớp với guard trong `_turns`: trừ theo tổng token thì ticket dùng tool luôn thấy
-            # ngân sách bằng 0 ngay từ lần làm lại đầu tiên (đo được: output 18868 nhưng tổng 734862).
-            budget = max(b.limit - b.output_used, 0)
-        ws = self.workspace(tid)
-        # ADR-0028: đi từ `test-suites` nghĩa là bộ test đã do test-author viết — assignee viết code cho tới khi
-        # xanh nhưng KHÔNG ghi (và không xoá) được file test. Đi thẳng từ `tasks` thì bộ test vẫn là của chính nó.
-        doc_lap = task.topic == "test-suites"
-        if ws is not None:
-            g = self.runner.generate_in_workspace(agent, task, ws, budget=budget, max_turns=self.max_turns,
-                                                  write_scope="src" if doc_lap else "all")
-            p = g.payloads[0]
-            lc = p["local_checks"]
-            if lc.get("lint") is False or lc.get("tests") is False:
-                # Máy đã biết PR đỏ: không đưa qua reviewer/QA/security (tốn ba lượt để nghe lại), trả thẳng về ticket.
-                bad = [k for k in ("lint", "tests") if lc.get(k) is False]
-                hint = f"{'/'.join(bad)} local fail (retry {task.payload.get('retry', 0)}):\n" + \
-                       "\n".join((lc.get({"lint": "lint_output", "tests": "test_output"}[k]) or "")[-1500:] for k in bad)
-                self._audit("pr.rejected_local_checks", {"ticket_id": tid, "agent": agent, "failed": bad, "commit": p.get("pr_ref"),
-                                                         "files": p.get("impact", {}).get("files", [])},
-                            actor=agent, tokens=g.tokens, cost=g.cost_usd, ticket_id=tid, project_id=task.payload.get("project_id"))
-                if tid in self.lead.tickets: self.lead.rework(tid, hint)
-                return None
-        else:
-            g = self.runner.generate(agent, task, r.topic_out)
-            p = {**g.payloads[0], "local_checks": {"unverified": True}}
-            self._audit("local_checks.unverified", {"ticket_id": tid, "agent": agent, "claimed": g.payloads[0].get("local_checks")},
-                        actor=agent, ticket_id=tid)
-        p = {**p, "tests_authored_by": "test-author" if doc_lap else "assignee"}
-        return self.runner.publish(agent, task, r.topic_out, p, key=key_for(r.topic_out, p, task.key),
-                                   tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
 
 
     _release_evidence = verify.release_evidence
@@ -1324,38 +1165,7 @@ class Orchestrator:
 
     # ---------- người can thiệp giữa vòng (ADR-0012) ----------
 
-    def comment(self, ticket_id: str, by: str, text: str) -> Task:
-        """Nhận xét của người cho ticket đang chạy: ghi audit `human.comment` và phát lại task với hint = nhận xét
-        (delivery-lead không tính retry). Ticket blocked/escalated dùng gate escalation."""
-        if not by.split(":", 1)[0] == "human": raise ValueError("by phải là human:<tên>")
-        t = self.lead.tickets.get(ticket_id)
-        if t is None: raise ValueError(f"không có ticket {ticket_id}")
-        self._audit("human.comment", {"ticket_id": ticket_id, "by": by, "text": text[:2000], "state": self.lead.state.get(ticket_id)},
-                    actor=by, ticket_id=ticket_id, project_id=t.project_id)
-        return self.lead.human_hint(ticket_id, text)
 
-    def takeover(self, ticket_id: str, by: str, message: str | None = None) -> Envelope:
-        """Người sửa tay trong worktree `ticket/<id>` rồi giao lại: CODE chạy lint/test thật, commit (nếu còn thay đổi chưa
-        commit), publish `pull-requests` dưới tên người với `local_checks.verified_by=workspace`; reviewer/QA/security review
-        như PR của agent. Ticket đang `in_review` thì PR này thay PR của agent (vòng review làm lại)."""
-        if not by.split(":", 1)[0] == "human": raise ValueError("by phải là human:<tên>")
-        t = self.lead.tickets.get(ticket_id); st = self.lead.state.get(ticket_id)
-        if t is None: raise ValueError(f"không có ticket {ticket_id}")
-        if st not in {"dispatched", "in_progress", "in_review"}:
-            raise ValueError(f"{ticket_id}: chỉ tiếp quản ticket dispatched/in_review (đang {st})")
-        ws = self.workspace(ticket_id)
-        if ws is None or not ws.path.exists():
-            raise ValueError(f"{ticket_id}: không có worktree (cần --repo; worktree ở <repo>/.worktrees/{ticket_id})")
-        if not ws.has_changes(): raise ValueError(f"{ticket_id}: worktree không có thay đổi so với nhánh tích hợp")
-        checks = ws.run_checks()
-        sha = ws.commit_all(message or f"feat({ticket_id}): {by} tiếp quản — {t.title}"[:72]) if _git(ws.path, "status", "--porcelain") \
-            else _git(ws.path, "rev-parse", "--short", "HEAD")
-        files = ws.changed_files()
-        p = {"ticket_id": ticket_id, "branch": ws.branch, "pr_ref": sha, "summary": message or f"{by} tiếp quản ticket",
-             "impact": {"files": files}, "local_checks": {**checks, "verified_by": "workspace"}}
-        self._audit("human.takeover", {"ticket_id": ticket_id, "by": by, "commit": sha, "files": files,
-                                       "lint": checks["lint"], "tests": checks["tests"]}, actor=by, ticket_id=ticket_id, project_id=t.project_id)
-        return self.bus.publish(Envelope(topic="pull-requests", key=ticket_id, actor=by, payload=p))
 
     def redeploy(self, release_id: str, by: str) -> Envelope:
         """Chạy lại lượt STAGING cho một release-candidate đã có — dùng khi dây chuyền từng kẹt vì lỗi hạ tầng và
