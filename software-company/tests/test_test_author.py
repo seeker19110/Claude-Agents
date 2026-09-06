@@ -238,18 +238,21 @@ def test_orchestrator_ghi_audit_khi_test_xanh_ngay(tmp_path: Path) -> None:
     assert json.loads(ev[-1]["evidence"])["files"] == [TEST_FILE]
 
 
-def test_don_file_do_dang_cua_lan_truoc_truoc_khi_viet_test(tmp_path: Path) -> None:
-    """Lần chạy trước lỗi giữa chừng để lại file dở; không dọn thì lượt này commit luôn rác đó vào bộ test."""
+def test_giu_file_do_dang_cua_lan_truoc_thanh_wip_truoc_khi_viet_tiep(tmp_path: Path) -> None:
+    """Lần chạy trước bị giết giữa chừng để lại test dở: giữ thành WIP rồi viết tiếp, bộ test mang cả hai — không vứt
+    công sức lượt trước (cùng chính sách với `generate_in_workspace`)."""
     repo = _init_repo(tmp_path / "repo"); ws = TicketWorkspace(repo, "T1", base="main")
     ws.create()
-    (ws.path / "rac.py").write_text("# tệp dở của lần trước\n", encoding="utf-8")
+    (ws.path / "tests" / "test_do_dang.py").parent.mkdir(parents=True, exist_ok=True)
+    (ws.path / "tests" / "test_do_dang.py").write_text("def test_half():\n    assert True\n", encoding="utf-8")
     th = lambda m, t: [_tc("write_file", path=TEST_FILE, content=TEST_BODY)] if _first_turn(m) else []  # noqa: E731
     bus = InMemoryBus()
     g, _ = AgentRunner(bus, FakeClient(handler=lambda s, u: _ts(_inp(u)), tool_handler=th)).author_tests(
         "test-author", _task(), ws)
-    assert not (ws.path / "rac.py").exists()
-    assert g.payloads[0]["files"] == [TEST_FILE]
-    assert "workspace_reset" in [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert (ws.path / "tests" / "test_do_dang.py").exists()
+    assert sorted(g.payloads[0]["files"]) == sorted([TEST_FILE, "tests/test_do_dang.py"])
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "workspace_kept" in acts and "workspace_reset" not in acts
 
 
 def test_commit_bo_test_that_bai_thi_noi_thang(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

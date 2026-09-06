@@ -365,11 +365,12 @@ class AgentRunner:
         `branch`, `commit`, `files`, `tests_status` do CODE điền, model khai gì ở đó cũng bị thay."""
         spec = self.agents[agent_id]
         ws.create()
-        if ws.reset():
-            self._audit(spec, "workspace_reset", inp, evidence=f"worktree {ws.branch} còn thay đổi chưa commit từ lần trước; đã bỏ")
+        kept = ws.keep_wip(f"wip({inp.key}): test viết dở của lượt trước, giữ lại để làm tiếp")
+        if kept:
+            self._audit(spec, "workspace_kept", inp, evidence=f"worktree {ws.branch} còn thay đổi chưa commit từ lần trước; giữ thành WIP {kept}")
         tools = WorkspaceTools(ws, allow_write=True, write_scope="tests").toolbox()
         g = self.generate(agent_id, inp, "test-suites", tools=tools, max_turns=max_turns, budget=budget)
-        if not ws.dirty():
+        if not ws.dirty() and not kept:
             self._audit(spec, "invalid_output", inp, evidence="worktree không có file test nào sau vòng tool", tokens=g.tokens, cost=g.cost_usd)
             raise RunnerError(f"{agent_id}: không viết file test nào trong worktree {ws.branch}")
         checks = ws.run_checks()
@@ -377,7 +378,7 @@ class AgentRunner:
         # `unknown` thay vì "đỏ" giả, đúng tinh thần `local_checks.unverified` của ADR-0010.
         status = "unknown" if ws.stack().test is None else ("green" if checks.get("tests") else "red")
         try:
-            sha = ws.commit_all(f"test({inp.key}): {str(inp.payload.get('title') or inp.key)[:72]}")
+            sha = ws.commit_all(f"test({inp.key}): {str(inp.payload.get('title') or inp.key)[:72]}") if ws.dirty() else ws.head_sha()
         except WorkspaceError as e:
             raise RunnerError(f"{agent_id}: commit bộ test thất bại: {e}") from e
         files = ws.changed_files()  # sau commit: `git diff --name-only <base>` không thấy file chưa được theo dõi
@@ -400,17 +401,22 @@ class AgentRunner:
         model có khai gì ở các trường này cũng bị thay. Reviewer/QA đọc diff thật, không đọc lời kể."""
         spec = self.agents[agent_id]
         ws.create()
-        if ws.reset():  # lần chạy trước lỗi giữa chừng để lại file dở: dọn về HEAD, không để lần này commit luôn rác đó
-            self._audit(spec, "workspace_reset", inp, evidence=f"worktree {ws.branch} còn thay đổi chưa commit từ lần trước; đã bỏ")
+        # Lần chạy trước dừng giữa chừng (hết lượt tool / ngân sách) để lại file dở: GIỮ thành commit WIP để làm tiếp.
+        # Trước đây `reset()` vứt hết — agent viết 40 lượt rồi bị giết, lần sau bắt đầu từ số 0 và lại bị giết
+        # (2026-09-04 platform 21 file; 2026-09-06 TCK-CR-DEV-001-02 devserver). Reviewer đọc diff thật nên rác
+        # trong WIP vẫn bị bắt ở review, không cần vứt trước.
+        kept = ws.keep_wip(f"wip({inp.key}): việc dở của lượt trước, giữ lại để làm tiếp")
+        if kept:
+            self._audit(spec, "workspace_kept", inp, evidence=f"worktree {ws.branch} còn thay đổi chưa commit từ lần trước; giữ thành WIP {kept}")
         tools = WorkspaceTools(ws, allow_write=True, write_scope=write_scope).toolbox()
         g = self.generate(agent_id, inp, "pull-requests", tools=tools, max_turns=max_turns, budget=budget)
-        if not ws.dirty():  # so với HEAD của branch: lần làm lại mà ghi y hệt lần trước cũng là "không sửa gì"
+        if not ws.dirty() and not kept:  # so với HEAD của branch: lần làm lại mà ghi y hệt lần trước cũng là "không sửa gì"
             self._audit(spec, "invalid_output", inp, evidence="worktree không có thay đổi sau vòng tool", tokens=g.tokens, cost=g.cost_usd)
             raise RunnerError(f"{agent_id}: không sửa file nào trong worktree {ws.branch} (so với lần trước)")
         checks = ws.run_checks()
         title = str(inp.payload.get("title") or inp.key)[:72]
-        try:
-            sha = ws.commit_all(f"feat({inp.key}): {title}")
+        try:  # WIP đã đủ và lượt này không thêm gì → PR chính là HEAD (WIP), không commit rỗng
+            sha = ws.commit_all(f"feat({inp.key}): {title}") if ws.dirty() else ws.head_sha()
         except WorkspaceError as e:  # đã commit hết trong vòng tool? (không có tool commit — nhưng phòng hờ)
             raise RunnerError(f"{agent_id}: commit thất bại: {e}") from e
         p = dict(g.payloads[0])

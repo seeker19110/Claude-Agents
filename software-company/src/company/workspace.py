@@ -176,6 +176,17 @@ class TicketWorkspace:
     def has_changes(self) -> bool:
         return bool(_git(self.path, "status", "--porcelain")) or bool(self.changed_files())
 
+    def head_sha(self) -> str:
+        return _git(self.path, "rev-parse", "--short", "HEAD")
+
+    def keep_wip(self, message: str) -> str | None:
+        """Lần chạy trước dừng giữa chừng (hết lượt tool / ngân sách) để lại file dở: GIỮ LẠI thành một commit WIP
+        trên branch ticket để lần này làm tiếp, thay vì `reset()` vứt hết. Đo được 2026-09-06 (TCK-CR-DEV-001-02):
+        40 lượt tool viết devserver dở, `workspace_reset` xoá sạch, lần 2 bắt đầu từ số 0 và lại vượt 40 lượt.
+        Trả về sha WIP, hoặc None nếu không có gì dở."""
+        if not self.dirty(): return None
+        return self.commit_all(message)
+
     def reset(self) -> bool:
         """Bỏ mọi sửa đổi chưa commit (tracked + untracked, kể cả thư mục) để về đúng HEAD của branch ticket.
         Lần chạy trước lỗi giữa chừng có thể để lại file dở; không dọn thì lần làm lại commit luôn rác đó.
