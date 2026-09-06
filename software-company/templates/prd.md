@@ -17,6 +17,12 @@
 ## 7. Dữ liệu cá nhân
 | Trường | Phân loại | Mục đích | Cơ sở pháp lý | Retention |
 ## 8. Quyết định công nghệ (link ADR)
+## 8b. Chạy ở đâu (`runtime` — orchestrator dùng để smoke, ADR-0029)
+| Trường | Giá trị |
+| `command` | <lệnh khởi động, vd `python -m app --port {port}`> |
+| `port` | <0 = tự chọn> |
+| `health` | <đường GET trả 200, vd `/health`> |
+| phụ thuộc ngoài | <DB, cache, cloud — hoặc "không, chạy in-memory được"> |
 ## 9. Rủi ro đã chấp nhận (link threat-model, người ký)
 ## 10. Giả định và câu hỏi mở
 ## 11. Bảng truy vết
