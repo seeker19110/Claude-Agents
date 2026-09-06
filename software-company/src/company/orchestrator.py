@@ -445,6 +445,12 @@ class Orchestrator:
                     # xem chú thích ở `DeliveryLead._retry`: không dựng lại `blocked` thì ticket quay về
                     # `dispatched` và người duyệt escalation bấm approve cũng không mở lại được nó.
                     self.lead.state[str(d["ticket_id"])] = "blocked"
+                elif a["action"] == "ticket.already_integrated" and d.get("state"):
+                    # Đối xứng với `ticket.blocked` ở trên: người đã quyết "việc này xong rồi" (code đã ở nhánh
+                    # tích hợp, xem `DeliveryLead.mark_done_already_integrated`). Không dựng lại thì mở lại bus là
+                    # `ticket.blocked` CŨ (nằm trước trong log) thắng, ticket quay về `blocked` và vòng lặp
+                    # escalation → duyệt → agent không có gì sửa → block mở lại từ đầu.
+                    self.lead.state[str(d["ticket_id"])] = str(d["state"])
                 elif a["action"] == "integration.merged":
                     self.integrated.add(d["ticket_id"])
                     prev_r, self.lead.replaying = self.lead.replaying, True
