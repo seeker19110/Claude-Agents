@@ -109,6 +109,13 @@ kế tiếp và không có ticket nào để retry. Orchestrator ghi `project.st
 bị hoãn), `status.stalled` nêu agent + lỗi, và mở gate này với checklist `agent_error`, `decision:retry|close`.
 `approve` = chạy lại đúng event đã lỗi (resume dự án); `reject` = đóng dự án (`project.closed`). Lỗi lần nữa → gate mới.
 
+### Escalation nợ kiến trúc treo (subject = project_id, ADR-0032)
+Cùng mã nợ (`DEF-xx`, `SD-xx`, `debt:<mã>`) trong finding của review-results nhắc ≥ N review liên tiếp của cùng nguồn
+(N = `llm.yaml debt_reviews`, mặc định 3) → supervisor đếm từ bus, orchestrator mở gate này với checklist
+`debt:<mã>×<n> liên tiếp (<nguồn>; <ticket…>)` cho từng mã, `decision:adr|waive`, `hint:cần ticket ADR + người ký`;
+audit `debt.escalated` mang cả bảng (`status.architecture_debt`). Dự án KHÔNG bị pause. `approve` = đã có ticket ADR
+và người ký; `reject` = chấp nhận treo — cả hai chỉ ghi `debt.decided`. Nợ nhắc tiếp tới bội số kế của N → gate mới.
+
 ## Chỉ người được ký
 - Chấp nhận rủi ro bảo mật (threat accepted)
 - Ngoại lệ license (copyleft)

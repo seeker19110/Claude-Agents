@@ -187,6 +187,8 @@ class LLMConfig:
     max_input_chars: int = 120_000   # trần ký tự prompt (≈ 37k token); runner cắt payload/blackboard theo context.py
     prices: dict[str, dict[str, float]] = field(default_factory=dict)  # model (tiền tố) → {input, output, cached_input, cache_write} USD/1M
     budget_usd: float | None = None  # trần chi phí mỗi dự án; supervisor pause dự án khi chạm (None = không giới hạn)
+    # ADR-0032: cùng một mã nợ kiến trúc (DEF-xx, SD-xx, `debt:`) nhắc ≥ n review liên tiếp → gate escalation cấp dự án
+    debt_reviews: int = 3
     # Trần USD cho MỘT lượt gọi CLI (`--max-budget-usd`, ADR-0026). Khác bản chất với `budget_usd` (cả dự án): đây là
     # cái hãm CỨNG bên trong phiên CLI, thứ mà ngân sách của supervisor không với tới được vì nó chỉ đo SAU khi CLI
     # trả về (đánh đổi đã ghi ở ADR-0023/0024). Không khai thì lấy `budget_usd` làm trần thảm hoạ: một lượt tiêu quá
@@ -245,6 +247,7 @@ def load_config(path: Path | None = None) -> LLMConfig:
         cfg.max_input_chars = int(data.get("max_input_chars", cfg.max_input_chars))
         cfg.prices = {str(k): {kk: float(vv) for kk, vv in (v or {}).items()} for k, v in (data.get("prices") or {}).items()}
         if data.get("budget_usd") is not None: cfg.budget_usd = float(data["budget_usd"])
+        cfg.debt_reviews = int(data.get("debt_reviews", cfg.debt_reviews))
         cfg.cli_tools = bool(data.get("cli_tools", cfg.cli_tools))
         cfg.cli_max_turns = int(data.get("cli_max_turns", cfg.cli_max_turns))
         cfg.cli_bash = [str(x) for x in (data.get("cli_bash") or cfg.cli_bash)]
@@ -264,6 +267,7 @@ def load_config(path: Path | None = None) -> LLMConfig:
     if env.get("COMPANY_LLM_RETRIES"): cfg.retries = int(env["COMPANY_LLM_RETRIES"])
     if env.get("COMPANY_MAX_INPUT_CHARS"): cfg.max_input_chars = int(env["COMPANY_MAX_INPUT_CHARS"])
     if env.get("COMPANY_BUDGET_USD"): cfg.budget_usd = float(env["COMPANY_BUDGET_USD"])
+    if env.get("COMPANY_DEBT_REVIEWS"): cfg.debt_reviews = int(env["COMPANY_DEBT_REVIEWS"])
     if env.get("COMPANY_LLM_BACKENDS"):
         wanted = [s.strip() for s in env["COMPANY_LLM_BACKENDS"].split(",") if s.strip()]
         by_name = {str(b.get("name") or b.get("provider")): b for b in cfg.backends}
@@ -378,6 +382,7 @@ def make_client(cfg: LLMConfig | None = None) -> ModelClient:
     client.pricing = Pricing(cfg.prices)
     client.max_input_chars = cfg.max_input_chars
     client.budget_usd = cfg.budget_usd
+    client.debt_reviews = cfg.debt_reviews
     return client
 
 

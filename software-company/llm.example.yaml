@@ -54,6 +54,9 @@ prices:
 # Trần chi phí mỗi dự án (USD). Chạm 80% → supervisor warn; chạm 100% → pause dự án cho tới khi người `resume`.
 # Bỏ trống = không giới hạn. COMPANY_BUDGET_USD ghi đè. Trần theo ticket đặt ở Task.budget_usd.
 # budget_usd: 50.0
+# Nợ kiến trúc treo (ADR-0032): cùng mã nợ (DEF-xx, SD-xx, `debt:`) nhắc ≥ n review liên tiếp của cùng nguồn → gate
+# escalation cấp dự án. COMPANY_DEBT_REVIEWS ghi đè.
+# debt_reviews: 3
 
 # Tool web cho researcher bật bằng `orchestrator --web`; máy tìm kiếm qua biến môi trường COMPANY_SEARCH_URL
 # (vd. SearXNG: http://searx.local/search?q={q}&format=json). Không đặt → DuckDuckGo HTML.

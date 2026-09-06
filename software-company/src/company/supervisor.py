@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass
@@ -15,6 +16,22 @@ from .guard import scan
 # F16: token của 3 lượt review (mỗi lượt mang system prompt + blackboard) không tính vào ngân sách ticket — delivery-lead
 # ước lượng công của engineer, còn review là chi phí cố định của quy trình; cộng chung thì mọi ticket đều bị cắt.
 REVIEW_ACTORS = frozenset({"reviewer", "qa-debugger", "security-engineer"})
+
+# ADR-0032: mã "nợ kiến trúc treo" trong finding của review (threat-model, schema, infra, code review): `DEF-01`, `SD-3`,
+# hoặc `debt: <mã>` viết tự do. Cùng một mã nhắc ≥ `debt_threshold` review LIÊN TIẾP của cùng nguồn trong cùng dự án
+# là quyết định đang bị né qua từng ticket — không đợi người tình cờ đọc finding thứ n.
+DEBT_RE = re.compile(r"\b((?:DEF|SD)-\d+)\b|\bdebt:\s*([A-Za-z0-9_.-]+)", re.IGNORECASE)
+DEBT_HINT = "cần ticket ADR + người ký: quyết định kiến trúc này đang bị né qua từng ticket"
+
+
+def debt_ids(review: dict) -> set[str]:
+    """Mã nợ nhắc trong một review-results: mọi `findings[].text` + `root_cause`."""
+    texts = [str(f.get("text") or "") for f in review.get("findings") or [] if isinstance(f, dict)]
+    if review.get("root_cause"): texts.append(str(review["root_cause"]))
+    out = set()
+    for m in DEBT_RE.finditer("\n".join(texts)):
+        out.add((m.group(1) or m.group(2)).upper())
+    return out
 
 
 @dataclass
@@ -44,9 +61,16 @@ class Supervisor:
     WARN_AT, CUT_AT = 0.8, 1.0
 
     def __init__(self, bus: InMemoryBus, max_retries: int = 3, ticket_timeout: timedelta = timedelta(hours=4),
-                 project_budget_usd: float | None = None):
+                 project_budget_usd: float | None = None, debt_threshold: int = 3):
         self.bus, self.max_retries, self.ticket_timeout = bus, max_retries, ticket_timeout
         self.project_budget_usd = project_budget_usd
+        # ADR-0032: nợ kiến trúc treo. Mọi thứ dưới đây là hàm thuần của bus (đếm lại khi replay) — không có gì
+        # chỉ sống trong RAM (khuôn 2, TRAPS.md). project_id → debt_id → sổ: tổng lần nhắc, ticket, nguồn, chuỗi
+        # liên tiếp theo nguồn, và `fired` = số lần đã chạm ngưỡng (thế hệ của khoá once, khuôn 3).
+        self.debt_threshold = max(1, int(debt_threshold))
+        self.debt: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+        self.debt_due: list[dict[str, Any]] = []  # mỗi lần một mã nợ chạm ngưỡng: orchestrator mở gate escalation dự án
+        self.ticket_project: dict[str, str] = {}  # review-results có thể thiếu project_id; học từ `tasks`
         self.budgets: dict[str, Budget] = {}
         self.project_cost: dict[str, float] = defaultdict(float)
         self.project_warned: set[str] = set(); self.project_paused: set[str] = set()
@@ -104,6 +128,7 @@ class Supervisor:
                 self.project_paused.discard(pid); self.project_warned.discard(pid)
         elif env.topic == "tasks":
             t = Task.model_validate(env.payload)
+            self.ticket_project[t.ticket_id] = t.project_id
             self.budgets.setdefault(t.ticket_id, Budget(t.budget_tokens, limit_usd=t.budget_usd))
             if t.retry >= self.max_retries:
                 self._act(t.ticket_id, "escalate", f"retry {t.retry} ≥ {self.max_retries}")
@@ -121,14 +146,50 @@ class Supervisor:
             if a.project_id and a.cost_usd:
                 self.project_cost[a.project_id] += a.cost_usd
                 self._check_project(a.project_id)
-        elif env.topic == "review-results" and env.payload.get("verdict") in {"fail", "block"}:
-            sig = env.payload.get("root_cause") or " | ".join(f["text"] for f in env.payload.get("findings", []))
-            sigs = self.error_signatures[env.key]; sigs.append(sig)
-            if sigs.count(sig) >= 2:
-                self._act(env.key, "escalate", "cùng lỗi lặp ≥ 2 lần", evidence=sig)
+        elif env.topic == "review-results":
+            self._count_debt(env)
+            if env.payload.get("verdict") in {"fail", "block"}:
+                sig = env.payload.get("root_cause") or " | ".join(f["text"] for f in env.payload.get("findings", []))
+                sigs = self.error_signatures[env.key]; sigs.append(sig)
+                if sigs.count(sig) >= 2:
+                    self._act(env.key, "escalate", "cùng lỗi lặp ≥ 2 lần", evidence=sig)
         elif env.topic == "shared-context":
             if env.actor not in NAMESPACE_OWNERS.get(env.payload["namespace"], set()):
                 self._act(env.actor, "pause", "ghi sai namespace")
+
+    def _count_debt(self, env: Envelope) -> None:
+        """ADR-0032: đếm mã nợ theo (dự án, nguồn review). Review của một nguồn KHÔNG nhắc mã nợ nó từng nhắc → chuỗi
+        của nguồn đó về 0 (nợ đã trả hoặc đã có ADR). Chạm bội số của ngưỡng → một mục `debt_due` mang `times`
+        (lần thứ mấy): lần sau nợ tăng tiếp vẫn mở gate mới, không bị khoá once của lần trước nuốt."""
+        p = env.payload
+        pid = p.get("project_id") or self.ticket_project.get(str(p.get("ticket_id") or env.key))
+        if not pid: return
+        src = str(p.get("source") or env.actor); tid = str(p.get("ticket_id") or env.key)
+        ids = debt_ids(p); book = self.debt[str(pid)]
+        for did, rec in book.items():
+            if did not in ids and src in rec["streak"]: rec["streak"][src] = 0
+        for did in sorted(ids):
+            rec = book.setdefault(did, {"mentions": 0, "tickets": [], "sources": [], "streak": {}, "fired": 0})
+            rec["mentions"] += 1
+            if tid not in rec["tickets"]: rec["tickets"].append(tid)
+            if src not in rec["sources"]: rec["sources"].append(src)
+            rec["streak"][src] = rec["streak"].get(src, 0) + 1
+            if rec["streak"][src] % self.debt_threshold == 0:
+                rec["fired"] += 1
+                self.debt_due.append({"project_id": str(pid), "debt_id": did, "times": rec["fired"],
+                                      "consecutive": rec["streak"][src], "source": src, "mentions": rec["mentions"],
+                                      "tickets": list(rec["tickets"]), "hint": DEBT_HINT})
+
+    def debt_table(self, project_id: str | None = None) -> list[dict[str, Any]]:
+        """Bảng nợ kiến trúc đã đếm sẵn (cho báo cáo sprint, `status`, và prompt supervisor): mỗi dòng một mã nợ."""
+        rows = []
+        for pid, book in sorted(self.debt.items()):
+            if project_id and pid != project_id: continue
+            for did, rec in sorted(book.items()):
+                rows.append({"project_id": pid, "debt_id": did, "mentions": rec["mentions"],
+                             "consecutive": max(rec["streak"].values(), default=0), "tickets": list(rec["tickets"]),
+                             "sources": list(rec["sources"]), "escalated": rec["fired"], "threshold": self.debt_threshold})
+        return rows
 
     def _check_ticket(self, tid: str, b: Budget) -> None:
         """Chạm 100% → budget_cut, 80% → warn; mỗi ngưỡng chỉ báo một lần cho tới khi `budget.extended` (như dự án):
@@ -243,4 +304,5 @@ class Supervisor:
                 "cost_by_agent": {k: round(v, 4) for k, v in sorted(cost_by_agent.items())},
                 "cost_by_model": {k: round(v, 4) for k, v in sorted(cost_by_model.items())},
                 "project_cost_usd": {k: round(v, 4) for k, v in sorted(self.project_cost.items())},
-                "project_budget_usd": self.project_budget_usd, "unpriced_calls": self.unpriced}
+                "project_budget_usd": self.project_budget_usd, "unpriced_calls": self.unpriced,
+                "architecture_debt": self.debt_table()}  # ADR-0032: nợ treo phải có mặt trong báo cáo, không chỉ trong gate
