@@ -731,6 +731,18 @@ def test_cli_publish_and_status(tmp_path, capsys, monkeypatch):
     assert "error:intake" in out and '"errors": 1' in out
 
 
+def test_cli_publish_change_request_keys_by_change_id(tmp_path, capsys, monkeypatch):
+    """Change request có cả project_id và change_id; key phải là change_id (schema: key = change_id) — `decide-change`
+    replay theo key, lấy project_id là quyết định của khách không tìm thấy CR. Đo được 2026-09-06: CR-RISK-001 vào bus
+    với key=QLKH."""
+    db = str(tmp_path / "c.sqlite"); f = tmp_path / "cr.json"
+    f.write_text(json.dumps({"change_id": "CR-1", "project_id": "P1", "requested_by": "human:po",
+                             "description": "đổi phạm vi", "decision": "pending"}), encoding="utf-8")
+    monkeypatch.setenv("COMPANY_LLM_PROVIDER", "fake")
+    assert orch_main(["--db", db, "publish", "change-requests", str(f), "--actor", "human:po"]) == 0
+    assert "published change-requests key=CR-1" in capsys.readouterr().out
+
+
 def test_orchestrator_rejects_inconsistent_routes():
     agents = load_agents(); agents["intake"].reads = ["clarification-answers"]
     with pytest.raises(ValueError, match="ROUTES lệch"):

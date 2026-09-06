@@ -1717,7 +1717,7 @@ def main(argv: list[str] | None = None) -> int:
         if not is_human(ns.actor):  # CLI là cửa của người; giả danh agent/orchestrator từ đây là vượt quyền producer của bus
             print(f"--actor phải là người (human:<tên>), không phải {ns.actor!r}", file=sys.stderr); return 2
         payload = json.loads(ns.file.read_text(encoding="utf-8"))
-        key = ns.key or payload.get("ticket_id") or payload.get("release_id") or payload.get("project_id") or payload.get("change_id")
+        key = ns.key or payload.get("ticket_id") or payload.get("release_id") or payload.get("change_id") or payload.get("project_id")
         if not key: print("cần --key", file=sys.stderr); return 2
         env = bus.publish(Envelope(topic=ns.topic, key=key, actor=ns.actor, payload=payload))
         print(f"published {env.topic} key={env.key} event={env.event_id}"); return 0
