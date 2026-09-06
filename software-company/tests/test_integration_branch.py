@@ -253,3 +253,21 @@ def test_without_repo_dependents_start_on_approve():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
     _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
     assert not orch.lead.require_integration and orch.lead.state["T2"] == "merged"
+
+
+def test_ticket_lam_lai_sau_khi_da_merge_thi_ban_sua_van_vao_nhanh_tich_hop(tmp_path):
+    """Ticket đã merge một lần rồi bị trả về làm lại (nghiệm thu rejected / review block) và approved lần nữa: bản sửa
+    PHẢI vào nhánh tích hợp. Trước đây tập `integrated` nhớ lần trước nên bỏ qua, release sau vẫn mang code cũ — đo
+    được 2026-09-06 (TCK-CR-STAGE-001-02: bản sửa deploy.sh nằm trên branch, tag v0.18.2 vẫn là bản lỗi)."""
+    from company.workspace import Integration, TicketWorkspace
+    repo = _init_repo(tmp_path / "repo")
+    integ = Integration(repo, base="main"); integ.ensure()
+    ws = TicketWorkspace(repo, "T1", base="main"); ws.create()
+    (ws.path / "f.py").write_text("v = 1\n", encoding="utf-8"); ws.commit_all("feat(T1): v1")
+    assert integ.rev_list_count(ws.branch) == 1
+    assert integ.merge(ws.branch, "merge(T1)").ok
+    assert integ.rev_list_count(ws.branch) == 0, "merge xong thì branch không còn gì mới"
+    (ws.path / "f.py").write_text("v = 2\n", encoding="utf-8"); ws.commit_all("fix(T1): v2 sau khi bị trả về")
+    assert integ.rev_list_count(ws.branch) == 1, "bản sửa là commit mới → phải merge tiếp"
+    assert integ.merge(ws.branch, "merge(T1) lần 2").ok
+    assert (integ.path / "f.py").read_text(encoding="utf-8") == "v = 2\n"

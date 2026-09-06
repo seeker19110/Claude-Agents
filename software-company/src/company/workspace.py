@@ -367,6 +367,12 @@ class Integration:
     def sha(self) -> str:
         return _git(self.repo, "rev-parse", "--short", self.branch)
 
+    def rev_list_count(self, ticket_branch: str) -> int:
+        """Số commit của `ticket_branch` chưa có trong nhánh tích hợp (0 = không có gì mới để merge)."""
+        self.ensure()
+        out = _git(self.path, "rev-list", "--count", f"{self.branch}..{ticket_branch}")
+        return int(out.strip() or 0)
+
     def merge(self, ticket_branch: str, message: str) -> MergeResult:
         """merge --no-ff ticket vào nhánh tích hợp. Xung đột → abort, trả về file xung đột; nhánh tích hợp không đổi."""
         self.ensure()
