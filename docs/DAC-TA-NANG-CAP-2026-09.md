@@ -174,7 +174,7 @@ Tổng khoảng 20–22 ngày-phiên tuần tự, rút còn ~12 ngày lịch n�
 | Mã | Trạng thái | PR | Ghi chú |
 |---|---|---|---|
 | V1–V5 | chưa | | |
-| B1–B8 | B2 wip (ADR-0030 nhánh `feat/so-ruling-adr-0030`) | | |
+| B1–B8 | B7 xong; B2 wip (ADR-0030 nhánh `feat/so-ruling-adr-0030`) | B7: #99 | B7: `orchestrator trace <id> [--json]`, `src/company/trace.py` |
 | D1–D5 | chưa | | |
 | C1–C10 | C6 một phần (#80), C1 một phần (#76) | | |
 | S1–S7 | S2 một phần (ADR-0009) | | |

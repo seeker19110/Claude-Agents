@@ -15,6 +15,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 - docs: đặc tả nâng cấp tháng 9/2026 — sáu đợt, 40 mục, bốn câu hỏi đo "hoàn thiện" (`docs/DAC-TA-NANG-CAP-2026-09.md`) (#96)
 - docs: bộ khung repo 9 file — AGENTS/CLAUDE/TRAPS, ARCHITECTURE/CODEMAP/CHANGELOG, task pack/prompt sheet/session log; mỗi package con có CLAUDE/TRAPS/CODEMAP/ARCHITECTURE riêng (#91)
 - feat(company): `deployed` ở staging phải qua smoke do orchestrator tự chạy — lời khai thành bằng chứng (ADR-0029) (#90)
+- feat(company): `trace <id>` — dòng thời gian một ticket/release từ intake tới deploy (B7 đặc tả nâng cấp) (#99)
 
 ## 2026-09-06
 
