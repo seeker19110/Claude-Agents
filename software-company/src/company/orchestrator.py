@@ -58,16 +58,19 @@ from .bus import InMemoryBus
 from .delivery import DONE_STATES, DeliveryLead
 from .events import BUDGET_FACTOR, Envelope, Task
 from .gate_cli import PersistentGate
-from .gates import Decision, GateRequest
+from .gates import GateRequest
 from .llm import LLMError, ModelClient, TransientError
-from .orch import rehydrate, scheduler, verify, worktree_flow
+from .orch import gates_flow, rehydrate, scheduler, verify, worktree_flow
 from .orch.cli import main, source_fingerprint
+
+# Không dùng trong file này nhưng là hợp đồng công khai của module (gate_brief.py, test) — giữ re-export tường
+# minh bằng alias cùng tên để ruff không coi là import thừa.
+from .orch.routes import BLIND_STRIP as BLIND_STRIP
+from .orch.routes import ENGINEERING as ENGINEERING
+from .orch.routes import MAX_CONFLICT_RETRIES as MAX_CONFLICT_RETRIES
 from .orch.routes import (
-    ACTOR,
     PLAN_INPUTS,
     PROD_ROUTE,
-    RESEARCH_TOPICS,
-    REVIEW_AGENT,
     ROUTES,
     SPEC_RUNTIME_REWORKS,
     STAGING_ROUTE,
@@ -78,12 +81,6 @@ from .orch.routes import (
     key_for,
     spec_runtime_gap,
 )
-
-# Không dùng trong file này nhưng là hợp đồng công khai của module (gate_brief.py, test) — giữ re-export tường
-# minh bằng alias cùng tên để ruff không coi là import thừa.
-from .orch.routes import BLIND_STRIP as BLIND_STRIP
-from .orch.routes import ENGINEERING as ENGINEERING
-from .orch.routes import MAX_CONFLICT_RETRIES as MAX_CONFLICT_RETRIES
 from .orch.routes import THREAT_ROUTE as THREAT_ROUTE
 from .orch.routes import _can_author_tests as _can_author_tests
 from .orch.routes import _has_dispute as _has_dispute
@@ -427,80 +424,22 @@ class Orchestrator:
             with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
             self._after_error(env, agent, e, r, res)
 
-    def _after_error(self, env: Envelope, agent: str, error: Exception, r: Route, res: StepResult) -> None:
-        """Mọi lỗi agent phải có người nhận: `_stall` lo chuỗi nghiên cứu, `_rework_after_error` lo agent sửa code.
-        KHÔNG đường nào nhận thì đây là đường cuối — trước đây lỗi rơi vào im lặng: event vẫn bị `_mark` là đã xử
-        lý, ticket treo nguyên trạng thái cũ, không gate nào mở, và `status` báo mọi chỉ số XANH trong khi dự án
-        đã chết. Đo được khi chạy thật (2026-09-04): ba reviewer của `pull-requests:QLKH-001` cùng lỗi
-        (`env.topic` không thuộc RESEARCH_TOPICS nên `_stall` bỏ qua, `r.tools != "rw"` nên `_rework_after_error`
-        cũng bỏ qua) → 13 ticket phụ thuộc chờ vĩnh viễn mà không có một tín hiệu nào."""
-        handled = self._stall(env, agent, error, res)
-        handled = self._rework_after_error(env, r, error) or handled
-        if handled: return
-        subject = str(env.payload.get("ticket_id") or env.key)
-        rec = {"agent": agent, "topic": env.topic, "event_id": env.event_id, "subject": subject, "error": str(error)[:300]}
-        with self._lock: self.unhandled[subject] = rec
-        self._audit("agent_error_unhandled", rec, ticket_id=env.payload.get("ticket_id"), project_id=self.project_for(env))
-        self.supervisor.escalate_gate(subject, f"{agent} lỗi trên {env.topic}, không nhánh nào xử lý: {str(error)[:200]}",
-                                      once_key=f"unhandled:{env.event_id}:{agent}")
-        res.actions.append(f"unhandled:{subject}:{agent}")
+    # ---------- lỗi agent không nhánh nào nhận, quyết định gate (ADR-0034: orch/gates_flow.py) ----------
 
-    def _rework_after_error(self, env: Envelope, r: Route, error: Exception) -> bool:
-        """Agent kỹ thuật lỗi (không sửa file, JSON hỏng, hết ngân sách lượt...) → ticket không được treo `dispatched`
-        mãi: delivery-lead phát lại task retry+1 với hint là lỗi, hết retry → blocked → gate escalation.
-        Trả True nếu nhánh này đã nhận trách nhiệm xử lý lỗi."""
-        if r.tools != "rw": return False
-        tid = str(env.payload.get("ticket_id") or env.key)
-        if self.lead.state.get(tid) not in {"dispatched", "in_progress"}: return False
-        try:
-            self.lead.rework(tid, f"lần trước lỗi: {str(error)[:500]}")
-        except ValueError as ex:
-            self._audit("handler_error", {"agent": "delivery-lead", "error": str(ex)[:300]}, ticket_id=tid)
-        return True
+    _after_error = gates_flow._after_error
+    _rework_after_error = gates_flow._rework_after_error
+    _stall = gates_flow._stall
+    _retry_stalled = gates_flow._retry_stalled
+    _retry_unhandled = gates_flow._retry_unhandled
+    _on_gate_decide = gates_flow._on_gate_decide
+    _check_escalations = gates_flow._check_escalations
+    _check_debt = gates_flow._check_debt
+    _on_escalation_decided = gates_flow._on_escalation_decided
+    _open_acceptance_gate = gates_flow._open_acceptance_gate
+    _close_acceptance_gate = gates_flow._close_acceptance_gate
+    _record_lessons = gates_flow._record_lessons
 
-    def _stall(self, env: Envelope, agent: str, error: Exception, res: StepResult) -> bool:
-        """Agent của chuỗi nghiên cứu lỗi → dự án không có bước kế tiếp. Ghi `project.stalled`, supervisor escalate
-        (dự án bị hoãn mọi event), mở gate `escalation` subject=project_id. Ticket có cơ chế retry/blocked riêng.
-        Trả True nếu nhánh này đã nhận trách nhiệm xử lý lỗi."""
-        if env.topic not in RESEARCH_TOPICS: return False
-        pid = str(env.payload.get("project_id") or env.key)
-        with self._lock:
-            self.stall_count[env.event_id] += 1; n = self.stall_count[env.event_id]
-            self.stalled[pid] = {"project_id": pid, "event_id": env.event_id, "topic": env.topic, "agent": agent,
-                                 "error": str(error)[:300], "attempt": n}
-        self._audit("project.stalled", self.stalled[pid], project_id=pid)
-        self.supervisor.escalate_gate(pid, f"{agent} lỗi trên {env.topic} (lần {n}): {str(error)[:200]}",
-                                      once_key=f"stall:{env.event_id}:{n}")
-        if pid not in self.gate.pending:
-            self.gate.request(GateRequest(kind="escalation", subject_id=pid, created_by="supervisor",
-                                          checklist=["agent_error", "decision:retry|close"]))
-        res.actions.append(f"stalled:{pid}:{agent}")
-        return True
 
-    def _retry_stalled(self, pid: str, by: str, reason: str) -> bool:
-        """Người duyệt gate escalation của dự án: chạy lại event đã lỗi (bỏ dấu đã xử lý, đưa về đầu hàng đợi)."""
-        st = self.stalled.get(pid)
-        if st is None: return False
-        env = next((e for e in self.bus.replay(topic=st["topic"], key=pid) if e.event_id == st["event_id"]), None)
-        if env is None: return False
-        with self._lock:
-            self.processed.discard(env.event_id); self.partial.pop(env.event_id, None); self.stalled.pop(pid, None)
-        self._audit("project.retried", {**st, "by": by, "reason": reason}, project_id=pid)
-        with self._qlock: self.queue.insert(0, env)
-        return True
-
-    def _retry_unhandled(self, subject: str, by: str, reason: str) -> bool:
-        """Như `_retry_stalled` nhưng cho event bất kỳ mà agent lỗi không nhánh nào nhận (`unhandled`)."""
-        rec = self.unhandled.get(subject)
-        if rec is None: return False
-        env = next((e for e in self.bus.replay(topic=str(rec["topic"])) if e.event_id == rec["event_id"]), None)
-        if env is None: return False
-        with self._lock:
-            self.processed.discard(env.event_id); self.partial.pop(env.event_id, None); self.unhandled.pop(subject, None)
-            self.spec_runtime_reworks.pop(subject, None)  # người cho chạy lại → spec-writer được thêm một lượt sửa tự động
-        self._audit("event.retried", {**rec, "subject": subject, "by": by, "reason": reason[:300]}, project_id=self.project_for(env))
-        with self._qlock: self.queue.insert(0, env)
-        return True
 
 
 
@@ -762,177 +701,9 @@ class Orchestrator:
 
     # ---------- gate decide: plan → dispatch; release → production; escalation → mở lại / đóng ----------
 
-    def _on_gate_decide(self, env: Envelope, res: StepResult) -> StepResult:
-        d = _evidence(env.payload); sid, decision, by = d["subject_id"], d["decision"], d.get("by", "human")
-        kind = next((g.kind for g in reversed(self.gate.history) if g.subject_id == sid), None)
-        res.actions.append(f"gate:{kind}:{sid}:{decision}")
-        # Đếm ở ĐÂY chứ không ở `_on_escalation_decided`: `_rehydrate` đếm mọi `gate.decide` theo subject, nên đếm
-        # sống hẹp hơn (chỉ gate escalation) là hai đường lệch nhau và test bất biến restart đỏ — nó đã bắt đúng
-        # lỗi này trong chính bản sửa mở gate cho lần chặn thứ hai.
-        self.escalation_decided[sid] += 1
-        if kind == "escalation":
-            self._on_escalation_decided(sid, decision, by, d.get("reason", ""), res)
-        elif decision == "approve":
-            if sid in self.plans:
-                try:
-                    res.actions.append("dispatch:" + ",".join(self._dispatch_plan(sid)))
-                except (ValueError, PermissionError) as e:
-                    self._audit("plan_dispatch_error", {"plan_id": sid, "error": str(e)[:300]}); res.actions.append(f"error:{e}")
-            elif sid in self.lead.release_tickets:
-                rc = self.latest("release-candidates", sid)
-                if rc is not None:
-                    self._recall("release-engineer", rc)  # ký lại Gate 3 phải chạy lại được lượt production
-                    self._call("release-engineer", rc, PROD_ROUTE, res)
-        self._note_closed()
-        self._mark(env, res)
-        self._retry_deferred()
-        return res
 
-    def _check_escalations(self) -> None:
-        """Ticket blocked (retry hết) hoặc bị supervisor escalate → gate `escalation` cho người quyết (checklist gate 'bất thường')."""
-        # `self.paused` chứa cả ID DỰ ÁN (supervisor pause khi dự án chạm trần ngân sách), không chỉ ticket. Lọc
-        # `t in self.lead.tickets` bỏ sót đúng nhóm đó: dự án bị pause thì mọi event của nó bị hoãn, không cổng
-        # nào mở, không ai được hỏi — đo được: `paused=['P1']` mà `gates_pending={}`.
-        # Người ĐÃ quyết nhưng `gate.decide` còn nằm trong hàng đợi (mở lại bus: `_rehydrate` đã đếm nó vào
-        # `escalation_decided` nhưng `resume` chỉ được phát khi event đó được xử lý) → subject vẫn `paused`, khoá mang số
-        # quyết định mới → gate TRÙNG cho một việc người vừa duyệt. Đo được (2026-09-05): REL-004 duyệt 21:19, orchestrator
-        # mở lại 21:30, gate thứ hai mở ngay sau event đầu tiên trong hàng đợi, trước khi decide được áp dụng.
-        self._check_paused_releases()
-        with self._qlock:
-            decided_pending = {str(_evidence(e.payload).get("subject_id")) for e in self.queue
-                               if e.topic == "audit-log" and e.payload.get("action") == "gate.decide"}
-        for tid in {*self.lead.blocked(), *self.paused}:
-            if self.lead.state.get(tid) in DONE_STATES: continue  # đã đóng/đã xong: không mở gate nữa
-            if tid in decided_pending: continue  # đã có quyết định chờ áp dụng: không hỏi người lần nữa
-            # budget_cut cũng là "dừng chờ người" (approve = cấp thêm ngân sách): không có gate thì ticket treo im lặng.
-            # `pause` cũng vậy và còn nặng hơn — dự án chạm trần ngân sách bị pause thì MỌI event của nó bị hoãn.
-            # Thiếu `pause` ở đây thì `n = 0` cho một dự án bị pause, điều kiện bên dưới sai, và không gate nào mở.
-            n = sum(1 for a in self.supervisor.actions
-                    if a.target == tid and a.action in {"escalate", "budget_cut", "pause"})
-            # Mỗi lần escalate/cắt mới, mỗi lần blocked mới → một gate mới. `escalation_decided` là thành phần bắt
-            # buộc: sau khi người duyệt mở lại ticket, ticket có thể bị chặn LẠI mà supervisor không hành động gì
-            # thêm (n không đổi, state vẫn `blocked`) — thiếu nó thì khoá trùng lần trước, `once` nuốt, và ticket
-            # nằm im mãi không ai được hỏi. Đo được khi chạy thật (2026-09-04): QLKH-001 blocked lúc 13:25 với
-            # key `escalation:QLKH-001:5:blocked` đã có trong `once` từ lần chặn trước → `gates_pending` rỗng,
-            # `status` không báo gì bất thường, 13 ticket phụ thuộc đứng chờ vô hạn.
-            key = f"escalation:{tid}:{n}:{self.lead.state.get(tid)}:{self.escalation_decided[tid]}"
-            if tid in self.gate.pending or key in self.once: continue
-            if self.lead.state.get(tid) == "blocked" or n:
-                self._remember(key)
-                self.gate.request(GateRequest(kind="escalation", subject_id=tid, created_by="supervisor",
-                                              checklist=["root_cause", "decision:reopen|close", "hint"]))
-        self._check_debt()
 
-    def _check_debt(self) -> None:
-        """ADR-0032: mã nợ kiến trúc chạm ngưỡng (supervisor đếm từ bus, xác định) → gate `escalation` cấp DỰ ÁN với
-        danh sách nợ, số lần, ticket nào nhắc, và hint "cần ticket ADR + người ký". Không pause dự án: nợ treo là
-        quyết định bị né, không phải sự cố — việc khác vẫn chạy trong lúc người quyết.
 
-        Khoá once mang (dự án, mã nợ, lần thứ mấy): restart không mở trùng (`once` dựng lại từ audit), nhưng nợ tăng
-        tiếp tới bội số kế của ngưỡng là lần thứ n+1 → gate mới (khuôn 3, TRAPS.md). Gate của dự án đang bận (stall
-        hoặc nợ khác) thì đợi — không `remember`, nhịp sau mở."""
-        for due in self.supervisor.debt_due:
-            pid = due["project_id"]; key = f"debt:{pid}:{due['debt_id']}:{due['times']}"
-            if key in self.once: continue
-            if pid in self.gate.pending or pid in self.debt_gate: continue
-            self._remember(key)
-            rec = {**due, "table": self.supervisor.debt_table(pid)}
-            self.debt_gate[pid] = rec
-            self._audit("debt.escalated", rec, project_id=pid)
-            checklist = [f"debt:{due['debt_id']}×{due['consecutive']} liên tiếp ({due['source']}; {','.join(due['tickets'])})",
-                         *[f"debt:{r['debt_id']}×{r['mentions']} ({','.join(r['tickets'])})" for r in rec["table"]
-                           if r["debt_id"] != due["debt_id"]],
-                         "decision:adr|waive", f"hint:{due['hint']}"]
-            self.gate.request(GateRequest(kind="escalation", subject_id=pid, created_by="supervisor", checklist=checklist))
-
-    def _on_escalation_decided(self, tid: str, decision: str, by: str, reason: str, res: StepResult) -> None:
-        if tid in self.debt_gate:  # ADR-0032: nợ kiến trúc cấp dự án — người ghi nhận (ADR + người ký) hay chấp nhận treo
-            rec = self.debt_gate.pop(tid)
-            self._audit("debt.decided", {"project_id": tid, "debt_id": rec.get("debt_id"), "times": rec.get("times"),
-                                         "decision": decision, "by": by, "reason": reason[:300]}, project_id=tid)
-            res.actions.append(f"debt:{tid}:{rec.get('debt_id')}:{decision}")
-            return
-        if tid in self.lead.release_tickets:  # escalation của một RELEASE (không phải ticket): xem docstring
-            # `Delivery.waive_release_findings`/`rework_release_tickets` — người quyết định chấp nhận rủi ro (finding
-            # không có code để sửa: DPIA, license...) hay đúng là lỗi code thật cần các ticket merged làm lại.
-            if decision == "approve":
-                sources = self.lead.waive_release_findings(tid)
-                self.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
-                                          payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
-                res.actions.append(f"release_waived:{tid}:{','.join(sources)}")
-                if self._rerun_release(tid, by, reason, res): res.actions.append(f"release_rerun:{tid}")
-            elif self._superseded_release(tid):
-                # RC cũ mà nội dung đã nằm trong một bản GIAO sau nó (nhánh tích hợp cộng dồn): "đóng" là huỷ RC,
-                # KHÔNG trả ticket đã giao về làm lại. Đo được 2026-09-06: sau bản giao v0.15.1, 10 RC cũ
-                # pending_human sẽ mở gate; từ chối theo hành vi cũ đá 14 ticket đã giao về changes_requested.
-                self._audit("release.void", {"release_id": tid, "reason": f"nội dung đã nằm trong bản giao; {reason}"[:300]})
-                self._void(tid); res.actions.append(f"void:{tid}")
-            else:
-                self.lead.rework_release_tickets(tid, reason or "người từ chối escalation release: cần sửa nội dung thật")
-                res.actions.append(f"release_reworked:{tid}")
-            return
-        if tid in self.stalled:  # escalation cấp dự án (chuỗi nghiên cứu lỗi): retry event hoặc đóng dự án
-            if decision == "approve":
-                self.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
-                                          payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
-                res.actions.append(f"retry:{tid}" if self._retry_stalled(tid, by, reason) else f"retry_failed:{tid}")
-            else:
-                st = self.stalled.pop(tid, {})
-                self._audit("project.closed", {**st, "project_id": tid, "by": by, "reason": reason}, project_id=tid)
-                res.actions.append(f"closed:{tid}")
-            return
-        if tid not in self.lead.tickets and tid in self.unhandled:
-            # Event KHÔNG phải ticket (change-request, acceptance...) mà agent lỗi không nhánh nào nhận: trước đây rơi
-            # xuống nhánh ticket bên dưới → "reopen" một ticket không tồn tại, event không bao giờ chạy lại. Đo được
-            # 2026-09-06: CR-DEV-001, delivery-lead lỗi error_max_structured_output_retries, duyệt escalation xong
-            # hàng đợi rỗng, phải phát lại CR bằng tay.
-            # `resume` trước: supervisor đã `pause` subject khi escalate — không gỡ thì event chạy lại bị hoãn
-            # "paused:<subject>" và `_check_escalations` mở gate mới cho cùng việc.
-            self.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
-                                      payload={"target": tid, "action": "resume", "reason": f"escalation {decision}: {reason}"[:300]}))
-            if decision == "approve":
-                ok = self._retry_unhandled(tid, by, reason)
-                res.actions.append(f"retry:{tid}" if ok else f"retry_failed:{tid}")
-            else:
-                rec = self.unhandled.pop(tid, {})
-                self._audit("event.abandoned", {**rec, "subject": tid, "by": by, "reason": reason})
-                res.actions.append(f"closed:{tid}")
-            return
-        if decision == "approve":  # mở lại với hint = lý do người duyệt, cấp thêm một ngân sách ticket
-            b = self.supervisor.budgets.get(tid); t = self.lead.tickets.get(tid)
-            if b and t:
-                b.limit = max(b.limit, b.used) + t.budget_tokens
-                self._audit("budget.extended", {"ticket_id": tid, "limit": b.limit, "by": by}, ticket_id=tid)
-            if tid in self.integrated and self.lead.state.get(tid) in {"blocked", "escalated", "changes_requested"}:
-                # Code của ticket ĐÃ ở trong nhánh tích hợp: giao lại chỉ tổ bắt agent làm lại việc đã merge, nó
-                # không sửa gì (đúng) rồi bị tính `invalid_output` → block → escalation → lặp. Xem
-                # `DeliveryLead.mark_done_already_integrated`.
-                self._audit("ticket.already_integrated", {"ticket_id": tid, "by": by}, ticket_id=tid,
-                            project_id=self.lead.tickets[tid].project_id if tid in self.lead.tickets else None)
-                self.lead.mark_done_already_integrated(tid)
-                res.actions.append(f"already_integrated:{tid}")
-            elif self.lead.state.get(tid) in {"blocked", "escalated"}:
-                self.lead.reopen(tid, hint=reason or "người duyệt mở lại sau escalation")
-            self.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
-                                      payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
-            res.actions.append(f"reopen:{tid}")
-            # Escalation vì một REVIEW AGENT lỗi (không phải assignee): ticket vẫn `in_review`, event PR đã bị đánh dấu
-            # xử lý, nên duyệt gate xong không có gì chạy lại review còn thiếu — ticket nằm im tới `review_timeout`
-            # (2 giờ) mới được `tick` giao lại. Đo được (2026-09-05): QLKH-005/QLKH-013 duyệt xong đứng im, người
-            # phải `takeover` nộp lại PR nguyên trạng để vòng review chạy. Ở đây gọi lại đúng nguồn còn thiếu trên PR
-            # mới nhất; `partial` giữ cho reviewer/qa đã chấm không chạy lại.
-            if self.lead.state.get(tid) == "in_review" and (pr := self.latest("pull-requests", tid)) is not None:
-                for src in sorted(self.lead.required_reviews(tid) - set(self.lead.reviews.get(tid, {}))):
-                    self._audit("review.rerun", {"ticket_id": tid, "source": src, "by": by}, ticket_id=tid,
-                                project_id=self.project_for(pr))
-                    self._call(REVIEW_AGENT[src], pr, Route("pull-requests", REVIEW_AGENT[src], "review-results"), res)
-        elif decision in {"reject", "rollback"} and tid in self.lead.tickets:
-            blocked = self.lead.close_escalated(tid); res.actions.append(f"closed:{tid}")
-            self._audit("ticket.abandoned", {"ticket_id": tid, "by": by, "dependents_blocked": blocked}, ticket_id=tid,
-                        project_id=self.lead.tickets[tid].project_id)
-            if blocked: res.actions.append("blocked:" + ",".join(blocked))
-            if self.lead.batch_releases:  # ticket đóng không còn giữ release của các ticket đã approved
-                self.lead.flush_releases(self.lead.tickets[tid].project_id)
 
     # ---------- giao hàng thật (ADR-0027) ----------
 
@@ -996,43 +767,8 @@ class Orchestrator:
 
     # ---------- vòng học ----------
 
-    def _open_acceptance_gate(self, rid: str, res: StepResult) -> None:
-        """Sau production: mở gate `acceptance` cho khách ký (ADR-0017). Là gate thật nên có hạn 24h, có nhắc ở 12h
-        và được escalate khi quá hạn — trước đây chỉ là một dòng audit `uat.pending` không ai theo dõi."""
-        sid = f"UAT-{rid}"
-        if sid in self.gate.pending or self.gate.is_approved(sid) or f"uat:{rid}" in self.once: return
-        self._remember(f"uat:{rid}")
-        self.gate.request(GateRequest(kind="acceptance", subject_id=sid, created_by="account-manager",
-                                      checklist=["uat-script", "acceptance-criteria", "known-issues", "signed_by"]))
-        res.actions.append(f"gate:acceptance:{sid}")
 
-    def _close_acceptance_gate(self, env: Envelope, res: StepResult) -> None:
-        """Khách ký `acceptance-results` → đóng gate nghiệm thu bằng chính chữ ký đó. Four-eyes bảo đảm người ký của
-        khách khác account-manager. Conditional đóng ở dạng request_changes; phần còn lại đi qua change request."""
-        rid = env.payload.get("release_id"); sid = f"UAT-{rid}"
-        if sid not in self.gate.pending: return
-        verdict = env.payload.get("verdict")
-        decision: Decision = {"accepted": "approve", "rejected": "reject"}.get(str(verdict), "request_changes")  # type: ignore[assignment]
-        by = str(env.payload.get("signed_by") or env.actor)
-        try:
-            self.gate.decide(sid, decision, by=by, reason=f"acceptance-results: {verdict}", actor=ACTOR)
-            res.actions.append(f"gate:acceptance:{sid}:{decision}")
-        except (KeyError, PermissionError) as e:
-            self._audit("handler_error", {"agent": "account-manager", "error": str(e)[:300]})
 
-    def _record_lessons(self, rid: str) -> None:
-        """Sau nghiệm thu: estimate vs actual mỗi ticket đã closed → supervisor.knowledge + blackboard `knowledge`."""
-        for tid in self.lead.release_tickets.get(rid, []):
-            if self.lead.state.get(tid) != "closed" or f"lesson:{tid}" in self.once: continue
-            self._remember(f"lesson:{tid}")
-            t = self.lead.tickets[tid]; b = self.supervisor.budgets.get(tid)
-            actual = b.used if b else 0; est = t.estimate_tokens or 0
-            lesson = {"ticket_id": tid, "assignee": t.assignee, "estimate_tokens": est, "actual_tokens": actual,
-                      "review_tokens": b.review_used if b else 0,
-                      "ratio": round(actual / est, 2) if est else None, "retry": t.retry, "risk_tags": t.risk_tags}
-            self.supervisor.record_lesson(context=f"{t.project_id}/{tid} {t.title}", problem=f"retry={t.retry}",
-                                          solution=t.hint or "", evidence=json.dumps(lesson, ensure_ascii=False))
-            self.blackboard.write("supervisor", "knowledge", f"audit-log:lesson:{tid}", json.dumps(lesson, ensure_ascii=False))
 
     # ---------- người can thiệp giữa vòng (ADR-0012) ----------
 
