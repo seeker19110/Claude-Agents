@@ -194,6 +194,11 @@ class LLMConfig:
     # trả về (đánh đổi đã ghi ở ADR-0023/0024). Không khai thì lấy `budget_usd` làm trần thảm hoạ: một lượt tiêu quá
     # ngân sách CẢ dự án chắc chắn là hỏng. Suy diễn này chỉ làm chặt thêm, không nới mức nào của cấu hình.
     cli_max_budget_usd: float | None = None
+    # ADR-0035: sandbox tiến trình cho lệnh con của repo khách. `auto` = container nếu có runtime, không thì
+    # subprocess; `container` khai đích danh mà thiếu binary là LỖI (fail-closed), không tụt hạng âm thầm.
+    sandbox: str = "auto"            # auto | container | subprocess
+    sandbox_image: str = "python:3.12-slim"
+    sandbox_runtime: str = "docker"  # docker | podman | đường dẫn binary
 
     def model_for(self, tier: str) -> str:
         """light → standard → strong: backend không có model rẻ thì dùng model tầm trung, không bao giờ lùi lên tier cao
@@ -254,6 +259,9 @@ def load_config(path: Path | None = None) -> LLMConfig:
         cfg.mcp_tools = bool(data.get("mcp_tools", cfg.mcp_tools))
         cfg.mcp_max_turns = int(data.get("mcp_max_turns", cfg.mcp_max_turns))
         if data.get("cli_max_budget_usd") is not None: cfg.cli_max_budget_usd = float(data["cli_max_budget_usd"])
+        cfg.sandbox = str(data.get("sandbox", cfg.sandbox))
+        cfg.sandbox_image = str(data.get("sandbox_image", cfg.sandbox_image))
+        cfg.sandbox_runtime = str(data.get("sandbox_runtime", cfg.sandbox_runtime))
         cfg.backends = [dict(b) for b in (data.get("backends") or []) if isinstance(b, dict)]
         cfg.routing = dict(data.get("routing") or {})
     env = os.environ
@@ -268,6 +276,9 @@ def load_config(path: Path | None = None) -> LLMConfig:
     if env.get("COMPANY_MAX_INPUT_CHARS"): cfg.max_input_chars = int(env["COMPANY_MAX_INPUT_CHARS"])
     if env.get("COMPANY_BUDGET_USD"): cfg.budget_usd = float(env["COMPANY_BUDGET_USD"])
     if env.get("COMPANY_DEBT_REVIEWS"): cfg.debt_reviews = int(env["COMPANY_DEBT_REVIEWS"])
+    cfg.sandbox = env.get("COMPANY_SANDBOX", cfg.sandbox)                  # ADR-0035
+    cfg.sandbox_image = env.get("COMPANY_SANDBOX_IMAGE", cfg.sandbox_image)
+    cfg.sandbox_runtime = env.get("COMPANY_SANDBOX_RUNTIME", cfg.sandbox_runtime)
     if env.get("COMPANY_LLM_BACKENDS"):
         wanted = [s.strip() for s in env["COMPANY_LLM_BACKENDS"].split(",") if s.strip()]
         by_name = {str(b.get("name") or b.get("provider")): b for b in cfg.backends}

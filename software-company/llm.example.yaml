@@ -57,6 +57,12 @@ prices:
 # Nợ kiến trúc treo (ADR-0032): cùng mã nợ (DEF-xx, SD-xx, `debt:`) nhắc ≥ n review liên tiếp của cùng nguồn → gate
 # escalation cấp dự án. COMPANY_DEBT_REVIEWS ghi đè.
 # debt_reviews: 3
+# Sandbox tiến trình cho lệnh con của repo khách (ADR-0035). `auto` = dùng container nếu tìm thấy runtime trên PATH,
+# không thì chạy subprocess như trước; `container` = BẮT BUỘC có container, thiếu binary thì lỗi chứ không tụt hạng
+# bảo vệ; `subprocess` = tắt hẳn. Ba biến COMPANY_SANDBOX / COMPANY_SANDBOX_IMAGE / COMPANY_SANDBOX_RUNTIME ghi đè.
+# sandbox: auto                       # auto | container | subprocess
+# sandbox_image: python:3.12-slim     # image chạy lint/test/smoke của khách; phải có sẵn stack của repo khách
+# sandbox_runtime: docker             # docker | podman | đường dẫn binary
 
 # Tool web cho researcher bật bằng `orchestrator --web`; máy tìm kiếm qua biến môi trường COMPANY_SEARCH_URL
 # (vd. SearXNG: http://searx.local/search?q={q}&format=json). Không đặt → DuckDuckGo HTML.
