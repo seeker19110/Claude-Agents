@@ -6,6 +6,7 @@ exec lại chính lệnh đó.
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 from pathlib import Path
@@ -68,21 +69,28 @@ def test_watch_xin_khoi_dong_lai_khi_ma_doi_va_hang_doi_rong(tmp_path: Path, mon
     orch.watch(interval=0, max_ticks=1, reload=False)
 
 
-def test_khong_khoi_dong_lai_khi_hang_doi_con_viec(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Đang có lượt model dở (event trong hàng đợi) mà exec lại là mất công sức — chỉ reload lúc rảnh."""
+def test_khoi_dong_lai_giua_hai_lo_khi_hang_doi_con_viec(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hàng đợi hiếm khi rỗng khi công ty bận; reload phải xảy ra GIỮA hai lô (không lượt model nào đang chạy) — hàng
+    đợi không mất vì tiến trình mới dựng lại từ bus. Đo được 2026-09-06: PR #88 merge lúc 15:30, hàng đợi 5 event
+    liên tục, bản vá nằm chờ."""
     root = _tree(tmp_path); monkeypatch.setattr(om, "COMPANY_ROOT", root)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
-    fp0 = source_fingerprint(root); _bump(root / "src" / "company" / "a.py"); assert source_fingerprint(root) != fp0
-    # giữ hàng đợi luôn có việc: tick() chạy run() cạn hàng đợi, nên chèn lại event ở mỗi nhịp qua monkeypatch tick
-    orig = orch.tick
-    def busy_tick(now=None):
-        r = orig(now)
-        orch.queue.append(Envelope(topic="research-requests", key="P9", actor="human:sales",
-                                   payload={"project_id": "P9", "description": "còn việc"}))
-        return r
-    monkeypatch.setattr(orch, "tick", busy_tick)
-    orch.watch(interval=0, max_ticks=2, reload=True)  # không ném dù mã đã đổi
-    assert not any(e.payload["action"] == "orchestrator.reload" for e in bus.replay(topic="audit-log"))
+    for k in ("P8", "P9"):
+        bus.publish(Envelope(topic="research-requests", key=k, actor="human:sales", payload={"project_id": k, "description": "việc"}))
+    _bump(root / "src" / "company" / "a.py")
+    orch.reload_on_change = True
+    with pytest.raises(ReloadRequested):
+        orch.run()  # lô đầu chạy xong (hoặc trước lô đầu) thì thấy mã đổi → ném, event chưa xử lý vẫn nằm trong bus
+    done = {json.loads(e.payload["evidence"])["event_id"] for e in bus.replay(topic="audit-log") if e.payload["action"] == "orchestrated"}
+    pending = [e for e in bus.replay(topic="research-requests") if e.event_id not in done]
+    assert pending, "ít nhất một event chưa xử lý — tiến trình mới sẽ dựng lại hàng đợi từ bus"
+    orch.reload_on_change = False
+    orch.run()  # không reload thì chạy hết
+    # `run()` thường (không watch) không bao giờ reload dù mã đổi
+    bus2 = InMemoryBus(); orch2 = Orchestrator(bus2, FakeClient(handler=handler)); _bump(root / "agents" / "b.md")
+    bus2.publish(Envelope(topic="research-requests", key="P1", actor="human:sales", payload={"project_id": "P1", "description": "x"}))
+    orch2.run()
+    assert not any(e.payload["action"] == "orchestrator.reload" for e in bus2.replay(topic="audit-log"))
 
 
 def test_main_exec_lai_chinh_lenh_sau_khi_tra_lease(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
