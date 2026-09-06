@@ -8,6 +8,12 @@ Tài liệu này là **kế hoạch + đặc tả mức epic**. Mỗi mục là 
 mục đó (ghi trong cột "ADR"). Cách dùng: lấy một mục, đọc tiêu chí nghiệm thu, mở nhánh, làm, PR; xong thì đánh dấu
 ở bảng theo dõi cuối file.
 
+> **Thứ tự đã bị đặt lại (2026-09-06, sau khi người chủ chọn kịch bản B).** Bốn câu hỏi Q1–Q4 và nội dung từng
+> mục dưới đây vẫn có hiệu lực, nhưng **thứ tự thi công** theo `docs/DAC-TA-KICH-BAN-B.md` §2: đợt 0 = K0 · **E1 kéo
+> lên thành K1** (tách `orchestrator.py`, làm trước mọi đợt tính năng) · **D2 lên P0 thành K2** (sandbox) · E4 xong ·
+> E5 nhập K8 · **E2 (Redis) hoãn vô hạn**, thay bằng K4 · E3 xây trên K5 · **S1 làm sau K3 bước 3** · **C9 làm sau
+> K7** · D1/D3/D4/D5 xếp sau K3 · B6 và B8 giữ nguyên. Đọc kịch bản B trước khi lấy mục ở đây làm việc.
+
 ## 0. "Hoàn thiện" nghĩa là gì — bốn câu hỏi đo được
 
 Dự án được coi là hoàn thiện khi trả lời **có, kèm bằng chứng máy sinh** cho cả bốn câu:
