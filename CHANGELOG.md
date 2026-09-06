@@ -18,6 +18,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 - feat(company): supervisor đếm nợ kiến trúc treo — cùng mã nợ nhắc ≥ N review liên tiếp thì escalation cấp dự án (B5, ADR-0032) (#103)
 - feat(console): thiết kế lại dashboard theo 10 ghi nhận vận hành — phễu release, hậu quả gate, bế tắc im lặng, commit vượt integration, gate_brief tại chỗ (C1–C8, C10) (#PRNUM)
 - feat(console): thiết kế lại dashboard theo 10 ghi nhận vận hành — phễu release, hậu quả gate, bế tắc im lặng, commit vượt integration, gate_brief tại chỗ (C1–C8, C10) (#107)
+- fix(console): sửa chuỗi `HINT_TMPL` vỡ cú pháp JS (nháy kép chứa xuống dòng thật) từ #107 — làm chết cả trang trực ban, mọi state hiện "chưa đọc được" dù server vẫn chạy đúng (#113)
 - fix(company): ticket làm lại sau khi đã merge thì bản sửa vẫn vào nhánh tích hợp — `integrated` không còn che commit mới (#105)
 - feat(company): gate_brief acceptance tự khởi động sản phẩm theo runtime, khách ký trên thứ đã chạy (B4) (#100)
 - docs(gateway): 3 ADR (xoay vòng, giữ cổng, ranh giới bảo mật) + bộ khung CLAUDE/TRAPS/CODEMAP/ARCHITECTURE (E4) (#101)
