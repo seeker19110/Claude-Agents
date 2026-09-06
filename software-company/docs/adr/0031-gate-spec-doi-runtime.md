@@ -5,7 +5,7 @@ Báo cáo `docs/reports/2026-09-06-ban-giao-khong-chay-duoc.md`: QLKH đi hết 
 25 release, **không có điểm vào nào chạy được**. ADR-0029 vá ở cuối chuỗi — orchestrator tự khởi động sản phẩm theo
 `approved-specs.payload.runtime` sau mỗi `deployed` staging — nhưng để `runtime` là tuỳ chọn: thiếu thì
 `smoke.unverified`, status giữ nguyên. Nghĩa là câu hỏi *"chạy cho tôi xem"* vẫn có thể bị né suốt dự án, chỉ khác là
-bằng chứng nói thẳng "chưa kiểm". Đề xuất B1 của `docs/DAC-TA-NANG-CAP-2026-09.md`: hỏi câu đó ở **Gate 1**, chỗ rẻ
+bằng chứng nói thẳng "chưa kiểm". Đề xuất B1 của `../../../docs/DAC-TA-NANG-CAP-2026-09.md`: hỏi câu đó ở **Gate 1**, chỗ rẻ
 nhất để trả lời và đắt nhất để bỏ qua.
 
 ## Quyết định
@@ -35,4 +35,4 @@ nhất để trả lời và đắt nhất để bỏ qua.
 
 ## Liên quan
 ADR-0029 (smoke do orchestrator chạy), ADR-0030 (sổ Ruling), ADR-0010/0013 (model khai, code chứng), B1 trong
-`docs/DAC-TA-NANG-CAP-2026-09.md`, báo cáo `2026-09-06-ban-giao-khong-chay-duoc.md`.
+`../../../docs/DAC-TA-NANG-CAP-2026-09.md`, báo cáo `2026-09-06-ban-giao-khong-chay-duoc.md`.

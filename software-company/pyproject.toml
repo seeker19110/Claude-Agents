@@ -1,7 +1,7 @@
 [project]
 name = "software-company"
 version = "0.5.0"
-description = "Multi-agent công ty gia công phần mềm, event-driven (7 khối, 20 agent)"
+description = "Multi-agent công ty gia công phần mềm, event-driven (7 khối, 21 agent)"
 requires-python = ">=3.11"
 dependencies = [
     "jsonschema>=4.26.0",
