@@ -280,7 +280,7 @@ def test_watch_survives_tick_error(monkeypatch):
         n["tick"] += 1
         if n["tick"] == 1: raise RuntimeError("bus tạm lỗi")
         return real(now)
-    monkeypatch.setattr(orch, "tick", flaky); monkeypatch.setattr("company.orchestrator.time.sleep", lambda s: None)
+    monkeypatch.setattr(orch, "tick", flaky); monkeypatch.setattr("company.orch.scheduler.time.sleep", lambda s: None)
     orch.watch(interval=0, max_ticks=3)
     assert n["tick"] == 3
     err = _audits(bus, "tick_error")
