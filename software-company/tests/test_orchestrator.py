@@ -655,16 +655,23 @@ def test_ton_trong_thoi_gian_cho_backend_da_hen():
     assert goi["n"] == 2, "hết thời gian hẹn thì phải thử lại"
 
 
-def test_release_engineer_wrong_env_is_invalid_output():
+def test_release_engineer_khong_tu_khai_duoc_env_production():
+    """Model khai `env: production` ở lượt STAGING không được thành deploy production: `env`/`release_id` là của
+    ROUTE và của RC, code ghi đè (cùng nguyên tắc với `version`) và ghi audit `release.env_overridden`.
+
+    Trước đây chỗ này ném `invalid_output`. Nghe thì an toàn, nhưng ở lượt PRODUCTION nó làm chết bước cuối của
+    dây chuyền giao hàng: agent trả nhầm `env=staging` (hai lượt nhận payload gần giống nhau) → escalation, dù
+    người đã ký Gate 3. Đo được 2026-09-06 (QLKH REL-019), hai lần liên tiếp. Ghi đè vừa an toàn hơn (model
+    KHÔNG tự nâng được env) vừa không làm gãy dây chuyền."""
     def sneaky(system, user):
         if _agent_of(system) == "release-engineer":
             return {**handler(system, user), "env": "production"}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=sneaky))
     _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
-    assert not list(bus.replay(topic="release-events")), "không deploy production khi chưa qua gate"
-    assert orch.lead.state["T1"] == "approved" and orch.stats["errors"] >= 1
-    assert any(e.payload["action"] == "invalid_output" for e in bus.replay(topic="audit-log"))
+    envs = [e.payload["env"] for e in bus.replay(topic="release-events")]
+    assert envs and all(x == "staging" for x in envs), f"model không tự khai được production, nhận: {envs}"
+    assert any(e.payload["action"] == "release.env_overridden" for e in bus.replay(topic="audit-log")),         "ghi đè phải để lại dấu vết, không im lặng"
 
 
 def test_model_error_is_audited_and_loop_continues():
