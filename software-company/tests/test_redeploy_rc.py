@@ -62,7 +62,20 @@ def test_redeploy_tu_choi_dau_vao_sai(tmp_path):
         orch.redeploy("REL-001", "human:lead")
 
 
-def test_cli_redeploy(tmp_path, capsys):
+def test_redeploy_dung_client_that_khong_phai_fake(tmp_path, monkeypatch):
+    """`redeploy` GỌI MODEL (lượt staging của release-engineer) nên CLI phải cấp client thật. Thiếu nó thì lệnh
+    chạy bằng FakeClient và chết "FakeClient hết câu trả lời" — đo được 2026-09-06 khi chạy thật trên QLKH."""
+    import company.orchestrator as O
+    goi = []
+    monkeypatch.setattr("company.llm.make_client", lambda *a, **k: (goi.append(1), FakeClient(handler=handler))[1])
+    bus, _client, _orch = _setup(tmp_path)
+    db = str(tmp_path / "c.sqlite"); bus.close()
+    O.main(["--db", db, "redeploy", "REL-001", "--by", "human:lead"])
+    assert goi, "CLI phải gọi make_client() cho `redeploy`, không dùng FakeClient mặc định"
+
+
+def test_cli_redeploy(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr("company.llm.make_client", lambda *a, **k: FakeClient(handler=handler))
     bus, _client, _orch = _setup(tmp_path)
     db = str(tmp_path / "c.sqlite")
     bus.close()
