@@ -6,6 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(company): K1.6 kịch bản B — tách `orch/gates_flow.py` (quyết định gate: `_on_gate_decide`/`_check_escalations`/`_check_debt`/`_on_escalation_decided`/`_open|_close_acceptance_gate`, lỗi agent không nhánh nào nhận: `_stall`/`_after_error`/`_rework_after_error`/`_retry_stalled`/`_retry_unhandled`, và `_record_lessons`) khỏi `orchestrator.py` (1221 → 957 dòng); `_evidence` nhập lười cùng khuôn K1.5
 - fix(company): `generate_in_workspace` chấp nhận `no_changes_reason` (>= 20 ký tự, cùng tinh thần `test_dispute` ADR-0028) khi worktree không đổi nhưng việc đã xong thật từ lượt trước — không còn tự động invalid_output rồi blocked (TCK-CR-RUNTIME-01) (#121)
 - refactor(company): K1.5 kịch bản B — tách `orch/scheduler.py` (vòng lặp chính: `run`/`tick`/`watch`/`_take_batch`/`_defer`/`_retry_deferred`/`_mark`/`_remember`/`_audit`…) khỏi `orchestrator.py` (1402 → 1221 dòng); `ReloadRequested`/`StepResult` nhập lười trong hàm để tránh vòng lặp import với `orchestrator.py`
 - feat(studio): K2.3 kịch bản B — `studio/sandbox.py` (bản tạm, xoá ở K3.2 khi vào `xagents-core`); `CommandTTS`, `FFmpegAssembler._run`, `qc._run` chạy qua `Sandbox` thay vì `subprocess` trực tiếp; env lệnh con lọc khoá bằng `clean_env`/`sanitize_env`; ffmpeg có trần thời gian (`media.yaml render.timeout_s`, mặc định 600 s); qc mount chỉ đọc; audit `render.*` ghi tên sandbox đã dùng
