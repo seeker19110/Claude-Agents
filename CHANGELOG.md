@@ -8,6 +8,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 - chore: `.gitattributes` đặt `merge=union` cho CHANGELOG và bảng theo dõi đặc tả — nhiều phiên song song thêm dòng cùng lúc thì gộp, không dừng rebase
 - feat(company): regression-staging mang evidence.run do orchestrator tự chạy — verdict không có bằng chứng thì hạ fail (B3, ADR-0029) (#102)
+- feat(company): Gate 1 đòi runtime — spec ứng dụng thiếu lệnh khởi động thì request_changes, không mở gate (B1, ADR-0031) (#104)
 - feat(company): supervisor đếm nợ kiến trúc treo — cùng mã nợ nhắc ≥ N review liên tiếp thì escalation cấp dự án (B5, ADR-0032) (#103)
 - feat(company): gate_brief acceptance tự khởi động sản phẩm theo runtime, khách ký trên thứ đã chạy (B4) (#100)
 - docs(gateway): 3 ADR (xoay vòng, giữ cổng, ranh giới bảo mật) + bộ khung CLAUDE/TRAPS/CODEMAP/ARCHITECTURE (E4) (#101)

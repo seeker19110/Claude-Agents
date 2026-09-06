@@ -36,3 +36,23 @@ cases:
     expect:
       equals: {project_id: P2}
       one_of: {status: [pending_human]}
+
+  - name: ung-dung-phai-khai-kind-va-runtime-de-gate-1-hoi-chay-o-dau
+    # ADR-0031: spec kind=application thiếu runtime thì orchestrator không mở gate spec mà trả lại spec-writer
+    topic_out: approved-specs
+    input:
+      topic: requirements-draft
+      key: P3
+      actor: risk
+      payload:
+        project_id: P3
+        kind: risk
+        requirements:
+          - {id: R-1, type: FR, text: "Nhân viên kho quét mã vạch nhập/xuất hàng qua web app trên máy tính bảng", source: "khảo sát kho 2026-09-02", priority: must}
+          - {id: R-2, type: FR, text: "Báo cáo tồn kho theo ngày, xuất CSV", source: "email kế toán 2026-09-03", priority: must}
+          - {id: R-3, type: constraint, text: "Chạy on-premise, Python, không dịch vụ cloud", source: "IT khách", priority: must}
+        risks: []
+        conflicts: []
+    expect:
+      equals: {project_id: P3, status: pending_human, kind: application}
+      min_len: {runtime.command: 3, runtime.health: 1, artifacts.prd: 3}

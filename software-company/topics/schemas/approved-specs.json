@@ -65,13 +65,14 @@
         "kind": {
           "enum": [
             "application",
-            "library"
+            "library",
+            "docs"
           ],
-          "description": "loại sản phẩm (ADR-0029): `application` = có điểm vào chạy được, BẮT BUỘC khai `runtime` — thiếu thì QA hồi quy bị hạ fail; `library` = không có server, smoke không áp dụng"
+          "description": "loại sản phẩm (ADR-0029, ADR-0031). `application` (mặc định khi thiếu) = có điểm vào chạy được, BẮT BUỘC `runtime` hợp lệ — thiếu thì orchestrator không mở gate spec mà trả lại spec-writer, và QA hồi quy bị hạ fail; `library`/`docs` = không có server, miễn runtime nhưng phải khai rõ ở đây"
         },
         "runtime": {
           "type": "object",
-          "description": "cách khởi động sản phẩm để orchestrator smoke (ADR-0029); thiếu thì `release-events.smoke.unverified`",
+          "description": "cách khởi động sản phẩm để orchestrator smoke (ADR-0029) — điều kiện cần của Gate 1 khi kind=application (ADR-0031); mục 8b của PRD",
           "properties": {
             "command": {
               "type": [
@@ -96,6 +97,13 @@
             },
             "expect_status": {
               "type": "integer"
+            },
+            "dependencies": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "phụ thuộc ngoài để khởi động: DB, cache, cloud…; rỗng = chạy in-memory được"
             }
           },
           "required": [

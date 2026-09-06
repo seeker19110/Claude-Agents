@@ -67,6 +67,12 @@ SELF_CHECK_SOURCES: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {
             "tasks — ticket mang risk_tags `pii`")),
         "Câu hỏi mở chỉ còn assumption đã ghi nhận": ("spec.cau-hoi-mo", (
             "clarification-questions và clarification-answers theo project_id — câu hỏi chưa có answer khớp question_id",)),
+        "Có runtime chạy được: `kind` khai rõ; ứng dụng có lệnh khởi động, cổng, đường health và phụ thuộc ngoài": (
+            "spec.runtime", (
+                "approved-specs@latest theo project_id — payload.kind; payload.runtime.command/port/health/dependencies "
+                "(ADR-0031; orchestrator đọc bằng `smoke.parse_runtime`)",
+                "prd@latest — mục 8b `Chạy ở đâu`: lệnh, cổng, health, phụ thuộc ngoài khớp payload",
+                "audit-log `spec.runtime_missing` theo project_id — số lần spec bị trả lại vì thiếu runtime")),
     },
     "plan": {
         "Ước lượng có cơ sở (tham chiếu `knowledge` hoặc PERT)": ("plan.uoc-luong-co-so", (
