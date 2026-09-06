@@ -290,3 +290,19 @@ def test_tools_skip_symlinks_and_reject_flags_in_paths(tmp_path):
     assert out.startswith("lỗi") and "tuỳ chọn" in out
     out = tb.call(ToolCall(id="4", name="run", args={"command": "git_status", "paths": ["mod.py"]}))
     assert out.startswith("exit=0")
+
+
+def test_invalid_output_ghi_kem_loi_agent(tmp_path):
+    """Agent không sửa gì thường VÌ một lý do; audit phải nói ra lý do đó thay vì chỉ "không sửa file nào" ×3."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1"); ws.create()
+    client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "branch": "x", "pr_ref": "x",
+                                              "summary": "Không làm: cần người chốt DEF-03 trước", "local_checks": {}},
+                        tool_handler=lambda m, t: [])
+    bus = InMemoryBus()
+    with pytest.raises(RunnerError, match="không sửa file nào"):
+        AgentRunner(bus, client).generate_in_workspace("backend", _task_env(), ws)
+    ev = _audits(bus, "invalid_output")[-1]["evidence"]
+    assert "agent nói: Không làm: cần người chốt DEF-03 trước" in ev
+    from company.runner import _said
+    assert _said(type("G", (), {"payloads": []})()) == "(không giải thích)"
+    assert _said(type("G", (), {"payloads": [{"notes": "x" * 400}]})()) == "x" * 300
