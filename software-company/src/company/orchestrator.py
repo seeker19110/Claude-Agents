@@ -754,6 +754,8 @@ class Orchestrator:
         while max_ticks is None or n < max_ticks:
             try:
                 for r in self.tick(): print(_fmt(r))
+            except ReloadRequested:  # reload giữa hai lô ném từ trong run(): là yêu cầu, không phải lỗi nhịp
+                raise
             except Exception as e:  # một nhịp lỗi (bus/git/handler) không được giết vòng watch
                 self._audit("tick_error", {"error": f"{type(e).__name__}: {str(e)[:300]}"})
                 print(f"tick_error: {type(e).__name__}: {str(e)[:120]}", file=sys.stderr)
