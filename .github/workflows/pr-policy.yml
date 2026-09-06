@@ -24,3 +24,17 @@ jobs:
             echo "Lưu ý: scope chỉ nhận chữ thường." >&2
             exit 1
           fi
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: PR phải có dòng CHANGELOG.md (nhãn no-changelog để miễn)
+        env:
+          BASE: ${{ github.event.pull_request.base.ref }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          case ",$LABELS," in *,no-changelog,*) echo "miễn theo nhãn no-changelog"; exit 0;; esac
+          git fetch -q origin "$BASE"
+          if git diff --quiet "origin/$BASE...HEAD" -- CHANGELOG.md; then
+            echo "PR không đổi CHANGELOG.md. Thêm một dòng ở 'Chưa phát hành' (AGENTS.md luật bắt buộc 9), hoặc gắn nhãn no-changelog." >&2
+            exit 1
+          fi
