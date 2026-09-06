@@ -92,6 +92,13 @@
           "description": "bộ test do test-author viết: files[], acceptance_covered[], tests_status, commit",
           "additionalProperties": true
         },
+        "no_changes_reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Đường hợp lệ để khai \"việc đã xong từ lượt trước, không cần sửa thêm\" — cùng tinh thần `test_dispute`. Phải đối chiếu cụ thể với acceptance criteria/tiêu chí đã đạt, không phải chuỗi rỗng qua loa; runner chỉ chấp nhận khi đủ dài (>= 20 ký tự)."
+        },
         "rulings": {
           "type": "array",
           "description": "ADR-0030 sổ Ruling: quyết định bạn TỰ đưa ra thay vì dừng chờ người. Chỉ dừng chờ người ở bốn việc: không đảo ngược được; nhạy cảm bảo mật; tác động ra ngoài worktree (merge/push/publish); kế hoạch hỏng tới mức mọi hướng đều là đoán. Mọi chỗ bí khác: tự quyết theo spec/shared-context, ghi một mục ở đây rồi đi tiếp. Rỗng khi không có gì phải quyết.",

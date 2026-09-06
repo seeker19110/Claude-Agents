@@ -101,6 +101,10 @@ class PullRequest(BaseModel):
     # ADR-0033: bằng chứng ngoài `local_checks` — hiện dùng `screenshots[]` cho ticket frontend. Hình mở (dict)
     # vì mỗi loại bằng chứng có hình dạng riêng; ràng buộc từng loại nằm ở JSON Schema, không ở đây.
     evidence: dict[str, Any] = {}
+    # Đường hợp lệ để khai "việc đã xong từ lượt trước, không cần sửa thêm" — cùng tinh thần `test_dispute`:
+    # agent tự đối chiếu với acceptance criteria rồi giải thích VÌ SAO không sửa gì, thay vì im lặng bị tính
+    # invalid_output (TCK-CR-RUNTIME-01, 2026-09-06). Ngưỡng độ dài xác thực ở runner, không ở đây.
+    no_changes_reason: str | None = None
 
 class Finding(BaseModel):
     level: Literal["block", "warn", "nit"]

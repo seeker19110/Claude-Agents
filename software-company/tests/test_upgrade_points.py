@@ -127,6 +127,37 @@ def test_luot_sau_nua_worktree_sach_nhung_head_la_wip_van_ra_pr(tmp_path):
         AgentRunner(InMemoryBus(), client).generate_in_workspace("backend", _task_env(), ws)
 
 
+def test_khong_sua_gi_nhung_ly_do_qua_ngan_van_bi_invalid_output(tmp_path):
+    """`no_changes_reason` có mặt nhưng dưới 20 ký tự ("ok" qua loa) → hành vi CŨ giữ nguyên: vẫn RunnerError,
+    audit vẫn `invalid_output` (không phải `no_changes_confirmed`)."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1"); ws.create()
+    (ws.path / "them.py").write_text("y = 1\n", encoding="utf-8"); ws.commit_all("feat(T1): them")
+    client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "branch": "x", "pr_ref": "x", "summary": "đã đủ",
+                                              "local_checks": {}, "no_changes_reason": "ok"},
+                        tool_handler=lambda m, t: [])
+    bus = InMemoryBus()
+    with pytest.raises(RunnerError, match="không sửa file nào"):
+        AgentRunner(bus, client).generate_in_workspace("backend", _task_env(), ws)
+    assert _audits(bus, "invalid_output") and not _audits(bus, "no_changes_confirmed")
+
+
+def test_khong_sua_gi_nhung_ly_do_du_dai_thi_khong_bi_chan(tmp_path):
+    """`no_changes_reason` đủ dài/cụ thể (>=20 ký tự): đường hợp lệ mới, không raise, audit `no_changes_confirmed`,
+    và checks vẫn chạy lại trên HEAD hiện có (bằng chứng thật, không tin lời agent suông)."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1"); ws.create()
+    (ws.path / "them.py").write_text("y = 1\n", encoding="utf-8"); ws.commit_all("feat(T1): them")
+    ly_do = "runtime.yaml và tools/run_smoke.sh đã đủ từ lượt trước, đối chiếu acceptance thấy không cần sửa thêm"
+    client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "branch": "x", "pr_ref": "x", "summary": "đã đủ",
+                                              "local_checks": {}, "no_changes_reason": ly_do},
+                        tool_handler=lambda m, t: [])
+    bus = InMemoryBus()
+    g = AgentRunner(bus, client).generate_in_workspace("backend", _task_env(), ws)
+    assert g.payloads[0]["pr_ref"] == ws.head_sha() and g.payloads[0]["local_checks"]["verified_by"] == "workspace"
+    confirmed = _audits(bus, "no_changes_confirmed")
+    assert confirmed and ly_do in confirmed[0]["evidence"]
+    assert not _audits(bus, "invalid_output")
+
+
 def test_wip_da_du_va_luot_nay_khong_them_gi_van_ra_pr(tmp_path):
     """Agent lần 2 thấy WIP đã đủ, không sửa gì thêm: PR là HEAD (WIP), không phải invalid_output."""
     ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1"); ws.create()
