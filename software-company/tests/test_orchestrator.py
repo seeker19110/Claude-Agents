@@ -727,7 +727,7 @@ def test_cli_run_watch_thoat_em_khi_ctrl_c(tmp_path, capsys, monkeypatch):
     db = str(tmp_path / "c.sqlite")
     monkeypatch.setenv("COMPANY_LLM_PROVIDER", "fake")
 
-    def boom(self, interval=5.0, max_ticks=None):
+    def boom(self, interval=5.0, max_ticks=None, reload=False):
         raise KeyboardInterrupt
 
     monkeypatch.setattr(om.Orchestrator, "watch", boom)
