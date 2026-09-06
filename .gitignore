@@ -56,3 +56,7 @@ console/.console-token
 
 # Claude Code: quyền và cấu hình riêng của từng máy (settings.json dùng chung thì vẫn commit)
 .claude/settings.local.json
+
+# log tiến trình orchestrator (sinh lúc chạy)
+software-company/var/
+Studio-creators/var/

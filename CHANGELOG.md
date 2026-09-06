@@ -6,6 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs: nhật ký phiên 2026-09-06 (đặc tả nâng cấp + đợt 0/1/3, 11 PR); gitignore `var/` log orchestrator
 - fix(company): lịch sử hồ sơ escalation xếp theo thứ tự ghi vào bus khi trùng dấu thời gian — hết test chập chờn 1/6 lần, và lỗi không còn hiện sau lần retry mà nó gây ra (TRAPS khuôn 5)
 - chore: `.gitattributes` đặt `merge=union` cho CHANGELOG và bảng theo dõi đặc tả — nhiều phiên song song thêm dòng cùng lúc thì gộp, không dừng rebase
 - feat(company): regression-staging mang evidence.run do orchestrator tự chạy — verdict không có bằng chứng thì hạ fail (B3, ADR-0029) (#102)
