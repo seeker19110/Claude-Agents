@@ -1,12 +1,5 @@
-# Chuẩn hoá xuống LF trong repo: golden và bản ghi eval được so bằng byte, nếu để Git
-# đổi sang CRLF trên Windows thì `make golden` sinh ra khác bản đã commit và CI đỏ oan.
-* text=auto eol=lf
-*.png binary
-*.jpg binary
-*.mp4 binary
-*.mp3 binary
-*.wav binary
-
-# Subagent kiểm duyệt là bản dẫn xuất máy sinh từ agents/ (xem company.subagents): diff gọn khi review,
-# nhưng vẫn commit vì người dùng cần dùng ngay mà không phải chạy build.
-.claude/agents/sc-*.md linguist-generated=true
+# Nhiều phiên agent chạy song song đều thêm một dòng vào cùng khối "Chưa phát hành".
+# `union` gộp cả hai bên thay vì dừng rebase — đúng ý muốn: không dòng nào được mất.
+# Sau khi gộp, đọc lại khối để bỏ dòng trùng nếu có (git không sắp xếp giúp).
+CHANGELOG.md merge=union
+docs/DAC-TA-NANG-CAP-2026-09.md merge=union
