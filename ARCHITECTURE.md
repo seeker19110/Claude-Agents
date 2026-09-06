@@ -79,6 +79,13 @@ chỉ đọc `sc-gate-<kind>` và hồ sơ bằng chứng `gate_brief`.
 `asset-scan` (ADR-0022) · `protection-guard` (ruleset file ↔ thật) · **`quality`** gom tất cả — required check của
 `main`, tên bất biến. `pr-policy.yml`: job `metadata` kiểm tiêu đề PR.
 
+## Lịch sử repo (đọc `git log` cho đúng)
+
+Repo này bắt đầu là fork của `humanlayer/12-factor-agents` (khoảng 200 commit "Update factor-…", "wip on wtg"…), rồi
+chứa dự án MEP-Agents/CAD (08/2026, có hai lần revert chéo). **Đầu thực của X-Agents là `2438d2f` (2026-09-02, "Add
+software-company AI agent framework")**; `d4abda1` cùng ngày gỡ MEP-Agents. Muốn xem lịch sử có nghĩa:
+`git log 2438d2f..main`. Không rewrite lịch sử cũ — chỉ cần biết mốc.
+
 ## Tài liệu nguồn
 
 | Câu hỏi | Đọc |

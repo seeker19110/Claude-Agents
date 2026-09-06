@@ -6,9 +6,14 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- feat(company): sổ Ruling — agent tự quyết ngoài bốn gate, ghi decision/why/cost_if_wrong vào audit; `status`, CLI `rulings`, mọi hồ sơ gate hiện sổ (ADR-0030)
-- docs: đặc tả nâng cấp tháng 9/2026 — sáu đợt, 40 mục, bốn câu hỏi đo "hoàn thiện" (`docs/DAC-TA-NANG-CAP-2026-09.md`)
-- docs: bộ khung repo 9 file — AGENTS/CLAUDE/TRAPS, ARCHITECTURE/CODEMAP/CHANGELOG, task pack/prompt sheet/session log; mỗi package con có CLAUDE/TRAPS/CODEMAP/ARCHITECTURE riêng
+- chore: đợt 0 đặc tả nâng cấp — CHANGELOG đủ số PR, gitignore `*.yaml.bak*`, mốc lịch sử repo trong ARCHITECTURE, CI `PR policy` bắt PR phải có dòng CHANGELOG (nhãn `no-changelog` để miễn) (#98)
+- fix(company): `watch()` không nuốt `ReloadRequested` thành `tick_error` (#95)
+- fix(company): audit `invalid_output` ghi kèm lời agent — "không sửa file nào" phải nói vì sao (#94)
+- fix(company): delivery-lead v10 — kế hoạch là ticket trong `items` ngay lượt planning; trả rỗng để chờ duyệt là bị từ chối (#93)
+- fix(company): duyệt escalation "kế hoạch bị từ chối" = delivery-lead lập lại kế hoạch, không "reopen" ticket ma (#92)
+- feat(company): sổ Ruling — agent tự quyết ngoài bốn gate, ghi decision/why/cost_if_wrong vào audit; `status`, CLI `rulings`, mọi hồ sơ gate hiện sổ (ADR-0030) (#97)
+- docs: đặc tả nâng cấp tháng 9/2026 — sáu đợt, 40 mục, bốn câu hỏi đo "hoàn thiện" (`docs/DAC-TA-NANG-CAP-2026-09.md`) (#96)
+- docs: bộ khung repo 9 file — AGENTS/CLAUDE/TRAPS, ARCHITECTURE/CODEMAP/CHANGELOG, task pack/prompt sheet/session log; mỗi package con có CLAUDE/TRAPS/CODEMAP/ARCHITECTURE riêng (#91)
 - feat(company): `deployed` ở staging phải qua smoke do orchestrator tự chạy — lời khai thành bằng chứng (ADR-0029) (#90)
 
 ## 2026-09-06

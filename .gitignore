@@ -18,6 +18,7 @@ software-company/company.artifacts/
 software-company/.worktrees/
 software-company/llm.yaml
 software-company/llm.yaml.bak
+software-company/llm.yaml.bak*
 
 # đầu ra mô phỏng examples/donghanhcungban_demo.py — `--out` đặt tên gì cũng được, nên bắt cả các tên hay dùng.
 # Thiếu mấy dòng này thì PRD/threat model do model sinh nằm dạng untracked và rất dễ bị `git add` diện rộng
@@ -36,6 +37,8 @@ Studio-creators/output/
 Studio-creators/llm.yaml
 Studio-creators/llm.yaml.bak
 Studio-creators/media.yaml
+Studio-creators/*.yaml.bak*
+*.sqlite*.bak*
 
 # Studio-creators: OAuth client secret tải từ Google Cloud Console (chỉ dùng cho `studio.youtube login`) — không commit
 Studio-creators/client_secret*.json
