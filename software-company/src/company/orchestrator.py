@@ -269,6 +269,7 @@ def _with_task(e: Envelope, o: Orchestrator) -> dict[str, Any]:
             "tests_authored_by": "test-author"}
 
 
+STAGING_ROUTE = Route("release-candidates", "release-engineer", "release-events", target_env="staging")
 ROUTES: tuple[Route, ...] = (
     # khối nghiên cứu: intake → researcher → synthesizer → risk → clarifier → (người trả lời) → spec-writer
     Route("research-requests", "intake", "research-findings"),
@@ -293,7 +294,7 @@ ROUTES: tuple[Route, ...] = (
           enrich=lambda e, o: {**_with_diff(e, o), **_with_chan_doan(e, o)}, tools="ro"),
     Route("pull-requests", "security-engineer", "review-results", _needs_security, enrich=_with_diff),
     # vận hành: RC → staging (+ security DAST/license khi có risk) → QA hồi quy; production đi qua gate 3 (PROD_ROUTE)
-    Route("release-candidates", "release-engineer", "release-events", target_env="staging"),
+    STAGING_ROUTE,
     Route("release-candidates", "security-engineer", "review-results", _release_needs_security),
     Route("release-events", "qa-debugger", "review-results", _deployed("staging"), tools="ro"),  # tool trên worktree tích hợp
     Route("release-events", "support-docs", CONTEXT_ONLY, _deployed("production")),  # docs, release notes, runbook
@@ -1488,6 +1489,26 @@ class Orchestrator:
                                        "lint": checks["lint"], "tests": checks["tests"]}, actor=by, ticket_id=ticket_id, project_id=t.project_id)
         return self.bus.publish(Envelope(topic="pull-requests", key=ticket_id, actor=by, payload=p))
 
+    def redeploy(self, release_id: str, by: str) -> Envelope:
+        """Chạy lại lượt STAGING cho một release-candidate đã có — dùng khi dây chuyền từng kẹt vì lỗi hạ tầng và
+        RC nằm lại giữa đường.
+
+        Sự kiện `release-candidates` chỉ được xử lý MỘT lần (`processed`), nên sau khi sửa một lỗi hạ tầng, các RC
+        đang kẹt không có đường nào chạy lại: chỉ RC mới mới hưởng bản vá, mà RC mới chỉ sinh ra khi có ticket
+        approved chưa nằm trong RC nào. Đo được 2026-09-06 (QLKH): sau khi vá deadlock `gate_release` ở staging,
+        18 RC cũ vẫn kẹt vĩnh viễn vì 14/14 ticket đều đã nằm trong một RC hợp lệ — không gì sinh RC mới nữa.
+
+        Người vận hành gọi lệnh này (bus không cho người tự phát `release-candidates`: topic đó của delivery-lead)."""
+        if not by.split(":", 1)[0] == "human": raise ValueError("by phải là human:<tên>")
+        rc = self.latest("release-candidates", release_id)
+        if rc is None: raise ValueError(f"không có release-candidate {release_id}")
+        if release_id in self.void_releases: raise ValueError(f"{release_id}: RC đã bị huỷ, không chạy lại")
+        self._audit("release.redeploy", {"release_id": release_id, "by": by}, actor=by,
+                    project_id=self.project_for(rc))
+        res = StepResult(rc.event_id, rc.topic, rc.key)
+        self._call("release-engineer", rc, STAGING_ROUTE, res)  # cùng route như lượt đầu, chỉ khác là do người gọi
+        return rc
+
     # ---------- hoãn / đánh dấu / audit ----------
 
     def _defer(self, env: Envelope, res: StepResult, reason: str, wait_s: float | None = None) -> StepResult:
@@ -1666,6 +1687,8 @@ def main(argv: list[str] | None = None) -> int:
     cm.add_argument("ticket_id"); cm.add_argument("--by", required=True); cm.add_argument("--text", required=True)
     tk = sub.add_parser("takeover", help="người đã sửa tay trong worktree ticket: chạy lint/test, commit, publish PR dưới tên người")
     tk.add_argument("ticket_id"); tk.add_argument("--by", required=True); tk.add_argument("--message")
+    rd = sub.add_parser("redeploy", help="chạy lại lượt staging cho một release-candidate đang kẹt (sau khi sửa lỗi hạ tầng)")
+    rd.add_argument("release_id"); rd.add_argument("--by", required=True)
     sub.add_parser("status"); sub.add_parser("report", help="sprint report: estimate vs actual, chi phí, hành động supervisor")
     dg = sub.add_parser("diagnose", help="chẩn đoán: gom lỗi thô thành khuôn lặp lại, ticket quay vòng, gate chờ quyết")
     dg.add_argument("--top", type=int, default=10, help="số khuôn lỗi in ra (mặc định 10)")
@@ -1725,6 +1748,19 @@ def main(argv: list[str] | None = None) -> int:
         scope = f" [{sc.project_id}]" if sc.project_id else ""
         print(f"# {ns.namespace} v{sc.version}{scope} — {sc.content_ref}\n# {sc.summary}\n")
         print(sc.content if sc.content is not None else "(chỉ có con trỏ, không có toàn văn)"); return 0
+    if ns.cmd == "redeploy":
+        try:
+            lease = Lease(ns.db); lease.acquire()
+        except LeaseError as e:
+            print(str(e), file=sys.stderr); return 3
+        try:
+            rc = orch.redeploy(ns.release_id, ns.by)
+            print(f"{rc.key}: đã chạy lại lượt staging (by={ns.by})")
+        except ValueError as e:
+            print(str(e), file=sys.stderr); return 2
+        finally:
+            lease.release()
+        return 0
     if ns.cmd in {"comment", "takeover"}:
         try:
             if ns.cmd == "comment":
