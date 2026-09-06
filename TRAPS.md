@@ -6,7 +6,7 @@ sửa lỗi lạ: phần lớn lỗi mới là một thể hiện khác của kh
 Cách dùng: gặp triệu chứng → tìm khuôn ở §1 → xem cách rà → mới đi sửa. Sửa xong → thêm mục mới ở đây nếu là bẫy mới,
 hoặc thêm ngày/PR vào mục cũ nếu là lần tái phát.
 
-## 1. Bốn khuôn lỗi lặp lại (16 lỗi phiên 2026-09-04, 0 lỗi nghiệp vụ)
+## 1. Năm khuôn lỗi lặp lại (16 lỗi phiên 2026-09-04, 0 lỗi nghiệp vụ; khuôn 5 thêm 2026-09-06)
 
 **Khuôn 1 — chế độ hỏng không tự khai báo.** Một tình huống riêng bị gói vào thông điệp chung, nên người và hệ
 thống đều xử lý sai: timeout 120s báo `HTTP 500` thân rỗng; hết hạn mức đầu ra báo "không phải JSON"; structured
@@ -30,6 +30,14 @@ không theo thế hệ: task retry cũ + PR cũ nằm đó (hoãn vì paused), d
 đã commit → "không sửa gì" ×3 → blocked → escalation mở lại. QLKH-004 mở lại 7 lần, 10.7M token (PR #55). *Cách rà*:
 "event này còn đúng với trạng thái HIỆN TẠI của chủ thể không?". *Hệ quả vận hành*: sửa tay thì **commit + takeover
 trước, duyệt gate sau**.
+
+**Khuôn 5 — xếp thứ tự theo dấu thời gian, tưởng là thứ tự toàn phần.** Hai event ghi trong cùng một lượt có thể
+trùng `ts` tới micro giây. `history.sort(key=lambda h: h["at"])` khi ấy để hoà cho thứ tự chèn quyết định, nên hồ sơ
+lật giữa hai cách sắp xếp tuỳ đồng hồ có nhích hay không: test golden `escalation` chập chờn ~1/6 lần, và người đọc
+thấy `tasks retry=2` TRƯỚC lỗi gây ra nó (PR sau #104). *Cách rà*: mọi `sort`/`sorted` theo thời gian phải có khoá
+phụ là **thứ tự ghi vào bus** (`seq`) — bus đã `ORDER BY seq`, dùng nó. `trace.py` (#99) làm đúng vì nó duyệt
+`bus.replay()` và không sắp xếp lại. *Dấu hiệu nhận ra*: test chỉ đỏ 1 trong vài lần chạy, chạy lại thì xanh — đừng
+chạy lại cho qua, đó là non-determinism thật.
 
 Nguyên tắc rút ra: *không đường nào được kết thúc trong im lặng, và không đường nào được lặp mãi trong im lặng.*
 Cơ chế cứu thường ĐÃ CÓ, chỉ là điều kiện kích hoạt quá hẹp (`_stall` chỉ lo `RESEARCH_TOPICS`, `_rework_after_error`

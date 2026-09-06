@@ -521,23 +521,28 @@ def _brief_escalation(orch: Orchestrator, g: GateSection, subject: str, pid: str
         return [item], unavailable, extra
 
     t = orch.lead.tickets[subject]
+    # Thứ tự ghi vào bus (`seq`) là thứ tự nhân quả duy nhất đáng tin: hai event có thể trùng dấu thời gian tới
+    # micro giây (ghi trong cùng một lượt), và khi ấy xếp theo `ts` không phải thứ tự toàn phần — lịch sử lật giữa
+    # hai cách sắp xếp tuỳ đồng hồ có nhích hay không, và người đọc thấy "tasks retry=2" TRƯỚC lỗi gây ra nó.
+    seq = {e.event_id: i for i, e in enumerate(orch.bus.replay())}
     history: list[dict[str, Any]] = []
     for e in orch.bus.replay(topic="tasks", key=subject):
-        history.append({"at": e.ts.isoformat(), "action": f"tasks retry={e.payload.get('retry', 0)}", "detail": excerpt(e.payload.get("hint"))})
+        history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(), "action": f"tasks retry={e.payload.get('retry', 0)}", "detail": excerpt(e.payload.get("hint"))})
     for e in orch.bus.replay(topic="review-results", key=subject):
         p = e.payload
         if p.get("verdict") in {"block", "fail"}:
             detail = p.get("root_cause") or "; ".join(f.get("text", "") for f in p.get("findings", []) if isinstance(f, dict) and f.get("level") == "block")
-            history.append({"at": e.ts.isoformat(), "action": f"review {p.get('source')} {p.get('verdict')}", "detail": excerpt(detail)})
+            history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(), "action": f"review {p.get('source')} {p.get('verdict')}", "detail": excerpt(detail)})
     for e in orch.bus.replay(topic="audit-log"):
         p = e.payload
         if p.get("ticket_id") == subject and p.get("action") in ERROR_ACTIONS:
             d = _evidence(p)
-            history.append({"at": e.ts.isoformat(), "action": f"{p.get('actor')}: {p.get('action')}",
+            history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(), "action": f"{p.get('actor')}: {p.get('action')}",
                             "detail": excerpt(d.get("error") or d.get("hint") or d.get("failed") or d.get("conflicts") or p.get("evidence"))})
     for e in orch.bus.replay(topic="supervisor-actions", key=subject):
-        history.append({"at": e.ts.isoformat(), "action": f"supervisor {e.payload.get('action')}", "detail": excerpt(e.payload.get("reason"))})
-    history.sort(key=lambda h: str(h["at"]))
+        history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(), "action": f"supervisor {e.payload.get('action')}", "detail": excerpt(e.payload.get("reason"))})
+    history.sort(key=lambda h: (str(h["at"]), h["_seq"]))
+    for h in history: del h["_seq"]
 
     b = orch.supervisor.budgets.get(subject)
     if b is None:
