@@ -1081,9 +1081,17 @@ class Orchestrator:
         """release-engineer nhận RC kèm `target_env`; đầu ra phải đúng env và release_id, nếu không thì coi là invalid."""
         rid = rc.payload["release_id"]
         integ = self._integration_of_release(rc)
-        extra = {"integration_branch": integ.branch, "integration_sha": integ.sha()} if integ is not None else {}
-        inp = rc.model_copy(update={"payload": {**rc.payload, "target_env": r.target_env,
-                                                "gate_release": self.gate.is_approved(rid), **extra}})
+        extra: dict[str, Any] = ({"integration_branch": integ.branch, "integration_sha": integ.sha()}
+                                 if integ is not None else {})
+        if r.target_env == "production":
+            # `gate_release` CHỈ có nghĩa với production: Gate 3 gác cửa production, không gác staging.
+            # Trước đây gửi cho cả hai env và staging luôn thấy `false` (Gate 3 chưa thể duyệt vì chưa có qa hồi quy),
+            # release-engineer đọc đó là "chưa được phép" nên TỪ CHỐI deploy staging — khoá kín cả dây chuyền:
+            # staging không `deployed` → qa hồi quy không chạy → Gate 3 không đủ nguồn để mở → `gate_release` mãi
+            # false. Đo được 2026-09-06 (QLKH): 18/18 release-candidate chết ở đây, 0 lần ra production, 0 tag giao
+            # hàng, dù 14/14 ticket đã vào nhánh tích hợp. Staging là nơi QA hồi quy TRƯỚC khi xin Gate 3 (ADR-0006).
+            extra["gate_release"] = self.gate.is_approved(rid)
+        inp = rc.model_copy(update={"payload": {**rc.payload, "target_env": r.target_env, **extra}})
         if r.target_env == "staging" and integ is not None and (full := integ.rev(integ.branch)):
             # Sha mà QA sẽ hồi quy — và sha sẽ được giao khi production duyệt (ADR-0027). Ghi audit để bền qua restart.
             with self._lock: self.release_sha[rid] = full
