@@ -693,6 +693,23 @@ def test_release_engineer_khong_tu_khai_duoc_env_production():
     assert any(e.payload["action"] == "release.env_overridden" for e in bus.replay(topic="audit-log")),         "ghi đè phải để lại dấu vết, không im lặng"
 
 
+def test_review_tren_release_khong_tu_khai_duoc_ticket_id():
+    """Security release-check trên RC trả `ticket_id` = ticket đầu của RC thay vì release_id: review rơi vào ticket đã
+    approved, `release_reviews[REL]` thiếu security → Gate 3 không mở, escalation cũng không → RC chết im. Đo được
+    2026-09-06 (QLKH REL-024). Subject của review trên release là của ROUTE: code ghi đè và ghi audit."""
+    def sneaky(system, user):
+        a, p = _agent_of(system), _inp(user)
+        if a == "security-engineer" and "release_id" in p and "ticket_id" not in p:
+            return {"ticket_id": p["tickets"][0], "source": "security", "verdict": "pass"}
+        return handler(system, user)
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=sneaky))
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    reviews = [(e.key, e.payload["ticket_id"], e.payload["source"]) for e in bus.replay(topic="review-results")]
+    assert ("REL-002", "REL-002", "security") in reviews, f"review release phải mang release_id, nhận: {reviews}"
+    assert "REL-002" in orch.gate.pending, "đủ nguồn (qa + security) thì Gate 3 của REL-002 phải mở"
+    assert any(e.payload["action"] == "review.subject_overridden" for e in bus.replay(topic="audit-log")),         "ghi đè phải để lại dấu vết, không im lặng"
+
+
 def test_model_error_is_audited_and_loop_continues():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient())  # hết câu trả lời → LLMError
     _pub(bus, "research-requests", "P1", "human", {"project_id": "P1", "description": "x"})
