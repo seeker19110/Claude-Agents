@@ -17,13 +17,15 @@
 ## 7. Dữ liệu cá nhân
 | Trường | Phân loại | Mục đích | Cơ sở pháp lý | Retention |
 ## 8. Quyết định công nghệ (link ADR)
-## 8b. Chạy ở đâu (`runtime` — orchestrator dùng để smoke, ADR-0029)
+## 8b. Chạy ở đâu / runtime (điều kiện cần của Gate 1 — ADR-0031; orchestrator dùng để smoke — ADR-0029)
 | Trường | Giá trị |
-| `kind` | <`application` (có điểm vào chạy được — BẮT BUỘC `command`) hoặc `library` (không có server)> |
+| `kind` | <`application` (có điểm vào chạy được — BẮT BUỘC `command`) \| `library` \| `docs` — library/docs miễn runtime nhưng PHẢI khai rõ; bỏ trống = application> |
 | `command` | <lệnh khởi động, vd `python -m app --port {port}`> |
 | `port` | <0 = tự chọn> |
-| `health` | <đường GET trả 200, vd `/health`> |
-| phụ thuộc ngoài | <DB, cache, cloud — hoặc "không, chạy in-memory được"> |
+| `health` | <đường GET trả 200 dùng cho smoke, vd `/health`> |
+| `dependencies` | <phụ thuộc ngoài: DB, cache, cloud — hoặc "không, chạy in-memory được"> |
+Bảng này khớp 1-1 với `approved-specs.payload.kind` và `payload.runtime`; thiếu (khi `kind=application`) thì
+orchestrator không mở gate spec mà trả lại spec-writer.
 ## 9. Rủi ro đã chấp nhận (link threat-model, người ký)
 ## 10. Giả định và câu hỏi mở
 ## 11. Bảng truy vết

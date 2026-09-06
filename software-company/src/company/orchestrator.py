@@ -193,6 +193,28 @@ def _cr_accepted_direct(e: Envelope, _o: Orchestrator) -> bool:
     return e.payload.get("decision") == "accepted" and not e.payload.get("affects_requirements")
 
 
+SPEC_KINDS = ("application", "library", "docs")   # `approved-specs.payload.kind`; thiếu = application (không khai ≠ được miễn)
+SPEC_RUNTIME_REWORKS = 1  # số lần tự trả spec về spec-writer vì thiếu runtime trước khi hỏi người (= max_retries của nó)
+
+
+def spec_runtime_gap(payload: dict[str, Any]) -> str | None:
+    """ADR-0031: Gate 1 chỉ mở khi spec trả lời được "chạy ở đâu". Trả về lý do thiếu (để gửi lại spec-writer), None
+    khi đủ. `kind=library|docs` được miễn `runtime` nhưng phải KHAI RÕ — thiếu `kind` tính là ứng dụng, vì im lặng
+    chính là cách QLKH đi qua bốn gate mà không có điểm vào nào (báo cáo 2026-09-06-ban-giao-khong-chay-duoc)."""
+    kind = payload.get("kind") or "application"
+    if kind not in SPEC_KINDS:
+        return f"`kind`={kind!r} không hợp lệ; phải là một trong {', '.join(SPEC_KINDS)}"
+    if kind != "application":
+        return None
+    if parse_runtime(payload) is not None:
+        return None
+    rt = payload.get("runtime")
+    what = "thiếu `runtime`" if not isinstance(rt, dict) else "`runtime.command` rỗng hoặc `port`/`timeout_s`/`expect_status` không phải số"
+    return (f"spec kind=application {what}: Gate 1 cần lệnh khởi động (`runtime.command`, có thể chứa {{port}}), "
+            "`port` (0 = tự chọn), `health` (đường GET trả 200) và phụ thuộc ngoài; nếu sản phẩm là thư viện hay tài liệu "
+            "thì khai `kind: library|docs` thay vì bỏ trống")
+
+
 def _with_draft(e: Envelope, o: Orchestrator) -> dict[str, Any]:
     d = o.latest("requirements-draft", e.payload.get("project_id") or e.key)
     return {"requirements_draft": d.payload} if d else {}
@@ -451,6 +473,9 @@ class Orchestrator:
         # chặn thật khi xung đột LẶP LẠI quá `MAX_CONFLICT_RETRIES` — dấu hiệu bế tắc cấu trúc (vd. nhiều ticket
         # cùng sửa một file interface), không phải may rủi thứ tự.
         self.conflict_retries: Counter[str] = Counter()
+        # project_id → số lần spec bị trả về spec-writer vì `kind=application` mà không có `runtime` hợp lệ (ADR-0031).
+        # Dựng lại từ audit `spec.runtime_missing`; về 0 khi người duyệt escalation cho chạy lại (`event.retried`).
+        self.spec_runtime_reworks: Counter[str] = Counter()
         self.stats: Counter[str] = Counter()
         self._rehydrate()
         bus.subscribe("*", self._on_event)
@@ -504,7 +529,14 @@ class Orchestrator:
                 elif a["action"] == "plan_rejected" and d.get("source_event"):
                     self.unhandled[str(d["project_id"])] = {"agent": "delivery-lead", "topic": d.get("source_topic"),
                                                             "event_id": d["source_event"], "subject": str(d["project_id"])}
-                elif a["action"] in {"event.retried", "event.abandoned"}: self.unhandled.pop(str(d.get("subject")), None)
+                elif a["action"] == "spec.runtime_missing": self.spec_runtime_reworks[str(d["project_id"])] += 1
+                elif a["action"] == "spec.runtime_escalated" and d.get("source_event"):
+                    self.unhandled[str(d["project_id"])] = {"agent": "spec-writer", "topic": d.get("source_topic"),
+                                                            "event_id": d["source_event"], "subject": str(d["project_id"]),
+                                                            "error": f"spec_runtime_missing: {str(d.get('reason', ''))[:200]}"}
+                elif a["action"] in {"event.retried", "event.abandoned"}:
+                    self.unhandled.pop(str(d.get("subject")), None)
+                    self.spec_runtime_reworks.pop(str(d.get("subject")), None)
                 elif a["action"] == "gate.decide":
                     if d.get("subject_id"): self.escalation_decided[str(d["subject_id"])] += 1
                     if d.get("decision") == "approve" and d.get("subject_id") in self.plans \
@@ -1033,6 +1065,7 @@ class Orchestrator:
         if env is None: return False
         with self._lock:
             self.processed.discard(env.event_id); self.partial.pop(env.event_id, None); self.unhandled.pop(subject, None)
+            self.spec_runtime_reworks.pop(subject, None)  # người cho chạy lại → spec-writer được thêm một lượt sửa tự động
         self._audit("event.retried", {**rec, "subject": subject, "by": by, "reason": reason[:300]}, project_id=self.project_for(env))
         with self._qlock: self.queue.insert(0, env)
         return True
@@ -1338,6 +1371,8 @@ class Orchestrator:
             if not self.gate.is_approved(sid):
                 decided = [g for g in self.gate.history if g.subject_id == sid]
                 if sid not in self.gate.pending and not decided:
+                    if (gap := spec_runtime_gap(env.payload)) is not None:
+                        return self._spec_runtime_missing(env, project, gap, res)
                     self.gate.request(GateRequest(kind="spec", subject_id=sid, created_by=env.actor,
                                                   checklist=["prd", "acceptance-criteria", "ux-flow", "risks"]))
                 if decided and sid not in self.gate.pending:
@@ -1402,6 +1437,48 @@ class Orchestrator:
             with self._lock: self.stats["plans"] += 1
         self._mark(env, res)
         return res
+
+    def _spec_runtime_missing(self, env: Envelope, project: str, gap: str, res: StepResult) -> StepResult:
+        """ADR-0031: spec ứng dụng không có `runtime` hợp lệ thì KHÔNG mở gate spec — người ký Gate 1 không được đặt
+        trước một PRD mà câu "chạy cho tôi xem" chưa có câu trả lời. Thay vào đó trả về spec-writer với lý do (`hint`)
+        đúng như `request_changes` của người; quá `SPEC_RUNTIME_REWORKS` lần vẫn thiếu → escalation cấp dự án, cùng
+        khuôn với kế hoạch bị `_check_plan` từ chối (approve = chạy lại event nguồn, reject = bỏ).
+        Khoá theo `event_id` của spec (mỗi lần spec-writer publish là một event mới, không nuốt lần hai — khuôn 3
+        `TRAPS.md`); bộ đếm theo dự án dựng lại từ audit (khuôn 2)."""
+        with self._lock:
+            self.spec_runtime_reworks[project] += 1; n = self.spec_runtime_reworks[project]
+        cause = next((e for t in ("clarification-answers", "requirements-draft", "clarification-questions")
+                      for e in self.bus.replay(topic=t) if e.event_id == env.causation_id), None) if env.causation_id else None
+        if cause is None:
+            cause = self.latest("requirements-draft", project)
+        self._audit("spec.runtime_missing", {"project_id": project, "event_id": env.event_id, "kind": env.payload.get("kind"),
+                                             "runtime": env.payload.get("runtime"), "reason": gap, "attempt": n,
+                                             "source_event": cause.event_id if cause else None}, project_id=project)
+        if cause is not None and n <= SPEC_RUNTIME_REWORKS:
+            hint = f"orchestrator từ chối mở gate spec (lần {n}): {gap}"
+            prev = {k: env.payload.get(k) for k in ("kind", "runtime", "artifacts")}
+            inp = cause.model_copy(update={"payload": {**cause.payload, "hint": hint, "previous_spec": prev}})
+            self._recall("spec-writer", cause)  # `partial` đã ghi spec-writer cho event nguồn: gọi lại là CHỦ Ý
+            route = Route(cause.topic, "spec-writer", "approved-specs",
+                          enrich=None if cause.topic == "requirements-draft" else _with_draft)
+            self._call("spec-writer", inp, route, res)
+            res.actions.append(f"spec_runtime_missing:{project}:rework:{n}")
+            self._mark(env, res); return res
+        why = gap if cause is not None else f"{gap}; không có requirements-draft để spec-writer làm lại"
+        self._audit("spec.runtime_escalated", {"project_id": project, "event_id": env.event_id, "attempts": n, "reason": why,
+                                               "source_event": cause.event_id if cause else None,
+                                               "source_topic": cause.topic if cause else None}, project_id=project)
+        res.actions.append(f"spec_runtime_missing:{project}:escalated")
+        with self._lock: self.stats["errors"] += 1
+        self.supervisor.escalate_gate(project, f"spec thiếu runtime sau {n} lần: {gap[:200]}", once_key=f"spec_runtime:{env.event_id}")
+        if cause is not None:
+            with self._lock:
+                self.unhandled[project] = {"agent": "spec-writer", "topic": cause.topic, "event_id": cause.event_id,
+                                           "subject": project, "error": f"spec_runtime_missing: {gap[:200]}"}
+        if project not in self.gate.pending:
+            self.gate.request(GateRequest(kind="escalation", subject_id=project, created_by="spec-writer",
+                                          checklist=["spec_runtime", "decision:retry|close"]))
+        self._mark(env, res); return res
 
     def _threat_model(self, env: Envelope, sid: str, res: StepResult) -> bool:
         """Security-engineer đọc spec đã duyệt: threat model v1 lên blackboard + review-results key=SPEC-*.

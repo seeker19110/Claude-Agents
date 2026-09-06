@@ -99,7 +99,11 @@ def _orch(tmp_path: Path, repo: Path | None, runtime: dict | None):
     orch.lead.tickets["T1"] = Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="backend",
                                    title="T1", acceptance=["a"])
     orch.lead.state["T1"] = "approved"
-    spec = {"project_id": "P", "status": "approved", "artifacts": {"prd": "prd", "requirements": "req"}}
+    # ADR-0031: spec ứng dụng chưa khai `runtime` không được mở gate spec — các ca dưới đây đo giai đoạn RELEASE
+    # (smoke, QA hồi quy) nên spec nền khai `kind: library` để dừng đúng ở gate spec như trước; ca nào khảo sát
+    # `kind` thì tự publish lại spec với kind của nó.
+    spec = {"project_id": "P", "status": "approved", "kind": "library",
+            "artifacts": {"prd": "prd", "requirements": "req"}}
     if runtime is not None: spec["runtime"] = runtime
     bus.publish(Envelope(topic="approved-specs", key="P", actor="spec-writer", payload=spec))
     bus.publish(Envelope(topic="release-candidates", key="REL-001", actor="delivery-lead",
@@ -259,15 +263,19 @@ def test_khong_runtime_kind_application_thi_unverified_va_rc_khong_di_tiep(tmp_p
     assert g is not None and g.kind == "escalation" and g.kind != "release"
 
 
-def test_khong_runtime_kind_library_hay_chua_khai_thi_unverified_khong_chan(tmp_path, monkeypatch):
-    for kind in ("library", None):
-        d = tmp_path / (kind or "none"); d.mkdir()
+def test_khong_runtime_kind_library_hay_docs_thi_unverified_khong_chan(tmp_path, monkeypatch):
+    """`library`/`docs` không có server: smoke `unverified` nhưng KHÔNG chặn RC.
+
+    Trước ADR-0031 ca này còn nhánh "spec chưa khai kind" — nay thiếu `kind` = `application` (im lặng không phải
+    miễn trừ) nên spec đó bị chặn ngay ở Gate 1, không bao giờ tới được RC; nhánh ấy đo ở
+    `tests/test_gate_spec_runtime.py`."""
+    for kind in ("library", "docs"):
+        d = tmp_path / kind; d.mkdir()
         repo = _repo(d, SERVER_DIE)
         _fake_smoke(monkeypatch, [OK])
         bus, orch = _orch(d, repo, None)
-        if kind:
-            spec = bus.latest("approved-specs", "P").payload
-            bus.publish(Envelope(topic="approved-specs", key="P", actor="spec-writer", payload={**spec, "kind": kind}))
+        spec = bus.latest("approved-specs", "P").payload
+        bus.publish(Envelope(topic="approved-specs", key="P", actor="spec-writer", payload={**spec, "kind": kind}))
         orch.run()
         qa = _qa_reviews(bus)
         assert qa[-1]["verdict"] == "pass" and qa[-1]["evidence"]["run"]["unverified"] is True

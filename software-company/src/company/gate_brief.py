@@ -35,7 +35,7 @@ from .gate_checklists import GateSection, SelfItem
 from .gate_checklists import load as load_gates
 from .gates import GateRequest
 from .llm import FakeClient
-from .orchestrator import Orchestrator, _evidence
+from .orchestrator import Orchestrator, _evidence, spec_runtime_gap
 from .runner import artifact_store
 from .smoke import parse_runtime, run_smoke
 from .workspace import NO_HOOKS, TicketWorkspace, clean_env
@@ -51,6 +51,7 @@ LOCKFILES = re.compile(r"(^|/)(uv\.lock|poetry\.lock|Pipfile\.lock|requirements[
 _MEASURE = re.compile(r"\d+([.,]\d+)?\s*(%|(ms|s|giây|phút|rps|req/s|qps|tps|mb|gb|kb|người|users?|ccu|lần)\b)|\bp9\d\b", re.I)
 _NFR_HEAD = re.compile(r"nfr|phi\s+chức\s+năng|non[- ]functional", re.I)
 _OOS_HEAD = re.compile(r"out[- ]?of[- ]?scope|ngoài\s+phạm\s+vi|không\s+làm|non[- ]goals?", re.I)
+_RT_HEAD = re.compile(r"chạy\s+ở\s+đâu|runtime", re.I)
 _PII = re.compile(r"\bpii\b|dữ liệu cá nhân|thông tin cá nhân|cccd|cmnd|email|số điện thoại|sđt|phone|địa chỉ|ngày sinh|"
                   r"personal data", re.I)
 _DEP = re.compile(r"dependency|dependencies|phụ thuộc|thư viện|library|libraries|package|license|licence|giấy phép|sdk|"
@@ -217,6 +218,31 @@ def _brief_spec(orch: Orchestrator, g: GateSection, subject: str, pid: str | Non
     if open_q: facts.append("chưa trả lời: " + ", ".join(open_q[:10]))
     out.append(_item(it, "gap" if open_q else "ok", facts,
                      [_topic_src("clarification-questions", pid or "", qs), _topic_src("clarification-answers", pid or "", ans)]))
+
+    # ADR-0031: câu "chạy cho tôi xem" hỏi ở Gate 1. Code đã chặn spec application thiếu runtime trước khi gate mở;
+    # ở đây người ký thấy đúng lệnh/cổng/health/phụ thuộc mà orchestrator sẽ dùng để smoke (ADR-0029).
+    it = items["spec.runtime"]
+    spec = orch.latest("approved-specs", pid) if pid else None
+    rt_src: list[dict[str, Any]] = ([_topic_src("approved-specs", pid or "", [spec])] if spec is not None else []) + srcs
+    if spec is None:
+        out.append(_item(it, "unknown", ["chưa có approved-specs cho dự án"], rt_src))
+    else:
+        p = spec.payload; kind = p.get("kind") or "application"; rt = parse_runtime(p)
+        gap = spec_runtime_gap(p); facts = [f"kind={kind}" + ("" if p.get("kind") else " (spec không khai, mặc định application)")]
+        if gap is not None:
+            facts.append(gap)
+        elif rt is None:
+            facts.append(f"kind={kind}: miễn runtime, đã khai rõ")
+        else:
+            facts.append(f"command: {' '.join(rt.command)}; port: {rt.port or 'tự chọn'}; health: GET {rt.path} → {rt.expect_status}")
+            deps = (p.get("runtime") or {}).get("dependencies") or []
+            facts.append("phụ thuộc ngoài: " + (", ".join(map(str, deps)) if deps else "không khai (chạy in-memory?)"))
+        if prd is not None:
+            facts.append("prd " + ("có" if _section(prd, _RT_HEAD) is not None else "không có") + " mục 8b `Chạy ở đâu`")
+        n_miss = sum(1 for e in orch.bus.replay(topic="audit-log") if e.payload.get("action") == "spec.runtime_missing"
+                     and _evidence(e.payload).get("project_id") == pid)
+        if n_miss: facts.append(f"spec từng bị trả lại vì thiếu runtime: {n_miss} lần")
+        out.append(_item(it, "gap" if gap is not None else "ok", facts, rt_src))
     return out, unavailable, {}
 
 

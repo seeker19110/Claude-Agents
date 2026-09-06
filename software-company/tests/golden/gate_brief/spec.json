@@ -98,6 +98,31 @@
         }
       ],
       "verdict": "ok"
+    },
+    {
+      "facts": [
+        "kind=library",
+        "kind=library: miễn runtime, đã khai rõ",
+        "prd không có mục 8b `Chạy ở đâu`"
+      ],
+      "id": "spec.runtime",
+      "question": "Có runtime chạy được: `kind` khai rõ; ứng dụng có lệnh khởi động, cổng, đường health và phụ thuộc ngoài",
+      "sources": [
+        {
+          "event_ids": 1,
+          "key": "P1",
+          "kind": "topic",
+          "ref": "approved-specs"
+        },
+        {
+          "content_ref": "docs/prd.md",
+          "kind": "namespace",
+          "path": "<…>",
+          "ref": "prd",
+          "version": 1
+        }
+      ],
+      "verdict": "ok"
     }
   ],
   "status": "approve",

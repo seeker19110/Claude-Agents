@@ -141,7 +141,7 @@ def test_blackboard_content_mirrors_to_store_and_reaches_prompt(tmp_path):
 
 def test_context_writes_carry_full_content_and_flag_missing():
     bus = InMemoryBus(); bb = Blackboard(bus)
-    spec = {"project_id": "P1", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}}
+    spec = {"project_id": "P1", "status": "pending_human", "kind": "library", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}}
     env = Envelope(topic="clarification-answers", key="P1", actor="human:po", payload={"project_id": "P1", "answers": []})
     client = FakeClient(responses=[{"payload": spec, "context_writes": [
         {"namespace": "prd", "content_ref": "docs/prd.md", "summary": "PRD v1", "content": "# PRD\n\nREQ-1"}]}])

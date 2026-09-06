@@ -451,7 +451,8 @@ def handler(system: str, user: str) -> dict[str, Any]:
             {"id": "Q1", "text": "Bản demo có cần lưu đăng ký vào DB hay chỉ hiển thị form?", "options": ["lưu SQLite", "chỉ form"], "default": "lưu SQLite"},
             {"id": "Q2", "text": "Có cần trang tin tức trong demo?", "options": ["có", "không"], "default": "không"}]}
     if a == "spec-writer":
-        return {"payload": {"project_id": pid, "status": "pending_human",
+        return {"payload": {"project_id": pid, "status": "pending_human", "kind": "application",
+                            "runtime": {"command": "python -m app --port {port}", "port": 0, "health": "/health", "dependencies": []},
                             "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json", "glossary": "docs/glossary.md",
                                           "tech-decisions": "docs/adr/0001-python-no-framework.md", "risk-register": "docs/risk-register.json"}},
                 "context_writes": [{"namespace": "prd", "content_ref": "docs/prd.md", "summary": "PRD v1: 3 Must (REQ-1..3), 1 Should", "content": PRD}]}

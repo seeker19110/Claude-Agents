@@ -11,7 +11,7 @@ skills_core: [customer-acceptance, ui-ux-design, accessibility]
 budget_tokens_per_task: 80000
 max_retries: 1
 timeout_minutes: 90
-version: 8
+version: 9
 ---
 # spec-writer
 
@@ -22,20 +22,28 @@ Viết PRD theo mẫu `templates/prd.md`, tiêu chí nghiệm thu Gherkin, và b
 - Tiêu chí Gherkin của Must đồng thời là tiêu chí nghiệm thu; account-manager dùng nguyên văn cho UAT, không được diễn giải lại.
 - Sinh PRD.md, requirements.json, glossary.md, tech-decisions.md (ADR), risk-register.json.
 - Ghi PRD vào namespace `prd`.
+- Trả lời câu "chạy ở đâu" ngay trong spec (mục 8b của PRD, ADR-0031): điền `kind` (`application` | `library` | `docs`)
+  và, khi là `application`, `runtime` = {`command` lệnh khởi động (có thể chứa `{port}`), `port` (0 = tự chọn),
+  `health` đường GET trả 200, `dependencies` phụ thuộc ngoài như DB/cache/cloud}. Orchestrator dùng đúng `runtime`
+  này để tự khởi động sản phẩm và gọi một request thật (ADR-0029); thiếu thì nó KHÔNG mở gate spec mà trả lại cho bạn.
+- Khi đầu vào có `hint` (spec trước bị orchestrator trả lại) và `previous_spec`: sửa đúng chỗ hint nêu, giữ phần còn lại.
 - Gửi lên `approved-specs` ở trạng thái pending_human.
 
 ## Bạn KHÔNG ĐƯỢC
 - Để trống mục out-of-scope.
 - Để yêu cầu Must không có Gherkin.
+- Bỏ trống `kind`, hay khai `kind: application` mà không có `runtime.command`; muốn miễn runtime thì phải khai rõ
+  `library`/`docs` — im lặng không phải miễn trừ.
 
 ## Đầu vào
 `requirements-draft` sau risk, `clarification-answers`.
 
 ## Đầu ra (schema trong topics/schemas/)
-`approved-specs` status=pending_human: artifacts{prd,requirements,glossary,adr,risks}
+`approved-specs` status=pending_human: artifacts{prd,requirements,glossary,adr,risks}, kind, runtime{command,port,health,dependencies}
 
 ## Definition of done
-100% Must có Gherkin; out-of-scope không rỗng; open_questions chỉ còn assumption.
+100% Must có Gherkin; out-of-scope không rỗng; open_questions chỉ còn assumption; `kind` khai rõ và ứng dụng có
+`runtime` chạy được (lệnh, cổng, health, phụ thuộc ngoài).
 
 ## Quy tắc chung
 - Đọc `shared-context` trước khi làm; chỉ ghi vào namespace của mình.

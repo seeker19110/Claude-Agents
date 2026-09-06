@@ -175,6 +175,7 @@ Tổng khoảng 20–22 ngày-phiên tuần tự, rút còn ~12 ngày lịch n�
 |---|---|---|---|
 | V1–V5 | chưa | | |
 | B1–B8 | B2 xong; B3 xong — ADR-0029 mở rộng, spec có `kind`, qa-debugger v13; B4 xong; B5 xong; B7 xong | B2: #97, B3: #102, B4: #100, B5: #103, B7: #99 | B3 dùng lại `run_smoke`. B4: mục `acceptance.da-chay` + mục "Đã chạy" trong hồ sơ; cần `--repo`. B5: ADR-0032, `test_no_kien_truc_adr0032.py`, ngưỡng `llm.yaml debt_reviews`. B7: `orchestrator trace <id> [--json]`, `src/company/trace.py` |
+| B1–B8 | B1 xong, B4 xong, B5 xong, B7 xong; B2 wip (ADR-0030 nhánh `feat/so-ruling-adr-0030`) | B1: #104, B4: #100, B5: #103, B7: #99 | B1: ADR-0031, `spec_runtime_gap` chặn trước gate, spec-writer v9, gate_brief `spec.runtime`. B4: mục `acceptance.da-chay` + mục "Đã chạy" trong hồ sơ; cần `--repo`. B5: ADR-0032, `test_no_kien_truc_adr0032.py`, ngưỡng `llm.yaml debt_reviews`. B7: `orchestrator trace <id> [--json]`, `src/company/trace.py` |
 | D1–D5 | chưa | | |
 | C1–C10 | C1–C8 + C10 xong; **C9 còn lại** (màn Xưởng video — chờ đợt 4 studio) | C1–C8,C10: #107 | console ADR-0003 "mỗi ô trả lời một câu hỏi, ô rỗng là ô xám": màn `#/phieu` phễu sản phẩm (bậc staging/production neo vào `smoke`), hậu quả gate hai chiều + `gate_brief` tại chỗ (`GET /api/gate/brief`), cảnh báo bế tắc im lặng đầu trang, cột commit vượt integration (`src/console/git_truth.py`), `trim_src` cạnh verdict, mẫu hint 3 dòng |
 | S1–S7 | S2 một phần (ADR-0009) | | |

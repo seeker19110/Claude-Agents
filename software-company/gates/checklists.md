@@ -25,6 +25,11 @@ Người tự kiểm thêm:
 - [ ] Out-of-scope rõ
 - [ ] PII đã phân loại; DPIA có nếu cần
 - [ ] Câu hỏi mở chỉ còn assumption đã ghi nhận
+- [ ] Có runtime chạy được: `kind` khai rõ; ứng dụng có lệnh khởi động, cổng, đường health và phụ thuộc ngoài
+
+Ghi chú: `spec_runtime_gap` trong `src/company/orchestrator.py` đã chặn trước khi gate mở — spec `kind=application`
+không có `runtime` hợp lệ thì KHÔNG có gate này, spec-writer nhận lại spec với lý do (ADR-0031). Mục tự kiểm ở trên là
+lớp thứ hai: lệnh có đúng là lệnh của sản phẩm này không, phụ thuộc ngoài có ghi đủ không.
 
 Kết quả: approve / request_changes(lý do) / reject
 
