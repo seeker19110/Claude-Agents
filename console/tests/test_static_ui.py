@@ -87,3 +87,12 @@ def test_mau_trong_giao_dien_va_mau_tren_dia_cung_mot_bo_khung(page: str) -> Non
     for phan in ("BỐI CẢNH", "NGOÀI PHẠM VI", "RÀNG BUỘC", "NGHIỆM THU"):
         assert phan in on_disk["description"], f"mẫu trên đĩa thiếu {phan}"
         assert phan.lower() in in_ui["description"].lower() or phan in in_ui["description"]
+
+
+def test_escalation_khong_duyet_duoc_bang_ly_do_qua_ngan(page: str) -> None:
+    """Lý do duyệt escalation là hint gửi thẳng cho agent; "ok" làm agent hiểu không có gì để sửa rồi lặp. Nút Duyệt
+    phải bị khoá khi lý do dưới 20 ký tự, không chỉ cảnh báo."""
+    sync = page[page.index("const sync=()=>{"):page.index("boxes.forEach(b=>b.addEventListener(\"change\",sync))")]
+    assert 'g.kind==="escalation"' in sync and ".length<20" in sync
+    assert "disabled=READONLY||left>0||thin" in sync, "thin phải khoá nút Duyệt"
+    assert '$("#reason").addEventListener("input",sync)' in page, "gõ lý do phải tính lại trạng thái nút"

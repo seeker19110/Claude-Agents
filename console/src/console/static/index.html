@@ -1292,10 +1292,12 @@ function openGate(id){
   const boxes=$$("#cl input");
   const sync=()=>{
     const left=boxes.filter(b=>!b.checked).length;
+    // Escalation: lý do là HINT gửi thẳng cho agent — "ok" là bảo nó không có gì để sửa (đo được 13:05 2026-09-06,
+    // duyệt REL-025 bằng "ok"). Chưa đủ 20 ký tự thì KHÔNG cho duyệt, không chỉ cảnh báo.
     const thin=g.kind==="escalation"&&$("#reason").value.trim().length<20;
-    drawer.querySelector('[data-d="approve"]').disabled=READONLY||left>0;
+    drawer.querySelector('[data-d="approve"]').disabled=READONLY||left>0||thin;
     $("#gnote").innerHTML=READONLY?RO_NOTE:left?`Còn ${left} mục chưa tick.`
-      :thin?'Đủ điều kiện duyệt — nhưng lý do đang quá ngắn để làm hint cho agent (nêu root cause và việc cần làm).':"Đủ điều kiện duyệt.";
+      :thin?'Ghi lý do ít nhất 20 ký tự — nó là hint agent nhận: nêu root cause và việc cần làm, không phải "ok".':"Đủ điều kiện duyệt.";
   };
   boxes.forEach(b=>b.addEventListener("change",sync));
   $("#reason").addEventListener("input",sync);

@@ -1097,6 +1097,18 @@ class Orchestrator:
         return self.runner.publish(agent, task, r.topic_out, p, key=key_for(r.topic_out, p, task.key),
                                    tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
 
+    def _release_evidence(self, rid: str) -> dict[str, Any]:
+        staging = next((e for e in reversed(list(self.bus.replay(topic="release-events", key=rid)))
+                        if e.payload.get("env") == "staging"), None)
+        reviews = {s: {"verdict": x.verdict, "findings": len(x.findings)} for s, x in self.lead.release_reviews.get(rid, {}).items()}
+        gate = next((g for g in reversed(self.gate.history) if g.subject_id == rid and g.kind == "release"), None)
+        return {"staging": ({"status": staging.payload.get("status"), "version": staging.payload.get("version"),
+                             "at": staging.ts.isoformat(timespec="seconds")} if staging is not None else None),
+                "reviews": reviews, "waived": sorted(self.lead.release_waived.get(rid, set())),
+                "gate_release_by": (gate.decided_by if gate is not None else None),
+                "gate_release_reason": ((gate.reason or "")[:300] if gate is not None else None),
+                "delivered_sha": self.release_sha.get(rid)}
+
     def _release(self, agent: str, rc: Envelope, r: Route) -> Envelope:
         """release-engineer nhận RC kèm `target_env`; đầu ra phải đúng env và release_id, nếu không thì coi là invalid."""
         rid = rc.payload["release_id"]
@@ -1111,6 +1123,11 @@ class Orchestrator:
             # false. Đo được 2026-09-06 (QLKH): 18/18 release-candidate chết ở đây, 0 lần ra production, 0 tag giao
             # hàng, dù 14/14 ticket đã vào nhánh tích hợp. Staging là nơi QA hồi quy TRƯỚC khi xin Gate 3 (ADR-0006).
             extra["gate_release"] = self.gate.is_approved(rid)
+            # Lượt production phải THẤY bằng chứng staging/QA/security/gate ngay trong payload: agent không có tool
+            # đọc bus; thiếu thì nó "không được tự suy diễn" và dừng chờ người. Đo được 2026-09-06 (REL-025): staging
+            # deployed 06:01, QA pass 06:02, Gate 3 ký 06:04 — lượt production 06:04 vẫn trả pending_human với lý do
+            # "chưa qua deploy staging thật".
+            extra["evidence"] = self._release_evidence(rid)
         inp = rc.model_copy(update={"payload": {**rc.payload, "target_env": r.target_env, **extra}})
         if r.target_env == "staging" and integ is not None and (full := integ.rev(integ.branch)):
             # Sha mà QA sẽ hồi quy — và sha sẽ được giao khi production duyệt (ADR-0027). Ghi audit để bền qua restart.
@@ -1333,6 +1350,12 @@ class Orchestrator:
                                           payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
                 res.actions.append(f"release_waived:{tid}:{','.join(sources)}")
                 if self._rerun_release(tid, by, reason, res): res.actions.append(f"release_rerun:{tid}")
+            elif self._superseded_release(tid):
+                # RC cũ mà nội dung đã nằm trong một bản GIAO sau nó (nhánh tích hợp cộng dồn): "đóng" là huỷ RC,
+                # KHÔNG trả ticket đã giao về làm lại. Đo được 2026-09-06: sau bản giao v0.15.1, 10 RC cũ
+                # pending_human sẽ mở gate; từ chối theo hành vi cũ đá 14 ticket đã giao về changes_requested.
+                self._audit("release.void", {"release_id": tid, "reason": f"nội dung đã nằm trong bản giao; {reason}"[:300]})
+                self._void(tid); res.actions.append(f"void:{tid}")
             else:
                 self.lead.rework_release_tickets(tid, reason or "người từ chối escalation release: cần sửa nội dung thật")
                 res.actions.append(f"release_reworked:{tid}")
@@ -1555,6 +1578,15 @@ class Orchestrator:
                         actor="release-engineer", project_id=self.project_for(last))
             self.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="release-engineer",
                                           checklist=["root_cause", "decision:redeploy|close", "hint"]))
+
+    def _superseded_release(self, rid: str) -> bool:
+        """RC chưa giao, nhưng mọi ticket của nó đã ở nhánh tích hợp (hoặc đã xong) và đã có một bản giao SAU nó →
+        nội dung RC này đã tới tay khách trong bản giao đó; RC chỉ còn là sổ sách."""
+        if rid in self.delivered or rid not in self.lead.release_tickets: return False
+        if rid not in self.lead.releases: return False
+        later = [d for d in self.delivered if d in self.lead.releases and self.lead.releases.index(d) > self.lead.releases.index(rid)]
+        if not later: return False
+        return all(t in self.integrated or self.lead.state.get(t) in DONE_STATES for t in self.lead.release_tickets[rid])
 
     def _release_paused(self, env: Envelope, res: StepResult) -> None:
         """release-engineer TỰ DỪNG (`status=pending_human`): xem `_check_paused_releases` — sweep đó chạy ở mọi nhịp
