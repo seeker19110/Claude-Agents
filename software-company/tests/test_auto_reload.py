@@ -120,3 +120,17 @@ def test_reexec_goi_execv(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(om.os, "execv", lambda exe, argv: got.update(exe=exe, argv=argv))
     om._reexec(["py", "-m", "x"])
     assert got == {"exe": "py", "argv": ["py", "-m", "x"]}
+
+
+def test_reload_giua_hai_lo_khong_bi_watch_nuot_thanh_tick_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`_maybe_reload` ném từ trong `run()` → `tick()` → `watch()`; `watch` bắt Exception chung để một nhịp lỗi không giết
+    vòng lặp, nên trước đây nuốt luôn ReloadRequested thành `tick_error` rồi mới reload ở lần kiểm sau (đo được 16:23
+    2026-09-06: hai audit reload + một tick_error cho cùng một lần). Phải ném thẳng, không ghi tick_error."""
+    root = _tree(tmp_path); monkeypatch.setattr(om, "COMPANY_ROOT", root)
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    bus.publish(Envelope(topic="research-requests", key="P1", actor="human:sales", payload={"project_id": "P1", "description": "x"}))
+    _bump(root / "src" / "company" / "a.py")
+    with pytest.raises(ReloadRequested):
+        orch.watch(interval=0, max_ticks=1, reload=True)
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert acts.count("orchestrator.reload") == 1 and "tick_error" not in acts
