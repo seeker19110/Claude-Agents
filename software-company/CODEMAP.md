@@ -48,6 +48,7 @@
 | Tool của công ty vào `claude -p` qua MCP | `src/company/mcp_bridge.py` (ADR-0024); dò chế độ: `probe.py` |
 | Ngân sách ticket/dự án, watchdog, pause/escalate, bài học | `src/company/supervisor.py`; `BUDGET_FACTOR` trong `events.py` |
 | Số liệu từ audit-log | `src/company/metrics.py` |
+| Dòng thời gian một ticket/release/dự án (`orchestrator trace <id> [--json]`) | `src/company/trace.py`; test `tests/test_trace.py` |
 
 ## Vận hành và giao diện người
 
