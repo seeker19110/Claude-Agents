@@ -370,7 +370,7 @@ class AgentRunner:
             self._audit(spec, "workspace_kept", inp, evidence=f"worktree {ws.branch} còn thay đổi chưa commit từ lần trước; giữ thành WIP {kept}")
         tools = WorkspaceTools(ws, allow_write=True, write_scope="tests").toolbox()
         g = self.generate(agent_id, inp, "test-suites", tools=tools, max_turns=max_turns, budget=budget)
-        if not ws.dirty() and not kept:
+        if not ws.dirty() and not kept and not ws.head_is_wip():
             self._audit(spec, "invalid_output", inp, evidence="worktree không có file test nào sau vòng tool", tokens=g.tokens, cost=g.cost_usd)
             raise RunnerError(f"{agent_id}: không viết file test nào trong worktree {ws.branch}")
         checks = ws.run_checks()
@@ -410,7 +410,10 @@ class AgentRunner:
             self._audit(spec, "workspace_kept", inp, evidence=f"worktree {ws.branch} còn thay đổi chưa commit từ lần trước; giữ thành WIP {kept}")
         tools = WorkspaceTools(ws, allow_write=True, write_scope=write_scope).toolbox()
         g = self.generate(agent_id, inp, "pull-requests", tools=tools, max_turns=max_turns, budget=budget)
-        if not ws.dirty() and not kept:  # so với HEAD của branch: lần làm lại mà ghi y hệt lần trước cũng là "không sửa gì"
+        # WIP đã đủ: lượt này (hoặc lượt sau nữa — worktree đã sạch, `kept` None) agent đọc rồi kết luận không cần sửa.
+        # HEAD vẫn là commit WIP chưa từng thành PR → PR chính là HEAD, để reviewer chấm. Đo được 2026-09-06
+        # (TCK-CR-DEV-001-02): giữ WIP xong, hai lượt kế tiếp đều "không sửa file nào" → blocked lần nữa.
+        if not ws.dirty() and not kept and not ws.head_is_wip():  # so với HEAD của branch: làm lại mà y hệt = "không sửa gì"
             self._audit(spec, "invalid_output", inp, evidence="worktree không có thay đổi sau vòng tool", tokens=g.tokens, cost=g.cost_usd)
             raise RunnerError(f"{agent_id}: không sửa file nào trong worktree {ws.branch} (so với lần trước)")
         checks = ws.run_checks()
