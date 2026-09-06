@@ -109,6 +109,24 @@ def test_generate_in_workspace_keeps_wip_from_previous_run(tmp_path):
     assert ws.reset() is True and not (ws.path / "rac.py").exists(), "reset vẫn dùng được khi CỐ Ý vứt (không còn là mặc định)"
 
 
+def test_luot_sau_nua_worktree_sach_nhung_head_la_wip_van_ra_pr(tmp_path):
+    """Lượt giữ WIP đã qua (worktree sạch, `kept` None); agent lại đọc và không sửa gì → HEAD là WIP chưa thành PR
+    → PR từ HEAD. Đo được 2026-09-06: TCK-CR-DEV-001-02 giữ WIP xong, hai lượt kế đều `invalid_output` → blocked."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1"); ws.create()
+    (ws.path / "xong.py").write_text("def done():\n    return 1\n", encoding="utf-8")
+    assert ws.keep_wip("wip(T1): giữ lại") and not ws.dirty() and ws.head_is_wip()
+    client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "branch": "x", "pr_ref": "x", "summary": "đã đủ", "local_checks": {}},
+                        tool_handler=lambda m, t: [])
+    bus = InMemoryBus(); g = AgentRunner(bus, client).generate_in_workspace("backend", _task_env(), ws)
+    assert g.payloads[0]["impact"]["files"] == ["xong.py"] and g.payloads[0]["pr_ref"] == ws.head_sha()
+    assert not _audits(bus, "invalid_output") and not _audits(bus, "workspace_kept")
+    # nhưng HEAD là commit PR thật (không phải wip) mà không sửa gì → vẫn invalid như cũ
+    (ws.path / "them.py").write_text("y = 1\n", encoding="utf-8"); ws.commit_all("feat(T1): them")
+    assert not ws.head_is_wip()
+    with pytest.raises(RunnerError, match="không sửa file nào"):
+        AgentRunner(InMemoryBus(), client).generate_in_workspace("backend", _task_env(), ws)
+
+
 def test_wip_da_du_va_luot_nay_khong_them_gi_van_ra_pr(tmp_path):
     """Agent lần 2 thấy WIP đã đủ, không sửa gì thêm: PR là HEAD (WIP), không phải invalid_output."""
     ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1"); ws.create()

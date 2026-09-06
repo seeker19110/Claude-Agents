@@ -179,6 +179,10 @@ class TicketWorkspace:
     def head_sha(self) -> str:
         return _git(self.path, "rev-parse", "--short", "HEAD")
 
+    def head_is_wip(self) -> bool:
+        """Commit đầu nhánh là WIP do `keep_wip` tạo (lượt trước giữ lại) — chưa từng thành PR."""
+        return _git(self.path, "log", "-1", "--format=%s").startswith("wip(")
+
     def keep_wip(self, message: str) -> str | None:
         """Lần chạy trước dừng giữa chừng (hết lượt tool / ngân sách) để lại file dở: GIỮ LẠI thành một commit WIP
         trên branch ticket để lần này làm tiếp, thay vì `reset()` vứt hết. Đo được 2026-09-06 (TCK-CR-DEV-001-02):
