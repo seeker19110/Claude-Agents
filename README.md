@@ -22,6 +22,7 @@ Nguyên tắc chung cho mọi công ty:
 | [`docs/DIEU-PHOI-MODEL.md`](docs/DIEU-PHOI-MODEL.md) | Điều phối model theo gói tài khoản: backend, 3 tier, bảng agent → tier, cơ chế xoay khi hết quota | |
 | [`docs/TRUC-VA-DUNG-KHAN.md`](docs/TRUC-VA-DUNG-KHAN.md) | Trực ban và **dừng khẩn**: ba mức dừng (ticket / dự án / toàn hệ thống) kèm lệnh đã chạy thật, lịch trực luân phiên, cổng phát hành gộp lô, và danh sách thứ CHƯA có để không ai tưởng đã có | |
 | [`docs/QUY-TRINH-GIT.md`](docs/QUY-TRINH-GIT.md) | Quy trình Git chung: nhánh, commit, PR, CI, merge squash | |
+| [`AGENTS.md`](AGENTS.md) · [`CLAUDE.md`](CLAUDE.md) · [`TRAPS.md`](TRAPS.md) | **Bộ khung cho agent**: luật cấm/bắt buộc, bẫy đã mắc (có ngày, có PR). Bản đồ: [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CODEMAP.md`](CODEMAP.md) (muốn đổi X sửa ở đâu), [`CHANGELOG.md`](CHANGELOG.md). Thực thi: [`docs/TASK-PACK.md`](docs/TASK-PACK.md), [`docs/PROMPT-SHEET.md`](docs/PROMPT-SHEET.md), [`docs/sessions/`](docs/sessions/). Mỗi package con có `CLAUDE.md`/`TRAPS.md`/`CODEMAP.md`/`ARCHITECTURE.md` riêng | |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Cài đặt từng package, cổng chất lượng, checklist bắt buộc khi sửa agent/skill, quy tắc ADR | |
 | [`SECURITY.md`](SECURITY.md) | Cách báo lỗi bảo mật, phạm vi, mô hình bí mật, các lớp phòng thủ đang có | |
 

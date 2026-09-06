@@ -1,5 +1,6 @@
 # Đóng góp vào X-Agents
 
+Agent (Claude Code, Codex…) đọc [`AGENTS.md`](AGENTS.md) và [`TRAPS.md`](TRAPS.md) trước; muốn đổi X sửa ở đâu: [`CODEMAP.md`](CODEMAP.md).
 Quy trình Git (nhánh, commit, PR, merge) nằm ở [`docs/QUY-TRINH-GIT.md`](docs/QUY-TRINH-GIT.md) — file này
 không lặp lại, chỉ nói những thứ riêng của repo: chạy ở đâu, cổng CI nào chặn cái gì, và sửa agent thì phải
 chạy lại những gì.
