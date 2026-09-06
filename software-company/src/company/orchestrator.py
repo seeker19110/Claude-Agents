@@ -381,6 +381,7 @@ class Orchestrator:
         self.integrated: set[str] = set()  # ticket đã merge vào nhánh tích hợp (khi approved, không đợi RC)
         self.missing_threat_model: set[str] = set()  # spec chưa có threat model vì security-engineer lỗi
         self.stalled: dict[str, dict[str, Any]] = {}  # project_id → {event_id, agent, topic, error}: dự án kẹt chờ người
+        self.unhandled: dict[str, dict[str, Any]] = {}  # subject → {event_id, agent, topic}: event lỗi không nhánh nào nhận, chờ người
         self.stall_count: Counter[str] = Counter()  # event_id → số lần kẹt (mỗi lần một gate mới, không im lặng lần hai)
         self.agents = agents or load_agents()
         bad = check_routes(self.agents)
@@ -461,6 +462,8 @@ class Orchestrator:
                 elif a["action"] == "project.stalled":
                     self.stalled[d["project_id"]] = d; self.stall_count[d["event_id"]] += 1
                 elif a["action"] in {"project.retried", "project.closed"}: self.stalled.pop(d["project_id"], None)
+                elif a["action"] == "agent_error_unhandled" and d.get("subject"): self.unhandled[str(d["subject"])] = d
+                elif a["action"] in {"event.retried", "event.abandoned"}: self.unhandled.pop(str(d.get("subject")), None)
                 elif a["action"] == "gate.decide":
                     if d.get("subject_id"): self.escalation_decided[str(d["subject_id"])] += 1
                     if d.get("decision") == "approve" and d.get("subject_id") in self.plans \
@@ -899,9 +902,9 @@ class Orchestrator:
         handled = self._rework_after_error(env, r, error) or handled
         if handled: return
         subject = str(env.payload.get("ticket_id") or env.key)
-        self._audit("agent_error_unhandled",
-                    {"agent": agent, "topic": env.topic, "event_id": env.event_id, "error": str(error)[:300]},
-                    ticket_id=env.payload.get("ticket_id"), project_id=self.project_for(env))
+        rec = {"agent": agent, "topic": env.topic, "event_id": env.event_id, "subject": subject, "error": str(error)[:300]}
+        with self._lock: self.unhandled[subject] = rec
+        self._audit("agent_error_unhandled", rec, ticket_id=env.payload.get("ticket_id"), project_id=self.project_for(env))
         self.supervisor.escalate_gate(subject, f"{agent} lỗi trên {env.topic}, không nhánh nào xử lý: {str(error)[:200]}",
                                       once_key=f"unhandled:{env.event_id}:{agent}")
         res.actions.append(f"unhandled:{subject}:{agent}")
@@ -947,6 +950,18 @@ class Orchestrator:
         with self._lock:
             self.processed.discard(env.event_id); self.partial.pop(env.event_id, None); self.stalled.pop(pid, None)
         self._audit("project.retried", {**st, "by": by, "reason": reason}, project_id=pid)
+        with self._qlock: self.queue.insert(0, env)
+        return True
+
+    def _retry_unhandled(self, subject: str, by: str, reason: str) -> bool:
+        """Như `_retry_stalled` nhưng cho event bất kỳ mà agent lỗi không nhánh nào nhận (`unhandled`)."""
+        rec = self.unhandled.get(subject)
+        if rec is None: return False
+        env = next((e for e in self.bus.replay(topic=str(rec["topic"])) if e.event_id == rec["event_id"]), None)
+        if env is None: return False
+        with self._lock:
+            self.processed.discard(env.event_id); self.partial.pop(env.event_id, None); self.unhandled.pop(subject, None)
+        self._audit("event.retried", {**rec, "subject": subject, "by": by, "reason": reason[:300]}, project_id=self.project_for(env))
         with self._qlock: self.queue.insert(0, env)
         return True
 
@@ -1368,6 +1383,23 @@ class Orchestrator:
             else:
                 st = self.stalled.pop(tid, {})
                 self._audit("project.closed", {**st, "project_id": tid, "by": by, "reason": reason}, project_id=tid)
+                res.actions.append(f"closed:{tid}")
+            return
+        if tid not in self.lead.tickets and tid in self.unhandled:
+            # Event KHÔNG phải ticket (change-request, acceptance...) mà agent lỗi không nhánh nào nhận: trước đây rơi
+            # xuống nhánh ticket bên dưới → "reopen" một ticket không tồn tại, event không bao giờ chạy lại. Đo được
+            # 2026-09-06: CR-DEV-001, delivery-lead lỗi error_max_structured_output_retries, duyệt escalation xong
+            # hàng đợi rỗng, phải phát lại CR bằng tay.
+            # `resume` trước: supervisor đã `pause` subject khi escalate — không gỡ thì event chạy lại bị hoãn
+            # "paused:<subject>" và `_check_escalations` mở gate mới cho cùng việc.
+            self.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
+                                      payload={"target": tid, "action": "resume", "reason": f"escalation {decision}: {reason}"[:300]}))
+            if decision == "approve":
+                ok = self._retry_unhandled(tid, by, reason)
+                res.actions.append(f"retry:{tid}" if ok else f"retry_failed:{tid}")
+            else:
+                rec = self.unhandled.pop(tid, {})
+                self._audit("event.abandoned", {**rec, "subject": tid, "by": by, "reason": reason})
                 res.actions.append(f"closed:{tid}")
             return
         if decision == "approve":  # mở lại với hint = lý do người duyệt, cấp thêm một ngân sách ticket
