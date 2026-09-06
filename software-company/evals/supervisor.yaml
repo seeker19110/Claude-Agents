@@ -19,6 +19,27 @@ cases:
       one_of: {action: [budget_cut, escalate, pause]}
       min_len: {reason: 10}
 
+  - name: no-kien-truc-treo-da-dem-san-phai-escalate-dung-du-an
+    topic_out: supervisor-actions
+    input:
+      topic: audit-log
+      key: P1
+      actor: orchestrator
+      payload:
+        actor: orchestrator
+        action: debt.escalated
+        project_id: P1
+        tokens: 0
+        evidence: '{"debt_id": "DEF-01", "times": 1, "consecutive": 3, "source": "security", "tickets": ["QLKH-004", "QLKH-007", "QLKH-012"], "hint": "cần ticket ADR + người ký: quyết định kiến trúc này đang bị né qua từng ticket"}'
+        architecture_debt:
+          - {project_id: P1, debt_id: DEF-01, mentions: 3, consecutive: 3, tickets: [QLKH-004, QLKH-007, QLKH-012], sources: [security], escalated: 1, threshold: 3}
+          - {project_id: P1, debt_id: SD-2, mentions: 1, consecutive: 1, tickets: [QLKH-012], sources: [reviewer], escalated: 0, threshold: 3}
+    expect:
+      # bảng đã đếm sẵn (ADR-0032): escalate đúng DỰ ÁN, không phải một agent hay ticket; reason phải nhắc mã nợ
+      equals: {target: P1, action: escalate}
+      contains: {reason: DEF-01}
+      min_len: {reason: 20}
+
   - name: review-qua-han-phai-canh-bao-dung-nguon-thieu
     topic_out: supervisor-actions
     input:

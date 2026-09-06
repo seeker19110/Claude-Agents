@@ -421,7 +421,11 @@ class Orchestrator:
         self.lead = DeliveryLead(bus, self.gate, max_retries=max_retries, batch_releases=batch_releases)
         self.lead.require_integration = self.integration is not None
         budget_usd = project_budget_usd if project_budget_usd is not None else getattr(client, "budget_usd", None)
-        self.supervisor = Supervisor(bus, max_retries=max_retries, project_budget_usd=budget_usd)
+        # ADR-0032: ngưỡng "nợ kiến trúc treo" cấu hình cùng chỗ với trần ngân sách (llm.yaml `debt_reviews`).
+        self.supervisor = Supervisor(bus, max_retries=max_retries, project_budget_usd=budget_usd,
+                                     debt_threshold=int(getattr(client, "debt_reviews", None) or 3))
+        # project_id → hồ sơ gate escalation nợ kiến trúc đang mở (ADR-0032); dựng lại từ audit `debt.escalated`/`debt.decided`
+        self.debt_gate: dict[str, dict[str, Any]] = {}
         self.runner = AgentRunner(bus, client, self.agents, self.blackboard)
         self.processed: set[str] = set()
         self.paused: set[str] = set()
@@ -506,6 +510,8 @@ class Orchestrator:
                     self.conflict_retries[str(d["ticket_id"])] += 1
                 elif a["action"] == "release.finding_waived":
                     self.lead.release_waived[str(d["release_id"])].add(str(d["source"]))
+                elif a["action"] == "debt.escalated": self.debt_gate[str(d["project_id"])] = d
+                elif a["action"] == "debt.decided": self.debt_gate.pop(str(d["project_id"]), None)
             elif env.topic == "supervisor-actions": self._track_pause(env)
             elif env.topic == "shared-context": self.blackboard._on(env)
             else:
@@ -1451,8 +1457,37 @@ class Orchestrator:
                 self._remember(key)
                 self.gate.request(GateRequest(kind="escalation", subject_id=tid, created_by="supervisor",
                                               checklist=["root_cause", "decision:reopen|close", "hint"]))
+        self._check_debt()
+
+    def _check_debt(self) -> None:
+        """ADR-0032: mã nợ kiến trúc chạm ngưỡng (supervisor đếm từ bus, xác định) → gate `escalation` cấp DỰ ÁN với
+        danh sách nợ, số lần, ticket nào nhắc, và hint "cần ticket ADR + người ký". Không pause dự án: nợ treo là
+        quyết định bị né, không phải sự cố — việc khác vẫn chạy trong lúc người quyết.
+
+        Khoá once mang (dự án, mã nợ, lần thứ mấy): restart không mở trùng (`once` dựng lại từ audit), nhưng nợ tăng
+        tiếp tới bội số kế của ngưỡng là lần thứ n+1 → gate mới (khuôn 3, TRAPS.md). Gate của dự án đang bận (stall
+        hoặc nợ khác) thì đợi — không `remember`, nhịp sau mở."""
+        for due in self.supervisor.debt_due:
+            pid = due["project_id"]; key = f"debt:{pid}:{due['debt_id']}:{due['times']}"
+            if key in self.once: continue
+            if pid in self.gate.pending or pid in self.debt_gate: continue
+            self._remember(key)
+            rec = {**due, "table": self.supervisor.debt_table(pid)}
+            self.debt_gate[pid] = rec
+            self._audit("debt.escalated", rec, project_id=pid)
+            checklist = [f"debt:{due['debt_id']}×{due['consecutive']} liên tiếp ({due['source']}; {','.join(due['tickets'])})",
+                         *[f"debt:{r['debt_id']}×{r['mentions']} ({','.join(r['tickets'])})" for r in rec["table"]
+                           if r["debt_id"] != due["debt_id"]],
+                         "decision:adr|waive", f"hint:{due['hint']}"]
+            self.gate.request(GateRequest(kind="escalation", subject_id=pid, created_by="supervisor", checklist=checklist))
 
     def _on_escalation_decided(self, tid: str, decision: str, by: str, reason: str, res: StepResult) -> None:
+        if tid in self.debt_gate:  # ADR-0032: nợ kiến trúc cấp dự án — người ghi nhận (ADR + người ký) hay chấp nhận treo
+            rec = self.debt_gate.pop(tid)
+            self._audit("debt.decided", {"project_id": tid, "debt_id": rec.get("debt_id"), "times": rec.get("times"),
+                                         "decision": decision, "by": by, "reason": reason[:300]}, project_id=tid)
+            res.actions.append(f"debt:{tid}:{rec.get('debt_id')}:{decision}")
+            return
         if tid in self.lead.release_tickets:  # escalation của một RELEASE (không phải ticket): xem docstring
             # `Delivery.waive_release_findings`/`rework_release_tickets` — người quyết định chấp nhận rủi ro (finding
             # không có code để sửa: DPIA, license...) hay đúng là lỗi code thật cần các ticket merged làm lại.
@@ -1862,6 +1897,7 @@ class Orchestrator:
                 "paused": sorted(self.paused), "tickets": dict(self.lead.state), "waiting": self.lead.waiting(),
                 "blocked": self.lead.blocked(), "releases": self.lead.releases,
                 "stalled": {pid: f"{st['agent']} lỗi trên {st['topic']}: {st['error'][:120]}" for pid, st in self.stalled.items()},
+                "architecture_debt": self.supervisor.debt_table(),  # ADR-0032
                 "gates_pending": {sid: g.kind for sid, g in self.gate.pending.items()}, "plans": list(self.plans),
                 "blackboard": {key: {"v": sc.version, "ref": sc.content_ref, "chars": len(sc.content or ""),
                                      "file": str(p) if (p := self.blackboard.path(sc.namespace,

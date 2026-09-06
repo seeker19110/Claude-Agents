@@ -66,6 +66,7 @@ delivery-lead:      QA staging pass → xin human gate 3; fail → ticket quay l
 release-engineer:   gate 3 approve → release-events(env=production) → ticket released; rolled_back → ticket quay lại
 account-manager:    UAT với khách → acceptance-results(accepted → closed | rejected → ticket quay lại | conditional)
 supervisor:         retry > MAX_RETRY, token > budget, review quá 2h → supervisor-actions(warn, pause, escalate)
+                    cùng mã nợ kiến trúc (DEF-xx/SD-xx/debt:) ≥ N review liên tiếp → gate escalation cấp dự án (ADR-0032)
 ```
 
 Review bắt buộc: `{reviewer, qa}` ∪ `{security nếu risk_tags}` — code trong

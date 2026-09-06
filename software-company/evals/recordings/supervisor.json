@@ -1,7 +1,7 @@
 {
  "agent": "supervisor",
- "prompt_version": 11,
- "recorded_at": "2026-09-06T09:25:30.935062+00:00",
+ "prompt_version": 12,
+ "recorded_at": "2026-09-06T10:06:09.584599+00:00",
  "models": [
   "claude-sonnet-5"
  ],
@@ -17,6 +17,24 @@
    "model": "claude-sonnet-5",
    "input_tokens": 33696,
    "output_tokens": 1683
+  },
+  "b1dbd5398f29da0b180016df": {
+   "text": "{\"payload\": {\"target\": \"backend\", \"action\": \"budget_cut\", \"reason\": \"TCK-10 (P1): ngân sách token 90000, đã dùng 128000 = 142% (vượt ngưỡng cắt 100%). Đồng thời retry lần 3 cùng lỗi 'đầu ra không hợp lệ cho pull-requests' trên produced:pull-requests => vòng lặp lỗi lặp lại ≥2 lần cùng agent. Cắt ngân sách ngay, dừng retry thêm; đề xuất human gate xem xét rollback prompt backend (chưa rõ version cụ thể trong audit-log, cần bổ sung) trước khi cấp lại ngân sách.\", \"project_id\": \"P1\", \"evidence\": \"audit-log actor=backend action=produced:pull-requests: budget_tokens=90000, used=128000 (142%); retry lần 3 cùng lỗi 'đầu ra không hợp lệ cho pull-requests'\", \"rulings\": [{\"decision\": \"Chọn action=budget_cut thay vì escalate cho lần ghi này vì ngưỡng cứng ngân sách (100%) đã bị vượt rõ ràng (142%) — đây là quy tắc số, không cần chờ người quyết.\", \"why\": \"Skill finops/supervisor: 'Ngân sách token: cảnh báo 80%, cắt 100%' — vượt 100% phải cắt ngay, không đoán.\", \"cost_if_wrong\": \"Nếu sai, backend tiếp tục burn token vượt ngân sách thêm cho TCK-10; rework: phải revert cắt và bù ngân sách thủ công, chi phí thêm token đã chi.\"}, {\"decision\": \"Không tự đề xuất rollback version cụ thể vì audit-log không kèm trường version của agent backend; chỉ ghi khuyến nghị human gate kiểm tra version khi duyệt lại ngân sách.\", \"why\": \"Quy tắc 'Lỗi lặp ≥2 lần ở cùng agent → ghi kèm version, đề xuất rollback cho human gate' nhưng dữ liệu đầu vào thiếu version — không được đoán số liệu.\", \"cost_if_wrong\": \"Nếu version thực sự cần và bị bỏ qua, human gate mất thời gian tự tra cứu version; không gây rework code, chỉ chậm quyết định.\"}]}}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 33760,
+   "output_tokens": 4576
+  },
+  "7ffc1104e0be0b96de67d56b": {
+   "text": "{\"payload\": {\"target\": \"P1\", \"action\": \"escalate\", \"project_id\": \"P1\", \"reason\": \"Nợ kiến trúc treo DEF-01: nhắc 3/3 review liên tiếp (threshold=3) từ nguồn security, qua các ticket QLKH-004, QLKH-007, QLKH-012. Audit debt.escalated đã mở nhưng chưa thấy debt.decided → cần ticket ADR + người ký (human gate) để quyết định thay vì tiếp tục né qua từng ticket.\", \"evidence\": \"audit-log P1 action=debt.escalated debt_id=DEF-01 consecutive=3 threshold=3 escalated=1 tickets=[QLKH-004,QLKH-007,QLKH-012] sources=[security]; SD-2 chưa đạt ngưỡng (consecutive=1/3) nên không escalate lần này\", \"rulings\": [{\"decision\": \"Chỉ escalate DEF-01 (consecutive=threshold=3, chưa có debt.decided), không escalate SD-2 vì consecutive=1 < threshold=3\", \"why\": \"Quy tắc ADR-0032 trong skill: escalate khi consecutive ≥ threshold và (escalated=0 hoặc chưa có debt.decided); SD-2 chưa đạt ngưỡng nên chỉ liệt kê trong sprint report, không escalate riêng lẻ\", \"cost_if_wrong\": \"Nếu SD-2 lẽ ra phải escalate ngay thì trễ 1 chu kỳ review; rework nhỏ vì mentions=1 chưa gây debt lớn\"}]}, \"context_writes\": [{\"namespace\": \"knowledge\", \"content_ref\": \"debt/DEF-01-escalation-P1\", \"summary\": \"Ghi nhận escalation nợ kiến trúc DEF-01 (P1) để tra cứu và tránh escalate trùng lặp\", \"content\": \"# Nợ kiến trúc treo — DEF-01 (project P1)\\n\\n- context: audit-log action=debt.escalated, actor=orchestrator, project_id=P1\\n- problem: mã nợ DEF-01 (nguồn security) bị nhắc liên tiếp 3/3 lần (đạt threshold) qua các ticket QLKH-004, QLKH-007, QLKH-012 mà chưa có ticket ADR hay người ký quyết định — nguy cơ né tránh quyết định kiến trúc qua từng ticket nhỏ lẻ.\\n- solution: supervisor phát `escalate` target=P1 (cấp dự án), yêu cầu human gate mở ticket ADR và ký quyết định trước khi cho phép tiếp tục các ticket liên quan tới nợ này.\\n- evidence: audit-log key=P1, evidence gốc: {\\\"debt_id\\\":\\\"DEF-01\\\",\\\"times\\\":1,\\\"consecutive\\\":3,\\\"source\\\":\\\"security\\\",\\\"tickets\\\":[\\\"QLKH-004\\\",\\\"QLKH-007\\\",\\\"QLKH-012\\\"]}\\n- agent_version: supervisor (bản hiện hành theo prompt ADR-0032)\\n- theo dõi: SD-2 (nguồn reviewer) mới consecutive=1/3, chưa escalate — cần theo dõi tiếp ở sprint report kế tiếp.\"}]}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 32468,
+   "output_tokens": 3732
+  },
+  "b71486cda066bf3a89664678": {
+   "text": "{\"payload\": {\"target\": \"qa-debugger\", \"action\": \"warn\", \"reason\": \"TCK-11 (P1) ở in_review 2h20', đã có review của reviewer nhưng thiếu nguồn review qa — quá ngưỡng 2h, cảnh báo agent thiếu nguồn (chưa tới 4h nên chưa escalate)\", \"evidence\": \"audit-log delivery-lead: overdue_reviews TCK-11, 'đã có review của reviewer, thiếu nguồn qa'\", \"project_id\": \"P1\", \"rulings\": [{\"decision\": \"Map nguồn review thiếu 'qa' -> target agent id 'qa-debugger' theo quy ước supervisor (qa -> qa-debugger)\", \"why\": \"Chỉ dẫn front matter supervisor: 'ghi là qa → agent tương ứng là qa-debugger'\", \"cost_if_wrong\": \"warn sai người, qa-debugger bỏ qua vô ích; sửa bằng cách warn lại đúng target khi có phản hồi, chi phí thấp (1 lần ghi audit)\"}], \"context_writes\": []}}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 30265,
+   "output_tokens": 860
   }
  }
 }

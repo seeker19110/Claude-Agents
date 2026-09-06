@@ -50,7 +50,7 @@ Bốn khuôn lỗi chung và bẫy thao tác ở `../TRAPS.md`. Ở đây là ch
 | Duyệt gate trước, sửa tay sau | Backend dispatch lại, `workspace_reset` xoá phần chưa commit | Commit + takeover trước, duyệt sau |
 | `--db` sau `publish`; thiếu `--key` | Lỗi lúc diễn tập dừng khẩn | `--db` trước subcommand; `supervisor-actions` cần `--key` |
 | Agent không có tool xoá file | 4 vòng rework vô ích | Đọc `tools.py` trước khi ép |
-| Quyết định kiến trúc bị né qua từng ticket | Framework/DB thật không ai chọn, 25 release không có server | Chưa có chốt chặn — đề xuất 2 báo cáo 2026-09-06 (`open_decisions` trong plan) |
+| Quyết định kiến trúc bị né qua từng ticket | Framework/DB thật không ai chọn, 25 release không có server | ADR-0032: cùng mã nợ ≥ N review liên tiếp → gate escalation dự án (`tests/test_no_kien_truc_adr0032.py`); chưa *ngăn* từ plan — đề xuất 2 (`open_decisions`) |
 
 ## Bổ sung 2026-09-06 (ADR-0030)
 
