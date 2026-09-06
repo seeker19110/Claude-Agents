@@ -58,6 +58,12 @@ def test_tools_refuse_paths_outside_worktree_and_secrets(tmp_path):
         out = tb.call(_tc("read_file", path=bad))
         assert out.startswith("lỗi"), (bad, out)
     assert tb.call(_tc("write_file", path=".git/hooks/pre-commit", content="x")).startswith("lỗi")
+    # `.env.development`/`.env.example` là file mặc định công khai của repo — phải ghi/đọc được; `.env*` khác vẫn chặn
+    assert not tb.call(_tc("write_file", path="web/.env.development", content="VITE_API_BASE_URL=http://127.0.0.1:8080/v1\n")).startswith("lỗi")
+    assert "VITE_API_BASE_URL" in tb.call(_tc("read_file", path="web/.env.development"))
+    assert not tb.call(_tc("write_file", path=".env.example", content="API_KEY=\n")).startswith("lỗi")
+    for bad in (".env.local", ".env.production", "web/.env", ".aws/.env.development"):
+        assert tb.call(_tc("write_file", path=bad, content="x")).startswith("lỗi"), bad
     assert tb.call(_tc("write_file", path="keys/id_rsa", content="x")).startswith("lỗi")
     assert not (ws.path / ".git" / "hooks" / "pre-commit").exists()
     # tìm kiếm không lộ file bí mật dù nội dung khớp

@@ -95,7 +95,17 @@ class ToolBox:
 _clean_env = clean_env  # env cho lệnh con dùng chung với workspace (lint/test của PR): bỏ mọi biến trông như khoá
 
 
+# `.env.*` bị chặn vì hay chứa khoá thật, nhưng bốn tên này theo quy ước là MẪU/mặc định công khai (URL dev, cờ tính
+# năng), đi kèm repo và không có bí mật; chặn chúng là chặn đúng việc ticket phải làm. Đo được 2026-09-06
+# (TCK-CR-DEV-001-03): frontend không tạo được `web/.env.development` (VITE_API_BASE_URL=http://127.0.0.1:8080/v1),
+# reviewer BLOCK vì thiếu tiêu chí nghiệm thu, ticket quay vòng. Bí mật thật lọt vào các file này vẫn bị secret-scan
+# của CI khách bắt (SD-08); `.env`, `.env.local`, `.env.production` vẫn chặn.
+PUBLIC_ENV_FILES = frozenset({".env.example", ".env.sample", ".env.development", ".env.test"})
+
+
 def _is_secret(parts: tuple[str, ...]) -> bool:
+    if parts and parts[-1] in PUBLIC_ENV_FILES and not any(_is_secret((p,)) for p in parts[:-1]):
+        return False
     return any(fnmatch.fnmatch(part, pat) for part in parts for pat in SECRET_FILES)
 
 
