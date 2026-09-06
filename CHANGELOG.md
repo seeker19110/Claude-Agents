@@ -6,6 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): `generate_in_workspace` chấp nhận `no_changes_reason` (>= 20 ký tự, cùng tinh thần `test_dispute` ADR-0028) khi worktree không đổi nhưng việc đã xong thật từ lượt trước — không còn tự động invalid_output rồi blocked (TCK-CR-RUNTIME-01) (#121)
 - feat(studio): K2.3 kịch bản B — `studio/sandbox.py` (bản tạm, xoá ở K3.2 khi vào `xagents-core`); `CommandTTS`, `FFmpegAssembler._run`, `qc._run` chạy qua `Sandbox` thay vì `subprocess` trực tiếp; env lệnh con lọc khoá bằng `clean_env`/`sanitize_env`; ffmpeg có trần thời gian (`media.yaml render.timeout_s`, mặc định 600 s); qc mount chỉ đọc; audit `render.*` ghi tên sandbox đã dùng
 - feat(company): K2.1 kịch bản B — ADR-0035 sandbox tiến trình; module `company/sandbox.py` (`RunSpec`/`Result`/`Handle`/`Sandbox`, `SubprocessSandbox` giữ nguyên hành vi cũ, `ContainerSandbox` docker/podman `--network none`), `sandbox_from_config` fail-closed, ba trường cấu hình `sandbox*` + ba biến `COMPANY_SANDBOX*`. Chưa nối vào tools/workspace/smoke (K2.2)
 - refactor(company): K1 kịch bản B (tiếp) — `OrchState` gom 24 biến trạng thái RAM của orchestrator vào một dataclass (`orch/state.py`), bí danh property giữ nguyên bề mặt `o.<tên>` nên không file test nào phải đổi; mỗi trường khai nguồn dựng lại trong metadata và `tests/test_orch_state_rehydrate.py` duyệt `fields(OrchState)` — thêm trạng thái mà quên dòng rehydrate là CI đỏ ngay, không chờ một phiên chạy thật phát hiện hộ
