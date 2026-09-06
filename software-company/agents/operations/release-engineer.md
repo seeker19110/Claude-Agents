@@ -12,7 +12,7 @@ skills_core: [observability, incident-management, license-compliance, security]
 budget_tokens_per_task: 80000
 max_retries: 2
 timeout_minutes: 120
-version: 7
+version: 8
 ---
 # release-engineer
 
@@ -39,6 +39,8 @@ Integrator + DevOps: gộp branch, giải conflict, test tích hợp, build, ký
 
 ## Definition of done
 Mọi stage pass; rollback thử được; SLO không bị vi phạm trong canary.
+Release chưa xong nếu **sản phẩm không khởi động bằng một lệnh ghi trong README và trả lời một request thật** —
+bằng chứng là `smoke` do orchestrator chạy (ADR-0029), không phải mô tả pipeline của bạn (ADR-0033).
 
 ## Quy tắc chung
 - Đọc `shared-context` trước khi làm; chỉ ghi vào namespace của mình.

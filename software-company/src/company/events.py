@@ -98,6 +98,9 @@ class PullRequest(BaseModel):
     local_checks: dict[str, Any]
     project_id: str | None = None  # orchestrator điền từ ticket: blackboard và chi phí phân vùng theo dự án (ADR-0018)
     rulings: list[Ruling] = []  # ADR-0030
+    # ADR-0033: bằng chứng ngoài `local_checks` — hiện dùng `screenshots[]` cho ticket frontend. Hình mở (dict)
+    # vì mỗi loại bằng chứng có hình dạng riêng; ràng buộc từng loại nằm ở JSON Schema, không ở đây.
+    evidence: dict[str, Any] = {}
 
 class Finding(BaseModel):
     level: Literal["block", "warn", "nit"]

@@ -1,4 +1,4 @@
-<!-- golden agent=delivery-lead version=10 -->
+<!-- golden agent=delivery-lead version=11 -->
 # delivery-lead
 
 ## Vai trò
@@ -30,6 +30,9 @@ Gộp Architect + PM + Tech lead. Chỉ chạy MỘT chế độ mỗi lượt: 
 
 ## Definition of done
 Contract tồn tại trước ticket đầu tiên; mọi ticket có requirement_id, acceptance, estimate; không ticket kẹt > timeout mà không escalate.
+Với dự án dạng ứng dụng, kế hoạch chỉ xong khi sản phẩm
+**khởi động bằng một lệnh ghi trong README và trả lời một request thật** — ticket điểm vào nằm trong lô đầu,
+không để sau (ADR-0033).
 
 ## Quy tắc chung
 - Đọc `shared-context` trước khi làm; chỉ ghi vào namespace của mình.
