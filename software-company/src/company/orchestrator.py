@@ -1726,8 +1726,10 @@ def main(argv: list[str] | None = None) -> int:
         from .metrics import diagnose
         print(json.dumps(diagnose(bus, top=ns.top), ensure_ascii=False, indent=2)); return 0
     from .llm import FakeClient, make_client
-    # Chỉ `run` gọi model; status/report/show/comment/takeover là việc của người và của code, không được đòi SDK/API key.
-    orch = Orchestrator(bus, make_client() if ns.cmd == "run" else FakeClient(), repo=ns.repo, base=ns.base, integration=ns.integration, workers=ns.workers,
+    # `run` và `redeploy` GỌI MODEL (redeploy chạy lại lượt staging của release-engineer) nên cần client thật;
+    # status/report/show/comment/takeover là việc của người và của code, không được đòi SDK/API key.
+    # Thiếu `redeploy` ở đây thì lệnh chạy bằng FakeClient và chết "FakeClient hết câu trả lời" — đo được 2026-09-06.
+    orch = Orchestrator(bus, make_client() if ns.cmd in {"run", "redeploy"} else FakeClient(), repo=ns.repo, base=ns.base, integration=ns.integration, workers=ns.workers,
                         web=ns.web, batch_releases=ns.batch_release, artifacts=ns.artifacts or artifact_store(ns.db),
                         deliver=ns.deliver, push_remote=ns.push_remote, release_branch=ns.release_branch,
                         test_author=ns.test_author)
