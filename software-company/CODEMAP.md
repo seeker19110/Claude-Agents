@@ -29,6 +29,7 @@
 | Muốn | Sửa |
 |---|---|
 | Lint/test thật trong worktree ticket, `local_checks` | `TicketWorkspace.run_checks` (`src/company/workspace.py`); lệnh theo stack: `src/company/stacks.py` |
+| Sổ Ruling: trường `rulings` mọi topic, audit `ruling`, `Orchestrator.rulings()`, CLI `rulings`, mục trong gate_brief | `events.py` (`Ruling`), 19 schema, `runner.publish`, `orchestrator.py`, `gate_brief.py` — ADR-0030 |
 | Smoke sau deploy staging (`runtime` của spec) | `src/company/smoke.py`; hook `Orchestrator._smoke`; `_release_evidence` mang sang production |
 | Diff gửi reviewer (ưu tiên mã nguồn, cắt có khai) | `TicketWorkspace.diff`, `GENERATED_PATTERNS` (`workspace.py`) |
 | Merge vào nhánh tích hợp, xung đột | `Integration.merge`; `_integrate`, `_integrate_approved` (orchestrator) |

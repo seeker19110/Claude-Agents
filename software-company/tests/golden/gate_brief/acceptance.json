@@ -8,6 +8,7 @@
   "created_by": "account-manager",
   "extra": {
     "release_id": "REL-001",
+    "rulings": [],
     "tickets": [
       "T1"
     ]

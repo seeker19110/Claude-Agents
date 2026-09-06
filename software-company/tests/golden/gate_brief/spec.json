@@ -6,7 +6,9 @@
     "risks"
   ],
   "created_by": "spec-writer",
-  "extra": {},
+  "extra": {
+    "rulings": []
+  },
   "kind": "spec",
   "project_id": "P1",
   "schema_version": 1,

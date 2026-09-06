@@ -61,6 +61,7 @@
         "detail": "{\"ticket_id\": \"T1\", \"retry\": 3, \"max_retries\": 3}"
       }
     ],
+    "rulings": [],
     "scope": "ticket",
     "ticket": {
       "assignee": "backend",

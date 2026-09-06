@@ -1,7 +1,7 @@
 {
  "agent": "reviewer",
  "prompt_version": 11,
- "recorded_at": "2026-09-05T11:41:02.613088+00:00",
+ "recorded_at": "2026-09-06T09:38:19.489663+00:00",
  "models": [
   "claude-sonnet-5"
  ],
@@ -19,16 +19,22 @@
    "output_tokens": 987
   },
   "a9943ccf18dcdb7a5beba036": {
-   "text": "{\"ticket_id\": \"TCK-2\", \"source\": \"reviewer\", \"verdict\": \"block\", \"findings\": [{\"level\": \"block\", \"location\": \"src/payments/api.py\", \"text\": \"Secret 'STRIPE_KEY=\\\"sk_live_abc\\\"' (khóa live) hard-code trong mã nguồn. Hậu quả: khóa lộ qua git history/mã nguồn, ai đọc được repo có thể thực hiện giao dịch thật qua Stripe. Sửa: xoá khỏi code, nạp qua biến môi trường/secret manager, thu hồi và xoay vòng khóa 'sk_live_abc' đã lộ ngay lập tức.\"}, {\"level\": \"block\", \"location\": \"src/payments/api.py\", \"text\": \"Không có test cho endpoint POST /payments (local_checks.tests=false). Đây là luồng thanh toán (rủi ro cao) và ticket không có bằng chứng risk_tags được xử lý riêng; thiếu test cho Gherkin/happy path lẫn đường lỗi (gọi cổng thanh toán thất bại, timeout, key invalid) là finding block theo yêu cầu bắt buộc kiểm mọi Gherkin có test tương ứng.\"}, {\"level\": \"warn\", \"location\": \"PR #13\", \"text\": \"Mô tả PR không đề cập rollback, observability (log), hay ghi chú PII cho thay đổi chạm luồng thanh toán. Với thay đổi động vào payments API, cần bổ sung để tránh phải suy đoán khi cần rollback hoặc điều tra sự cố.\"}], \"scan_summary\": {\"secret_scan\": \"FAIL - phát hiện secret sk_live_abc hard-code trong src/payments/api.py\", \"sca\": \"chưa chạy được vì chưa xác nhận diff đầy đủ dependencies mới\"}, \"sbom_ref\": null, \"metrics\": {\"local_checks_lint\": true, \"local_checks_tests\": false}}",
+   "text": "{\"ticket_id\": \"TCK-2\", \"source\": \"reviewer\", \"verdict\": \"block\", \"findings\": [{\"level\": \"block\", \"location\": \"src/payments/api.py\", \"text\": \"Secret sống (Stripe live API key 'sk_live_abc') hard-code trong source. Kịch bản thất bại: key vào git history, bất kỳ ai đọc được repo (kể cả sau khi xoá dòng code) có thể dùng key live để rút tiền/tạo giao dịch thật. Phải: revoke key này ngay trên Stripe dashboard (đã lộ), chuyển sang đọc từ biến môi trường/secret manager, và scrub khỏi lịch sử git.\"}, {\"level\": \"block\", \"location\": \"src/payments/api.py\", \"text\": \"local_checks.tests=false và PR tự nhận 'chưa có test' cho endpoint POST /payments gọi cổng thanh toán — không có test nào cho happy path, ca lỗi (cổng thanh toán từ chối/timeout), hay Gherkin của ticket. Đây là code chạm tiền, thiếu test là block theo DoD.\"}, {\"level\": \"warn\", \"location\": \"pull-requests PR #13 mô tả\", \"text\": \"Mô tả PR thiếu mục rollback/observability/PII theo template. Thay đổi động chạm thanh toán nên cần làm rõ log giao dịch có ghi PII/số thẻ không, và cách rollback nếu key bị revoke giữa chừng.\"}], \"bug_reports\": [], \"scan_summary\": \"Secret scan: phát hiện 1 secret có dạng Stripe live key trong src/payments/api.py — cần revoke & rotate ngay, không chỉ xoá khỏi code hiện tại.\", \"sbom_ref\": null, \"rulings\": [{\"decision\": \"Chấm verdict=block thay vì chỉ warn dù đây có vẻ là PR nhỏ 1 file\", \"why\": \"Checklist reviewer: secret trong code và thiếu test cho ticket đều thuộc danh sách bắt buộc block, không phụ thuộc quy mô PR\", \"cost_if_wrong\": \"Nếu sai thì chặn nhầm PR nhỏ tốn thời gian tác giả sửa lại; nhưng để lọt secret live key ra production là rủi ro tài chính/bảo mật lớn hơn nhiều nên nghiêng về block\"}]}",
    "model": "claude-sonnet-5",
-   "input_tokens": 13346,
-   "output_tokens": 804
+   "input_tokens": 17977,
+   "output_tokens": 967
   },
   "ef2841debfb616532d589c82": {
    "text": "{\"ticket_id\": \"TCK-1\", \"source\": \"reviewer\", \"verdict\": \"pass\", \"findings\": [{\"level\": \"warn\", \"location\": \"pull-request description\", \"text\": \"Mô tả PR không nêu rõ mục rollback/PII theo templates/pull_request.md. Thay đổi này (thêm handler GET + test) revert được bằng một commit nên chỉ ghi nhận warn, không chặn merge. Bổ sung một dòng rollback (revert commit) và xác nhận không có PII trong response/log.\"}], \"bug_reports\": [], \"metrics\": {\"coverage\": 0.91, \"lint\": true, \"tests\": true}, \"project_id\": null, \"sbom_ref\": \"sbom/TCK-1-pr12.json\", \"scan_summary\": {\"sast\": \"no issues found in diff (src/orders/api.py)\", \"sca\": \"no new dependencies introduced\", \"secret_scan\": \"no secrets detected\", \"license_scan\": \"n/a - no new dependencies\"}}",
    "model": "claude-sonnet-5",
    "input_tokens": 13422,
    "output_tokens": 748
+  },
+  "55443454a04b303f14956eb1": {
+   "text": "{\"ticket_id\": \"TCK-1\", \"source\": \"reviewer\", \"verdict\": \"pass\", \"findings\": [{\"level\": \"warn\", \"location\": \"pull-requests#12 summary\", \"text\": \"PR không nêu rollback/observability/PII theo template pull_request.md. Thay đổi này (thêm handler GET + test) revert được bằng một commit nên chỉ ghi warn, không chặn merge. Bổ sung ghi chú rollback/log ở lần PR sau.\"}, {\"level\": \"nit\", \"location\": \"tests/test_orders.py\", \"text\": \"Không đọc được diff chi tiết từ dữ liệu đầu vào (chỉ có danh sách file + summary); giả định test 200/404 khớp Gherkin contract GET /orders/{id}. Nếu có ca biên khác (id không hợp lệ định dạng, id rỗng) cần bổ sung, xác nhận ở PR tiếp theo.\"}], \"metrics\": {\"coverage\": 0.91, \"lint\": true, \"tests\": true}, \"sbom_ref\": null, \"scan_summary\": \"\\\"Không phát hiện dependency mới trong impact.files (chỉ src/orders/api.py, tests/test_orders.py); không có secret scan bất thường được báo cáo trong local_checks.\\\"\", \"rulings\": [{\"decision\": \"Chấp nhận PR pass dù thiếu mục rollback/observability/PII trong mô tả PR, chỉ hạ mức warn\", \"why\": \"Quy tắc reviewer: thiếu mục mô tả này chỉ là block khi thay đổi KHÔNG revert đơn giản (migration, đổi contract phá vỡ client, feature flag, đổi hạ tầng); đây là thêm handler GET đơn thuần + test, revert bằng 1 commit\", \"cost_if_wrong\": \"Nếu thực ra có tác động observability/rollback quan trọng bị bỏ sót, phải mở lại review; chi phí rework nhỏ vì thay đổi nhỏ và revert dễ\"}]}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 18062,
+   "output_tokens": 843
   }
  }
 }

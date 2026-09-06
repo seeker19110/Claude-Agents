@@ -491,6 +491,13 @@ class AgentRunner:
             self._audit(spec, "invalid_output", inp, evidence=str(e)[:500], tokens=tokens)
             raise RunnerError(f"{agent_id}: đầu ra không hợp lệ cho {topic_out}: {e}") from e
         if context_writes: self.write_context(agent_id, inp, context_writes)
+        # ADR-0030: quyết định agent tự đưa ra đi vào audit-log (một dòng mỗi ruling) — sổ nằm trên bus, không trong RAM;
+        # `Orchestrator.rulings()`, `status`, `gate_brief` đọc lại từ đây để người soát thấy agent đã quyết gì thay mình.
+        for r in payload.get("rulings") or []:
+            if isinstance(r, dict) and r.get("decision"):
+                self._audit(spec, "ruling", inp, evidence=json.dumps({"topic": topic_out, "key": out.key, "event_id": out.event_id,
+                            "decision": str(r.get("decision"))[:500], "why": str(r.get("why") or "")[:500],
+                            "cost_if_wrong": str(r.get("cost_if_wrong") or "")[:300]}, ensure_ascii=False))
         g = generated or Generated(payloads=[payload], tokens=tokens, model=model, cache_hit_ratio=cache_hit_ratio)
         self._audit(spec, f"produced:{topic_out}", inp, evidence=g.evidence(out.event_id), tokens=tokens,
                     cost=g.cost_usd, output_tokens=g.output_tokens)

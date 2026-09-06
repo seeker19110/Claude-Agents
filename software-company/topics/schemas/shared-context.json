@@ -62,6 +62,33 @@
             "null"
           ],
           "description": "toàn văn artifact (markdown/yaml); bus là nguồn sự thật, artifact store chỉ là bản mirror ra file"
+        },
+        "rulings": {
+          "type": "array",
+          "description": "ADR-0030 sổ Ruling: quyết định bạn TỰ đưa ra thay vì dừng chờ người. Chỉ dừng chờ người ở bốn việc: không đảo ngược được; nhạy cảm bảo mật; tác động ra ngoài worktree (merge/push/publish); kế hoạch hỏng tới mức mọi hướng đều là đoán. Mọi chỗ bí khác: tự quyết theo spec/shared-context, ghi một mục ở đây rồi đi tiếp. Rỗng khi không có gì phải quyết.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "decision": {
+                "type": "string",
+                "description": "quyết gì"
+              },
+              "why": {
+                "type": "string",
+                "description": "căn cứ: spec, shared-context, quy ước, hay giả định"
+              },
+              "cost_if_wrong": {
+                "type": "string",
+                "description": "sai thì mất gì — rework bao nhiêu, ai chịu"
+              }
+            },
+            "required": [
+              "decision",
+              "why",
+              "cost_if_wrong"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
