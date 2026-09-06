@@ -151,3 +151,49 @@ def test_sweep_mo_gate_cho_rc_pending_khong_co_gate(tmp_path):
     assert sum(1 for e in bus.replay(topic="audit-log") if e.payload["action"] == "release.pending_human") == 1
     orch.tick()
     assert sum(1 for e in bus.replay(topic="audit-log") if e.payload["action"] == "gate.request") == 1, "không mở trùng"
+
+def test_luot_production_nhan_bang_chung_staging_qa_gate_trong_payload():
+    """Agent không có tool đọc bus; lượt production phải thấy staging deployed, QA pass, security, người ký Gate 3
+    ngay trong payload. Đo được 2026-09-06 (REL-025): thiếu thì agent trả pending_human 'chưa qua deploy staging thật'."""
+    seen: dict = {}
+    def h(system, user):
+        a, p = _agent_of(system), _inp(user)
+        if a == "release-engineer" and p["target_env"] == "production": seen.update(p)
+        return handler(system, user)
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h))
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    orch.gate.decide("REL-001", "approve", by="human:release-manager", reason="đủ điều kiện"); orch.run()
+    ev = seen["evidence"]
+    assert ev["staging"]["status"] == "deployed" and ev["staging"]["version"] and ev["staging"]["at"]  # version là của RC (delivery-lead), không phải lời khai model
+    assert ev["reviews"]["qa"]["verdict"] == "pass" and ev["waived"] == []
+    assert ev["gate_release_by"] == "human:release-manager" and ev["gate_release_reason"] == "đủ điều kiện"
+    assert seen["gate_release"] is True
+
+
+def test_tu_choi_escalation_cua_rc_da_bi_ban_giao_vuot_qua_thi_huy_rc_khong_lam_lai():
+    """Sau bản giao, RC cũ pending_human mở gate; từ chối = huỷ RC (nội dung đã tới khách), KHÔNG trả ticket đã giao
+    về làm lại như hành vi cũ."""
+    h = _pausing_release_engineer({"staging": 9})  # REL-001 dừng mãi ở staging; REL-002 cũng dừng
+    def h2(system, user):
+        a, p = _agent_of(system), _inp(user)
+        if a == "release-engineer" and p["release_id"] == "REL-002":  # REL-002 đi trót lọt và được giao
+            return handler(system, user)
+        return h(system, user)
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h2))
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    assert _events(bus, "REL-001", "staging") == ["pending_human"]
+    # REL-002 (T2) chưa mở được vì T2 phụ thuộc T1 mà T1 chưa merged → dùng đường: coi REL-001 đã tích hợp và
+    # có bản giao sau nó bằng cách ghi trực tiếp sổ sách như _rehydrate làm
+    orch.integrated.add("T1")
+    orch.lead.releases.append("REL-009"); orch.lead.release_tickets["REL-009"] = ["T9"]
+    orch.delivered["REL-009"] = {"release_id": "REL-009", "tag": "v9"}
+    assert orch._superseded_release("REL-001") is True
+    orch.gate.decide("REL-001", "reject", by="human:lead", reason="đã nằm trong v9"); orch.run()
+    assert "REL-001" in orch.void_releases
+    assert orch.lead.state["T1"] != "changes_requested", "ticket đã giao không được trả về làm lại"
+    voids = [e for e in bus.replay(topic="audit-log") if e.payload["action"] == "release.void"]
+    assert voids and "bản giao" in voids[-1].payload["evidence"]
+    # không có bản giao sau → không superseded → hành vi cũ
+    assert orch._superseded_release("REL-009") is False and orch._superseded_release("REL-404") is False
+    orch.delivered.clear()
+    assert orch._superseded_release("REL-001") is False
