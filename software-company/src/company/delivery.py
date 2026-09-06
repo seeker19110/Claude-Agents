@@ -388,6 +388,27 @@ class DeliveryLead:
         nt = self.tickets[tid].model_copy(update={"retry": 0, "hint": hint}); self.tickets[tid] = nt
         self._publish_task(nt); return nt
 
+    def mark_done_already_integrated(self, tid: str) -> None:
+        """Ticket mà code ĐÃ nằm trong nhánh tích hợp (orchestrator có `tid` trong `integrated`) nhưng sổ sách còn kẹt
+        ở `blocked`/`changes_requested`: đưa thẳng về `merged`, KHÔNG giao lại cho agent.
+
+        Đo được 2026-09-05/06 (QLKH): sau khi review cấp release chặn vì DPIA, các ticket đã merge bị đá về rework;
+        agent chạy lại, đúng đắn thấy không còn gì để sửa nên không ghi file nào → `invalid_output` → hết retry →
+        `blocked` → escalation → người duyệt → lặp lại. QLKH-010 quay 7 vòng, rồi 011/014 vào đúng vòng đó. Không có
+        đường nào nói được "việc này xong rồi": `reopen` bắt làm lại việc đã merge, `close_escalated` thì bỏ ticket và
+        chặn ticket phụ thuộc. Đây là đường thứ ba."""
+        for dst in ("dispatched", "in_progress", "in_review", "approved", "merged"):
+            if self.state.get(tid) == "merged":
+                break
+            if can_transition(self.state.get(tid, "draft"), dst):
+                self._set(tid, dst)
+        self.reviews.pop(tid, None); self.review_since.pop(tid, None)
+        self._emit(Envelope(topic="audit-log", key="delivery-lead", actor="delivery-lead",
+                            payload=AuditLog(actor="delivery-lead", action="ticket.already_integrated", ticket_id=tid,
+                                             evidence=json.dumps({"ticket_id": tid, "state": self.state.get(tid)},
+                                                                 ensure_ascii=False)).model_dump()))
+        self._flush_waiting()
+
     def close_escalated(self, tid: str) -> list[str]:
         """Người từ chối escalation: ticket đóng không làm nữa. Trả về ticket phụ thuộc bị block theo (xem `abandon`)."""
         self._set(tid, "escalated"); self._set(tid, "closed")
