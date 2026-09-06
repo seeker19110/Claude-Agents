@@ -58,10 +58,11 @@ def test_hieu_qua_duyet_theo_loai_gate() -> None:
 def test_pheu_release_moi_bac_mot_rc() -> None:
     """12 RC, mỗi RC một bậc; `delivery` đếm đúng và `next` nói đúng việc kế tiếp."""
     gate = HumanGate()
-    tickets = {f"REL-{i:03d}": [f"T{i}"] for i in range(1, 13)}
+    tickets = {f"REL-{i:03d}": [f"T{i}"] for i in range(1, 14)}
     lead = lead_stub(releases=list(tickets), release_tickets=tickets,
                      release_reviews={"REL-007": {"qa": ReviewResult(ticket_id="REL-007", source="qa", verdict="fail")},
-                                      "REL-008": {"qa": ReviewResult(ticket_id="REL-008", source="qa", verdict="pass")}})
+                                      "REL-008": {"qa": ReviewResult(ticket_id="REL-008", source="qa", verdict="pass")},
+                                      "REL-013": {"qa": ReviewResult(ticket_id="REL-013", source="qa", verdict="pass")}})
     gate.request(GateRequest(kind="release", subject_id="REL-008", created_by="delivery-lead", checklist=["tests"]))
     for rid in ("REL-009", "REL-010", "REL-011", "REL-012"):
         gate.request(GateRequest(kind="release", subject_id=rid, created_by="delivery-lead", checklist=["tests"]))
@@ -80,6 +81,7 @@ def test_pheu_release_moi_bac_mot_rc() -> None:
         rel_event("REL-010", "production", "failed"),
         rel_event("REL-011", "production", "pending_human", runbook_ref="infra/x.md"),
         rel_event("REL-012", "production", "deployed"),
+        rel_event("REL-013", "staging", "deployed"),
         audit("orchestrator", "release.staged", {"release_id": "REL-006", "sha": "d16289b72405c43ecf3e08ef2a70b1ea1c0922e2", "branch": "company/integration"}),
     ]
     tr = Truth(envs, lead, gate, NOW)
@@ -88,12 +90,12 @@ def test_pheu_release_moi_bac_mot_rc() -> None:
     assert stages == {"REL-001": "delivered", "REL-002": "void", "REL-003": "rc", "REL-004": "staging_failed",
                       "REL-005": "staging_pending_human", "REL-006": "staging_deployed", "REL-007": "qa_failed",
                       "REL-008": "gate3", "REL-009": "gate3_approved", "REL-010": "production_failed",
-                      "REL-011": "production_pending_human", "REL-012": "production"}
-    assert d["releases_total"] == 12 and d["releases_live"] == 11 and d["void"] == 1
+                      "REL-011": "production_pending_human", "REL-012": "production", "REL-013": "gate3_missing"}
+    assert d["releases_total"] == 13 and d["releases_live"] == 12 and d["void"] == 1
     assert d["production"] == 2 and d["delivered"] == 1 and d["latest_tag"] == "v1.0.0" and d["latest_release"] == "REL-001"
     assert d["integration_sha"] == "d16289b" and d["integrated_tickets"] == 0
     assert [f["stage"] for f in d["funnel"]] == [k for k, _ in FUNNEL]
-    assert sum(f["n"] for f in d["funnel"]) == 12 and dict((f["stage"], f["ids"]) for f in d["funnel"])["gate3"] == ["REL-008"]
+    assert sum(f["n"] for f in d["funnel"]) == 13 and dict((f["stage"], f["ids"]) for f in d["funnel"])["gate3"] == ["REL-008"]
     by_id = {r["id"]: r for r in d["releases"]}
     assert by_id["REL-006"]["sha"] == "d16289b" and by_id["REL-008"]["gate"] == "release" and by_id["REL-005"]["gate"] == "escalation"
     assert by_id["REL-011"]["runbook"] == "infra/x.md" and by_id["REL-005"]["summary"].startswith("Dừng")
@@ -104,6 +106,7 @@ def test_pheu_release_moi_bac_mot_rc() -> None:
     assert "escalation" in by_id["REL-005"]["next"], "RC có gate chờ thì nói chờ người quyết gate đó"
     assert "KHÔNG gate nào mở" in by_id["REL-011"]["next"], "agent tự dừng mà không gate: nói thẳng là không ai được hỏi"
     assert "QA chặn" in by_id["REL-007"]["next"] and "làm lại" in by_id["REL-004"]["next"] and "làm lại" in by_id["REL-010"]["next"]
+    assert "Gate 3 không mở" in by_id["REL-013"]["next"], "QA pass mà không gate: đó là bế tắc, không phải 'chờ QA'"
 
 
 def test_qa_bi_waive_thi_khong_con_la_qa_failed() -> None:
@@ -112,7 +115,8 @@ def test_qa_bi_waive_thi_khong_con_la_qa_failed() -> None:
                      release_reviews={"REL-1": {"qa": ReviewResult(ticket_id="REL-1", source="qa", verdict="fail")}},
                      release_waived={"REL-1": {"qa"}})
     tr = Truth([rc("REL-1", ["T1"]), rel_event("REL-1", "staging", "deployed")], lead, gate, NOW)
-    assert tr.releases()[0]["stage"] == "staging_deployed"
+    # QA đã được người chấp nhận mà Gate 3 vẫn không mở → bế tắc `gate3_missing`, không phải "chờ QA"
+    assert tr.releases()[0]["stage"] == "gate3_missing"
 
 
 def test_rollback_o_production_va_staging_la_that_bai() -> None:
@@ -135,6 +139,10 @@ def test_quyet_dinh_da_ky_chua_ap_dung() -> None:
     pend = Truth(envs, lead_stub(), gate, NOW).pending_decisions()
     assert pend == [{"id": "REL-1", "decision": "approve", "by": "human:lead", "kind": "release", "minutes": 12,
                      "reason": "đủ điều kiện"}]
+    # Gate không còn trong RAM (không pending, không history) → loại gate lấy từ audit gate.request
+    envs2 = [audit("supervisor", "gate.request", {"kind": "escalation", "subject_id": "T9", "created_by": "supervisor"}),
+             audit("human:lead", "gate.decide", {"subject_id": "T9", "decision": "reject", "by": "human:lead"})]
+    assert [(d["id"], d["kind"], d["decision"]) for d in Truth(envs2, lead_stub(), HumanGate(), NOW).pending_decisions()]         == [("T9", "escalation", "reject")]
 
 
 def test_hang_doi_va_event_dau_hang() -> None:
@@ -198,6 +206,7 @@ def test_ticket_extra_va_review_trimmed() -> None:
     assert tr.ticket_extra("T9") == {"integrated": False, "sha": None, "human_hint": "", "hint": "", "gate": None}
     assert tr.review_trimmed(rv) == "cắt api-contract 13.170 ký tự, payload 804 ký tự"
     assert Truth([rv], lead, gate, NOW).review_trimmed(rv) == "", "không có audit produced → không biết → không nói"
+    assert Truth([rv, prod, too_old, other], lead, gate, NOW).review_trimmed(rv) == "", "không bản ghi cắt nào trong cửa sổ lượt chấm"
     assert Truth([rv, prod, empty], lead, gate, NOW).review_trimmed(rv) == "", "bản ghi cắt rỗng → không có gì để phơi"
 
 

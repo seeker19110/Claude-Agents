@@ -289,7 +289,9 @@ class CompanyView(_View):
             t = self.lead.tickets.get(tid)
             b = self.sup.budgets.get(tid)
             out.append({"id": tid, "st": st, "who": t.assignee if t else "?", "t": t.title if t else tid,
-                        "used": b.used if b else 0, "bud": t.budget_tokens if t else 0,
+                        # `used` = TỔNG token (input+output) của agent làm ticket; ngân sách ticket tính theo token ĐẦU RA
+                        # (`out`). Trang so `out` với `bud`; so `used` với `bud` là so hai đại lượng khác nhau.
+                        "used": b.used if b else 0, "out": b.output_used if b else 0, "bud": t.budget_tokens if t else 0,
                         "est": (t.estimate_tokens or 0) if t else 0, "retry": t.retry if t else 0,
                         **self.truth.ticket_extra(tid)})
         return out

@@ -35,6 +35,7 @@ FUNNEL = [
     ("staging_pending_human", "Staging: agent dừng chờ người"),
     ("staging_deployed", "Staging xong, chờ QA hồi quy"),
     ("qa_failed", "QA hồi quy chặn"),
+    ("gate3_missing", "QA xong nhưng Gate 3 KHÔNG mở"),
     ("gate3", "Chờ Gate 3 (release)"),
     ("gate3_approved", "Gate 3 đã ký, chờ deploy"),
     ("production_failed", "Production thất bại"),
@@ -142,6 +143,10 @@ class Truth:
         if any(g.subject_id == rid and g.kind == "release" and g.decision == "approve" for g in self.gate.history):
             return "gate3_approved", info
         if rid in self.gate.pending and self.gate.pending[rid].kind == "release": return "gate3", info
+        if qa is not None and rid not in self.gate.pending:
+            # QA đã pass mà không gate nào mở: thiếu nguồn review khác (security) hoặc review ghi sai subject —
+            # đo được 2026-09-06 (REL-024: security block ghi ticket_id=ticket thay vì release). Không phải "chờ QA".
+            return "gate3_missing", info
         return "staging_deployed", info
 
     def _release_next(self, rid: str, stage: str) -> str:
@@ -157,6 +162,8 @@ class Truth:
         if stage in {"staging_pending_human", "production_pending_human"}:
             return "Agent tự dừng, KHÔNG gate nào mở: không ai được hỏi. Người phải xử lý nợ agent nêu rồi request gate release lại."
         if stage == "qa_failed": return "QA chặn mà không gate escalation nào chờ — kiểm tra."
+        if stage == "gate3_missing":
+            return "QA hồi quy đã pass nhưng Gate 3 không mở: thiếu nguồn review (security) hoặc review ghi sai subject. Request gate release tay."
         return "Thất bại — ticket của RC đã bị trả về làm lại; theo dõi ticket."
 
     def releases(self) -> list[dict[str, Any]]:
@@ -232,7 +239,7 @@ class Truth:
                             "why": "Ticket kẹt mà không gate escalation nào chờ — không ai được hỏi.",
                             "integrated": tid in self.integrated})
         for r in self.releases():
-            if r["stage"] in {"staging_pending_human", "production_pending_human", "qa_failed"} and r["id"] not in pending:
+            if r["stage"] in {"staging_pending_human", "production_pending_human", "qa_failed", "gate3_missing"} and r["id"] not in pending:
                 out.append({"kind": "release", "id": r["id"], "state": r["stage"], "why": r["next"], "integrated": False})
         run = self.running()
         unfinished = [t for t, s in self.lead.state.items() if s not in DONE_STATES]
