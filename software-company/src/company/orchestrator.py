@@ -1308,7 +1308,15 @@ class Orchestrator:
             if b and t:
                 b.limit = max(b.limit, b.used) + t.budget_tokens
                 self._audit("budget.extended", {"ticket_id": tid, "limit": b.limit, "by": by}, ticket_id=tid)
-            if self.lead.state.get(tid) in {"blocked", "escalated"}:
+            if tid in self.integrated and self.lead.state.get(tid) in {"blocked", "escalated", "changes_requested"}:
+                # Code của ticket ĐÃ ở trong nhánh tích hợp: giao lại chỉ tổ bắt agent làm lại việc đã merge, nó
+                # không sửa gì (đúng) rồi bị tính `invalid_output` → block → escalation → lặp. Xem
+                # `DeliveryLead.mark_done_already_integrated`.
+                self._audit("ticket.already_integrated", {"ticket_id": tid, "by": by}, ticket_id=tid,
+                            project_id=self.lead.tickets[tid].project_id if tid in self.lead.tickets else None)
+                self.lead.mark_done_already_integrated(tid)
+                res.actions.append(f"already_integrated:{tid}")
+            elif self.lead.state.get(tid) in {"blocked", "escalated"}:
                 self.lead.reopen(tid, hint=reason or "người duyệt mở lại sau escalation")
             self.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
                                       payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
