@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import threading
 import time
@@ -342,6 +343,28 @@ class StepResult:
     transient: bool = False      # một agent gặp lỗi transport sau khi đã retry → event sẽ được thử lại ở nhịp sau
 
 
+class ReloadRequested(Exception):
+    """Vòng watch xin khởi động lại tiến trình vì mã nguồn đã đổi (xem `Orchestrator.watch`)."""
+
+
+COMPANY_ROOT = Path(__file__).resolve().parents[2]  # thư mục software-company (như registry.ROOT)
+SOURCE_GLOBS = ("src/company/**/*.py", "agents/**/*.md", "skills/**/*.md", "gates/*.md", "llm.yaml")
+
+
+def source_fingerprint(root: Path | None = None) -> tuple[int, str]:
+    """(số file, mô tả file mới nhất) của mọi thứ orchestrator nạp lúc khởi động. So sánh hai lần gọi là biết mã đổi;
+    không cần git (worktree có thể đang ở nhánh bất kỳ)."""
+    base = root or COMPANY_ROOT
+    latest, n, name = 0.0, 0, ""
+    for pat in SOURCE_GLOBS:
+        for f in base.glob(pat):
+            try: m = f.stat().st_mtime
+            except OSError: continue
+            n += 1
+            if m > latest: latest, name = m, f.relative_to(base).as_posix()
+    return n, f"{name}@{int(latest)}"
+
+
 class Orchestrator:
     def __init__(self, bus: InMemoryBus, client: ModelClient, agents: dict[str, AgentSpec] | None = None,
                  max_retries: int = 3, repo: Path | None = None, base: str = "HEAD", max_turns: int = 25,
@@ -382,6 +405,7 @@ class Orchestrator:
         self.missing_threat_model: set[str] = set()  # spec chưa có threat model vì security-engineer lỗi
         self.stalled: dict[str, dict[str, Any]] = {}  # project_id → {event_id, agent, topic, error}: dự án kẹt chờ người
         self.unhandled: dict[str, dict[str, Any]] = {}  # subject → {event_id, agent, topic}: event lỗi không nhánh nào nhận, chờ người
+        self.source_fp = source_fingerprint()  # mã nguồn lúc khởi động — `watch(reload=True)` so với đây
         self.stall_count: Counter[str] = Counter()  # event_id → số lần kẹt (mỗi lần một gate mới, không im lặng lần hai)
         self.agents = agents or load_agents()
         bad = check_routes(self.agents)
@@ -709,7 +733,11 @@ class Orchestrator:
         results += self.run()
         return results
 
-    def watch(self, interval: float = 5.0, max_ticks: int | None = None) -> None:
+    def watch(self, interval: float = 5.0, max_ticks: int | None = None, reload: bool = False) -> None:
+        """`reload=True`: mã nguồn của công ty (src/company, agents, skills, gates, llm.yaml) đổi trên đĩa → khi hàng
+        đợi rỗng và không việc gì đang chạy, ném `ReloadRequested` để `main` khởi động lại tiến trình với mã mới.
+        Trước đây mỗi PR merge là người phải taskkill + xoá lock + chạy lại bằng tay (2026-09-06: 4 lần trong một
+        buổi); quên xoá lock thì tiến trình mới thoát ngay mà tưởng đã restart."""
         n = 0
         while max_ticks is None or n < max_ticks:
             try:
@@ -717,6 +745,10 @@ class Orchestrator:
             except Exception as e:  # một nhịp lỗi (bus/git/handler) không được giết vòng watch
                 self._audit("tick_error", {"error": f"{type(e).__name__}: {str(e)[:300]}"})
                 print(f"tick_error: {type(e).__name__}: {str(e)[:120]}", file=sys.stderr)
+            if reload and not self.queue and (fp := source_fingerprint()) != self.source_fp:
+                self._audit("orchestrator.reload", {"changed": fp[1], "files": fp[0]})
+                print(f"mã nguồn đổi ({fp[1]}) — khởi động lại với mã mới", file=sys.stderr)
+                raise ReloadRequested(fp[1])
             n += 1
             if max_ticks is None or n < max_ticks: time.sleep(interval)
 
@@ -1817,7 +1849,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--push-remote", help="remote của repo khách để push nhánh release + tag sau khi giao (mặc định: không push)")
     ap.add_argument("--release-branch", default="company/release", help="nhánh 'đang chạy production' trong repo khách")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    rn = sub.add_parser("run"); rn.add_argument("--max-steps", type=int); rn.add_argument("--watch", type=float,
+    rn = sub.add_parser("run"); rn.add_argument("--max-steps", type=int); rn.add_argument("--no-reload", action="store_true",
+                                                help="không tự khởi động lại khi mã nguồn đổi (mặc định: có, chỉ ở --watch)")
+    rn.add_argument("--watch", type=float,
         help="chạy liên tục, mỗi N giây nạp event mới (gate CLI, publish) rồi xử lý")
     pb = sub.add_parser("publish"); pb.add_argument("topic"); pb.add_argument("file", type=Path)
     pb.add_argument("--actor", required=True); pb.add_argument("--key")
@@ -1919,16 +1953,25 @@ def main(argv: list[str] | None = None) -> int:
         lease = Lease(ns.db); lease.acquire()
     except LeaseError as e:
         print(str(e), file=sys.stderr); return 3
+    reload = False
     try:
         if ns.watch:
-            try: orch.watch(interval=ns.watch)
+            try: orch.watch(interval=ns.watch, reload=not ns.no_reload)
             except KeyboardInterrupt: pass
+            except ReloadRequested: reload = True
         else:
             for r in orch.tick() if ns.max_steps is None else orch.run(ns.max_steps): print(_fmt(r))
     finally:
-        lease.release()
+        lease.release()  # trả lease TRƯỚC khi exec: tiến trình mới phải lấy được lease
+    if reload:
+        argv = [sys.executable, "-u", "-m", "company.orchestrator", *sys.argv[1:]]  # -u: stdout không bị buffer (URL/token/log)
+        _reexec(argv)
     print(json.dumps(orch.status(), ensure_ascii=False))
     return 0
+
+
+def _reexec(argv: list[str]) -> None:  # tách ra để test thay được; execv không trở về
+    os.execv(argv[0], argv)
 
 
 if __name__ == "__main__":  # pragma: no cover
