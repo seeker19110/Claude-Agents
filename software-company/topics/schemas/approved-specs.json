@@ -61,6 +61,40 @@
         },
         "reviewer": {
           "type": "string"
+        },
+        "runtime": {
+          "type": "object",
+          "description": "cách khởi động sản phẩm để orchestrator smoke (ADR-0029); thiếu thì `release-events.smoke.unverified`",
+          "properties": {
+            "command": {
+              "type": [
+                "string",
+                "array"
+              ],
+              "items": {
+                "type": "string"
+              },
+              "description": "lệnh khởi động; có thể chứa {port}"
+            },
+            "port": {
+              "type": "integer",
+              "description": "0 = orchestrator chọn cổng trống"
+            },
+            "health": {
+              "type": "string",
+              "description": "đường GET để kiểm, mặc định /"
+            },
+            "timeout_s": {
+              "type": "integer"
+            },
+            "expect_status": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "command"
+          ],
+          "additionalProperties": true
         }
       },
       "required": [

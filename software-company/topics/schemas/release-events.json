@@ -63,6 +63,37 @@
             "null"
           ],
           "description": "dự án của release"
+        },
+        "smoke": {
+          "type": "object",
+          "description": "bằng chứng do orchestrator tự chạy (ADR-0029): command, port, url, ok, http_status, exit_code, elapsed_s, stderr_tail — hoặc {unverified: true, reason}",
+          "properties": {
+            "verified_by": {
+              "const": "orchestrator"
+            },
+            "ok": {
+              "type": "boolean"
+            },
+            "unverified": {
+              "type": "boolean"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "http_status": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "exit_code": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": true
         }
       },
       "required": [

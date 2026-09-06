@@ -38,6 +38,7 @@ Các khoá dưới đây đã có trong checklist của gate và người duyệ
 - `tests` — mọi test pass
 - `scan` — SAST, SCA, DAST, license pass; SBOM có; artifact ký
 - `regression-staging` — QA hồi quy trên staging pass (`review-results` ticket_id=release_id)
+- `smoke` — `release-events{staging}.smoke.ok=true` do orchestrator tự chạy (ADR-0029); `unverified` nghĩa là spec chưa khai `runtime` — hỏi "chạy cho tôi xem" trước khi ký
 - `perf` — perf so NFR trên staging pass
 - `a11y` — a11y (axe + thủ công) trên staging pass
 - `runbook` — runbook đã thử

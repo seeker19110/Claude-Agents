@@ -31,7 +31,7 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0028); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0029); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
 agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
@@ -45,7 +45,7 @@ src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, g
                orchestrator (vòng lặp tự động, song song, người can thiệp), workspace (worktree), tools (tool có ranh
                giới tin cậy), mcp_bridge (cầu MCP đưa tool công ty vào CLI — ADR-0024), probe (CLI chạy được chế độ tool
                nào), web (tool web cho researcher), guard (chống injection), assetscan (quét tài sản prompt), context (hạn mức ngữ cảnh),
-               metrics (từ audit-log), evals (ghi/phát lại), stacks (lint/test theo stack — ADR-0013),
+               metrics (từ audit-log), evals (ghi/phát lại), stacks (lint/test theo stack — ADR-0013), smoke (khởi động sản phẩm theo `runtime` của spec, bằng chứng cho `deployed` — ADR-0029),
                subagents (sinh 25 trợ lý kiểm duyệt chỉ-đọc `.claude/agents/sc-*.md` từ agents/ + gates/checklists.md — `make subagents`),
                gate_checklists (parser checklists.md + bảng nguồn bằng chứng §5 đặc tả), gate_brief (hồ sơ bằng chứng chỉ đọc
                cho nửa "người tự kiểm" của một gate — `make gate-brief SUBJECT=…`), demo, graph (cần `uv sync --extra graph`, không tính coverage)
@@ -54,7 +54,7 @@ examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--rela
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng intake cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 21 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
-tests/         pytest 772 ca / 43 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+tests/         pytest 782 ca / 44 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, release tự dừng → gate, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
                guard/blackboard, schema consistency, golden 21 agent + 5 hồ sơ gate, bộ sinh subagent, hồ sơ gate, rà soát bảo mật);
                coverage fail_under=100 (phủ 100% dòng)
@@ -145,7 +145,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-04)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0028; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0029; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),
@@ -260,8 +260,8 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   `--force-with-lease` khi lùi, lỗi push chỉ vào audit; bền qua restart; `status.delivery`. `main` của khách vẫn không bị chạm.
 
 ### Chưa có
-- **Deploy hạ tầng thật**: phần git của giao hàng đã thật (tag + `company/release`, ADR-0027) nhưng release-engineer vẫn
-  mô tả deploy chứ chưa chạy container/k8s/CI-CD cho sản phẩm khách; đưa `company/release` vào `main` là quy trình PR của
+- **Deploy hạ tầng thật**: phần git của giao hàng đã thật (tag + `company/release`, ADR-0027) và `deployed` ở staging
+  phải qua smoke do orchestrator tự chạy (ADR-0029), nhưng release-engineer vẫn mô tả deploy chứ chưa chạy container/k8s/CI-CD cho sản phẩm khách; đưa `company/release` vào `main` là quy trình PR của
   khách. Xung đột giải quyết bằng làm lại trên nền mới, chưa rebase tự động. **Kafka/Redis** thay SQLite khi chạy nhiều
   máy (song song mới ở mức thread trong một tiến trình).
 - **Sandbox tiến trình** cho `run` (container/seccomp): hiện chỉ allowlist lệnh + khoá đường dẫn + lọc env. Guard

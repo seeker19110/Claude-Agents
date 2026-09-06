@@ -69,6 +69,7 @@ from .llm import LLMError, ModelClient, TransientError
 from .registry import AgentSpec, load_agents
 from .routing import retry_after_seconds
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError, artifact_store
+from .smoke import parse_runtime, run_smoke, unverified
 from .supervisor import Supervisor
 from .tools import ToolBox, WorkspaceTools
 from .web import WebTools, research_toolbox
@@ -1167,7 +1168,8 @@ class Orchestrator:
         reviews = {s: {"verdict": x.verdict, "findings": len(x.findings)} for s, x in self.lead.release_reviews.get(rid, {}).items()}
         gate = next((g for g in reversed(self.gate.history) if g.subject_id == rid and g.kind == "release"), None)
         return {"staging": ({"status": staging.payload.get("status"), "version": staging.payload.get("version"),
-                             "at": staging.ts.isoformat(timespec="seconds")} if staging is not None else None),
+                             "at": staging.ts.isoformat(timespec="seconds"),
+                             "smoke": staging.payload.get("smoke")} if staging is not None else None),
                 "reviews": reviews, "waived": sorted(self.lead.release_waived.get(rid, set())),
                 "gate_release_by": (gate.decided_by if gate is not None else None),
                 "gate_release_reason": ((gate.reason or "")[:300] if gate is not None else None),
@@ -1213,7 +1215,42 @@ class Orchestrator:
             # Phiên bản là của RC (delivery-lead suy từ nội dung release), không phải lời khai của model.
             self._audit("release.version_overridden", {"release_id": rid, "claimed": p.get("version"), "version": want}, actor=agent)
             p = {**p, "version": want}
+        if r.target_env == "staging" and p.get("status") == "deployed":
+            p = self._smoke(agent, rc, rid, p, integ)
         return self.runner.publish(agent, rc, r.topic_out, p, key=rid, tokens=g.tokens, model=g.model, generated=g)
+
+    def _smoke(self, agent: str, rc: Envelope, rid: str, p: dict[str, Any], integ: Integration | None) -> dict[str, Any]:
+        """`status=deployed` ở staging là LỜI KHAI của release-engineer (nó không có tool deploy). ADR-0029: orchestrator
+        tự khởi động sản phẩm theo `runtime` của spec trong worktree tích hợp và gọi một request thật; kết quả vào
+        `payload.smoke` (`verified_by=orchestrator`). Không có `runtime` hay không có worktree → `smoke.unverified`
+        kèm lý do, status giữ nguyên (không chặn dự án chưa khai, nhưng bằng chứng nói rõ là chưa kiểm). Có `runtime`
+        mà khởi động không được / không trả lời đúng → status thành `failed`: bốn gate xanh không được phép che một
+        sản phẩm không chạy (đo được 2026-09-06 QLKH: 25 release, 0 điểm vào)."""
+        pid = self.project_for(rc)
+        spec = self.latest("approved-specs", pid) if pid else None
+        rt = parse_runtime(spec.payload if spec is not None else None)
+        if rt is None:
+            smoke = unverified("spec không khai `runtime` (lệnh khởi động, cổng, đường health)")
+            self._audit("release.smoke_unverified", {"release_id": rid, "reason": smoke["reason"]}, project_id=pid,
+                        once=f"smoke.unverified:{rid}")
+            return {**p, "smoke": smoke}
+        if integ is None or not integ.path.exists():
+            smoke = unverified("không có worktree tích hợp (dự án chạy không repo)")
+            self._audit("release.smoke_unverified", {"release_id": rid, "reason": smoke["reason"]}, project_id=pid,
+                        once=f"smoke.unverified:{rid}")
+            return {**p, "smoke": smoke}
+        smoke = run_smoke(integ.path, rt)
+        self._audit("release.smoke", {"release_id": rid, **smoke}, actor=agent, project_id=pid)
+        if smoke.get("ok"):
+            return {**p, "smoke": smoke}
+        self._audit("release.smoke_failed", {"release_id": rid, "claimed_status": p.get("status"),
+                                             "http_status": smoke.get("http_status"), "exit_code": smoke.get("exit_code"),
+                                             "error": smoke.get("error")}, project_id=pid)
+        # RC `failed` ở staging không có route nào tiếp: không mở gate thì nó nằm im như `pending_human` từng nằm.
+        if rid not in self.gate.pending:
+            self.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="release-engineer",
+                                          checklist=["root_cause", "decision:redeploy|close", "hint"]))
+        return {**p, "status": "failed", "smoke": smoke}
 
     # ---------- kế hoạch: gate spec → threat model → delivery-lead sinh ticket → gate plan → dispatch ----------
 
