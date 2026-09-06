@@ -1908,7 +1908,8 @@ def main(argv: list[str] | None = None) -> int:
        python -m company.orchestrator decide-change <change_id> accepted|rejected|deferred --by human:po
        python -m company.orchestrator comment <ticket> --by human:x --text "..."   # hint giữa vòng, không tính retry
        python -m company.orchestrator takeover <ticket> --by human:x [--message]   # người sửa tay trong worktree rồi giao lại
-       python -m company.orchestrator status | report | metrics [--prometheus] | show <namespace> [--db]"""
+       python -m company.orchestrator status | report | metrics [--prometheus] | show <namespace> [--db]
+       python -m company.orchestrator trace <TICKET|REL-xxx|PROJECT> [--json]   # dòng thời gian intake → deploy"""
     ap = argparse.ArgumentParser(description="Orchestrator: vòng lặp tự động topic → agent → topic")
     ap.add_argument("--db", type=Path, default=Path("company.sqlite"))
     ap.add_argument("--repo", type=Path, help="git repo của khách: khối kỹ thuật sửa code thật trong worktree ticket/<id>")
@@ -1948,6 +1949,8 @@ def main(argv: list[str] | None = None) -> int:
     ru.add_argument("--project"); ru.add_argument("--ticket")
     dg = sub.add_parser("diagnose", help="chẩn đoán: gom lỗi thô thành khuôn lặp lại, ticket quay vòng, gate chờ quyết")
     dg.add_argument("--top", type=int, default=10, help="số khuôn lỗi in ra (mặc định 10)")
+    tr = sub.add_parser("trace", help="dòng thời gian một ticket/REL-xxx/dự án từ intake tới deploy: agent, tier/model, token/USD, tool, gate, chờ, retry")
+    tr.add_argument("subject"); tr.add_argument("--json", action="store_true", help="in JSON thay vì bảng chữ")
     mt = sub.add_parser("metrics", help="metrics từ audit-log: gọi/token/USD/thời gian theo agent, model, ticket; gate chờ")
     mt.add_argument("--prometheus", action="store_true", help="xuất text exposition format cho Prometheus")
     sh = sub.add_parser("show", help="in toàn văn artifact mới nhất của một namespace blackboard"); sh.add_argument("namespace")
@@ -1981,6 +1984,9 @@ def main(argv: list[str] | None = None) -> int:
     if ns.cmd == "diagnose":
         from .metrics import diagnose
         print(json.dumps(diagnose(bus, top=ns.top), ensure_ascii=False, indent=2)); return 0
+    if ns.cmd == "trace":
+        from .trace import run as trace_run
+        return trace_run(bus, ns.subject, ns.json)
     from .llm import FakeClient, make_client
     # `run` và `redeploy` GỌI MODEL (redeploy chạy lại lượt staging của release-engineer) nên cần client thật;
     # status/report/show/comment/takeover là việc của người và của code, không được đòi SDK/API key.

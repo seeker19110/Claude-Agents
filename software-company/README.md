@@ -54,7 +54,7 @@ examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--rela
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng intake cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 21 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
-tests/         pytest 794 ca / 45 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+tests/         pytest 800 ca / 46 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, release tự dừng → gate, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
                guard/blackboard, schema consistency, golden 21 agent + 5 hồ sơ gate, bộ sinh subagent, hồ sơ gate, rà soát bảo mật);
                coverage fail_under=100 (phủ 100% dòng)
@@ -216,6 +216,9 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   chung (gate, plan, RC, clarifier) chạy một mình.
 - **Metrics** (`metrics.py`, `orchestrator metrics [--prometheus]`): gọi/token/USD/thời gian/cache/tool theo agent, model,
   ticket, dự án; sự kiện sức khoẻ; thời gian chờ gate; lead time ticket; xuất Prometheus text.
+- **Trace** (`trace.py`, `orchestrator trace <TICKET|REL-xxx|PROJECT> [--json]`): dòng thời gian một chủ thể từ intake
+  tới deploy — mỗi mốc: thời điểm, chờ từ mốc trước, topic/audit action, agent, tier/model, token/USD, tool đã gọi, gate
+  mở/quyết (ai, lý do), retry. Chỉ đọc; chủ thể không có → exit 1 (đặc tả nâng cấp B7).
 - **Người can thiệp giữa vòng**: `comment` (hint cho ticket đang chạy, không tính retry), `takeover` (người sửa tay trong
   worktree, code chạy lint/test, PR dưới tên người thay PR của agent, review làm lại). Event `tasks` còn trong hàng đợi
   mà ticket không còn `dispatched` (đã `in_review` vì PR của người, hoặc approved/blocked) bị bỏ với audit
