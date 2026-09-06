@@ -202,8 +202,9 @@ def test_ticket_extra_va_review_trimmed() -> None:
     tr = Truth([rv, prod, too_old, other, cut, audit("orchestrator", "integration.merged", {"ticket_id": "T1", "sha": "abcdef012"})],
                lead, gate, NOW)
     assert tr.ticket_extra("T1") == {"integrated": True, "sha": "abcdef0", "human_hint": "người: sửa authz", "hint": "máy",
-                                     "gate": "escalation"}
-    assert tr.ticket_extra("T9") == {"integrated": False, "sha": None, "human_hint": "", "hint": "", "gate": None}
+                                     "gate": "escalation", "pending_decision": None}
+    assert tr.ticket_extra("T9") == {"integrated": False, "sha": None, "human_hint": "", "hint": "", "gate": None,
+                                     "pending_decision": None}
     assert tr.review_trimmed(rv) == "cắt api-contract 13.170 ký tự, payload 804 ký tự"
     assert Truth([rv], lead, gate, NOW).review_trimmed(rv) == "", "không có audit produced → không biết → không nói"
     assert Truth([rv, prod, too_old, other], lead, gate, NOW).review_trimmed(rv) == "", "không bản ghi cắt nào trong cửa sổ lượt chấm"

@@ -25,6 +25,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs
 
 logger = logging.getLogger("console.server")
 
@@ -299,6 +300,11 @@ class ConsoleHandler(BaseHTTPRequestHandler):
                 self._error(HTTPStatus.UNAUTHORIZED, "thiếu hoặc sai X-Console-Token")
                 return
             self._api_settings_get()
+        elif path == "/api/gate/brief":
+            if not self._authorized():
+                self._error(HTTPStatus.UNAUTHORIZED, "thiếu hoặc sai X-Console-Token")
+                return
+            self._api_gate_brief()
         elif path == "/api/stream":
             if not self._authorized():
                 self._error(HTTPStatus.UNAUTHORIZED, "thiếu hoặc sai X-Console-Token")
@@ -377,6 +383,22 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.INTERNAL_SERVER_ERROR, "không đọc được trạng thái")
             return
         self._json(HTTPStatus.OK, state)
+
+    def _api_gate_brief(self) -> None:
+        """C8: hồ sơ bằng chứng của một gate, Markdown, để trang hiện cạnh nút Duyệt. GET và chỉ đọc — không cần
+        `--allow-decide`: đọc bằng chứng phải rẻ hơn ký, nếu không thì người ta ký mà không đọc."""
+        from console.brief import COMPANY, BriefUnavailable, gate_brief
+
+        q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+        subject = (q.get("id") or [""])[0]
+        xuong = (q.get("xuong") or [COMPANY])[0]
+        try:
+            payload = gate_brief(self.server.company_db, subject, xuong=xuong,
+                                 closed=(q.get("closed") or ["0"])[0] == "1")
+        except BriefUnavailable as e:
+            self._json(HTTPStatus.OK, {"ok": False, "subject_id": subject, "error": str(e)})
+            return
+        self._json(HTTPStatus.OK, {"ok": True, **payload})
 
     def _api_stream(self) -> None:
         """SSE: đẩy `/api/state` mỗi khi bus của một trong hai công ty đổi.

@@ -45,6 +45,49 @@ FUNNEL = [
 ]
 FUNNEL_LABEL = dict(FUNNEL)
 
+# Bậc của phễu SẢN PHẨM (C1): câu hỏi "yêu cầu của khách đã đi tới đâu", không phải "RC nào chết ở đâu".
+# Mỗi bậc đếm hiện vật CÓ THẬT trên bus. Ô bằng 0 là ô XÁM (`empty=True`) — không bao giờ xanh: đêm 05/09 mọi ô
+# xanh vì rỗng là hiểu nhầm số 1 (TRAPS §2, §3).
+PRODUCT_STAGES = [
+    ("request", "Yêu cầu khách"),
+    ("spec", "Đặc tả đã duyệt"),
+    ("ticket", "Ticket"),
+    ("rc", "Release-candidate"),
+    ("staging", "Staging (smoke)"),
+    ("production", "Production (smoke)"),
+    ("acceptance", "Khách nghiệm thu"),
+]
+
+# Mẫu lý do duyệt (C6): lý do người ghi được gửi THẲNG cho agent làm hint. "ok" là bảo nó không có gì để sửa.
+HINT_TEMPLATE = "root_cause: \ndecision: \nhint: "
+
+# Agent chạy lại sau khi DUYỆT từng loại gate — người trực phải biết mình vừa đánh thức ai (C2).
+NEXT_AGENT = {"release": "release-engineer", "spec": "security-engineer + delivery-lead", "plan": "delivery-lead",
+              "acceptance": "account-manager", "escalation": "agent đang giữ ticket"}
+
+
+def gate_next_agent(kind: str) -> str:
+    return NEXT_AGENT.get(kind, "")
+
+
+def gate_reject_effect(kind: str, subject_id: str) -> str:
+    """Từ chối thì ticket/RC về đâu — nửa còn thiếu của "hậu quả" (C2). Duyệt được nói rồi; từ chối thì đêm 05/09
+    không ai biết việc rơi về trạng thái nào, nên không ai dám từ chối."""
+    if kind == "release":
+        return "Từ chối = RC dừng tại đây, không deploy; ticket của RC quay về `changes_requested` cho kỹ sư làm lại."
+    if kind == "escalation":
+        if subject_id.startswith("REL-"):
+            return "Từ chối = finding vẫn chặn; RC nằm nguyên bậc hiện tại cho tới khi có RC mới."
+        return "Từ chối = ticket ĐÓNG hẳn (`closed`), không ai làm tiếp — không phải \"để đó tính sau\"."
+    if kind == "plan":
+        return "Từ chối = delivery-lead lập lại kế hoạch từ đầu; chưa ticket nào được giao, chưa tiêu token."
+    if kind == "spec":
+        return "Từ chối = spec-writer viết lại PRD; chưa có ticket nào tồn tại để mà quay về."
+    if kind == "acceptance":
+        return "Từ chối = release không được nghiệm thu; ticket của release mở lại chờ sửa."
+    return ""
+
+
 # Hậu quả của việc DUYỆT từng loại gate — hiện ngay trên nút, vì duyệt `escalation` cho REL-xxx KHÔNG deploy gì cả.
 def gate_effect(kind: str, subject_id: str) -> str:
     if kind == "release":
@@ -201,6 +244,63 @@ class Truth:
             "releases": rels,
         }
 
+    # ---- phễu SẢN PHẨM (C1) ----
+
+    def _release_smoke(self, rid: str, env_name: str) -> str:
+        """`ok` | `unverified` | `fail` | `""` cho lượt deploy cuối của một RC ở một môi trường.
+
+        Lấy từ `payload.smoke` mà orchestrator gắn vào release-event (ADR-0029) — KHÔNG tin `status` của agent:
+        "deployed" là lời khai, `smoke` là bằng chứng máy sinh."""
+        last: Any = None
+        for e in self.env:
+            p = e.payload
+            if e.topic == "release-events" and p.get("release_id") == rid and p.get("env") == env_name: last = e
+        if last is None: return ""
+        sm = last.payload.get("smoke")
+        if not isinstance(sm, dict): return ""
+        if sm.get("unverified"): return "unverified"
+        return "ok" if sm.get("ok") else "fail"
+
+    def _project_of_release(self, rid: str) -> str | None:
+        for tid in self.lead.release_tickets.get(rid, []):
+            t = self.lead.tickets.get(tid)
+            if t is not None: return str(t.project_id)
+        return None
+
+    def product_funnel(self) -> list[dict[str, Any]]:
+        """Một phễu cho MỖI sản phẩm: yêu cầu → spec → ticket → RC → staging(smoke) → production(smoke) → nghiệm thu.
+
+        Phễu release cũ (`delivery().funnel`) trả lời "RC chết ở bậc nào"; phễu này trả lời câu người trả tiền hỏi:
+        "yêu cầu của tôi đã đi tới đâu". Ô `n == 0` mang `empty=True` để trang tô XÁM: một hàng toàn số 0 mà xanh là
+        đúng cái bẫy đã ăn mất một đêm."""
+        counts: dict[str, dict[str, int]] = defaultdict(lambda: dict.fromkeys([k for k, _ in PRODUCT_STAGES], 0))
+        smoke: dict[str, dict[str, str]] = defaultdict(dict)
+        topic_stage = {"research-requests": "request", "approved-specs": "spec", "acceptance-results": "acceptance"}
+        for e in self.env:
+            stage = topic_stage.get(e.topic)
+            if stage is None: continue
+            pid = str(e.payload.get("project_id") or "?")
+            counts[pid][stage] += 1
+        for t in self.lead.tickets.values():
+            counts[str(t.project_id)]["ticket"] += 1   # đếm theo Task trên bus, không theo nhánh git
+        for r in self.releases():
+            pid = self._project_of_release(r["id"]) or "?"
+            if r["stage"] == "void": continue
+            counts[pid]["rc"] += 1
+            for env_name, stage in (("staging", "staging"), ("production", "production")):
+                v = self._release_smoke(r["id"], env_name)
+                if v:
+                    counts[pid][stage] += 1
+                    prev = smoke[pid].get(stage)
+                    if prev != "fail": smoke[pid][stage] = v if prev is None or v == "fail" else prev
+        out = []
+        for pid in sorted(counts):
+            stages = [{"stage": k, "label": lbl, "n": counts[pid][k], "empty": counts[pid][k] == 0,
+                       "smoke": smoke[pid].get(k, "")} for k, lbl in PRODUCT_STAGES]
+            out.append({"project_id": pid, "stages": stages,
+                        "delivered": counts[pid]["production"] > 0 and counts[pid]["acceptance"] > 0})
+        return out
+
     # ---- người đã ký, máy chưa áp ----
 
     def pending_decisions(self) -> list[dict[str, Any]]:
@@ -252,12 +352,43 @@ class Truth:
 
     # ---- làm giàu ticket / review ----
 
+    def pending_decision_of(self, subject_id: str) -> dict[str, Any] | None:
+        """Quyết định người đã ký cho subject này mà orchestrator CHƯA áp (C3). Trang gắn badge lên đúng ticket/RC
+        đó thay vì để người tưởng chữ ký của mình vô tác dụng (đo được 01:34 ký / 01:48 áp, đêm 05/09)."""
+        for d in self.pending_decisions():
+            if d["id"] == subject_id: return d
+        return None
+
     def ticket_extra(self, tid: str) -> dict[str, Any]:
         t = self.lead.tickets.get(tid)
         return {"integrated": tid in self.integrated, "sha": self.integrated.get(tid),
                 "human_hint": (getattr(t, "human_hint", None) or "") if t else "",
                 "hint": (getattr(t, "hint", None) or "") if t else "",
+                "pending_decision": self.pending_decision_of(tid),
                 "gate": self.gate_kind(tid) if tid in self.gate.pending else None}
+
+    def silent_ticket_deadlocks(self) -> list[dict[str, Any]]:
+        """Chỉ ticket `blocked`/`escalated` mà KHÔNG gate nào chờ (C4). Đây không phải "đang chờ người" — không ai
+        được hỏi. Tách khỏi `deadlocks()` để trang đặt được một cảnh báo đỏ riêng ở đầu trang, đếm số."""
+        return [d for d in self.deadlocks() if d["kind"] == "ticket"]
+
+    def review_trimmed_sources(self, review_env: Any) -> list[dict[str, Any]]:
+        """Đúng những nguồn bị cắt của lượt chấm này: tên namespace/artifact và số ký tự mất (C5).
+
+        `review_trimmed()` trả một câu để nhét vào ô bảng; cái này trả danh sách để trang liệt kê CẠNH VERDICT —
+        "security chặn vì thiếu diff" hoá ra là openapi 804 dòng ăn hết hạn mức, và không ai thấy điều đó."""
+        prod = self.produced_by_event.get(review_env.event_id)
+        if prod is None: return []
+        agent = str(prod.payload.get("actor") or "")
+        dur_ms = float(_evidence(prod.payload).get("duration_ms") or 0)
+        start = prod.ts.timestamp() - dur_ms / 1000 - 5
+        for e in reversed(self.trimmed):
+            if e.payload.get("actor") != agent or e.ts > prod.ts or e.ts.timestamp() < start: continue
+            d = _evidence(e.payload)
+            out = [{"src": str(k), "chars": int(v)} for k, v in (d.get("trimmed_context") or {}).items()]
+            if d.get("trimmed_payload"): out.append({"src": "payload", "chars": int(d["trimmed_payload"])})
+            return out
+        return []
 
     def review_trimmed(self, review_env: Any) -> str:
         """Agent chấm review này đã bị cắt ngữ cảnh gì — verdict dựa trên bằng chứng thiếu thì người phải thấy."""

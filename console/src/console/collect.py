@@ -31,7 +31,7 @@ from company import llm as company_llm
 from company import metrics as company_metrics
 from company import routing as company_routing
 from company.bus import InMemoryBus as CompanyBus
-from company.delivery import DeliveryLead
+from company.delivery import DONE_STATES, DeliveryLead
 from company.events import Envelope as CompanyEnvelope
 from company.events import Task
 from company.registry import load_agents as load_company_agents
@@ -45,7 +45,8 @@ from studio.events import Envelope as StudioEnvelope
 from studio.registry import load_agents as load_studio_agents
 from studio.supervisor import Supervisor as StudioSupervisor
 
-from console.truth import Truth, gate_effect
+from console.git_truth import INTEGRATION_BRANCH, ahead_count
+from console.truth import Truth, gate_effect, gate_next_agent, gate_reject_effect
 
 COMPANY = "software-company"
 STUDIO = "Studio-creators"
@@ -170,7 +171,8 @@ class _View:
             sev = "over" if h >= over_h else ("warn" if h >= warn_h else "calm")
             out.append({"id": sid, "xuong": self.name, "kind": r.kind, "by": r.created_by or "-",
                         "trigger": getattr(r, "triggered_by", None) or "", "hours": h, "sev": sev,
-                        "effect": self.gate_effect(r), "title": self.gate_title(r), "facts": self.gate_facts(r),
+                        "effect": self.gate_effect(r), "reject": self.gate_reject(r), "agent": self.gate_agent(r),
+                        "title": self.gate_title(r), "facts": self.gate_facts(r),
                         "cl": [[item, self.checklist_note(r, item)] for item in r.checklist]})
         out.sort(key=lambda g: -g["hours"])
         return out
@@ -180,6 +182,14 @@ class _View:
 
     def gate_effect(self, r: Any) -> str:
         """Hậu quả của việc duyệt — mỗi xưởng tự nói; mặc định không nói gì còn hơn nói sai."""
+        return ""
+
+    def gate_reject(self, r: Any) -> str:
+        """Hậu quả của việc TỪ CHỐI (C2) — nửa còn thiếu; không biết thì im, không đoán."""
+        return ""
+
+    def gate_agent(self, r: Any) -> str:
+        """Duyệt xong thì AI chạy lại (C2)."""
         return ""
 
     def gate_facts(self, r: Any) -> list[list[str]]:
@@ -259,6 +269,16 @@ class CompanyView(_View):
         self.report = self.sup.sprint_report()
         self.metrics = company_metrics.collect(self.bus)
         self.truth = Truth(self.envelopes, self.lead, self.gate, datetime.now(UTC))
+        # C7: đường dẫn repo và tên nhánh tích hợp đến TỪ BUS (audit `project.repo` / `integration.merged`), không
+        # từ cấu hình riêng của console — console không giữ nguồn sự thật nào của riêng nó (C10).
+        self.repos: dict[str, Path] = {}
+        self.integration_branch = INTEGRATION_BRANCH
+        for e in self.audits():
+            p, d = e.payload, _evidence(e.payload)
+            if p.get("action") == "project.repo" and d.get("repo"):
+                self.repos[str(d.get("project_id") or "")] = Path(str(d["repo"]))
+            elif p.get("action") == "integration.merged" and d.get("branch"):
+                self.integration_branch = str(d["branch"])
 
     def tiers(self) -> dict[str, str]:
         try:
@@ -272,6 +292,12 @@ class CompanyView(_View):
 
     def gate_effect(self, r: Any) -> str:
         return gate_effect(r.kind, r.subject_id)
+
+    def gate_reject(self, r: Any) -> str:
+        return gate_reject_effect(r.kind, r.subject_id)
+
+    def gate_agent(self, r: Any) -> str:
+        return gate_next_agent(r.kind)
 
     def gate_facts(self, r: Any) -> list[list[str]]:
         facts = super().gate_facts(r)
@@ -293,8 +319,15 @@ class CompanyView(_View):
                         # (`out`). Trang so `out` với `bud`; so `used` với `bud` là so hai đại lượng khác nhau.
                         "used": b.used if b else 0, "out": b.output_used if b else 0, "bud": t.budget_tokens if t else 0,
                         "est": (t.estimate_tokens or 0) if t else 0, "retry": t.retry if t else 0,
-                        **self.truth.ticket_extra(tid)})
+                        "ahead": self._ahead(tid, t, st), **self.truth.ticket_extra(tid)})
         return out
+
+    def _ahead(self, tid: str, task: Any, state: str) -> int | None:
+        """C7: commit của `ticket/<id>` chưa có trên nhánh tích hợp. Bỏ qua ticket đã xong (nhánh của chúng đã gộp
+        hoặc đã xoá) để không bắn một tiến trình git cho mỗi ticket mỗi lần bus đổi."""
+        if task is None or state in DONE_STATES: return None
+        repo = self.repos.get(str(task.project_id))
+        return None if repo is None else ahead_count(repo, tid, self.integration_branch)
 
     def prs(self) -> list[dict[str, Any]]:
         if not self.ok: return []
@@ -316,15 +349,19 @@ class CompanyView(_View):
             detail = p.get("root_cause") or ("; ".join(blocking) if blocking else "")
             out.append({"id": p.get("ticket_id") or e.key, "src": p.get("source", "?"), "v": p.get("verdict", "?"),
                         "f": f"{p.get('verdict', '?')} · {detail}" if detail else str(p.get("verdict", "?")),
-                        "trim": self.truth.review_trimmed(e), "at": e.ts.astimezone().strftime("%H:%M")})
+                        "trim": self.truth.review_trimmed(e), "trim_src": self.truth.review_trimmed_sources(e),
+                        "at": e.ts.astimezone().strftime("%H:%M")})
         return out
 
     def truth_block(self) -> dict[str, Any]:
         """Sự thật giao hàng (console/truth.py). Xưởng chưa đọc được → mọi phần rỗng nhưng vẫn đủ khoá."""
         if not self.ok:
-            return {"delivery": None, "pending_decisions": [], "running": None, "deadlocks": []}
+            return {"delivery": None, "pending_decisions": [], "running": None, "deadlocks": [],
+                    "product_funnel": [], "silent_deadlocks": []}
         return {"delivery": self.truth.delivery(), "pending_decisions": self.truth.pending_decisions(),
-                "running": self.truth.running(), "deadlocks": self.truth.deadlocks()}
+                "running": self.truth.running(), "deadlocks": self.truth.deadlocks(),
+                "product_funnel": self.truth.product_funnel(),
+                "silent_deadlocks": self.truth.silent_ticket_deadlocks()}
 
     def stuck(self) -> int:
         return sum(1 for st in self.lead.state.values() if st in STUCK_STATES) if self.ok else 0

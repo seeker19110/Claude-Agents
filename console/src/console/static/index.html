@@ -351,6 +351,22 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
 .fld input,.fld textarea{border:1px solid var(--line);border-radius:5px;padding:7px 9px;background:var(--surface);font-size:13px;color:var(--ink);resize:vertical}
 .fld input.mono,.fld textarea{font-family:var(--mono);font-size:12.5px}
 .fld .req{color:var(--warn,#c9822b)}
+/* Phễu sản phẩm (C1): mỗi ô trả lời MỘT câu hỏi; ô không có dữ liệu là XÁM, không bao giờ xanh. */
+.pf{display:grid;gap:14px}
+.pf .prod{border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:var(--surface)}
+.pf .prod h3{margin:0 0 2px;font-size:14px}
+.pf .steps{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px;margin-top:10px}
+.pf .step{border:1px solid var(--line);border-radius:6px;padding:8px 9px;background:var(--surface-2);display:grid;gap:2px}
+.pf .step .lbl{font-size:11px;color:var(--ink-muted)}
+.pf .step .n{font-size:20px;font-weight:600;font-family:var(--mono)}
+.pf .step .sm{font-size:11px;font-family:var(--mono)}
+.pf .step.zero{opacity:.62;background:transparent;border-style:dashed}
+.pf .step.zero .n{color:var(--ink-muted)}
+.pf .step.has{border-color:var(--good-line,var(--line))}
+.pf .step.has .n{color:var(--good-ink,var(--ink))}
+.pf .step.smoke-fail{border-color:var(--crit-line,var(--line))}
+.pf .step.smoke-fail .n,.pf .step.smoke-fail .sm{color:var(--crit-ink)}
+.pf .step.smoke-unverified .sm{color:var(--warn-ink)}
 </style>
 
 <div class="app">
@@ -362,6 +378,7 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
     <div class="navgroup" id="nav">
       <div class="eyebrow">Điều hành</div>
       <button class="nav" data-v="truc-ban" aria-current="true"><span class="dot"></span>Trực ban<span class="cnt" id="nav-gates">—</span></button>
+      <button class="nav" data-v="phieu">Phễu sản phẩm<span class="cnt" id="nav-phieu">—</span></button>
       <button class="nav" data-v="phan-mem">Xưởng phần mềm<span class="cnt" id="nav-tickets">—</span></button>
       <button class="nav" data-v="video">Xưởng video<span class="cnt" id="nav-videos">—</span></button>
       <button class="nav" data-v="chi-phi">Chi phí &amp; hạn mức</button>
@@ -409,6 +426,10 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
 
     <!-- ============ TRỰC BAN ============ -->
     <section class="view on" id="v-truc-ban">
+      <div class="sect" id="s-silent" hidden>
+        <div class="dead" id="silent"></div>
+      </div>
+
       <div class="sect" id="s-dead" hidden>
         <div class="dead" id="deadlocks"></div>
       </div>
@@ -471,6 +492,19 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
       </div>
     </section>
 
+    <!-- ============ PHỄU SẢN PHẨM (C1) ============ -->
+    <section class="view" id="v-phieu">
+      <div class="sect">
+        <div class="sect-head">
+          <h2>Yêu cầu của khách đã đi tới đâu</h2>
+          <p>Một hàng cho mỗi sản phẩm: yêu cầu → đặc tả → ticket → RC → staging (smoke) → production (smoke) → nghiệm thu.
+             Ô <b>xám gạch đứt</b> nghĩa là <b>chưa có gì</b> — không phải "ổn". Smoke là bằng chứng máy sinh; không có smoke thì
+             "deployed" mới chỉ là lời khai của agent.</p>
+        </div>
+        <div class="pf" id="product-funnel"></div>
+      </div>
+    </section>
+
     <!-- ============ PHẦN MỀM ============ -->
     <section class="view" id="v-phan-mem">
       <div class="sect submit" data-xuong="software-company">
@@ -496,11 +530,13 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
         <div class="board" id="board-tickets"></div>
       </div>
       <div class="sect">
-        <div class="sect-head"><h2>Pull request chờ review</h2><p>lint và test do code chạy thật trên worktree, không phải model tự khai</p></div>
+        <div class="sect-head"><h2>Pull request chờ review</h2><p>lint và test do code chạy thật trên worktree, không phải model tự khai. Cột cuối là <code>git rev-list --count company/integration..ticket/&lt;id&gt;</code>:
+          số commit còn nằm NGOÀI nhánh tích hợp — <code>0</code> nghĩa là đã gộp hết, <code>—</code> nghĩa là không đo được (dự án chạy không repo).</p></div>
         <div class="tablewrap">
           <table>
             <thead><tr data-sort="prs"><th data-k="id">Ticket</th><th data-k="br">Nhánh</th><th data-k="s">Tóm tắt</th>
-              <th data-k="lint">lint</th><th data-k="tests">tests</th><th data-k="v">Xác minh</th></tr></thead>
+              <th data-k="lint">lint</th><th data-k="tests">tests</th><th data-k="v">Xác minh</th>
+              <th class="r">Vượt integration</th></tr></thead>
             <tbody id="prs"></tbody>
           </table>
         </div>
@@ -788,7 +824,7 @@ async function api(path,init){
 const SC="software-company", ST="Studio-creators", GW="gateway";
 const BLANK={generated_at:null,sources:{},tiles:{},gates:[],tickets:[],prs:[],reviews:[],videos:[],perf:[],
   retention:null,cost_days:{days:[],series:[]},agents:[],backends:[],supervisor:[],log:[],
-  delivery:null,pending_decisions:[],running:null,deadlocks:[]};
+  delivery:null,pending_decisions:[],running:null,deadlocks:[],product_funnel:[],silent_deadlocks:[]};
 let S=null;                    // dữ liệu tốt lần cuối đọc được — giữ nguyên khi lỗi
 let firstLoad=true, paused=false, drawerOpen=false, lastOk=null, timer=null;
 const st=()=>S||BLANK;
@@ -941,6 +977,7 @@ function freshLabel(){
 const TITLES={
  "truc-ban":()=>["Trực ban",`${st().gates.length||0} việc chờ duyệt`
    +(st().delivery?` · đã giao ${num(st().delivery.delivered)}/${num(st().delivery.releases_live)} release`:"")+` · hàng đợi còn ${num(st().tiles.queue)} event`],
+ "phieu":()=>["Phễu sản phẩm",srcOk(SC)?(st().product_funnel||[]).length?`${(st().product_funnel||[]).length} sản phẩm · ô xám là ô CHƯA CÓ GÌ, không phải ô tốt`:"chưa có sản phẩm nào trên bus":srcWhy(SC)],
  "phan-mem":()=>["Xưởng phần mềm",srcOk(SC)?`${listOf(SC,st().tickets).length} ticket, ${listOf(SC,st().tickets).filter(t=>t.st==="in_review").length} đang review, ${listOf(SC,st().prs).length} PR đã nộp`:srcWhy(SC)],
  "video":()=>["Xưởng video",srcOk(ST)?`${listOf(ST,st().videos).length} video trong dây chuyền`:srcWhy(ST)],
  "chi-phi":()=>["Chi phí & hạn mức",`${vnd(st().tiles.project_cost_usd)} / ${vnd(st().tiles.project_budget_usd)} USD dự án · ${st().backends.length} gói tài khoản`],
@@ -956,7 +993,7 @@ function titles(){const [t,s]=TITLES[view]();$("#vt").textContent=t;$("#vs").tex
    ngăn kéo thay vì rời trang, và gửi được link tới đúng một gate cho người khác.
    Dùng hash chứ không `history.pushState`: server chỉ phục vụ một đường `/`, đẩy đường dẫn thật
    vào thanh địa chỉ thì F5 sẽ ăn 404. */
-const VIEWS=["truc-ban","phan-mem","video","chi-phi","nhat-ky","cai-dat","huong-dan"];
+const VIEWS=["truc-ban","phieu","phan-mem","video","chi-phi","nhat-ky","cai-dat","huong-dan"];
 const OPENERS={gate:id=>openGate(id),ticket:id=>openTicket(id),video:id=>openVideo(id),release:id=>openRelease(id)};
 let routing=false;                                // chặn vòng lặp hash -> mở -> đặt hash
 
@@ -983,6 +1020,7 @@ function showView(v){
   if(v==="cai-dat") loadSettings();
   if(v==="phan-mem"||v==="video") renderSubmit(v);
   if(v==="huong-dan") renderGuide();
+  if(v==="phieu") renderProductFunnel();
 }
 function applyRoute(){
   const r=readHash();
@@ -1221,7 +1259,8 @@ function renderQueue(){
       <span class="body">
         <span class="id">${hl(g.id)} <span class="tag ${g.kind==="release"?"ok":g.kind==="escalation"?"warn":""}">gate ${esc(KIND[g.kind]||g.kind)}</span></span>
         <h3>${hl(g.title)}</h3>
-        ${g.effect?`<span class="effect"><b>Duyệt thì sao?</b> ${esc(g.effect)}</span>`:""}
+        ${g.effect?`<span class="effect"><b>Duyệt thì sao?</b> ${esc(g.effect)}${g.agent?` Chạy lại ngay sau đó: <code>${esc(g.agent)}</code>.`:""}</span>`:""}
+        ${g.reject?`<span class="effect"><b>Từ chối thì sao?</b> ${esc(g.reject)}</span>`:""}
         <span class="meta"><span>${esc(g.xuong)}</span><span>tạo bởi <code>${esc(g.by)}</code></span></span>
         <span class="cl">${(g.cl||[]).map(c=>`<code>${esc(c[0])}</code>`).join("")}</span>
       </span>
@@ -1254,6 +1293,9 @@ function toast(m){toastEl.textContent=m;toastEl.classList.add("on");clearTimeout
 
 const VERB={approve:"Đã duyệt",request_changes:"Đã trả lại sửa",hold:"Đã giữ lại",reject:"Đã từ chối",rollback:"Đã thu hồi"};
 const VERB_ING={request_changes:"trả lại",hold:"giữ",reject:"từ chối",rollback:"thu hồi"};
+const HINT_TMPL="root_cause: 
+decision: 
+hint: ";
 const RO_NOTE='Chế độ <b>chỉ đọc</b> — nút quyết định bị khoá. Muốn duyệt gate từ trang này thì dừng server và chạy lại '
   +'<code>uv run python -m console --allow-decide</code> (chỉ nghe trên 127.0.0.1, vẫn cần token phiên).';
 
@@ -1272,13 +1314,24 @@ function openGate(id){
       <div><div class="eyebrow" style="margin-bottom:4px">Checklist — tick hết mới duyệt được</div>
         <div id="cl">${cl.length?cl.map((c,i)=>`<label class="check"><input type="checkbox" data-i="${i}"><span><span class="n">${esc(c[0])}</span><span class="d">${esc(c[1])}</span></span></label>`).join("")
           :'<div class="empty">Gate này không kèm checklist.</div>'}</div></div>
-      ${g.effect?`<div class="dead" style="border-color:var(--line);background:var(--surface-2)"><h2 style="color:var(--ink)">Duyệt thì điều gì xảy ra</h2><div style="font-size:12.5px">${esc(g.effect)}</div></div>`:""}
+      ${(g.effect||g.reject)?`<div class="dead" style="border-color:var(--line);background:var(--surface-2)">
+        <h2 style="color:var(--ink)">Hậu quả — cả hai chiều</h2>
+        ${g.effect?`<div class="row"><code>duyệt</code><span>${esc(g.effect)}${g.agent?` Agent chạy lại: <b>${esc(g.agent)}</b>.`:""}</span></div>`:""}
+        ${g.reject?`<div class="row"><code>từ chối</code><span>${esc(g.reject)}</span></div>`:""}</div>`:""}
+      <div><div class="eyebrow" style="margin-bottom:6px">Hồ sơ bằng chứng (gate_brief)</div>
+        <button class="fbtn" id="brief-btn" type="button">Dựng hồ sơ — nửa "người tự kiểm thêm" của checklist</button>
+        <pre id="brief" hidden style="white-space:pre-wrap;font-family:var(--mono);font-size:11.5px;color:var(--ink-2);max-height:340px;overflow:auto;margin:8px 0 0"></pre></div>
+      <div><div class="eyebrow" style="margin-bottom:6px">Hint agent sẽ nhận — nguyên văn</div>
+        <pre id="hint-preview" style="white-space:pre-wrap;font-family:var(--mono);font-size:12px;color:var(--ink-2);margin:0;min-height:1.2em">(chưa ghi gì — agent sẽ nhận một chuỗi rỗng)</pre></div>
       <p class="note">Quyết định đi qua <code>HumanGate</code> của xưởng và ghi thẳng vào <code>audit-log</code> kèm tên bạn.
         Người duyệt phải khác người tạo (four-eyes); gate chỉ quyết một lần.${g.kind==="escalation"?" <b>Lý do bạn ghi được gửi thẳng cho agent làm hint</b> — một chữ “ok” là bảo nó không có gì để sửa.":""}</p>
     </div>
     <div class="dr-f">
       <label class="by">Bạn là <input id="by" value="${esc(localStorage.getItem(ME_KEY)||"human:owner")}" placeholder="human:owner"></label>
-      <textarea id="reason" placeholder="Lý do — bắt buộc khi trả lại, giữ, từ chối hoặc thu hồi"></textarea>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+        <button class="fbtn" id="tmpl" type="button">Chèn mẫu root_cause / decision / hint</button>
+        <span class="note">lý do đi thẳng cho agent làm hint — nêu nguyên nhân gốc và việc phải làm</span></div>
+      <textarea id="reason" placeholder="root_cause: vì sao hỏng&#10;decision: bạn quyết gì&#10;hint: agent phải làm gì tiếp"></textarea>
       <div class="verbs">
         <button class="vb primary" data-d="approve" disabled>Duyệt</button>
         <button class="vb" data-d="request_changes">Trả lại sửa</button>
@@ -1294,13 +1347,27 @@ function openGate(id){
     const left=boxes.filter(b=>!b.checked).length;
     // Escalation: lý do là HINT gửi thẳng cho agent — "ok" là bảo nó không có gì để sửa (đo được 13:05 2026-09-06,
     // duyệt REL-025 bằng "ok"). Chưa đủ 20 ký tự thì KHÔNG cho duyệt, không chỉ cảnh báo.
-    const thin=g.kind==="escalation"&&$("#reason").value.trim().length<20;
+    const raw=$("#reason").value;
+    $("#hint-preview").textContent=raw.trim()?raw:"(chưa ghi gì — agent sẽ nhận một chuỗi rỗng)";
+    const thin=g.kind==="escalation"&&raw.trim().length<20;
     drawer.querySelector('[data-d="approve"]').disabled=READONLY||left>0||thin;
     $("#gnote").innerHTML=READONLY?RO_NOTE:left?`Còn ${left} mục chưa tick.`
       :thin?'Ghi lý do ít nhất 20 ký tự — nó là hint agent nhận: nêu root cause và việc cần làm, không phải "ok".':"Đủ điều kiện duyệt.";
   };
   boxes.forEach(b=>b.addEventListener("change",sync));
   $("#reason").addEventListener("input",sync);
+  // C6: mẫu ba dòng — người ghi "ok" vì không biết phải ghi gì, không phải vì lười.
+  $("#tmpl").addEventListener("click",()=>{
+    const t=$("#reason"); if(!t.value.trim()) t.value=HINT_TMPL; t.focus(); sync();});
+  // C8: hồ sơ bằng chứng ngay cạnh nút duyệt, không phải trong một terminal khác.
+  $("#brief-btn").addEventListener("click",async()=>{
+    const btn=$("#brief-btn"), box=$("#brief");
+    btn.disabled=true; box.hidden=false; box.textContent="Đang dựng hồ sơ (replay cả log — vài giây)…";
+    try{
+      const r=await api(`/api/gate/brief?id=${encodeURIComponent(g.id)}&xuong=${encodeURIComponent(g.xuong)}`);
+      box.textContent=r.ok?r.md:"Không dựng được hồ sơ: "+r.error;
+    }catch(err){ box.textContent="Không dựng được hồ sơ: "+err.message; }
+    btn.disabled=false;});
   if(READONLY){$$(".vb",drawer).forEach(b=>{b.disabled=true;});}
   sync();
 
@@ -1334,6 +1401,8 @@ function openTicket(id){
     <div class="dr-b">
       <dl class="dl"><dt>trạng thái</dt><dd>${esc(t.st)}${t.gate?` · <span class="tag warn">gate ${esc(t.gate)} chờ</span>`:""}</dd>
         <dt>nhánh tích hợp</dt><dd>${t.integrated?`<span class="tag ok">integration ✓</span> ${esc(t.sha||"")}`:'<span class="tag">chưa có merge commit</span>'}</dd>
+        <dt>commit vượt integration</dt><dd>${t.ahead==null?'<span class="note">không đo được (dự án chạy không repo, hoặc ticket đã xong)</span>':t.ahead?`<span class="tag warn">${num(t.ahead)} commit chưa gộp</span>`:'<span class="tag ok">0 — đã gộp hết</span>'}</dd>
+        ${t.pending_decision?`<dt>quyết định chờ áp</dt><dd><span class="tag warn">${esc(t.pending_decision.decision)} bởi ${esc(t.pending_decision.by)} · ${num(t.pending_decision.minutes)} phút trước, orchestrator chưa xử lý</span></dd>`:""}
         <dt>assignee</dt><dd>${esc(t.who)}</dd><dt>retry</dt><dd>${num(t.retry)}</dd>
         <dt>estimate</dt><dd>${num(t.est)}</dd><dt>budget (đầu ra)</dt><dd>${num(t.bud)}</dd>
         <dt>đầu ra đã dùng</dt><dd>${num(t.out)} · ${pct}%</dd><dt>tổng token</dt><dd>${num(t.used)} (input + output, mọi lượt)</dd></dl>
@@ -1344,7 +1413,7 @@ function openTicket(id){
         ${pr?`<dl class="dl"><dt>nhánh</dt><dd>${esc(pr.br)}</dd><dt>lint</dt><dd>${esc(pr.lint)}</dd><dt>tests</dt><dd>${esc(pr.tests)}</dd><dt>verified_by</dt><dd>${esc(pr.v)}</dd></dl>
         <p class="note" style="margin:8px 0 0">${esc(pr.s)}</p>`:'<div class="empty">Chưa có PR — ticket chưa chạy xong lượt đầu.</div>'}</div>
       <div><div class="eyebrow" style="margin-bottom:8px">Review</div>
-        ${rv.length?rv.map(r=>`<div class="check"><span><span class="n">${esc(r.src)} · ${esc(r.v)} <span style="color:var(--ink-muted);font-weight:400">${esc(r.at||"")}</span></span><span class="d">${esc(r.f)}</span>${r.trim?`<span class="d" style="color:var(--warn-ink)">bằng chứng bị cắt: ${esc(r.trim)}</span>`:""}</span></div>`).join(""):'<div class="empty">Chưa có review.</div>'}</div>
+        ${rv.length?rv.map(r=>`<div class="check"><span><span class="n">${esc(r.src)} · ${esc(r.v)} <span style="color:var(--ink-muted);font-weight:400">${esc(r.at||"")}</span></span><span class="d">${esc(r.f)}</span>${(r.trim_src||[]).length?`<span class="d" style="color:var(--warn-ink)">bằng chứng bị cắt: ${(r.trim_src||[]).map(x=>esc(x.src)+" −"+num(x.chars)+" ký tự").join(", ")}</span>`:""}</span></div>`).join(""):'<div class="empty">Chưa có review.</div>'}</div>
     </div>`);
 }
 function openVideo(id){
@@ -1410,7 +1479,7 @@ function renderBoards(){
   chips("#f-tickets",TSTATE,"tickets",tickets);
   chips("#f-videos",VSTATE,"videos",videos);
   if(!srcOk(SC)) $("#board-tickets").innerHTML=emptyBox(SC,"Chưa có dữ liệu xưởng phần mềm");
-  else board("#board-tickets",cols(TSTATE,"tickets"),tickets.filter(seen),"st","t",t=>`<span>${esc(t.who)}</span><span title="token đầu ra / ngân sách · tổng token đã tiêu">${kb(t.out)}/${kb(t.bud)} · ${kb(t.used)} tổng</span>${t.retry?`<span>retry ${num(t.retry)}</span>`:""}${t.integrated?'<span class="tag ok">integration ✓</span>':""}${t.gate?`<span class="tag warn">gate ${esc(t.gate)}</span>`:""}${t.human_hint?'<span class="tag">hint người</span>':""}`);
+  else board("#board-tickets",cols(TSTATE,"tickets"),tickets.filter(seen),"st","t",t=>`<span>${esc(t.who)}</span><span title="token đầu ra / ngân sách · tổng token đã tiêu">${kb(t.out)}/${kb(t.bud)} · ${kb(t.used)} tổng</span>${t.retry?`<span>retry ${num(t.retry)}</span>`:""}${t.integrated?'<span class="tag ok">integration ✓</span>':""}${t.gate?`<span class="tag warn">gate ${esc(t.gate)}</span>`:""}${t.pending_decision?'<span class="tag warn">quyết định chưa áp</span>':""}${t.ahead?`<span class="tag warn">${num(t.ahead)} commit chưa gộp</span>`:""}${t.human_hint?'<span class="tag">hint người</span>':""}`);
   if(!srcOk(ST)) $("#board-videos").innerHTML=emptyBox(ST,"Chưa có dữ liệu xưởng video");
   else board("#board-videos",cols(VSTATE,"videos"),videos.filter(seen),"st","vid",v=>`<span>${esc(v.fmt)}</span><span>${kb(v.used)}/${kb(v.bud)}</span>`);
   $("#nav-tickets").textContent=srcOk(SC)?tickets.length:"—";
@@ -1424,17 +1493,23 @@ $("#board-tickets").addEventListener("click",e=>{const c=e.target.closest(".card
 $("#board-videos").addEventListener("click",e=>{const c=e.target.closest(".card");if(c)openVideo(c.dataset.vid);});
 $("#prs").addEventListener("click",e=>{const r=e.target.closest("tr");if(r&&r.dataset.t)openTicket(r.dataset.t);});
 
+/* C7: `blocked` mang hai nghĩa cho tới khi có con số này — "chưa viết xong" và "viết xong rồi, chưa gộp" cần hai
+   hành động ngược nhau. `null` (không đo được) KHÁC 0 (đã gộp hết) và phải hiện khác nhau. */
+function ahead(id){const t=(st().tickets||[]).find(x=>x.id===id); return t?t.ahead:null;}
+function aheadTxt(id){const n=ahead(id); return n==null?'<span class="note">—</span>':n?`<span class="tag warn">${num(n)} commit</span>`:'<span class="tag ok">0</span>';}
+
 function renderTables(){
   const prs=sortRows("prs",listOf(SC,st().prs).filter(p=>hay(p.id,p.br,p.s,p.v))),
         reviews=sortRows("reviews",listOf(SC,st().reviews).filter(r=>hay(r.id,r.src,r.v,r.f))),
         perf=sortRows("perf",listOf(ST,st().perf).filter(p=>hay(p.id)));
   const okPill=v=>`<span class="pill ${v==="pass"?"good":v==="fail"?"crit":"calm"}">${esc(v)}</span>`;
   $("#prs").innerHTML=prs.length?prs.map(p=>`<tr class="tr-click" data-t="${esc(p.id)}"><td class="mono">${hl(p.id)}</td><td class="mono">${hl(p.br)}</td>
-    <td>${hl(p.s)}</td><td>${okPill(p.lint)}</td><td>${okPill(p.tests)}</td><td class="mono">${esc(p.v)}</td></tr>`).join("")
-    :emptyRow(6,SC,!srcOk(SC)?"Chưa có dữ liệu xưởng phần mềm":Q?"Không có PR nào khớp ô tìm":"Không có PR nào chờ review");
+    <td>${hl(p.s)}</td><td>${okPill(p.lint)}</td><td>${okPill(p.tests)}</td><td class="mono">${esc(p.v)}</td>
+    <td class="mono r">${aheadTxt(p.id)}</td></tr>`).join("")
+    :emptyRow(7,SC,!srcOk(SC)?"Chưa có dữ liệu xưởng phần mềm":Q?"Không có PR nào khớp ô tìm":"Không có PR nào chờ review");
   $("#reviews").innerHTML=reviews.length?reviews.map(r=>`<tr><td class="mono">${hl(r.id)}</td><td class="mono">${esc(r.src)}</td>
     <td><span class="pill ${r.v==="pass"?"good":"crit"}">${esc(r.v)}</span></td><td>${hl(r.f)}</td>
-    <td>${r.trim?`<span class="tag warn">${esc(r.trim)}</span>`:'<span class="note">đủ ngữ cảnh</span>'}</td><td class="mono">${esc(r.at||"")}</td></tr>`).join("")
+    <td>${(r.trim_src||[]).length?(r.trim_src||[]).map(x=>`<span class="tag warn">${esc(x.src)} −${num(x.chars)} ký tự</span>`).join(" "):'<span class="note">đủ ngữ cảnh</span>'}</td><td class="mono">${esc(r.at||"")}</td></tr>`).join("")
     :emptyRow(6,SC,!srcOk(SC)?"Chưa có dữ liệu xưởng phần mềm":Q?"Không có review nào khớp ô tìm":"Chưa có kết quả review");
   renderReleases();
   $("#perf").innerHTML=perf.length?perf.map(p=>{const w=Math.round(Math.min(1,(p.ctr||0)/.25)*100);
@@ -1459,6 +1534,36 @@ function renderTables(){
 /* ---------- sự thật giao hàng ---------- */
 const TONE={void:"void",rc:"wait",staging_failed:"bad",staging_pending_human:"bad",staging_deployed:"wait",qa_failed:"bad",gate3_missing:"bad",
   gate3:"wait",gate3_approved:"wait",production_failed:"bad",production_pending_human:"bad",production:"done",delivered:"done"};
+/* C1 — phễu SẢN PHẨM. Quy tắc duy nhất đáng nhớ: n===0 thì ô XÁM. Cả trang đêm 05/09 xanh trong khi
+   0 release ra production, vì "không có gì" và "không có vấn đề" được vẽ giống hệt nhau. */
+const PF_SMOKE={ok:"smoke ✓ máy chạy thật",fail:"smoke THẤT BẠI",unverified:"smoke KHÔNG kiểm được"};
+function renderProductFunnel(){
+  const host=$("#product-funnel"); if(!host) return;
+  const list=srcOk(SC)?(st().product_funnel||[]):null;
+  $("#nav-phieu").textContent=list?list.length:"—";
+  if(!list){host.innerHTML=emptyBox(SC,"Chưa đọc được xưởng phần mềm");return;}
+  if(!list.length){host.innerHTML='<div class="empty"><b>Chưa có sản phẩm nào</b>Bus chưa có yêu cầu, spec hay ticket nào — không có phễu để vẽ.</div>';return;}
+  host.innerHTML=list.filter(p=>hay(p.project_id)).map(p=>`<div class="prod">
+    <h3>${hl(p.project_id)} ${p.delivered?'<span class="tag ok">đã giao và đã nghiệm thu</span>':'<span class="tag warn">chưa nghiệm thu xong</span>'}</h3>
+    <div class="steps">${p.stages.map(x=>{
+      const cls=x.empty?"zero":"has"+(x.smoke==="fail"?" smoke-fail":x.smoke==="unverified"?" smoke-unverified":"");
+      return `<div class="step ${cls}"><span class="lbl">${esc(x.label)}</span><span class="n">${num(x.n)}</span>
+        <span class="sm">${x.empty?"chưa có gì":x.smoke?esc(PF_SMOKE[x.smoke]||x.smoke):"&nbsp;"}</span></div>`;}).join("")}</div>
+  </div>`).join("")||'<div class="empty"><b>Không sản phẩm nào khớp ô tìm</b>Xoá ô tìm để xem hết.</div>';
+}
+
+/* C4 — bế tắc IM LẶNG của ticket: kẹt mà KHÔNG gate nào chờ, tức là không ai được hỏi. Tách khỏi bảng bế tắc
+   chung và đặt ở đầu trang, vì đây là loại duy nhất sẽ không bao giờ tự kêu. */
+function renderSilent(){
+  const list=listOf(SC,st().silent_deadlocks), host=$("#silent");
+  $("#s-silent").hidden=!list.length;
+  if(!list.length){host.innerHTML="";return;}
+  host.innerHTML=`<h2>⛔ ${num(list.length)} ticket kẹt mà KHÔNG gate nào chờ — không ai được hỏi</h2>`
+    +list.map(d=>`<div class="row"><code>${esc(d.id)} · ${esc(d.state)}</code>
+      <span>${esc(d.why)} Việc của bạn: mở gate escalation cho ticket này, hoặc gỡ nguyên nhân rồi giao lại.
+      ${d.integrated?'<span class="tag ok">code đã ở integration</span>':""}</span></div>`).join("");
+}
+
 function renderDeadlocks(){
   const dl=listOf(SC,st().deadlocks), host=$("#deadlocks");
   $("#s-dead").hidden=!dl.length;
@@ -1494,9 +1599,11 @@ function renderDelivery(){
 function renderRunning(){
   const r=srcOk(SC)?st().running:null, pend=listOf(SC,st().pending_decisions), host=$("#running");
   if(!r){host.innerHTML=emptyBox(SC,"Chưa đọc được xưởng phần mềm");return;}
-  const head=r.head?`<code>${esc(r.head.topic)}</code> ${esc(r.head.key)} · chờ ${num(r.head.minutes)} phút`:"không có gì trong hàng đợi";
+  // C3: "việc đang chạy" là đầu hàng đợi — orchestrator xử lý tuần tự, nên đầu hàng đợi CHÍNH LÀ việc đang chạy,
+  // và tuổi của nó là thời gian lượt hiện tại đã chạy. Nói thẳng ra thay vì để người suy từ chữ "hàng đợi".
+  const head=r.head?`<code>${esc(r.head.topic)}</code> ${esc(r.head.key)} · đang chạy ${num(r.head.minutes)} phút`:"không có gì trong hàng đợi";
   const stale=r.last_event_minutes!=null&&r.last_event_minutes>15&&r.queue>0;
-  host.innerHTML=`<div><span class="k">Hàng đợi orchestrator</span><span class="v">${num(r.queue)} event</span>
+  host.innerHTML=`<div><span class="k">Việc đang chạy · hàng đợi orchestrator</span><span class="v">${num(r.queue)} event</span>
       <span>${head}</span>${r.topics.length?`<span class="note">${r.topics.map(esc).join(", ")}</span>`:""}</div>
     <div><span class="k">Bản ghi audit cuối</span><span class="v">${r.last_event_minutes==null?"—":num(r.last_event_minutes)+" phút trước"}</span>
       <span class="note">${stale?'<span class="tag bad">hàng đợi có việc mà '+num(r.last_event_minutes)+' phút không có bản ghi — orchestrator có đang chạy không?</span>':r.queue?"đang có lượt model chạy":"rảnh"}</span></div>
@@ -1672,7 +1779,7 @@ function render(){
   $("#brand-sub").textContent=`${okCount}/2 xưởng đọc được · ${st().backends.length} gói tài khoản`
     +(READONLY?" · chỉ đọc":" · duyệt được");
   $("#mode-pill").innerHTML=READONLY?'<span class="pill calm">chỉ đọc</span>':'<span class="pill accent">duyệt được</span>';
-  renderDeadlocks(); renderDelivery(); renderRunning(); renderQueue(); renderTiles(); renderBackends(); renderBoards(); renderTables(); renderStreams();
+  renderSilent(); renderDeadlocks(); renderDelivery(); renderRunning(); renderQueue(); renderTiles(); renderBackends(); renderBoards(); renderTables(); renderProductFunnel(); renderStreams();
   costChart(); retChart(); agentChart();
   titles(); freshLabel();
 }

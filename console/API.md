@@ -49,14 +49,21 @@ công ty đó bao giờ).
     "id": "PUB-vid-042", "xuong": "Studio-creators", "kind": "publish",
     "by": "desk", "trigger": "human:owner", "hours": 26, "sev": "over",   // over|warn|calm
     "effect": "Duyệt = … (hậu quả của việc duyệt, theo kind; rỗng khi xưởng không nói)",
+    "reject": "Từ chối = … (ticket/RC về đâu; rỗng khi xưởng không nói)",   // C2
+    "agent":  "release-engineer",                                          // agent chạy lại sau khi duyệt; "" khi không biết
     "title": "…", "facts": [["video_id","vid-042"], …],
     "cl": [["review:fact:pass","mô tả ngắn lấy từ checklist/evidence"], …]
   }],
   "tickets": [{"id":"TCK-112","st":"in_review","who":"backend","t":"…",
                "used":82400,"out":9800,"bud":120000,"est":78000,"retry":0,   // used = tổng token; out = đầu ra (ngân sách so với out)
-               "integrated":true,"sha":"b1b3e4b","human_hint":"","hint":"","gate":null}],
+               "integrated":true,"sha":"b1b3e4b","human_hint":"","hint":"","gate":null,
+               "ahead": 3,            // C7: commit của ticket/<id> CHƯA có trên nhánh tích hợp; null = không đo được ≠ 0 = đã gộp hết
+               "pending_decision": {"id":"TCK-112","decision":"approve","by":"human:owner","kind":"escalation","minutes":14,"reason":"…"}
+               }],                    // C3: chữ ký người đã ghi mà orchestrator chưa áp; null khi đã áp
   "prs":     [{"id":"TCK-112","br":"…","s":"…","lint":"pass","tests":"pass","v":"workspace"}],
-  "reviews": [{"id":"TCK-112","src":"security","v":"block","f":"block · …","trim":"cắt api-contract 13.170 ký tự","at":"04:07"}],
+  "reviews": [{"id":"TCK-112","src":"security","v":"block","f":"block · …","trim":"cắt api-contract 13.170 ký tự",
+               "trim_src":[{"src":"api-contract","chars":13170},{"src":"payload","chars":804}],   // C5: từng nguồn bị cắt, hiện cạnh verdict
+               "at":"04:07"}],
   "videos":  [{"id":"vid-039","st":"published","t":"…","fmt":"long","used":132000,"bud":150000}],
   "perf":    [{"id":"vid-039","imp":41200,"views":7840,"ctr":0.19,"avd":284}],
   "retention": {"video_id": "vid-039", "points": [[0,100],[15,88], …]},
@@ -64,6 +71,12 @@ công ty đó bao giờ).
   "agents":  [["backend", 4.82], …],                                   // giảm dần, tối đa 10
   "backends":[{"n":"claude-code","tiers":"strong · standard","tools":"có",
                "ok":true,"st":"Sẵn sàng","calls":128,"fail":2,"note":"…"}],
+  "product_funnel": [{"project_id":"QLKH",           // C1: một phễu cho MỖI sản phẩm; [] khi không đọc được xưởng
+    "delivered": false,                                // lên production VÀ đã nghiệm thu
+    "stages": [{"stage":"request","label":"Yêu cầu khách","n":1,"empty":false,"smoke":""},
+               {"stage":"staging","label":"Staging (smoke)","n":1,"empty":false,"smoke":"ok"},   // ok|fail|unverified|""
+               …]}],                                   // `empty` (n===0) → trang tô XÁM, không bao giờ xanh
+  "silent_deadlocks": [{"kind":"ticket","id":"QLKH-010","state":"blocked","why":"…","integrated":true}],  // C4
   "supervisor":[{"t":"TCK-118","a":"budget_cut","r":"…","w":"08:12"}],
   "log":     [{"t":"08:41","a":"backend","ac":"produced:pull-requests","k":"TCK-112","tok":8420,"c":0.21}],
   // ---- sự thật giao hàng của software-company (console/truth.py) — null/[] khi xưởng không đọc được ----
@@ -138,6 +151,10 @@ GET  /manifest.webmanifest → static/manifest.webmanifest (application/manifest
 GET  /api/state         → collect(...)
 GET  /api/stream        → SSE: `event: state` mỗi khi bus đổi, `event: error` khi collect() ném,
                           `: ping` giữ nhịp 15 giây. Không có Content-Length; đóng kết nối là hết thân bài.
+GET  /api/gate/brief    → ?id=<subject>[&xuong=software-company][&closed=1]
+                          {"ok":true,"subject_id","kind","md"} — Markdown y hệt `python -m company.gate_brief <subject>`;
+                          {"ok":false,"subject_id","error"} khi không dựng được (200, không phải 5xx).
+                          CHỈ ĐỌC: không cần --allow-decide — đọc bằng chứng phải rẻ hơn ký (ADR-0003 §7)
 GET  /api/settings      → settings.read_settings(...) + {"can_edit": bool}
 POST /api/settings      → body {company, models?, prefer?, enable?, disable?}  (cần --allow-config)
 POST /api/gate/decide   → body {subject_id, xuong, decision, by, reason}      (cần --allow-decide)
