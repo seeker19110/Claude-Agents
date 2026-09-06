@@ -753,6 +753,8 @@ class Orchestrator:
                 self._open_acceptance_gate(env.key, res)
             elif env.payload.get("status") in {"rolled_back", "failed"}:
                 self._rollback_delivery(env, res)
+        if env.topic == "release-events" and env.payload.get("status") == "pending_human":
+            self._release_paused(env, res)
         if env.topic == "acceptance-results":
             self._close_acceptance_gate(env, res)
             self._record_lessons(env.payload["release_id"])
@@ -1279,7 +1281,9 @@ class Orchestrator:
                     self._audit("plan_dispatch_error", {"plan_id": sid, "error": str(e)[:300]}); res.actions.append(f"error:{e}")
             elif sid in self.lead.release_tickets:
                 rc = self.latest("release-candidates", sid)
-                if rc is not None: self._call("release-engineer", rc, PROD_ROUTE, res)
+                if rc is not None:
+                    self._recall("release-engineer", rc)  # ký lại Gate 3 phải chạy lại được lượt production
+                    self._call("release-engineer", rc, PROD_ROUTE, res)
         self._note_closed()
         self._mark(env, res)
         self._retry_deferred()
@@ -1327,6 +1331,7 @@ class Orchestrator:
                 self.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
                                           payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
                 res.actions.append(f"release_waived:{tid}:{','.join(sources)}")
+                if self._rerun_release(tid, by, reason, res): res.actions.append(f"release_rerun:{tid}")
             else:
                 self.lead.rework_release_tickets(tid, reason or "người từ chối escalation release: cần sửa nội dung thật")
                 res.actions.append(f"release_reworked:{tid}")
@@ -1529,8 +1534,50 @@ class Orchestrator:
         self._audit("release.redeploy", {"release_id": release_id, "by": by}, actor=by,
                     project_id=self.project_for(rc))
         res = StepResult(rc.event_id, rc.topic, rc.key)
+        self._recall("release-engineer", rc)
         self._call("release-engineer", rc, STAGING_ROUTE, res)  # cùng route như lượt đầu, chỉ khác là do người gọi
         return rc
+
+    def _release_paused(self, env: Envelope, res: StepResult) -> None:
+        """release-engineer TỰ DỪNG (`status=pending_human`) ở staging hay production: trước đây không có gì xử lý
+        trạng thái này — không gate nào mở, `status` xanh, RC nằm im vô hạn; muốn chạy lại phải dừng orchestrator để
+        gọi `redeploy` (lease). Đo được 2026-09-06 (QLKH): 10 RC (REL-004/005/007/008/012/018/021 staging,
+        REL-019/020/023 production) kẹt đúng kiểu này, `gates_pending={}`. Chế độ hỏng phải khai báo: mở gate
+        `escalation` cho chính release — duyệt = chạy lại lượt đó (lý do người ghi thành hint cho agent), từ chối =
+        trả ticket của RC về làm lại."""
+        rid = str(env.payload.get("release_id") or env.key)
+        if rid in self.void_releases or rid in self.gate.pending: return
+        key = f"release.pending_human:{rid}:{env.event_id}"
+        if key in self.once: return
+        self._remember(key)
+        self._audit("release.pending_human", {"release_id": rid, "env": env.payload.get("env"),
+                                              "summary": str(env.payload.get("summary") or "")[:300]},
+                    actor="release-engineer", project_id=self.project_for(env))
+        self.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="release-engineer",
+                                      checklist=["root_cause", "decision:redeploy|close", "hint"]))
+        res.actions.append(f"gate:escalation:{rid}")
+
+    def _recall(self, agent: str, env: Envelope) -> None:
+        """Cho phép gọi LẠI một agent trên cùng event một cách chủ ý. `partial[event_id]` ghi agent đã chạy để event
+        bị hoãn transient không chạy lại — nhưng nó cũng nuốt mọi lần gọi lại có chủ đích trên cùng envelope (RC):
+        Gate 3 ký lần hai, chạy lại lượt release-engineer vừa tự dừng. Đo được 2026-09-06: lead ký lại Gate 3
+        REL-019 lúc 03:06 chỉ chạy được vì orchestrator vừa restart (partial trong RAM trống)."""
+        with self._lock:
+            if env.event_id in self.partial: self.partial[env.event_id].discard(agent)
+
+    def _rerun_release(self, rid: str, by: str, reason: str, res: StepResult) -> bool:
+        """Chạy lại lượt release-engineer mà nó vừa tự dừng: env lấy từ release-event cuối; production chỉ khi Gate 3
+        đã ký. Lý do người duyệt đi vào payload làm `human_hint`. Trả False nếu không có gì để chạy lại."""
+        last = self.latest("release-events", rid); rc = self.latest("release-candidates", rid)
+        if last is None or rc is None or last.payload.get("status") != "pending_human": return False
+        env_ = last.payload.get("env")
+        route = STAGING_ROUTE if env_ == "staging" else PROD_ROUTE
+        if route is PROD_ROUTE and not self.lead._gate_kind_approved(rid, "release"): return False
+        self._audit("release.rerun", {"release_id": rid, "env": env_, "by": by}, actor=by, project_id=self.project_for(rc))
+        inp = rc.model_copy(update={"payload": {**rc.payload, "human_hint": reason}}) if reason else rc
+        self._recall("release-engineer", rc)
+        self._call("release-engineer", inp, route, res)
+        return True
 
     # ---------- hoãn / đánh dấu / audit ----------
 
