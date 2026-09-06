@@ -43,7 +43,7 @@ SCHEMA_VERSION = 1
 EXCERPT = 200          # §7: trích tối đa 200 ký tự mỗi nguồn
 ERROR_WINDOW = timedelta(days=30)
 ERROR_ACTIONS = frozenset({"llm_error", "invalid_output", "handler_error", "pr.rejected_local_checks", "budget_exhausted",
-                           "agent_error_unhandled", "ticket.blocked", "integration.conflict", "workspace_reset",
+                           "agent_error_unhandled", "ticket.blocked", "integration.conflict", "workspace_reset", "workspace_kept",
                            "budget.extended", "project.stalled", "project.retried"})
 LOCKFILES = re.compile(r"(^|/)(uv\.lock|poetry\.lock|Pipfile\.lock|requirements[^/]*\.txt|package-lock\.json|yarn\.lock|"
                        r"pnpm-lock\.yaml|go\.sum|Cargo\.lock|Gemfile\.lock|composer\.lock)$")

@@ -88,21 +88,36 @@ def test_generic_error_in_engineering_triggers_rework(tmp_path, monkeypatch):
     assert _audits(bus, "handler_error") and orch.gate.pending["T1"].kind == "escalation"
 
 
-# ---------- 4. worktree bẩn từ lần chạy trước được dọn ----------
+# ---------- 4. worktree bẩn từ lần chạy trước được GIỮ (WIP), không vứt ----------
 
-def test_generate_in_workspace_resets_dirty_worktree(tmp_path):
+def test_generate_in_workspace_keeps_wip_from_previous_run(tmp_path):
+    """Lần trước bị giết giữa chừng (hết lượt tool / ngân sách) để lại `do_dang.py`: lần này commit nó thành WIP rồi
+    làm tiếp; PR mang cả hai. Trước đây `reset()` vứt hết → 40 lượt công sức mất, lần sau lại bị giết y như thế."""
     ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1"); ws.create()
-    (ws.path / "rac.py").write_text("x = 1\n", encoding="utf-8")           # lần trước lỗi giữa chừng để lại
-    (ws.path / "mod.py").write_text("def add(a, b):\n    return 0\n", encoding="utf-8")  # sửa dở file tracked
+    (ws.path / "do_dang.py").write_text("def half():\n    return 1\n", encoding="utf-8")  # lần trước để lại
     assert ws.dirty()
     client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "branch": "x", "pr_ref": "x", "summary": "ok", "local_checks": {}},
                         tool_handler=lambda m, t: [_tc("write_file", path="f.py", content="def f():\n    return 1\n")]
                         if not any(x["role"] == "assistant" for x in m) else [])
     bus = InMemoryBus(); g = AgentRunner(bus, client).generate_in_workspace("backend", _task_env(), ws)
-    assert g.payloads[0]["impact"]["files"] == ["f.py"], "rác của lần trước không vào PR"
-    assert not (ws.path / "rac.py").exists() and g.payloads[0]["local_checks"]["tests"] is True
-    assert _audits(bus, "workspace_reset")
-    assert ws.reset() is False, "worktree sạch thì không có gì để dọn"
+    assert g.payloads[0]["impact"]["files"] == ["do_dang.py", "f.py"], "việc dở của lần trước đi cùng PR"
+    assert (ws.path / "do_dang.py").exists() and g.payloads[0]["local_checks"]["tests"] is True
+    kept = _audits(bus, "workspace_kept"); assert kept and "WIP" in kept[0]["evidence"]
+    assert not _audits(bus, "workspace_reset")
+    assert ws.reset() is False and ws.keep_wip("x") is None, "worktree sạch thì không có gì để giữ"
+    (ws.path / "rac.py").write_text("x = 1\n", encoding="utf-8")
+    assert ws.reset() is True and not (ws.path / "rac.py").exists(), "reset vẫn dùng được khi CỐ Ý vứt (không còn là mặc định)"
+
+
+def test_wip_da_du_va_luot_nay_khong_them_gi_van_ra_pr(tmp_path):
+    """Agent lần 2 thấy WIP đã đủ, không sửa gì thêm: PR là HEAD (WIP), không phải invalid_output."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1"); ws.create()
+    (ws.path / "xong.py").write_text("def done():\n    return 1\n", encoding="utf-8")
+    client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "branch": "x", "pr_ref": "x", "summary": "đã đủ", "local_checks": {}},
+                        tool_handler=lambda m, t: [])
+    bus = InMemoryBus(); g = AgentRunner(bus, client).generate_in_workspace("backend", _task_env(), ws)
+    assert g.payloads[0]["impact"]["files"] == ["xong.py"] and g.payloads[0]["pr_ref"] == ws.head_sha()
+    assert not _audits(bus, "invalid_output")
 
 
 # ---------- 5. token đốt trước TransientError không mất ----------
