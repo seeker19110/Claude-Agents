@@ -512,6 +512,8 @@ def build(orch: Orchestrator, subject: str, *, closed: bool = False, now: dateti
     elif req.kind == "release": checks, unavailable, extra = _brief_release(orch, g, subject, pid, req)
     elif req.kind == "acceptance": checks, unavailable, extra = _brief_acceptance(orch, g, subject, pid)
     else: checks, unavailable, extra = _brief_escalation(orch, g, subject, pid, repo)
+    # ADR-0030: quyết định agent tự đưa ra trong dự án — người ký gate phải thấy, vì đó là những chỗ KHÔNG ai hỏi họ.
+    extra = {**extra, "rulings": (orch.rulings(project_id=pid) if pid else orch.rulings())[-30:]}
     remind, overdue = orch.gate.due(now)
     age = (now - req.created_at).total_seconds() / 3600
     return {"schema_version": SCHEMA_VERSION, "subject_id": subject, "kind": req.kind, "project_id": pid,
@@ -557,6 +559,10 @@ def render_md(b: dict[str, Any]) -> str:
         lines += [f"- {json.dumps(t, ensure_ascii=False)}" if isinstance(t, dict) else f"- {t}" for t in ex["tickets"]]
         if ex.get("version"): lines.append(f"- phiên bản: {ex['version']}")
         for r in ex.get("staging_reviews", []): lines.append(f"- review staging {r['source']}: {r['verdict']} — {r['metrics']}")
+    rul = ex.get("rulings") or []
+    lines += ["", f"## Sổ Ruling — agent đã tự quyết {len(rul)} việc thay vì hỏi người (ADR-0030)", ""]
+    lines += [f"- {r['at']} `{r['by']}` [{r.get('ticket_id') or r.get('project_id') or '-'}] **{r['decision']}** — vì: {r['why']} — sai thì: {r['cost_if_wrong']}"
+              for r in rul] or ["- (chưa có ruling nào — hoặc agent vẫn dừng chờ người ở chỗ đáng lẽ phải tự quyết)"]
     lines += ["", "---", "Hồ sơ này chỉ nêu bằng chứng và chỗ thiếu bằng chứng. Quyết định là của người ký gate.", ""]
     return "\n".join(lines)
 

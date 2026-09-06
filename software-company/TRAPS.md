@@ -51,3 +51,9 @@ Bốn khuôn lỗi chung và bẫy thao tác ở `../TRAPS.md`. Ở đây là ch
 | `--db` sau `publish`; thiếu `--key` | Lỗi lúc diễn tập dừng khẩn | `--db` trước subcommand; `supervisor-actions` cần `--key` |
 | Agent không có tool xoá file | 4 vòng rework vô ích | Đọc `tools.py` trước khi ép |
 | Quyết định kiến trúc bị né qua từng ticket | Framework/DB thật không ai chọn, 25 release không có server | Chưa có chốt chặn — đề xuất 2 báo cáo 2026-09-06 (`open_decisions` trong plan) |
+
+## Bổ sung 2026-09-06 (ADR-0030)
+
+| Bẫy | Đã xảy ra | Lần sau |
+|---|---|---|
+| Tưởng "đổi schema thì không phải eval lại" | Thêm `rulings` vào 19 schema → `test_committed_recordings_match_current_prompts` đỏ cho cả 21 agent: schema nằm trong prompt gửi model | Đổi bất cứ thứ gì model nhìn thấy (prompt, skill, schema, template nhúng) = `make eval-record` cho mọi agent bị chạm; ~2,5 phút/agent, chạy song song 3 luồng |

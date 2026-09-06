@@ -1842,8 +1842,22 @@ class Orchestrator:
                 f"({', '.join(f'{t}={st}' for t, st in sorted(live.items())[:5])}"
                 f"{', ...' if len(live) > 5 else ''}) ma queue/gate/deferred/stalled deu rong"]
 
+    def rulings(self, project_id: str | None = None, ticket_id: str | None = None) -> list[dict[str, Any]]:
+        """Sổ Ruling (ADR-0030): mọi quyết định agent tự đưa ra, đọc từ audit `ruling` — không giữ trong RAM nên không
+        có gì để mất khi mở lại bus. Lọc theo dự án hoặc ticket; mỗi mục mang actor, thời điểm, decision/why/cost."""
+        out: list[dict[str, Any]] = []
+        for e in self.bus.replay(topic="audit-log"):
+            a = e.payload
+            if a.get("action") != "ruling": continue
+            if project_id and a.get("project_id") != project_id: continue
+            if ticket_id and a.get("ticket_id") != ticket_id: continue
+            d = _evidence(a)
+            out.append({"at": e.ts.isoformat(timespec="seconds"), "by": a.get("actor"), "ticket_id": a.get("ticket_id"),
+                        "project_id": a.get("project_id"), **d})
+        return out
+
     def status(self) -> dict[str, Any]:
-        return {"warnings": self._deadlock_warnings(),
+        return {"warnings": self._deadlock_warnings(), "rulings": len(self.rulings()),
                 "queue": len(self.queue), "deferred": {k: v[1] for k, v in self.deferred.items()},
                 "paused": sorted(self.paused), "tickets": dict(self.lead.state), "waiting": self.lead.waiting(),
                 "blocked": self.lead.blocked(), "releases": self.lead.releases,
@@ -1930,6 +1944,8 @@ def main(argv: list[str] | None = None) -> int:
     rd = sub.add_parser("redeploy", help="chạy lại lượt staging cho một release-candidate đang kẹt (sau khi sửa lỗi hạ tầng)")
     rd.add_argument("release_id"); rd.add_argument("--by", required=True)
     sub.add_parser("status"); sub.add_parser("report", help="sprint report: estimate vs actual, chi phí, hành động supervisor")
+    ru = sub.add_parser("rulings", help="sổ Ruling (ADR-0030): quyết định agent tự đưa ra thay vì chờ người, kèm 'sai thì mất gì'")
+    ru.add_argument("--project"); ru.add_argument("--ticket")
     dg = sub.add_parser("diagnose", help="chẩn đoán: gom lỗi thô thành khuôn lặp lại, ticket quay vòng, gate chờ quyết")
     dg.add_argument("--top", type=int, default=10, help="số khuôn lỗi in ra (mặc định 10)")
     mt = sub.add_parser("metrics", help="metrics từ audit-log: gọi/token/USD/thời gian theo agent, model, ticket; gate chờ")
@@ -1975,6 +1991,14 @@ def main(argv: list[str] | None = None) -> int:
                         test_author=ns.test_author)
     if ns.cmd == "status":
         print(json.dumps(orch.status(), ensure_ascii=False, indent=2)); return 0
+    if ns.cmd == "rulings":
+        rows = orch.rulings(project_id=ns.project, ticket_id=ns.ticket)
+        for ru_ in rows:
+            who = ru_.get("ticket_id") or ru_.get("project_id") or "-"
+            print(f"{ru_['at']}  {ru_['by']:<18} {who:<14} {ru_['decision']}")
+            print(f"{'':40} vì: {ru_['why']}")
+            print(f"{'':40} sai thì: {ru_['cost_if_wrong']}")
+        print(f"({len(rows)} ruling)"); return 0
     if ns.cmd == "report":
         print(json.dumps(orch.supervisor.sprint_report(), ensure_ascii=False, indent=2)); return 0
     if ns.cmd == "show":

@@ -37,6 +37,16 @@ BUDGET_FACTOR = 1.5  # budget_tokens ≥ estimate_tokens × BUDGET_FACTOR (skill
 SCHEMA_VERSION = 1  # tăng khi envelope hoặc payload của topic đổi không tương thích ngược
 
 
+class Ruling(BaseModel):
+    """ADR-0030 — sổ Ruling: quyết định agent TỰ đưa ra thay vì dừng chờ người. Ba phần bắt buộc, không phần nào
+    được bỏ: `decision` (quyết gì), `why` (căn cứ: spec, shared-context, quy ước), `cost_if_wrong` (sai thì mất gì —
+    để người soát biết có đáng lật lại không). Chỉ bốn việc được phép dừng chờ người: không đảo ngược được; nhạy cảm
+    bảo mật; tác động ra ngoài worktree (merge/push/publish); kế hoạch hỏng tới mức mọi hướng đều là đoán."""
+    decision: str
+    why: str
+    cost_if_wrong: str
+
+
 class Envelope(BaseModel):
     event_id: str = Field(default_factory=lambda: uuid4().hex)
     topic: Topic
@@ -77,6 +87,7 @@ class Task(BaseModel):
     risk_tags: list[str] = []
     budget_usd: float | None = None  # trần chi phí tiền của ticket (tuỳ chọn); supervisor cắt khi chạm, ngoài budget_tokens
     priority: int = 3  # 1 = cao nhất (WSJF/MoSCoW quy về 1..5); delivery-lead dispatch theo priority rồi thứ tự tạo
+    rulings: list[Ruling] = []  # ADR-0030
 
 class PullRequest(BaseModel):
     ticket_id: str
@@ -86,6 +97,7 @@ class PullRequest(BaseModel):
     impact: dict[str, Any] = {}
     local_checks: dict[str, Any]
     project_id: str | None = None  # orchestrator điền từ ticket: blackboard và chi phí phân vùng theo dự án (ADR-0018)
+    rulings: list[Ruling] = []  # ADR-0030
 
 class Finding(BaseModel):
     level: Literal["block", "warn", "nit"]
@@ -109,6 +121,7 @@ class ReviewResult(BaseModel):
     mutation_score: float | None = None
     perf: dict[str, Any] | None = None
     a11y: dict[str, Any] | None = None
+    rulings: list[Ruling] = []  # ADR-0030
 
 class SharedContext(BaseModel):
     namespace: Namespace
@@ -117,6 +130,7 @@ class SharedContext(BaseModel):
     summary: str = ""
     project_id: str | None = None  # None = phạm vi toàn công ty (vd. knowledge); dự án khác nhau không ghi đè nhau
     content: str | None = None  # toàn văn artifact; bus là nguồn sự thật, artifact store chỉ mirror ra file cho người đọc
+    rulings: list[Ruling] = []  # ADR-0030
 
 class AuditLog(BaseModel):
     actor: str
@@ -129,6 +143,7 @@ class AuditLog(BaseModel):
     # hội thoại, nên nó không đo được "agent đã làm bao nhiêu việc". Ngân sách ticket dùng trường này.
     output_tokens: int = 0
     cost_usd: float = 0.0  # từ bảng giá `prices` trong llm.yaml; 0 khi model không có giá (supervisor đếm `unpriced`)
+    rulings: list[Ruling] = []  # ADR-0030
 
 class ChangeRequest(BaseModel):
     """Khách yêu cầu đổi phạm vi sau khi spec đã duyệt (account-manager tạo). Không sửa spec trực tiếp."""
@@ -139,6 +154,7 @@ class ChangeRequest(BaseModel):
     affects_requirements: list[str] = []
     impact: dict[str, Any] = {}
     decision: Literal["pending", "accepted", "rejected", "deferred"] = "pending"
+    rulings: list[Ruling] = []  # ADR-0030
 
 class AcceptanceResult(BaseModel):
     """Kết quả nghiệm thu (UAT) của khách trên một release (account-manager ghi nhận)."""
@@ -148,6 +164,7 @@ class AcceptanceResult(BaseModel):
     signed_by: str
     findings: list[Finding] = []
     evidence_ref: str | None = None
+    rulings: list[Ruling] = []  # ADR-0030
 
 class SupervisorAction(BaseModel):
     target: str
@@ -155,6 +172,7 @@ class SupervisorAction(BaseModel):
     reason: str
     evidence: str | None = None
     project_id: str | None = None
+    rulings: list[Ruling] = []  # ADR-0030
 
 PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
     "tasks": Task, "pull-requests": PullRequest, "review-results": ReviewResult,
