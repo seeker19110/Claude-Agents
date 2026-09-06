@@ -358,7 +358,8 @@ def _brief_release(orch: Orchestrator, g: GateSection, subject: str, pid: str | 
     reviews = [e for e in orch.bus.replay(topic="review-results") if e.payload.get("ticket_id") == subject]
     extra = {"tickets": tids, "version": next((e.payload.get("version") for e in orch.bus.replay(topic="release-candidates", key=subject)), None),
              "staging_reviews": [{"source": e.payload.get("source"), "verdict": e.payload.get("verdict"),
-                                  "metrics": excerpt(json.dumps(e.payload.get("metrics") or {}, ensure_ascii=False))} for e in reviews]}
+                                  "metrics": excerpt(json.dumps(e.payload.get("metrics") or {}, ensure_ascii=False)),
+                                  "run": _run_summary(e.payload)} for e in reviews]}
     return out, unavailable, extra
 
 
@@ -392,6 +393,15 @@ def _smoke_facts(sm: dict[str, Any]) -> list[str]:
     if sm.get("error"): facts.append(f"lỗi: {excerpt(sm['error'], 160)}")
     if sm.get("stderr_tail"): facts.append(f"stderr: {excerpt(sm['stderr_tail'], 160)}")
     return facts
+
+
+def _run_summary(payload: dict[str, Any]) -> str | None:
+    """`evidence.run` của review hồi quy (ADR-0029 mục regression-staging): một dòng người đọc được, hoặc None."""
+    ev = payload.get("evidence")
+    run = ev.get("run") if isinstance(ev, dict) else None
+    if not isinstance(run, dict): return None
+    if run.get("unverified"): return f"unverified — {run.get('reason')}"
+    return f"ok={run.get('ok')} http={run.get('http_status')} exit={run.get('exit_code')} ({run.get('verified_by')})"
 
 
 def _brief_acceptance(orch: Orchestrator, g: GateSection, subject: str, pid: str | None) -> tuple[list[dict], list[dict], dict]:
@@ -604,7 +614,7 @@ def render_md(b: dict[str, Any]) -> str:
         lines += ["", "## Ticket trong phạm vi", ""]
         lines += [f"- {json.dumps(t, ensure_ascii=False)}" if isinstance(t, dict) else f"- {t}" for t in ex["tickets"]]
         if ex.get("version"): lines.append(f"- phiên bản: {ex['version']}")
-        for r in ex.get("staging_reviews", []): lines.append(f"- review staging {r['source']}: {r['verdict']} — {r['metrics']}")
+        for r in ex.get("staging_reviews", []): lines.append(f"- review staging {r['source']}: {r['verdict']} — {r['metrics']} — chạy: {r.get('run') or 'không có evidence.run'}")
     if b["kind"] == "acceptance":
         sm = ex.get("smoke") or {}
         lines += ["", "## Đã chạy — hồ sơ tự khởi động sản phẩm theo `runtime` của spec (ADR-0029, B4)", ""]

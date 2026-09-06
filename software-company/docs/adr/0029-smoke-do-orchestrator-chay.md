@@ -49,6 +49,39 @@ code chạy lint/test thật), nhưng dừng ở PR. Từ RC trở đi mọi tr�
 - Chưa làm: ảnh chụp giao diện cho ticket frontend (cùng hình dạng, khác kênh bằng chứng); sổ `Ruling:` cho quyết
   định agent tự đưa ra ngoài bốn gate. Mỗi cái một ADR riêng.
 
+## Mở rộng 2026-09-06 — `regression-staging` cũng phải có bằng chứng chạy (B3 của `docs/DAC-TA-NANG-CAP-2026-09.md`)
+
+Mục 3 ở trên chặn `deployed` giả; nhưng verdict `regression-staging` của qa-debugger vẫn là **lời khai đọc diff**:
+QA có tool `run` chỉ đọc trên worktree tích hợp, nhưng không gì bắt nó khởi động sản phẩm, và Gate 3 ký trên
+verdict ấy. Cùng bệnh, cùng thuốc:
+
+1. **Orchestrator tự chạy smoke TRƯỚC lượt QA** (`Orchestrator._regression_run`): cùng `runtime` của spec, cùng
+   worktree tích hợp (đúng sha đã `release.staged`), cùng `run_smoke`. Kết quả (lệnh, `exit_code`, `http_status`,
+   `ok`, `sha`, `verified_by=orchestrator`) được đưa vào **input** của qa-debugger ở `payload.evidence.run` để QA
+   dẫn nó, và được **gắn vào verdict** ở `review-results.payload.evidence.run` (`_verdict_with_run`) — ghi đè mọi
+   `evidence.run` model tự khai (audit `regression.run_claimed_ignored`). Bằng chứng là của máy, không phải của model.
+2. **Ba kết cục, không có kết cục thứ tư** (đối xứng với mục 3):
+   - `run.ok=true` → verdict giữ nguyên; audit `regression.run`.
+   - có `runtime` mà smoke không đạt → verdict **pass bị hạ thành `fail`** (audit `regression.run_failed`,
+     `regression.verdict_overridden`), thêm finding `block` nêu lệnh/mã thoát/mã HTTP; delivery-lead mở escalation
+     cho RC như mọi QA fail — RC không đi tiếp, Gate 3 không mở.
+   - không có `runtime`/worktree → `evidence.run = {unverified, reason, spec_kind}`, audit `regression.run_unverified`
+     một lần **mỗi lượt deployed** (khoá `once` mang `event_id`, không chỉ `release_id`: RC redeploy là lần hợp lệ
+     thứ hai, TRAPS §1 khuôn 3). Spec khai `kind=application` → đó là lỗi của spec, verdict hạ `fail`; `kind=library`
+     hoặc chưa khai → giữ verdict, bằng chứng nói thẳng "chưa kiểm" (không chặn dự án cũ).
+3. **Spec có trường `kind`** (`approved-specs.payload.kind ∈ {application, library}`, mục 8b PRD). Nó là câu trả
+   lời cho "vì sao không có `runtime`?": ứng dụng không có `runtime` là thiếu sót ở Gate 1, thư viện không có
+   `runtime` là bình thường.
+4. **State không sống trong RAM** (TRAPS §1 khuôn 2): bằng chứng nằm trong payload `review-results` trên bus;
+   `release_reviews` của delivery-lead dựng lại từ replay; `once` dựng lại từ audit-log. Restart giữa smoke và
+   verdict thì lượt QA chạy lại từ đầu — smoke chạy lại, không dùng kết quả cũ.
+5. **Prompt qa-debugger v13** nói rõ bằng chứng nằm ở đâu và verdict phải dẫn nó — đây là hướng dẫn *đọc* bằng
+   chứng, không phải nhờ model *tạo* bằng chứng (khác với mục "Hệ quả" ở trên: release-engineer không đổi vì nó
+   không cần đọc gì thêm). Checklist Gate 3 dòng `regression-staging` và `gate_brief` (`staging_reviews[].run`) hiện
+   `evidence.run`.
+
+Chưa làm: B4 (Gate 4 — `gate_brief` acceptance tự khởi động sản phẩm cho khách ký trên thứ đã chạy).
+
 ## Liên quan
 ADR-0010 (ranh giới tool / eval replay), ADR-0013 (stack và lệnh kiểm của khách), ADR-0027 (giao hàng thật),
 ADR-0028 (test-author độc lập), báo cáo `2026-09-06-ban-giao-khong-chay-duoc.md` (đề xuất 3 và 6),

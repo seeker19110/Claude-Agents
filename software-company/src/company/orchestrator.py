@@ -140,6 +140,10 @@ def _release_needs_security(e: Envelope, o: Orchestrator) -> bool:
     return o.lead.release_needs_security(e.payload["release_id"])
 
 
+def _dict_of(v: Any) -> dict[str, Any]:
+    return v if isinstance(v, dict) else {}
+
+
 def _deployed(env_name: str) -> When:
     return lambda e, _o: e.payload.get("env") == env_name and e.payload.get("status") == "deployed"
 
@@ -912,6 +916,12 @@ class Orchestrator:
                 res.actions.append(f"{agent}→{r.topic_out}×{len(g.payloads)}")
             else:
                 tools = None
+                run_ev: dict[str, Any] | None = None
+                if r.tools == "ro" and env.topic == "release-events" and r.topic_out == "review-results":
+                    # ADR-0029 mục "regression-staging": bằng chứng chạy là của ORCHESTRATOR, không phải của model.
+                    # Chạy smoke trước lượt QA, đưa vào input để QA dẫn nó; sau lượt, verdict bị đối chiếu với nó.
+                    run_ev = self._regression_run(inp)
+                    inp = inp.model_copy(update={"payload": {**inp.payload, "evidence": {**_dict_of(inp.payload.get("evidence")), "run": run_ev}}})
                 if r.tools == "ro":
                     tools = self._read_only_tools(inp)
                 elif r.tools == "research":
@@ -933,6 +943,8 @@ class Orchestrator:
                     self._audit("review.subject_overridden", {"release_id": rid, "claimed_ticket_id": p.get("ticket_id"),
                                                               "source": p.get("source")}, actor=agent, project_id=self.project_for(env))
                     p = {**p, "ticket_id": rid}
+                if run_ev is not None:
+                    p = self._verdict_with_run(agent, inp, p, run_ev)
                 out = self.runner.publish(agent, inp, r.topic_out, p, key=key_for(r.topic_out, p, env.key),
                                           tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
                 res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
@@ -1261,6 +1273,61 @@ class Orchestrator:
             self.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="release-engineer",
                                           checklist=["root_cause", "decision:redeploy|close", "hint"]))
         return {**p, "status": "failed", "smoke": smoke}
+
+    def _regression_run(self, env: Envelope) -> dict[str, Any]:
+        """ADR-0029 mục "regression-staging": trước lượt QA hồi quy, orchestrator TỰ khởi động sản phẩm theo `runtime`
+        của spec trên worktree tích hợp (đúng sha RC đã staged) và gọi một request thật. Kết quả (lệnh, mã thoát, mã
+        HTTP, `verified_by=orchestrator`) là `evidence.run` — bằng chứng của máy, đưa vào input để QA dẫn và đối chiếu
+        với verdict sau lượt (`_verdict_with_run`). Không có `runtime`/worktree → `unverified` kèm lý do và `spec_kind`:
+        spec khai `kind=application` mà không có `runtime` thì đó là lỗi của spec, không phải "chưa kiểm".
+        Bằng chứng sống trong payload `review-results` trên bus, không giữ trong RAM; khoá `once` mang event_id của
+        lượt deployed nên RC redeploy (lần hợp lệ thứ hai) vẫn được ghi lại."""
+        rid = str(env.payload.get("release_id") or env.key)
+        pid = self.project_for(env)
+        spec = self.latest("approved-specs", pid) if pid else None
+        kind = (spec.payload.get("kind") if spec is not None else None) or None
+        rt = parse_runtime(spec.payload if spec is not None else None)
+        integ = self._integration_of_release(env)
+        if rt is None:
+            run = {**unverified("spec không khai `runtime` (lệnh khởi động, cổng, đường health)"), "spec_kind": kind}
+        elif integ is None or not integ.path.exists():
+            run = {**unverified("không có worktree tích hợp (dự án chạy không repo)"), "spec_kind": kind}
+        else:
+            run = {**run_smoke(integ.path, rt), "sha": self.release_sha.get(rid) or integ.sha(), "spec_kind": kind}
+            self._audit("regression.run", {"release_id": rid, **run}, project_id=pid)
+            return run
+        self._audit("regression.run_unverified", {"release_id": rid, "reason": run["reason"], "spec_kind": kind},
+                    project_id=pid, once=f"regression.unverified:{rid}:{env.event_id}")
+        return run
+
+    def _verdict_with_run(self, agent: str, env: Envelope, p: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
+        """Gắn `evidence.run` do orchestrator chạy vào verdict QA (ghi đè mọi `evidence.run` model tự khai) và đối chiếu:
+        smoke fail → verdict `fail`; `unverified` với spec `kind=application` → `fail` (spec phải khai `runtime`);
+        `unverified` với kind khác (library, hoặc chưa khai) → giữ verdict, bằng chứng nói thẳng là chưa kiểm.
+        Ba kết cục, không có kết cục thứ tư — như `_smoke` với `deployed`."""
+        rid = str(env.payload.get("release_id") or env.key)
+        pid = self.project_for(env)
+        ev = _dict_of(p.get("evidence"))
+        if "run" in ev:  # model tự khai `evidence.run`: bỏ, ghi lại — bằng chứng chạy chỉ có một nguồn là orchestrator
+            self._audit("regression.run_claimed_ignored", {"release_id": rid, "claimed": ev.get("run")}, actor=agent, project_id=pid)
+        p = {**p, "evidence": {**ev, "run": run}}
+        if run.get("ok"):
+            return p
+        if run.get("unverified"):
+            if run.get("spec_kind") != "application":
+                return p
+            reason = f"spec khai kind=application nhưng không smoke được: {run.get('reason')} — RC không đi tiếp cho tới khi spec khai `runtime`"
+        else:
+            reason = (f"smoke do orchestrator chạy trên worktree RC không đạt: http_status={run.get('http_status')} "
+                      f"exit_code={run.get('exit_code')} error={run.get('error')} — lệnh {run.get('command')}")
+        self._audit("regression.run_failed", {"release_id": rid, "claimed_verdict": p.get("verdict"), "reason": reason},
+                    project_id=pid)
+        if p.get("verdict") == "pass":
+            self._audit("regression.verdict_overridden", {"release_id": rid, "claimed": "pass", "verdict": "fail", "reason": reason},
+                        actor=agent, project_id=pid)
+            p = {**p, "verdict": "fail", "root_cause": p.get("root_cause") or reason,
+                 "findings": [*(p.get("findings") or []), {"level": "block", "location": run.get("url"), "text": reason}]}
+        return p
 
     # ---------- kế hoạch: gate spec → threat model → delivery-lead sinh ticket → gate plan → dispatch ----------
 

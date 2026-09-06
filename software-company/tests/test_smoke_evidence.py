@@ -176,3 +176,177 @@ def test_run_smoke_communicate_qua_gio_khong_lam_hong_bang_chung(tmp_path, monke
     monkeypatch.setattr(sm.subprocess, "Popen", lambda *a, **k: Proc())
     r = run_smoke(tmp_path, Runtime(("x",), timeout_s=2))
     assert r["ok"] is False and r["exit_code"] == 7 and "stderr_tail" not in r
+
+
+# ---------- ADR-0029 mở rộng (B3): `regression-staging` mang `evidence.run` do orchestrator tự chạy ----------
+
+def _qa_reviews(bus):
+    return [e.payload for e in bus.replay(topic="review-results") if e.payload.get("source") == "qa"]
+
+
+def _acts(bus):
+    return [e.payload["action"] for e in bus.replay(topic="audit-log")]
+
+
+def _fake_smoke(monkeypatch, results):
+    """Runtime giả: `run_smoke` của orchestrator trả lần lượt từng kết quả (lượt deployed rồi lượt QA hồi quy)."""
+    from company import orchestrator as om
+    calls: list[Path] = []
+    def fake(root, rt):
+        calls.append(root)
+        return dict(results[min(len(calls), len(results)) - 1])
+    monkeypatch.setattr(om, "run_smoke", fake)
+    return calls
+
+
+OK = {"verified_by": "orchestrator", "command": ["python", "serve.py", "8123"], "port": 8123, "url": "http://127.0.0.1:8123/",
+      "ok": True, "http_status": 200, "exit_code": None, "elapsed_s": 0.5}
+BAD = {**OK, "ok": False, "http_status": 500, "elapsed_s": 0.7}
+
+
+def test_regression_staging_giu_pass_va_mang_evidence_run_khi_smoke_200(tmp_path, monkeypatch):
+    repo = _repo(tmp_path, SERVER_DIE)
+    calls = _fake_smoke(monkeypatch, [OK, OK])
+    bus, orch = _orch(tmp_path, repo, {"command": "python serve.py {port}", "timeout_s": 5})
+    orch.run()
+    qa = _qa_reviews(bus)
+    assert qa and qa[-1]["verdict"] == "pass"
+    run = qa[-1]["evidence"]["run"]
+    assert run["ok"] is True and run["http_status"] == 200 and run["verified_by"] == "orchestrator"
+    assert run["command"] == OK["command"] and run["sha"], "lệnh thật và sha RC: người ký Gate 3 biết CÁI GÌ đã chạy"
+    assert len(calls) == 2 and all(str(c).endswith("_integration") for c in calls), "một lần cho deployed, một lần cho QA — cùng worktree tích hợp"
+    acts = _acts(bus)
+    assert "regression.run" in acts and "regression.run_failed" not in acts and "regression.verdict_overridden" not in acts
+    g = orch.gate.pending.get("REL-001")
+    assert g is not None and g.kind == "release", "smoke ok + QA pass → Gate 3 mở như thường"
+
+
+def test_regression_staging_pass_ma_smoke_fail_thi_ha_fail_rc_khong_di_tiep(tmp_path, monkeypatch):
+    """Chiều đo quan trọng nhất: deployed qua smoke, nhưng ở lượt QA sản phẩm không trả lời đúng → verdict pass của
+    model bị hạ `fail`, escalation mở cho RC, Gate 3 KHÔNG mở."""
+    repo = _repo(tmp_path, SERVER_DIE)
+    _fake_smoke(monkeypatch, [OK, BAD])
+    bus, orch = _orch(tmp_path, repo, {"command": "python serve.py {port}", "timeout_s": 5})
+    orch.run()
+    qa = _qa_reviews(bus)
+    assert qa and qa[-1]["verdict"] == "fail", "verdict không có bằng chứng chạy đạt thì không được là pass"
+    assert qa[-1]["evidence"]["run"]["http_status"] == 500
+    assert any(f["level"] == "block" and "http_status=500" in f["text"] for f in qa[-1]["findings"])
+    assert "http_status=500" in qa[-1]["root_cause"]
+    acts = _acts(bus)
+    assert "regression.run_failed" in acts and "regression.verdict_overridden" in acts
+    g = orch.gate.pending.get("REL-001")
+    assert g is not None and g.kind == "escalation", "RC fail không nằm im: escalation cho người quyết"
+
+
+def test_khong_runtime_kind_application_thi_unverified_va_rc_khong_di_tiep(tmp_path, monkeypatch):
+    repo = _repo(tmp_path, SERVER_DIE)
+    calls = _fake_smoke(monkeypatch, [OK])
+    bus, orch = _orch(tmp_path, repo, None)
+    spec = bus.latest("approved-specs", "P").payload
+    bus.publish(Envelope(topic="approved-specs", key="P", actor="spec-writer", payload={**spec, "kind": "application"}))
+    orch.run()
+    assert calls == [], "không có runtime thì không có gì để chạy — không đoán lệnh"
+    st = _staging(bus)
+    assert st[-1]["status"] == "deployed" and st[-1]["smoke"]["unverified"] is True, "deployed giữ nguyên như ADR-0029 mục 3"
+    qa = _qa_reviews(bus)
+    run = qa[-1]["evidence"]["run"]
+    assert run["unverified"] is True and "runtime" in run["reason"] and run["spec_kind"] == "application"
+    assert qa[-1]["verdict"] == "fail" and "kind=application" in qa[-1]["root_cause"]
+    acts = _acts(bus)
+    assert "regression.run_unverified" in acts and "regression.verdict_overridden" in acts
+    g = orch.gate.pending.get("REL-001")
+    assert g is not None and g.kind == "escalation" and g.kind != "release"
+
+
+def test_khong_runtime_kind_library_hay_chua_khai_thi_unverified_khong_chan(tmp_path, monkeypatch):
+    for kind in ("library", None):
+        d = tmp_path / (kind or "none"); d.mkdir()
+        repo = _repo(d, SERVER_DIE)
+        _fake_smoke(monkeypatch, [OK])
+        bus, orch = _orch(d, repo, None)
+        if kind:
+            spec = bus.latest("approved-specs", "P").payload
+            bus.publish(Envelope(topic="approved-specs", key="P", actor="spec-writer", payload={**spec, "kind": kind}))
+        orch.run()
+        qa = _qa_reviews(bus)
+        assert qa[-1]["verdict"] == "pass" and qa[-1]["evidence"]["run"]["unverified"] is True
+        assert qa[-1]["evidence"]["run"]["spec_kind"] == kind
+        assert "regression.run_unverified" in _acts(bus) and "regression.verdict_overridden" not in _acts(bus)
+        g = orch.gate.pending.get("REL-001")
+        assert g is not None and g.kind == "release", f"kind={kind}: không chặn cứng, nhưng bằng chứng nói 'chưa kiểm'"
+
+
+def test_qa_thay_evidence_run_trong_input_va_loi_khai_cua_no_bi_bo(tmp_path, monkeypatch):
+    """Prompt qa-debugger v13 nói 'kết quả ở payload.evidence.run' — input phải THẬT SỰ mang nó; và mọi
+    `evidence.run` model tự khai bị thay bằng bản của orchestrator (một nguồn bằng chứng duy nhất)."""
+    from test_orchestrator import _agent_of, _inp
+    seen: list[dict] = []
+    def h(system, user):
+        out = handler(system, user)
+        if _agent_of(system) == "qa-debugger":
+            seen.append(_inp(user))
+            out = {**out, "evidence": {"run": {"ok": True, "http_status": 200, "verified_by": "qa-debugger"}, "note": "giữ"}}
+        return out
+    repo = _repo(tmp_path, SERVER_DIE)
+    _fake_smoke(monkeypatch, [OK, BAD])
+    bus, orch = _orch(tmp_path, repo, {"command": "python serve.py {port}"})
+    orch.runner.client = FakeClient(handler=h)
+    orch.run()
+    assert seen and seen[-1]["evidence"]["run"]["http_status"] == 500, "QA nhìn thấy đúng kết quả máy vừa chạy"
+    qa = _qa_reviews(bus)
+    assert qa[-1]["evidence"]["run"]["verified_by"] == "orchestrator" and qa[-1]["evidence"]["note"] == "giữ"
+    assert qa[-1]["verdict"] == "fail" and "regression.run_claimed_ignored" in _acts(bus)
+
+
+def test_evidence_run_song_qua_restart_va_redeploy_khong_bi_once_nuot(tmp_path, monkeypatch):
+    """TRAPS §1 khuôn 2/3: bằng chứng ở trên bus (không RAM) — mở lại bus vẫn đọc được; RC redeploy là lượt deployed
+    THỨ HAI hợp lệ → `regression.run_unverified` phải ghi lần nữa (khoá once mang event_id)."""
+    repo = _repo(tmp_path, SERVER_DIE)
+    _fake_smoke(monkeypatch, [OK])
+    bus, orch = _orch(tmp_path, repo, None)
+    orch.run()
+    assert _acts(bus).count("regression.run_unverified") == 1
+    bus2 = SQLiteBus(tmp_path / "c.sqlite")
+    orch2 = Orchestrator(bus2, FakeClient(handler=handler), repo=repo)
+    qa = [e.payload for e in bus2.replay(topic="review-results") if e.payload.get("source") == "qa"]
+    assert qa[-1]["evidence"]["run"]["unverified"] is True
+    assert orch2.lead.release_qa["REL-001"].verdict == "pass"
+    assert "regression.unverified:REL-001:" in " ".join(orch2.once), "khoá once dựng lại từ audit-log"
+    bus2.publish(Envelope(topic="release-events", key="REL-001", actor="release-engineer",
+                          payload={"release_id": "REL-001", "env": "staging", "status": "deployed", "version": "0.1.0"}))
+    orch2.run()
+    assert _acts(bus2).count("regression.run_unverified") == 2, "lượt deployed thứ hai không bị khoá của lượt một nuốt"
+
+
+def test_verdict_with_run_giu_fail_cua_model_va_khong_nhan_doi_finding(tmp_path):
+    """Model đã fail (tự thấy lỗi) và smoke cũng fail → giữ fail, không ghi `verdict_overridden`."""
+    bus, orch = _orch(tmp_path, None, None)
+    env = Envelope(topic="release-events", key="REL-001", actor="release-engineer",
+                   payload={"release_id": "REL-001", "env": "staging", "status": "deployed"})
+    p = orch._verdict_with_run("qa-debugger", env, {"ticket_id": "REL-001", "source": "qa", "verdict": "fail",
+                                                    "root_cause": "của model", "findings": []}, BAD)
+    assert p["verdict"] == "fail" and p["root_cause"] == "của model" and p["findings"] == []
+    assert p["evidence"]["run"] == BAD
+    assert "regression.verdict_overridden" not in _acts(bus) and "regression.run_failed" in _acts(bus)
+
+
+def test_khong_co_worktree_thi_regression_run_unverified_noi_ro(tmp_path):
+    bus, orch = _orch(tmp_path, None, {"command": "python serve.py"})
+    orch.run()
+    qa = _qa_reviews(bus)
+    assert qa[-1]["evidence"]["run"]["unverified"] is True and "worktree" in qa[-1]["evidence"]["run"]["reason"]
+
+
+def test_gate_brief_release_hien_evidence_run(tmp_path, monkeypatch):
+    from company.gate_brief import _run_summary, build, render_md
+    assert _run_summary({"evidence": {"run": {"unverified": True, "reason": "x"}}}) == "unverified — x"
+    assert _run_summary({"evidence": {"run": OK}}) == "ok=True http=200 exit=None (orchestrator)"
+    assert _run_summary({"evidence": {"run": "lạ"}}) is None and _run_summary({}) is None
+    repo = _repo(tmp_path, SERVER_DIE)
+    _fake_smoke(monkeypatch, [OK, OK])
+    _, orch = _orch(tmp_path, repo, {"command": "python serve.py {port}"})
+    orch.run()
+    b = build(orch, "REL-001")
+    assert b["extra"]["staging_reviews"][0]["run"].startswith("ok=True http=200")
+    assert "chạy: ok=True http=200" in render_md(b)

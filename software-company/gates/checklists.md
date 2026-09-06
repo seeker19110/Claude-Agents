@@ -55,7 +55,7 @@ ticket có `risk_tags`).
 Code gửi kèm: `tests`, `scan`, `regression-staging`, `perf`, `a11y`, `runbook`, `rollback`
 - [ ] `tests` — mọi test pass
 - [ ] `scan` — SAST, SCA, DAST, license pass; SBOM có; artifact ký
-- [ ] `regression-staging` — QA hồi quy trên staging pass (`review-results` ticket_id=release_id)
+- [ ] `regression-staging` — QA hồi quy trên staging pass (`review-results` ticket_id=release_id); `evidence.run` do orchestrator tự chạy trên worktree RC (ADR-0029): `ok=true` kèm mã HTTP, hoặc `unverified` kèm lý do — verdict pass mà smoke fail đã bị code hạ fail
 - [ ] `smoke` — `release-events{staging}.smoke.ok=true` do orchestrator tự chạy (ADR-0029); `unverified` nghĩa là spec chưa khai `runtime` — hỏi "chạy cho tôi xem" trước khi ký
 - [ ] `perf` — perf so NFR trên staging pass
 - [ ] `a11y` — a11y (axe + thủ công) trên staging pass

@@ -19,6 +19,7 @@
 ## 8. Quyết định công nghệ (link ADR)
 ## 8b. Chạy ở đâu (`runtime` — orchestrator dùng để smoke, ADR-0029)
 | Trường | Giá trị |
+| `kind` | <`application` (có điểm vào chạy được — BẮT BUỘC `command`) hoặc `library` (không có server)> |
 | `command` | <lệnh khởi động, vd `python -m app --port {port}`> |
 | `port` | <0 = tự chọn> |
 | `health` | <đường GET trả 200, vd `/health`> |

@@ -62,6 +62,13 @@
         "reviewer": {
           "type": "string"
         },
+        "kind": {
+          "enum": [
+            "application",
+            "library"
+          ],
+          "description": "loại sản phẩm (ADR-0029): `application` = có điểm vào chạy được, BẮT BUỘC khai `runtime` — thiếu thì QA hồi quy bị hạ fail; `library` = không có server, smoke không áp dụng"
+        },
         "runtime": {
           "type": "object",
           "description": "cách khởi động sản phẩm để orchestrator smoke (ADR-0029); thiếu thì `release-events.smoke.unverified`",

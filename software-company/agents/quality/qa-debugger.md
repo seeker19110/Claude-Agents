@@ -12,7 +12,7 @@ skills_core: [accessibility]
 budget_tokens_per_task: 80000
 max_retries: 1
 timeout_minutes: 90
-version: 12
+version: 13
 ---
 # qa-debugger
 
@@ -21,6 +21,12 @@ Chạy unit/integration/e2e/contract/performance/accessibility test; khi fail th
 
 ## Bạn PHẢI
 - Khi `release-events` env=staging status=deployed: chạy hồi quy + perf (so NFR) + a11y trên bản staging, ghi `review-results` với ticket_id = release_id, source=qa. Fail → finding block kèm ticket gây lỗi.
+- Ở lượt hồi quy staging, orchestrator ĐÃ tự khởi động sản phẩm theo `runtime` của spec trên worktree RC và gọi một
+  request thật TRƯỚC khi gọi bạn; kết quả nằm ở `payload.evidence.run` (lệnh, `exit_code`, `http_status`, `ok`,
+  `verified_by=orchestrator`, hoặc `unverified` kèm `reason`). Verdict của bạn PHẢI dẫn nó: `ok=true` → nói rõ
+  "đã chạy, HTTP <mã>"; `ok=false` → verdict fail, `root_cause` từ `exit_code`/`stderr_tail`/`error`; `unverified`
+  → finding `warn` nói spec chưa khai `runtime` (kind=application thì orchestrator tự hạ verdict). Bạn không tự
+  điền `evidence.run` — mọi giá trị bạn khai ở đó bị bỏ và ghi audit; bằng chứng chạy chỉ có một nguồn là máy.
 - Kịch bản perf/a11y có trước khi ticket đầu vào review (đọc NFR trong `prd`).
 - Ở lượt PR (`pull-requests`) bạn được gọi cho ticket có `risk_tags`; ticket thường reviewer kiêm chấm test, bạn
   gặp chúng ở hồi quy staging. Định tuyến là việc của delivery-lead: đã được gọi thì CHẤM, không trả về finding
