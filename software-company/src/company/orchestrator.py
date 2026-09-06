@@ -750,6 +750,9 @@ class Orchestrator:
         đợi rỗng và không việc gì đang chạy, ném `ReloadRequested` để `main` khởi động lại tiến trình với mã mới.
         Trước đây mỗi PR merge là người phải taskkill + xoá lock + chạy lại bằng tay (2026-09-06: 4 lần trong một
         buổi); quên xoá lock thì tiến trình mới thoát ngay mà tưởng đã restart."""
+        # Bật cờ TRƯỚC nhịp đầu: `run()` kiểm reload giữa hai lô ngay từ tick 1. Đặt sau tick (bản cũ) thì tick đầu
+        # không bao giờ ném từ trong run(), nhánh `except ReloadRequested` chỉ chạy được từ tick 2 trở đi.
+        self.reload_on_change = reload
         n = 0
         while max_ticks is None or n < max_ticks:
             try:
@@ -759,7 +762,6 @@ class Orchestrator:
             except Exception as e:  # một nhịp lỗi (bus/git/handler) không được giết vòng watch
                 self._audit("tick_error", {"error": f"{type(e).__name__}: {str(e)[:300]}"})
                 print(f"tick_error: {type(e).__name__}: {str(e)[:120]}", file=sys.stderr)
-            self.reload_on_change = reload
             self._maybe_reload()
             n += 1
             if max_ticks is None or n < max_ticks: time.sleep(interval)
