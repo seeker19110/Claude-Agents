@@ -54,7 +54,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .blackboard import Blackboard
 from .bus import InMemoryBus
@@ -96,6 +96,7 @@ from .orch.routes import _has_dispute as _has_dispute
 from .orch.routes import _test_scope_ok as _test_scope_ok
 from .orch.routes import _with_chan_doan as _with_chan_doan
 from .orch.routes import _with_diff as _with_diff
+from .orch.state import OrchState, install_aliases
 from .registry import AgentSpec, load_agents
 from .routing import retry_after_seconds
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError
@@ -121,6 +122,35 @@ class ReloadRequested(Exception):
 
 
 class Orchestrator:
+    if TYPE_CHECKING:
+        # Bí danh do `install_aliases` gắn lúc chạy (ADR-0034). mypy không thấy property gắn động nên
+        # khai báo lại kiểu ở đây; nguồn sự thật vẫn là `OrchState`, và `test_orch_state_rehydrate`
+        # bắt lỗi nếu hai danh sách lệch nhau.
+        processed: set[str]
+        queue: list[Envelope]
+        partial: dict[str, set[str]]
+        deferred: dict[str, tuple[Envelope, str]]
+        defer_until: dict[str, float]
+        once: set[str]
+        plans: dict[str, dict[str, Any]]
+        integrated: set[str]
+        conflict_retries: Counter[str]
+        missing_threat_model: set[str]
+        spec_runtime_reworks: Counter[str]
+        release_sha: dict[str, str]
+        delivered: dict[str, dict[str, Any]]
+        void_releases: set[str]
+        stalled: dict[str, dict[str, Any]]
+        stall_count: Counter[str]
+        unhandled: dict[str, dict[str, Any]]
+        escalation_decided: Counter[str]
+        debt_gate: dict[str, dict[str, Any]]
+        paused: set[str]
+        project_repos: dict[str, Integration]
+        bad_repos: set[str]
+        stats: Counter[str]
+        reload_on_change: bool
+
     def __init__(self, bus: InMemoryBus, client: ModelClient, agents: dict[str, AgentSpec] | None = None,
                  max_retries: int = 3, repo: Path | None = None, base: str = "HEAD", max_turns: int = 25,
                  batch_releases: bool = False,
@@ -139,7 +169,7 @@ class Orchestrator:
         self._qlock = threading.RLock()  # hàng đợi; _on_event (chạy dưới lock của bus) chỉ chạm lock này
         self._ws_lock = threading.RLock()
         self._merge_lock = threading.RLock()  # merge vào nhánh tích hợp chạy một mình (ADR-0012 §7), kể cả khi --workers>1
-        self.partial: dict[str, set[str]] = {}  # event_id → agent đã chạy xong (để không chạy lại khi event bị hoãn transient)
+        self.state = OrchState()
         if self.repo is not None and not (self.repo / ".git").exists():
             raise ValueError(f"repo không phải git repository: {self.repo}")
         # `--repo` là repo MẶC ĐỊNH của tiến trình. Từng dự án có thể chỉ repo riêng ngay trong `research-requests`
@@ -148,21 +178,7 @@ class Orchestrator:
         self.deliver, self.push_remote, self.release_branch = bool(deliver), push_remote, release_branch
         self.integration = Integration(self.repo, integration, base, release_branch) if self.repo is not None else None
         self.base, self.integration_branch = base, integration
-        self.project_repos: dict[str, Integration] = {}
-        # release_id → {version, tag, sha, short, branch, previous}: bản đã giao (ADR-0027), dựng lại từ audit-log
-        self.delivered: dict[str, dict[str, Any]] = {}
-        # release_id → sha ĐẦY ĐỦ của nhánh tích hợp lúc deploy staging: đúng nội dung QA đã hồi quy, và là sha được
-        # giao khi production duyệt — nhánh tích hợp có thể đã đi tiếp (ticket khác merge) trong lúc chờ gate 3.
-        self.release_sha: dict[str, str] = {}
-        self.bad_repos: set[str] = set()
-        self.void_releases: set[str] = set()
-        self.integrated: set[str] = set()  # ticket đã merge vào nhánh tích hợp (khi approved, không đợi RC)
-        self.missing_threat_model: set[str] = set()  # spec chưa có threat model vì security-engineer lỗi
-        self.stalled: dict[str, dict[str, Any]] = {}  # project_id → {event_id, agent, topic, error}: dự án kẹt chờ người
-        self.unhandled: dict[str, dict[str, Any]] = {}  # subject → {event_id, agent, topic}: event lỗi không nhánh nào nhận, chờ người
         self.source_fp = source_fingerprint()  # mã nguồn lúc khởi động — `watch(reload=True)` so với đây
-        self.reload_on_change = False  # `watch(reload=True)` bật: `run()` kiểm mã đổi GIỮA hai lô, không chỉ lúc rỗng
-        self.stall_count: Counter[str] = Counter()  # event_id → số lần kẹt (mỗi lần một gate mới, không im lặng lần hai)
         self.agents = agents or load_agents()
         bad = check_routes(self.agents)
         if bad: raise ValueError("ROUTES lệch front matter: " + "; ".join(bad))
@@ -174,33 +190,7 @@ class Orchestrator:
         # ADR-0032: ngưỡng "nợ kiến trúc treo" cấu hình cùng chỗ với trần ngân sách (llm.yaml `debt_reviews`).
         self.supervisor = Supervisor(bus, max_retries=max_retries, project_budget_usd=budget_usd,
                                      debt_threshold=int(getattr(client, "debt_reviews", None) or 3))
-        # project_id → hồ sơ gate escalation nợ kiến trúc đang mở (ADR-0032); dựng lại từ audit `debt.escalated`/`debt.decided`
-        self.debt_gate: dict[str, dict[str, Any]] = {}
         self.runner = AgentRunner(bus, client, self.agents, self.blackboard)
-        self.processed: set[str] = set()
-        self.paused: set[str] = set()
-        self.plans: dict[str, dict[str, Any]] = {}
-        self.queue: list[Envelope] = []
-        self.deferred: dict[str, tuple[Envelope, str]] = {}
-        # event_id → mốc monotonic sớm nhất được thử lại. Backend nói rõ "thử lại sau Ns" thì phải chờ đúng
-        # chừng đó; hỏi lại sớm hơn vừa vô ích vừa làm bẩn audit-log (xem `_retry_deferred`).
-        self.defer_until: dict[str, float] = {}
-        self.once: set[str] = set()  # nhắc nhở / hành động chỉ làm một lần (gate.remind, review.reassign, lesson...)
-        # ticket_id → số quyết định escalation đã áp cho ticket đó. Đối xứng với `stall_count` ở nhánh dự-án-kẹt:
-        # nếu không có nó, ticket bị chặn LẦN HAI sinh ra đúng khoá `once` của lần một nên không mở gate nào nữa.
-        self.escalation_decided: Counter[str] = Counter()
-        # ticket_id → số lần xung đột merge vào nhánh tích hợp. TÁCH KHỎI `Task.retry`: `request_changes` cũ dùng
-        # chung bộ đếm với lỗi nội dung (review block, agent lỗi) và `max_retries=3` — một ticket đúng logic nhưng
-        # thua cuộc đua merge (ticket khác gộp trước trong lúc nó còn đang review) cháy hết retry chỉ vì THỨ TỰ,
-        # không vì làm sai gì. Đo được (2026-09-05): QLKH-011 hết 3 lần (2 lỗi CLI/review thật + 1 xung đột merge)
-        # rồi `blocked` đúng lúc nội dung đã qua đủ ba reviewer. Xung đột không tính vào retry nội dung nữa; chỉ
-        # chặn thật khi xung đột LẶP LẠI quá `MAX_CONFLICT_RETRIES` — dấu hiệu bế tắc cấu trúc (vd. nhiều ticket
-        # cùng sửa một file interface), không phải may rủi thứ tự.
-        self.conflict_retries: Counter[str] = Counter()
-        # project_id → số lần spec bị trả về spec-writer vì `kind=application` mà không có `runtime` hợp lệ (ADR-0031).
-        # Dựng lại từ audit `spec.runtime_missing`; về 0 khi người duyệt escalation cho chạy lại (`event.retried`).
-        self.spec_runtime_reworks: Counter[str] = Counter()
-        self.stats: Counter[str] = Counter()
         self._rehydrate()
         bus.subscribe("*", self._on_event)
 
@@ -1594,6 +1584,8 @@ def _evidence(a: dict[str, Any]) -> dict[str, Any]:
         return {}
     return d if isinstance(d, dict) else {}
 
+
+install_aliases(Orchestrator)
 
 
 if __name__ == "__main__":  # pragma: no cover
