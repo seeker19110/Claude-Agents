@@ -123,14 +123,17 @@ def test_search_bo_qua_file_khong_doc_duoc(tmp_path, monkeypatch):
 
 
 def test_run_het_gio_bao_loi_ro(tmp_path, monkeypatch):
-    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
-    tb = WorkspaceTools(ws, timeout=1).toolbox()
     import subprocess as sp
+
+    from company.sandbox import SubprocessSandbox
 
     def boom(*a, **kw):
         raise sp.TimeoutExpired(cmd="lint", timeout=1)
 
-    monkeypatch.setattr(sp, "run", boom)
+    # K2.4: `subprocess.run` không còn nằm trong `tools.py` — tiêm runner giả vào `SubprocessSandbox` thay vì
+    # monkeypatch module toàn cục (từ đây monkeypatch cũng không còn ăn: `sandbox.py` giữ tham chiếu riêng).
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    tb = WorkspaceTools(ws, timeout=1, sandbox=SubprocessSandbox(runner=boom)).toolbox()
     out = tb.call(_tc("run", command="lint"))
     assert out.startswith("lỗi") and "quá 1s" in out
 
@@ -281,6 +284,7 @@ def test_generate_in_workspace_overrides_model_claims_with_git_evidence(tmp_path
     p = g.payloads[0]
     assert p["branch"] == "ticket/T1" and p["pr_ref"] != "#999" and len(p["pr_ref"]) >= 7
     assert p["local_checks"] == {"lint": True, "tests": True, "verified_by": "workspace", "stack": "python",
+                                 "sandbox": "subprocess",   # K2.5: lớp bảo vệ đã chạy lint/test đi kèm bằng chứng
                                  "lint_output": p["local_checks"]["lint_output"], "test_output": p["local_checks"]["test_output"]}
     assert "coverage" not in p["local_checks"], "model khai coverage nhưng không đo được → bỏ, không bịa"
     assert p["impact"]["files"] == ["feature.py", "test_feature.py"] and p["summary"] == "đã làm"

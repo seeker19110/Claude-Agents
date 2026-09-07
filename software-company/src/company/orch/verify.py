@@ -51,7 +51,7 @@ def smoke(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[str, Any]
         o._audit("release.smoke_unverified", {"release_id": rid, "reason": smoke["reason"]}, project_id=pid,
                     once=f"smoke.unverified:{rid}:{rc.event_id}")
         return {**p, "smoke": smoke}
-    smoke = run_smoke(integ.path, rt)
+    smoke = run_smoke(integ.path, rt, sandbox=o.sandbox)
     o._audit("release.smoke", {"release_id": rid, **smoke}, actor=agent, project_id=pid)
     if smoke.get("ok"):
         return {**p, "smoke": smoke}
@@ -84,7 +84,7 @@ def regression_run(o: Orchestrator, env: Envelope) -> dict[str, Any]:
     elif integ is None or not integ.path.exists():
         run = {**unverified("không có worktree tích hợp (dự án chạy không repo)"), "spec_kind": kind}
     else:
-        run = {**run_smoke(integ.path, rt), "sha": o.release_sha.get(rid) or integ.sha(), "spec_kind": kind}
+        run = {**run_smoke(integ.path, rt, sandbox=o.sandbox), "sha": o.release_sha.get(rid) or integ.sha(), "spec_kind": kind}
         o._audit("regression.run", {"release_id": rid, **run}, project_id=pid)
         return run
     o._audit("regression.run_unverified", {"release_id": rid, "reason": run["reason"], "spec_kind": kind},

@@ -403,7 +403,10 @@ def _smoke_for_brief(orch: Orchestrator, pid: str | None, rid: str) -> dict[str,
     if integ is None or not integ.path.exists():
         return {"unverified": True, "reason": "không có worktree tích hợp để khởi động sản phẩm (chạy lại với --repo)",
                 "verified_by": "orchestrator"}
-    res = run_smoke(integ.path, rt)
+    # `orch` ở đây do `gate_brief` tự dựng (lệnh chỉ đọc) nên `sandbox` của nó là `SubprocessSandbox` mặc
+    # định trừ khi người gọi đã cấu hình — dùng lại chính nó thay vì dựng riêng, để hồ sơ gate và lượt
+    # smoke thật của orchestrator chạy CÙNG lớp bảo vệ (bằng chứng so được với nhau).
+    res = run_smoke(integ.path, rt, sandbox=orch.sandbox)
     res["ref"] = _git(integ.path, "rev-parse", "--short", "HEAD")
     res["release_id"] = rid
     return res

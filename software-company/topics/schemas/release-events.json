@@ -91,6 +91,10 @@
                 "integer",
                 "null"
               ]
+            },
+            "sandbox": {
+              "type": "string",
+              "description": "ADR-0035: lớp bảo vệ đã chạy lệnh khởi động của spec — `subprocess` hay `container:<image>`. Khác lint/test, smoke phải mở đúng một cổng loopback nên backend container dùng `--network bridge -p 127.0.0.1:<port>`."
             }
           },
           "additionalProperties": true

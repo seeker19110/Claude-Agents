@@ -320,11 +320,11 @@ Nếu chỉ làm được một nửa: **K0, K1, K2, K3.0–K3.5, K8.3, K9.1**. 
 | K2.1 | xong | #116 | `company/sandbox.py` — interface `Sandbox`/`RunSpec`/`Result`/`Handle`, `SubprocessSandbox`, `ContainerSandbox` |
 | K2.2 | xong | #116 | argv `ContainerSandbox` chuẩn (`--network none`, `--cpus`/`--memory`/`--pids-limit`, `-u uid:gid`, `--env-file -`) đã trong `sandbox.py` cùng PR K2.1 |
 | K2.3 | xong | #116 | `sandbox_from_config` — `auto`/`subprocess`/`container` qua `COMPANY_SANDBOX*` + `llm.yaml`, fail-closed `SandboxError` khi thiếu binary |
-| K2.4 | **một phần** | #119 | studio (`CommandTTS`, `FFmpegAssembler._run`, `qc._run`) đã qua `Sandbox` (#119); company (`tools.run`, `TicketWorkspace._run`, `run_smoke`) **CHƯA** — vẫn gọi `subprocess.*` thẳng |
-| K2.5 | **một phần** | #119 | studio `render.*` audit đã ghi `sandbox`; company `local_checks.sandbox`/`smoke.sandbox` (schema `pull-requests`/`release-events`) CHƯA thêm |
+| K2.4 | xong | #119, #129 | studio (`CommandTTS`, `FFmpegAssembler._run`, `qc._run`) ở #119; company ở #129 — `WorkspaceTools.run` (tool `run` của model), `TicketWorkspace._run` (lint/test của `run_checks`), `smoke.run_smoke` đều qua `Sandbox`. Sandbox đi THEO worktree (`TicketWorkspace.sandbox`) nên `runner.py` không phải đổi dòng nào. `git` và CLI model (`claude`/`codex`) là ngoại lệ có lý do; test quy ước grep `subprocess.run|Popen` toàn `src/company/` chặn PR sau lỡ thêm lệnh mới |
+| K2.5 | xong | #119, #129 | studio `render.*` ở #119; company ở #129 — `pull-requests.local_checks.sandbox` và `release-events.smoke.sandbox`, cả hai schema đã khai trường |
 | K2.6 | xong | #119 | `CommandTTS` qua `clean_env()`; `FFmpegAssembler._run` có `render.timeout_s` (mặc định 600s) |
-| K2.7 | chưa | | console tile cảnh báo "sandbox=none" |
-| K2.8 | chưa | | `SECURITY.md`/`README.md` company vẫn nói sandbox = đường dẫn + env — ĐÚNG cho tới khi K2.4 (phần company) xong, đừng sửa sớm |
+| K2.7 | chưa | | console tile cảnh báo "sandbox=none" — nay đọc được thẳng từ `local_checks.sandbox`/`smoke.sandbox` (#129), không cần thêm trường mới |
+| K2.8 | xong (phần company) | #129 | `SECURITY.md` mục **Sandbox tiến trình**: ba điểm gọi, ba chế độ, fail-closed, hai chỗ ghi bằng chứng, và ba giới hạn CÒN LẠI (git, CLI model, `subprocess` vẫn thấy `HOME`). Phần gateway của K8.1 vẫn chưa |
 | K3.0–K3.7 | chưa | | ADR gốc 0001 trước; K3.6 đợi 5 ngày sau K3.5 |
 | K4.1–K4.5 | chưa | | ADR gốc 0002 |
 | K5.1–K5.5 | chưa | | sau K3.3 |

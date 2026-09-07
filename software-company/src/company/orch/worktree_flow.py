@@ -65,7 +65,9 @@ def workspace(o: Orchestrator, ticket_id: str) -> TicketWorkspace | None:
     integ = o._integration_of_ticket(ticket_id)
     if integ is None or integ.repo is None: return None
     with o._ws_lock: integ.ensure()  # nhiều worker cùng tạo nhánh tích hợp lần đầu → tuần tự
-    return TicketWorkspace(integ.repo, ticket_id, base=integ.branch)
+    # ADR-0035 (K2.4): sandbox đi THEO WORKTREE. `WorkspaceTools(ws, ...)` trong `runner.py` đọc `ws.sandbox`
+    # nên mọi lượt agent kỹ thuật nhận đúng backend mà không nơi nào phải truyền lại.
+    return TicketWorkspace(integ.repo, ticket_id, base=integ.branch, sandbox=o.sandbox)
 
 def integrate_approved(o: Orchestrator, res: StepResult) -> None:
     """Ticket vừa approved → merge ngay vào nhánh tích hợp, không đợi RC. Ticket phụ thuộc rẽ nhánh từ nhánh tích hợp,
@@ -149,7 +151,9 @@ def read_only_tools(o: Orchestrator, inp: Envelope) -> ToolBox | None:
         return WorkspaceTools(ws, allow_write=False).toolbox()
     integ = o._integration_of_release(inp) if inp.payload.get("release_id") else None
     if integ is not None and integ.path.exists():
-        return WorkspaceTools(integ.path, allow_write=False).toolbox()
+        # Gốc là `Path` (worktree tích hợp, không phải worktree của ticket) nên không có `ws.sandbox` để
+        # đi theo — truyền tường minh, nếu không QA hồi quy sẽ chạy lệnh khách ngoài sandbox.
+        return WorkspaceTools(integ.path, allow_write=False, sandbox=o.sandbox).toolbox()
     return None
 
 def author_tests(o: Orchestrator, agent: str, task: Envelope, r: Route) -> Envelope | None:

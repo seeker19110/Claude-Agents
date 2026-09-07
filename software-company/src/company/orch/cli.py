@@ -21,6 +21,7 @@ from ..workspace import WorkspaceError
 
 if TYPE_CHECKING:
     from ..orchestrator import StepResult
+    from ..sandbox import Sandbox
 
 COMPANY_ROOT = Path(__file__).resolve().parents[3]  # thư mục software-company (như registry.ROOT)
 SOURCE_GLOBS = ("src/company/**/*.py", "agents/**/*.md", "skills/**/*.md", "gates/*.md", "llm.yaml")
@@ -43,6 +44,21 @@ def source_fingerprint(root: Path | None = None) -> tuple[int, str]:
 def _fmt(r: StepResult) -> str:
     tail = f"  hoãn: {r.deferred}" if r.deferred else "  " + "; ".join(r.actions)
     return f"{r.topic:<22} {r.key:<14}{tail}"
+
+
+def _sandbox_for(cmd: str) -> Sandbox | None:
+    """ADR-0035: chỉ hai lệnh CHẠY mã của khách (`run` gọi agent kỹ thuật và smoke, `redeploy` chạy lại lượt
+    staging) mới đọc cấu hình sandbox. Các lệnh còn lại là việc của người và của code (status/report/show/
+    comment/takeover) — dựng sandbox ở đó chỉ tổ làm `COMPANY_SANDBOX=container` trên máy không có docker ném
+    `SandboxError` cho một lệnh không chạy gì. `None` = `Orchestrator` tự dùng `SubprocessSandbox`.
+
+    Fail-closed vẫn nguyên: `run` trên máy khai `container` mà thiếu binary thì ném ngay tại đây, trước khi có
+    một lượt agent nào chạy — không bao giờ âm thầm tụt về subprocess."""
+    if cmd not in {"run", "redeploy"}:
+        return None
+    from ..llm import load_config
+    from ..sandbox import sandbox_from_config
+    return sandbox_from_config(load_config())
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -138,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     orch = Orchestrator(bus, make_client() if ns.cmd in {"run", "redeploy"} else FakeClient(), repo=ns.repo, base=ns.base, integration=ns.integration, workers=ns.workers,
                         web=ns.web, batch_releases=ns.batch_release, artifacts=ns.artifacts or artifact_store(ns.db),
                         deliver=ns.deliver, push_remote=ns.push_remote, release_branch=ns.release_branch,
-                        test_author=ns.test_author)
+                        test_author=ns.test_author, sandbox=_sandbox_for(ns.cmd))
     if ns.cmd == "status":
         print(json.dumps(orch.status(), ensure_ascii=False, indent=2)); return 0
     if ns.cmd == "rulings":
