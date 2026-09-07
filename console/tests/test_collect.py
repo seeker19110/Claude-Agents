@@ -47,7 +47,11 @@ def test_hai_xuong_deu_co_du_lieu(company_db: Path, studio_db: Path) -> None:
 
 def test_moi_khoa_luon_co_mat_va_khong_nem_khi_thieu_db(tmp_path: Path, studio_db: Path) -> None:
     s = state(tmp_path / "khong-co.sqlite", studio_db)
-    assert s["sources"][COMPANY] == {"ok": False, "db": None, "events": 0, "error": "chưa có file DB"}
+    assert s["sources"][COMPANY] == {"ok": False, "db": None, "events": 0, "error": "chưa có file DB",
+                                     "sandbox_available": s["sources"][COMPANY]["sandbox_available"]}
+    # K2.7: cờ là của MÁY, không của xưởng — có mặt kể cả khi nguồn hỏng (ô cảnh báo cần biết "máy có docker
+    # không" trước cả khi biết "công ty chạy gì"), và luôn là bool chứ không phải None.
+    assert isinstance(s["sources"][COMPANY]["sandbox_available"], bool)
     assert s["sources"][STUDIO]["ok"]
     assert s["tickets"] == [] and s["prs"] == [] and s["reviews"] == []
     assert [g["xuong"] for g in s["gates"]] == [STUDIO, STUDIO]  # phần của xưởng hỏng rỗng, xưởng kia vẫn đủ

@@ -32,8 +32,10 @@ công ty đó bao giờ).
 {
   "generated_at": "2026-09-03T08:41:12+07:00",
   "sources": {                       // để trang báo phần nào đang trống và vì sao
-    "software-company": {"ok": true,  "db": "software-company/company.sqlite", "events": 238, "error": null},
-    "Studio-creators":  {"ok": false, "db": null, "events": 0, "error": "chưa có file DB"},
+    "software-company": {"ok": true,  "db": "software-company/company.sqlite", "events": 238, "error": null,
+                         "sandbox_available": true},   // K2.7: MÁY chạy console có docker/podman không
+    "Studio-creators":  {"ok": false, "db": null, "events": 0, "error": "chưa có file DB",
+                         "sandbox_available": true},
     "gateway":          {"ok": true,  "url": "http://127.0.0.1:1123", "error": null}
   },
   "tiles": {
@@ -77,6 +79,12 @@ công ty đó bao giờ).
                {"stage":"staging","label":"Staging (smoke)","n":1,"empty":false,"smoke":"ok"},   // ok|fail|unverified|""
                …]}],                                   // `empty` (n===0) → trang tô XÁM, không bao giờ xanh
   "silent_deadlocks": [{"kind":"ticket","id":"QLKH-010","state":"blocked","why":"…","integrated":true}],  // C4
+  // K2.7 (ADR-0035): lượt CHẠY MÃ CỦA KHÁCH trong 24h, đếm theo tên sandbox. Nguồn là bằng chứng do code điền
+  // (`local_checks.sandbox`, `smoke.sandbox`, audit `tools_used`), KHÔNG phải cấu hình đọc lại lúc mở trang.
+  // Trang chỉ cảnh báo khi `unsandboxed > 0` VÀ `sources.<công ty>.sandbox_available` — máy không có runtime
+  // thì im. `null` khi xưởng không đọc được.
+  "sandbox": {"window_h":24,"runs":12,"unsandboxed":9,"by_name":{"subprocess":9,"container:python:3.12-slim":3},
+              "last_at":"2026-09-07T03:11:28+00:00"},
   "supervisor":[{"t":"TCK-118","a":"budget_cut","r":"…","w":"08:12"}],
   "log":     [{"t":"08:41","a":"backend","ac":"produced:pull-requests","k":"TCK-112","tok":8420,"c":0.21}],
   // ---- sự thật giao hàng của software-company (console/truth.py) — null/[] khi xưởng không đọc được ----

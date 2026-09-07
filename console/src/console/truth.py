@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from company.delivery import DONE_STATES
@@ -26,6 +26,9 @@ ORCHESTRATOR = "orchestrator"
 CONTROL_TOPICS = frozenset({"audit-log", "shared-context", "supervisor-actions"})
 REVIEW_AGENT = {"reviewer": "reviewer", "qa": "qa-debugger", "security": "security-engineer"}
 STUCK_STATES = frozenset({"blocked", "escalated"})
+# K2.7: cửa sổ nhìn lại của ô "lệnh khách chạy ở đâu". 24h = một ca trực; dài hơn thì một lượt cũ
+# kéo cảnh báo sáng mãi sau khi người vận hành đã bật container.
+SANDBOX_WINDOW_H = 24
 
 # Bậc của phễu release, theo thứ tự đi tới. Mỗi RC đứng đúng một bậc; `n` đếm theo bậc là câu "RC chết ở đâu".
 FUNNEL = [
@@ -405,3 +408,34 @@ class Truth:
             if not cut: return ""
             return "cắt " + ", ".join(f"{k} {int(v):,} ký tự".replace(",", ".") for k, v in cut.items())
         return ""
+
+    # ---------- K2.7: lệnh của khách chạy trong lớp bảo vệ nào ----------
+
+    def sandbox(self, hours: int = SANDBOX_WINDOW_H) -> dict[str, Any]:
+        """Đếm các lượt CHẠY MÃ CỦA KHÁCH trong `hours` giờ gần nhất, theo tên sandbox đã dùng (ADR-0035).
+
+        Ba nguồn, đúng ba chỗ code điền bằng chứng (không đọc cấu hình — cấu hình lúc đọc lại có thể đã khác
+        lúc chạy): `pull-requests.local_checks.sandbox` (lint/test của PR), `release-events.smoke.sandbox`
+        (lệnh khởi động), audit `tools_used` (tool `run` của model).
+
+        Lượt CŨ HƠN cửa sổ bị bỏ có chủ ý: câu người trực cần trả lời là "ngay bây giờ, máy này, lệnh của khách
+        đang chạy ở đâu" — một lượt subprocess từ tháng trước không nói gì về hôm nay.
+        """
+        cut = self.now - timedelta(hours=hours)
+        dem: dict[str, int] = defaultdict(int)
+        moi_nhat: datetime | None = None
+        for e in self.env:
+            ts = getattr(e, "ts", None)
+            if ts is None or ts < cut: continue
+            p = e.payload
+            if e.topic == "pull-requests": ten = (p.get("local_checks") or {}).get("sandbox")
+            elif e.topic == "release-events": ten = (p.get("smoke") or {}).get("sandbox")
+            elif e.topic == "audit-log" and p.get("action") == "tools_used": ten = _evidence(p).get("sandbox")
+            else: continue
+            if not isinstance(ten, str) or not ten: continue
+            dem[ten] += 1
+            if moi_nhat is None or ts > moi_nhat: moi_nhat = ts
+        ngoai = sum(n for ten, n in dem.items() if not ten.startswith("container"))
+        return {"window_h": hours, "runs": sum(dem.values()), "unsandboxed": ngoai,
+                "by_name": dict(sorted(dem.items())),
+                "last_at": moi_nhat.isoformat(timespec="seconds") if moi_nhat else None}

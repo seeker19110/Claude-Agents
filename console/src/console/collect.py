@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
 import sqlite3
 import statistics
 import urllib.error
@@ -157,7 +158,8 @@ class _View:
     @property
     def source(self) -> dict[str, Any]:
         return {"ok": self.ok, "db": str(self.db) if (self.db and self.ok) else None,
-                "events": len(self.envelopes), "error": self.error}
+                "events": len(self.envelopes), "error": self.error,
+                "sandbox_available": _co_container_runtime()}
 
     # ---- phần dùng chung cho cả hai xưởng ----
 
@@ -357,11 +359,12 @@ class CompanyView(_View):
         """Sự thật giao hàng (console/truth.py). Xưởng chưa đọc được → mọi phần rỗng nhưng vẫn đủ khoá."""
         if not self.ok:
             return {"delivery": None, "pending_decisions": [], "running": None, "deadlocks": [],
-                    "product_funnel": [], "silent_deadlocks": []}
+                    "product_funnel": [], "silent_deadlocks": [], "sandbox": None}
         return {"delivery": self.truth.delivery(), "pending_decisions": self.truth.pending_decisions(),
                 "running": self.truth.running(), "deadlocks": self.truth.deadlocks(),
                 "product_funnel": self.truth.product_funnel(),
-                "silent_deadlocks": self.truth.silent_ticket_deadlocks()}
+                "silent_deadlocks": self.truth.silent_ticket_deadlocks(),
+                "sandbox": self.truth.sandbox()}
 
     def stuck(self) -> int:
         return sum(1 for st in self.lead.state.values() if st in STUCK_STATES) if self.ok else 0
@@ -538,6 +541,16 @@ def _calibration(company: CompanyView) -> float | None:
     if not company.ok: return None
     vals = [row["ratio_median"] for row in company.report.get("calibration", {}).values() if row.get("ratio_median")]
     return round(statistics.median(vals), 2) if vals else None
+
+
+def _co_container_runtime(which: Any = shutil.which) -> bool:
+    """Máy ĐANG CHẠY CONSOLE có docker/podman không (K2.7, cờ `sources.<công ty>.sandbox_available`).
+
+    Console và orchestrator thường chạy trên cùng máy nên đây là xấp xỉ đủ tốt — và là xấp xỉ AN TOÀN theo hướng
+    đúng: nếu console chạy ở máy khác *không* có docker, cờ `false` chỉ làm ô cảnh báo im, chứ không bịa ra một
+    cảnh báo sai. Ngược lại (console có docker, orchestrator không) thì cảnh báo vẫn đúng việc cần làm: đi kiểm
+    máy chạy orchestrator."""
+    return any(which(x) for x in ("docker", "podman"))
 
 
 def _tiles(company: CompanyView, studio: StudioView, views: list[_View], now: datetime) -> dict[str, Any]:

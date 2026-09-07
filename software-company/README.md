@@ -267,15 +267,18 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   phải qua smoke do orchestrator tự chạy (ADR-0029), nhưng release-engineer vẫn mô tả deploy chứ chưa chạy container/k8s/CI-CD cho sản phẩm khách; đưa `company/release` vào `main` là quy trình PR của
   khách. Xung đột giải quyết bằng làm lại trên nền mới, chưa rebase tự động. **Kafka/Redis** thay SQLite khi chạy nhiều
   máy (song song mới ở mức thread trong một tiến trình).
-- **Sandbox tiến trình** cho `run` (container/seccomp): hiện chỉ allowlist lệnh + khoá đường dẫn + lọc env. Guard
-  injection là lưới chắn theo mẫu, không phải hàng rào — xem `../SECURITY.md` ở gốc hub.
+- **Sandbox container mặc định bật**: ba điểm chạy mã của khách (tool `run`, lint/test, lệnh khởi động smoke) đã
+  đi qua `Sandbox` (ADR-0035) và `COMPANY_SANDBOX=container` cho mạng tắt + hạn mức, nhưng mặc định `auto` nên
+  máy không có docker vẫn chạy `subprocess` — vẫn là mã của khách chạy bằng quyền người vận hành và thấy `HOME`.
+  `git` và CLI model không đi qua sandbox (lý do ở `../SECURITY.md`). Guard injection là lưới chắn theo mẫu,
+  không phải hàng rào.
 - **Thông báo** (email/chat/webhook) khi gate mở hay quá hạn; **giao diện UAT cho khách**; console chưa hiện hồ sơ
   `gate_brief` cạnh nút duyệt (mới có ở CLI và `/gate-brief`).
 
 ### Bước tiếp theo
 1. Chạy `make eval-record AGENT=<id>` cho 21 agent với model thật, commit bản ghi để CI eval có răng.
 2. Deploy hạ tầng thật cho sản phẩm khách (release-engineer chạy CI/CD, container) nối tiếp tag/nhánh release của ADR-0027.
-3. Sandbox container cho `run`; adapter bus Redis Streams/Kafka giữ interface hiện tại (kể cả `poll`) để chạy nhiều tiến trình.
+3. Adapter bus Redis Streams/Kafka giữ interface hiện tại (kể cả `poll`) để chạy nhiều tiến trình.
 4. Console hiện hồ sơ `gate_brief` cạnh nút duyệt; thông báo webhook khi gate mở/quá hạn; giao diện UAT cho khách.
 
 ## Thứ tự triển khai khuyến nghị
