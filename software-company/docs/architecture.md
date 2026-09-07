@@ -16,7 +16,7 @@
 8. **Ước lượng trước khi làm** (skill cost-estimation): ticket không có `estimate_tokens`
    không được dispatch; budget = estimate × 1.5.
 9. **Bảo mật đi trước code** (ADR-0003): threat model trước ticket đầu; ticket có
-   `risk_tags` cần review của security, tách khỏi reviewer.
+   `risk_tags` cần review của security, tách khỏi `qa`.
 
 ## Topic
 
@@ -31,12 +31,12 @@ phải có mặt; agent được liệt kê mà không có route phải ghi `(ch
 | clarification-questions | clarifier | human gate | project_id |
 | clarification-answers | human gate | clarifier (hỏi lại khi trả lời thiếu), spec-writer (khi đủ) | project_id |
 | approved-specs | spec-writer → human gate `spec` | không có route trong `ROUTES`: security (threat model, `THREAT_ROUTE`), delivery-lead (plan, `PLAN_INPUTS`), ops (chỉ đọc) | project_id |
-| tasks | delivery-lead | test-author (khi bật, ADR-0028), engineering (6 agent) | ticket_id |
-| test-suites | test-author | engineering (6 agent) | ticket_id |
-| pull-requests | engineering | reviewer, qa-debugger, security (khi risk_tags), test-author (khi có `test_dispute`) | ticket_id |
-| review-results | reviewer, qa-debugger, security | delivery-lead | ticket_id (hoặc release_id cho QA staging) |
+| tasks | delivery-lead | qa[author] (khi bật, ADR-0028), engineering (6 agent) | ticket_id |
+| test-suites | qa[author] | engineering (6 agent) | ticket_id |
+| pull-requests | engineering | qa[review], security (khi risk_tags), qa[author] (khi có `test_dispute`) | ticket_id |
+| review-results | qa (`source` = reviewer ở PR, qa ở hồi quy staging), security | delivery-lead | ticket_id (hoặc release_id cho QA staging) |
 | release-candidates | delivery-lead | ops, security | release_id |
-| release-events | ops (pha `deploy`) | delivery-lead, qa-debugger (staging), ops (pha `docs`, production), ops (pha `account`, chỉ đọc), human gate | release_id |
+| release-events | ops (pha `deploy`) | delivery-lead, qa[review] (staging), ops (pha `docs`, production), ops (pha `account`, chỉ đọc), human gate | release_id |
 | incidents | ops (pha `docs`) | delivery-lead (plan khi root_cause_class code/ops/design), ops (pha `docs`, → research-requests khi requirement) | incident_id |
 | external-feedback | human (khách, người dùng) | ops (pha `docs`), ops (pha `account`) | project_id |
 | change-requests | ops (pha `account`) | delivery-lead, intake | change_id |
@@ -49,19 +49,18 @@ phải có mặt; agent được liệt kê mà không có route phải ghi `(ch
 
 ```
 delivery-lead:      tasks(ticket, assignee, estimate_tokens, risk_tags?)
-test-author:        (ADR-0028, khi bật) lượt MÙ từ acceptance → chỉ ghi file test → test-suites(ticket)
+qa[author]:         (ADR-0028, khi bật) lượt MÙ từ acceptance → chỉ ghi file test → test-suites(ticket)
                     test ĐỎ ngay sau lượt này là kết quả đúng; xanh ngay → audit tests_green_before_code
 engineering:        đọc shared-context → code trên branch cho tới khi test xanh (KHÔNG ghi được file test)
                     → pull-requests(ticket, tests_authored_by, test_dispute?)
-test-author:        PR có test_dispute → xem diff, sửa test hoặc bác bỏ → test-suites(blind=false)
-reviewer:           review-results(source=reviewer, verdict=pass|block, findings[])
-qa-debugger:        review-results(source=qa, verdict=pass|fail, root_cause?)
+qa[author]:         PR có test_dispute → xem diff, sửa test hoặc bác bỏ → test-suites(blind=false)
+qa[review]:         review-results(source=reviewer, verdict=pass|block, findings[], root_cause?) — MỌI ticket
 security:  review-results(source=security) — chỉ khi ticket có risk_tags
 delivery-lead:      đủ review bắt buộc và tất cả pass → approved → release-candidates
                     có fail/block → tasks(ticket, retry+1, hint); retry ≥ 3 → blocked
                     ticket có depends_on chưa xong → waiting; tự dispatch theo priority khi phụ thuộc approved
 ops[deploy]:        gộp branch → build/test/scan/sign → release-events(env=staging) → ticket merged
-qa-debugger:        hồi quy + perf + a11y trên staging → review-results(ticket_id=release_id, source=qa)
+qa[review]:         hồi quy + perf + a11y trên staging → review-results(ticket_id=release_id, source=qa)
 delivery-lead:      QA staging pass → xin human gate 3; fail → ticket quay lại với hint
 ops[deploy]:        gate 3 approve → release-events(env=production) → ticket released; rolled_back → ticket quay lại
 ops[account]:       UAT với khách → acceptance-results(accepted → closed | rejected → ticket quay lại | conditional)
@@ -69,7 +68,8 @@ supervisor:         retry > MAX_RETRY, token > budget, review quá 2h → superv
                     cùng mã nợ kiến trúc (DEF-xx/SD-xx/debt:) ≥ N review liên tiếp → gate escalation cấp dự án (ADR-0032)
 ```
 
-Review bắt buộc: `{reviewer, qa}` ∪ `{security nếu risk_tags}` — code trong
+Review bắt buộc: `{reviewer}` ∪ `{security nếu risk_tags}` — ADR-0037 gộp reviewer và qa-debugger thành một
+lượt `qa[review]` chạy cho mọi PR, nên `qa` không còn là nguồn review "thêm"; code trong
 `DeliveryLead.required_reviews`.
 
 ## Trạng thái ticket
@@ -92,7 +92,7 @@ Read/Grep/Glob) đọc hồ sơ và in bản tóm; người ký bằng `gate_cli
 - **Đo token**: mỗi agent phát `audit-log.tokens`; supervisor cộng dồn theo ticket
   (`Supervisor.budgets`). Không cần thư viện usage bên ngoài.
 - **Workspace**: mỗi engineering agent làm trên branch `ticket/<id>` trong worktree riêng
-  (`<repo>/.worktrees/<id>`); reviewer/security đọc diff thật của branch đó, QA có tool chỉ đọc để tự chạy test.
+  (`<repo>/.worktrees/<id>`); qa/security đọc diff thật của branch đó, và có tool chỉ đọc để tự chạy test.
 - **Tool có ranh giới tin cậy** (ADR-0010, `tools.py`): bảng tool tên cố định (`read_file`, `write_file`,
   `list_files`, `search`, `run`), không có shell; `run` chỉ nhận tên trong allowlist (`lint`, `test`, `git_status`,
   `git_diff`); đường dẫn khoá trong worktree, không chạm `.git/` hay file bí mật; env lệnh con (lint/test, git, CLI model)

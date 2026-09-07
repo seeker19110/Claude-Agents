@@ -16,7 +16,7 @@ from .roles import ROLE
 
 # F16: token của 3 lượt review (mỗi lượt mang system prompt + blackboard) không tính vào ngân sách ticket — delivery-lead
 # ước lượng công của engineer, còn review là chi phí cố định của quy trình; cộng chung thì mọi ticket đều bị cắt.
-REVIEW_ACTORS = frozenset({ROLE.REVIEWER, ROLE.QA, ROLE.SECURITY})
+REVIEW_ACTORS = frozenset({ROLE.QA, ROLE.SECURITY})
 
 # ADR-0032: mã "nợ kiến trúc treo" trong finding của review (threat-model, schema, infra, code review): `DEF-01`, `SD-3`,
 # hoặc `debt: <mã>` viết tự do. Cùng một mã nhắc ≥ `debt_threshold` review LIÊN TIẾP của cùng nguồn trong cùng dự án

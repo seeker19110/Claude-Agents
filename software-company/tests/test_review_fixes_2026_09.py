@@ -160,7 +160,7 @@ def test_ticket_bi_bo_khong_mo_khoa_ticket_phu_thuoc():
 def test_ticket_bi_bo_duoc_dung_lai_khi_mo_lai_tu_sqlite(tmp_path):
     from company.sqlite_bus import SQLiteBus
     def failing(system, user):
-        if _agent_of(system) == "reviewer":
+        if _agent_of(system) == "qa":
             return {"ticket_id": _inp(user)["ticket_id"], "source": "reviewer", "verdict": "block", "findings": [{"level": "block", "text": "sai"}]}
         return handler(system, user)
     db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=failing))
@@ -183,9 +183,9 @@ def test_mo_lai_khong_chay_lai_agent_da_xong_cua_event_do_dang(tmp_path):
     from company.sqlite_bus import SQLiteBus
     db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=handler))
     _drive_to_plan(bus, orch); orch.run()
-    pr = next(e for e in bus.replay(topic="pull-requests") if e.key == "T2")   # PR T2: reviewer + qa + security cùng đọc
+    pr = next(e for e in bus.replay(topic="pull-requests") if e.key == "T2")   # PR T2: qa[review] + security cùng đọc
     reviews = [e for e in bus.replay(topic="review-results") if e.causation_id == pr.event_id]
-    assert len(reviews) == 3
+    assert len(reviews) == 2, "ADR-0037: reviewer + qa-debugger gộp thành MỘT lượt `qa[review]`"
     # giả crash: xoá dấu "orchestrated" của PR T2 khỏi log → event coi như chưa xong, nhưng đầu ra 3 agent vẫn còn
     import sqlite3
     from contextlib import closing
@@ -198,13 +198,13 @@ def test_mo_lai_khong_chay_lai_agent_da_xong_cua_event_do_dang(tmp_path):
     c2 = FakeClient(handler=handler); o2 = Orchestrator(SQLiteBus(db), c2)
     # ADR-0037 PR-5b: slot = "<agent>:<topic_out>" (khoá thêm topic_out để hai route của cùng agent gộp trên
     # cùng event không nuốt nhau — xem `Orchestrator._call`).
-    assert o2.partial.get(pr.event_id) == {"reviewer:review-results", "qa-debugger:review-results", "security:review-results"}
+    assert o2.partial.get(pr.event_id) == {"qa:review-results", "security:review-results"}
     assert any(e.event_id == pr.event_id for e in o2.queue), "event vẫn được xử lý nốt (đánh dấu xong)"
     o2.run()
-    reran = [c for c in c2.calls if _agent_of(c["system"]) in {"reviewer", "qa-debugger", "security"}
+    reran = [c for c in c2.calls if _agent_of(c["system"]) in {"qa", "security"}
              and _inp(c["user"]).get("ticket_id") == "T2"]
     assert not reran and len(c2.calls) - calls_before >= 0, "không gọi lại model cho lượt review đã có"
-    assert len([e for e in o2.bus.replay(topic="review-results") if e.causation_id == pr.event_id]) == 3
+    assert len([e for e in o2.bus.replay(topic="review-results") if e.causation_id == pr.event_id]) == 2
 
 
 def test_toolbox_va_notes_theo_thread():
@@ -348,10 +348,10 @@ def test_schema_review_results_co_du_truong_prompt_doi():
     props = json.loads((SCHEMA_DIR / "review-results.json").read_text(encoding="utf-8"))["properties"]["payload"]["properties"]
     for f in ("sbom_ref", "scan_summary", "test_summary", "mutation_score", "perf", "a11y", "project_id"):
         assert f in props and props[f].get("description"), f
-    # prompt của reviewer/qa-debugger khai đúng những trường này
+    # prompt pha `review` của `qa` khai đúng những trường này (ADR-0037: reviewer + qa-debugger gộp làm một)
     root = Path(__file__).resolve().parents[1] / "agents" / "quality"
-    rv = (root / "reviewer.md").read_text(encoding="utf-8"); qa = (root / "qa-debugger.md").read_text(encoding="utf-8")
-    assert "sbom_ref" in rv and "scan_summary" in rv
+    qa = (root / "qa.md").read_text(encoding="utf-8")
+    assert "sbom_ref" in qa and "scan_summary" in qa
     assert all(x in qa for x in ("test_summary", "mutation_score", "perf", "a11y"))
 
 
@@ -381,10 +381,10 @@ def test_eval_replay_noi_ro_khi_ca_khong_dat_va_co_co_bat_cong(monkeypatch, caps
         ev.CaseResult(name="ca-hong", passed=False, failures=["verdict sai"])])
     monkeypatch.setattr(ev, "load_cases", lambda aid: [{"name": "ca-hong"}])
     monkeypatch.setattr(ev, "ReplayClient", lambda aid: FakeClient())
-    assert ev.main(["reviewer", "--replay"]) == 0
+    assert ev.main(["qa", "--replay"]) == 0
     out = capsys.readouterr().out
     assert "ca-hong" in out and "CHÚ Ý" in out and "không phải cổng" in out
-    assert ev.main(["reviewer", "--replay", "--fail-on-score"]) == 1
+    assert ev.main(["qa", "--replay", "--fail-on-score"]) == 1
     assert "là cổng vì --fail-on-score" in capsys.readouterr().out
 
 
@@ -457,4 +457,4 @@ def test_reviewer_va_security_co_tool_chi_doc_khi_cham_pr():
     (TCK-CR-DEV-001-02, 2026-09-06). Cả ba nguồn review PR phải đọc được worktree."""
     from company.orchestrator import ROUTES
     tools = {r.agent: r.tools for r in ROUTES if r.topic_in == "pull-requests" and r.topic_out == "review-results"}
-    assert tools == {"reviewer": "ro", "qa-debugger": "ro", "security": "ro"}
+    assert tools == {"qa": "ro", "security": "ro"}

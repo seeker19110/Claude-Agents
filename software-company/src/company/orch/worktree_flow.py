@@ -210,7 +210,7 @@ def engineer(o: Orchestrator, agent: str, task: Envelope, r: Route, phase: str |
         p = {**g.payloads[0], "local_checks": {"unverified": True}}
         o._audit("local_checks.unverified", {"ticket_id": tid, "agent": agent, "claimed": g.payloads[0].get("local_checks")},
                     actor=agent, ticket_id=tid)
-    p = {**p, "tests_authored_by": ROLE.TEST_AUTHOR if doc_lap else "assignee"}
+    p = {**p, "tests_authored_by": ROLE.QA if doc_lap else "assignee"}
     return o.runner.publish(agent, task, r.topic_out, p, key=key_for(r.topic_out, p, task.key),
                                tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
 

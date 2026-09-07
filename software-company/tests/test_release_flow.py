@@ -10,6 +10,7 @@ from company.bus import InMemoryBus
 from company.delivery import DeliveryLead
 from company.events import AcceptanceResult, AuditLog, Envelope, PullRequest, ReviewResult, Task
 from company.gates import HumanGate
+from company.orch.routes import REVIEW_AGENT
 from company.supervisor import Supervisor
 
 
@@ -29,7 +30,8 @@ def _pr(bus, tid="T1"):
 
 
 def _rev(bus, tid, src, verdict="pass", **kw):
-    bus.publish(Envelope(topic="review-results", key=tid, actor=src,
+    # `source` là nhãn chấm, `actor` là agent phát (ADR-0037)
+    bus.publish(Envelope(topic="review-results", key=tid, actor=REVIEW_AGENT[src],
                          payload=ReviewResult(ticket_id=tid, source=src, verdict=verdict, **kw).model_dump()))
 
 
@@ -173,7 +175,8 @@ def test_overdue_reviews_lists_missing_sources():
     lead.dispatch(_task(risk_tags=["auth"]), "PLAN"); _pr(bus); _rev(bus, "T1", "reviewer")
     now = lead.review_since["T1"]
     assert lead.overdue_reviews(now + timedelta(hours=1)) == {}
-    assert lead.overdue_reviews(now + timedelta(hours=3)) == {"T1": {"qa", "security"}}
+    # ADR-0037: `qa` không còn là nguồn review riêng — lượt `qa[review]` chấm dưới nhãn `reviewer` (đã có ở trên)
+    assert lead.overdue_reviews(now + timedelta(hours=3)) == {"T1": {"security"}}
 
 
 # ---------- sprint report ----------
@@ -249,7 +252,7 @@ def test_batch_releases_do_not_wait_for_blocked_ticket():
     from company.orchestrator import Orchestrator
     from test_orchestrator import _agent_of, _drive_to_plan, _inp, handler
     def failing(system, user):
-        if _agent_of(system) == "reviewer" and _inp(user)["ticket_id"] == "T2":
+        if _agent_of(system) == "qa" and _inp(user)["ticket_id"] == "T2":
             return {"ticket_id": "T2", "source": "reviewer", "verdict": "block", "findings": [{"level": "block", "text": "sai"}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=failing), batch_releases=True)
@@ -320,13 +323,13 @@ def test_replay_per_ticket_releases_keeps_ids_from_log():
     assert lead2.release_tickets == lead.release_tickets and lead2.releases == lead.releases
 
 
-# ---------- ADR-0021: ticket thường chỉ cần reviewer ở lượt PR ----------
+# ---------- ADR-0021 (+ADR-0037): ticket thường chỉ cần nhãn `reviewer`; risk_tags thêm `security` ----------
 
-def test_plain_ticket_needs_only_reviewer_but_risky_ticket_needs_qa_and_security():
+def test_plain_ticket_needs_only_reviewer_but_risky_ticket_needs_security():
     bus, _, lead = _setup()
     lead.dispatch(_task("T1"), "PLAN"); lead.dispatch(_task("T2", risk_tags=["auth"]), "PLAN")
     assert lead.required_reviews("T1") == {"reviewer"}
-    assert lead.required_reviews("T2") == {"reviewer", "qa", "security"}
+    assert lead.required_reviews("T2") == {"reviewer", "security"}  # ADR-0037: `qa` gộp vào nhãn `reviewer`
     _pr(bus, "T1"); _rev(bus, "T1", "reviewer")
     assert lead.state["T1"] == "approved", "một lượt review là đủ"
     _pr(bus, "T2"); _rev(bus, "T2", "reviewer"); _rev(bus, "T2", "qa")

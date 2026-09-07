@@ -36,6 +36,7 @@ OLD_IDS = frozenset({
 MIGRATED: dict[str, str] = {
     "security-engineer": "security",  # PR-5a
     "release-engineer": "ops", "support-docs": "ops", "account-manager": "ops",  # PR-5b (gộp 3→1)
+    "test-author": "qa", "reviewer": "qa", "qa-debugger": "qa",  # PR-5c (gộp 3→1, pha `author`/`review`)
 }
 
 # Chuỗi trùng tên vai nhưng KHÔNG phải vai. Miễn theo (file, đúng nguyên dòng): đổi dòng là phải xét lại lý do,
@@ -94,7 +95,7 @@ def test_bo_quet_bat_duoc_vi_pham_biet_truoc():
     ids = _all_ids()
     assert _violations('x = "delivery-lead"\n', ids) == [(1, "delivery-lead")]
     assert _violations("y = 'qa-debugger'\n", ids) == [(1, "qa-debugger")]
-    assert _violations('z = {"reviewer": "qa"}\n', ids) == [(1, "reviewer")]  # key cũng là chuỗi
+    assert _violations('z = {"reviewer": "qa"}\n', ids) == [(1, "reviewer"), (1, "qa")]  # key cũng là chuỗi
     assert _violations('# "delivery-lead" trong chú thích\nw = f"sc-{ROLE.LEAD}"\n', ids) == []
     assert _violations('v = "delivery-lead-x"\n', ids) == []  # chỉ bắt đúng nguyên id, không bắt chuỗi chứa nó
 

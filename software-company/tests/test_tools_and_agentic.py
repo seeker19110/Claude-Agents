@@ -337,15 +337,15 @@ def test_orchestrator_with_repo_produces_verified_prs_and_reviewers_read_diff(tm
         assert (repo / ".worktrees" / tid / f"f_{tid.lower()}.py").exists()
     by_agent = {}
     for c in client.calls: by_agent.setdefault(_agent_of(c["system"]), []).append(c)
-    rev = _inp(by_agent["reviewer"][0]["user"])
+    rev = _inp(by_agent["qa"][0]["user"])
     assert "+def t1():" in rev["diff"] and rev["changed_files"] == ["f_t1.py"], "reviewer đọc diff thật"
     sec_pr = [c for c in by_agent["security"] if _inp(c["user"]).get("branch")]
     # security có tool chỉ-đọc → FakeClient gọi 2 lượt (tool + kết luận) cho cùng PR; diff phải có ở lượt đầu
     assert sec_pr and "+def t2():" in _inp(sec_pr[0]["user"])["diff"], "security review PR T2 (risk_tags) đọc diff"
-    qa_pr = [c for c in by_agent["qa-debugger"] if c["tools"]]
+    qa_pr = [c for c in by_agent["qa"] if c["tools"]]
     assert qa_pr and all(c["tools"] == ["read_file", "list_files", "search", "run"] for c in qa_pr), "QA có tool chỉ đọc"
     assert any(m["role"] == "tool" and m["content"].startswith("exit=0") for c in qa_pr for m in c["messages"])
-    assert {t["name"] if isinstance(t, dict) else t for t in by_agent["reviewer"][0]["tools"]} >= {"read_file", "search"},         "reviewer có tool chỉ-đọc để đọc phần diff bị cắt (2026-09-06)"
+    assert {t["name"] if isinstance(t, dict) else t for t in by_agent["qa"][0]["tools"]} >= {"read_file", "search"},         "reviewer có tool chỉ-đọc để đọc phần diff bị cắt (2026-09-06)"
     assert orch.supervisor.sprint_report()["prs_unverified"] == 0
 
 
@@ -357,7 +357,7 @@ def test_orchestrator_without_repo_marks_prs_unverified():
     a = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "local_checks.unverified"]
     assert len(a) == 2 and json.loads(a[0]["evidence"])["claimed"] == {"lint": True, "tests": True}
     assert orch.supervisor.sprint_report()["prs_unverified"] == 2
-    assert "diff" not in _inp(next(c for c in client.calls if _agent_of(c["system"]) == "reviewer")["user"])
+    assert "diff" not in _inp(next(c for c in client.calls if _agent_of(c["system"]) == "qa")["user"])
 
 
 def test_orchestrator_rejects_non_git_repo(tmp_path):
@@ -419,29 +419,33 @@ def test_lessons_calibrate_next_plan():
 
 # ---------- eval ghi / phát lại ----------
 
-def _reviewer_handler(system, user):
-    tid = _inp(user)["ticket_id"]; blocked = "sk_live" in user
-    return {"ticket_id": tid, "source": "reviewer", "verdict": "block" if blocked else "pass",
-            "findings": [{"level": "block", "text": "hard-coded secret"}] if blocked else []}
+# Máy eval (ghi / phát lại / gộp bản ghi) được đo trên `security`: ADR-0037 PR-5c gộp reviewer + qa-debugger +
+# test-author thành `qa` CÓ PHA, mà eval của agent có pha bắt buộc khai `phase:` và `qa.yaml` có 8 ca thuộc hai
+# topic đầu ra khác nhau — đo cơ chế ghi/phát lại trên đó là trộn hai thứ. `security` vẫn là agent không pha,
+# đúng hai ca, một topic ra, nên nó đo đúng cái cần đo.
+def _security_handler(system, user):
+    tid = _inp(user)["ticket_id"]; blocked = "SELECT * FROM users" in user
+    return {"ticket_id": tid, "source": "security", "verdict": "block" if blocked else "pass",
+            "findings": [{"level": "block", "text": "SQL nối chuỗi"}] if blocked else []}
 
 
 def test_eval_record_then_replay_without_model(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(evals_mod, "RECORDINGS_DIR", tmp_path)
     with pytest.raises(LLMError, match="chưa có bản ghi"):
-        ReplayClient("reviewer")
-    rec = RecordingClient(FakeClient(handler=_reviewer_handler, tokens_per_call=(500, 40)), "reviewer")
-    assert all(r.passed for r in run_eval("reviewer", rec))
+        ReplayClient("security")
+    rec = RecordingClient(FakeClient(handler=_security_handler, tokens_per_call=(500, 40)), "security")
+    assert all(r.passed for r in run_eval("security", rec))
     path = rec.save()
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["agent"] == "reviewer" and data["prompt_version"] >= 1 and len(data["cases"]) == 2 and data["models"] == ["fake-standard"]
-    res = run_eval("reviewer", ReplayClient("reviewer"))
+    assert data["agent"] == "security" and data["prompt_version"] >= 1 and len(data["cases"]) == 2 and data["models"] == ["fake-strong"]  # `security` là model_tier strong
+    res = run_eval("security", ReplayClient("security"))
     assert [r.passed for r in res] == [True, True] and all(r.tokens == 540 for r in res)
-    assert stale_recordings(["reviewer"]) == {}
+    assert stale_recordings(["security"]) == {}
     # prompt đổi (mô phỏng: khoá trong bản ghi không còn khớp) → lệch, replay báo rõ phải ghi lại
     data["cases"] = {"stale": next(iter(data["cases"].values()))}
     path.write_text(json.dumps(data), encoding="utf-8")
-    assert list(stale_recordings(["reviewer"])) == ["reviewer"] and len(stale_recordings(["reviewer"])["reviewer"]) == 2
-    bad = run_eval("reviewer", ReplayClient("reviewer"))
+    assert list(stale_recordings(["security"])) == ["security"] and len(stale_recordings(["security"])["security"]) == 2
+    bad = run_eval("security", ReplayClient("security"))
     assert not bad[0].passed and "lệch prompt" in bad[0].failures[0]
     # CLI: --replay bỏ qua agent chưa ghi (exit 0); --strict chỉ đỏ với agent có tên trong REQUIRED.txt
     assert evals_main(["backend", "--replay"]) == 0 and "SKIP backend" in capsys.readouterr().out
@@ -450,7 +454,7 @@ def test_eval_record_then_replay_without_model(tmp_path, monkeypatch, capsys):
     (tmp_path / "REQUIRED.txt").write_text("# bắt buộc\nbackend\n", encoding="utf-8")
     assert evals_main(["backend", "--replay", "--strict"]) == 1
     assert "FAIL backend" in capsys.readouterr().out
-    assert evals_main(["reviewer", "--replay"]) == 1
+    assert evals_main(["security", "--replay"]) == 1
 
 
 def test_eval_main_khong_replay_khong_record_dung_client_that(tmp_path, monkeypatch, capsys):
@@ -458,18 +462,18 @@ def test_eval_main_khong_replay_khong_record_dung_client_that(tmp_path, monkeypa
     monkeypatch.setattr(evals_mod, "RECORDINGS_DIR", tmp_path)
     import company.llm as llm_mod
 
-    fake = FakeClient(handler=_reviewer_handler, tokens_per_call=(500, 40))
+    fake = FakeClient(handler=_security_handler, tokens_per_call=(500, 40))
     monkeypatch.setattr(llm_mod, "make_client", lambda: fake)
-    assert evals_main(["reviewer"]) == 0
+    assert evals_main(["security"]) == 0
     out = capsys.readouterr().out
-    assert "reviewer" in out and "đã ghi" not in out, "không --record thì không lưu file"
+    assert "security" in out and "đã ghi" not in out, "không --record thì không lưu file"
 
     # --record: dùng RecordingClient bọc client thật, rồi lưu và in đường dẫn (dòng 255-256, 261)
-    fake2 = FakeClient(handler=_reviewer_handler, tokens_per_call=(500, 40))
+    fake2 = FakeClient(handler=_security_handler, tokens_per_call=(500, 40))
     monkeypatch.setattr(llm_mod, "make_client", lambda: fake2)
-    assert evals_main(["reviewer", "--record"]) == 0
+    assert evals_main(["security", "--record"]) == 0
     out = capsys.readouterr().out
-    assert "đã ghi" in out and (tmp_path / "reviewer.json").exists()
+    assert "đã ghi" in out and (tmp_path / "security.json").exists()
 
 
 def test_get_tra_ve_none_khi_duong_dan_di_qua_gia_tri_vo_huong():
@@ -743,7 +747,7 @@ def test_staging_qa_gets_read_only_tools_on_integration_worktree(tmp_path):
     orch = Orchestrator(bus, client, repo=repo, base="main")
     _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.releases == ["REL-001", "REL-002"] and orch.stats["errors"] == 0
-    staging_qa = [c for c in client.calls if _agent_of(c["system"]) == "qa-debugger" and _inp(c["user"]).get("release_id")]
+    staging_qa = [c for c in client.calls if _agent_of(c["system"]) == "qa" and _inp(c["user"]).get("release_id")]
     assert staging_qa and all(c["tools"] == ["read_file", "list_files", "search", "run"] for c in staging_qa)
     ran = [m["content"] for c in staging_qa for m in c["messages"] if m["role"] == "tool"]
     assert ran and all(x.startswith("exit=0") for x in ran), "QA tự chạy test trên worktree tích hợp"
@@ -757,9 +761,9 @@ def test_reviewer_with_tools_but_no_calls_is_audited(tmp_path):
     _drive_to_plan(bus, orch); orch.run()
     lazy_qa = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "review.no_tool_evidence"]
     # reviewer/security giờ cũng có tool trên PR: không gọi tool nào cũng bị ghi "chỉ là lời khai" như QA
-    assert lazy_qa and {a["agent"] for a in lazy_qa} == {"qa-debugger", "reviewer", "security"}
+    assert lazy_qa and {a["agent"] for a in lazy_qa} == {"qa", "security"}
     assert {a["topic"] for a in lazy_qa} == {"pull-requests", "release-events"}
-    assert all(a["agent"] == "qa-debugger" for a in lazy_qa if a["topic"] == "release-events")
+    assert all(a["agent"] == "qa" for a in lazy_qa if a["topic"] == "release-events")
 
 
 def test_pr_with_failing_local_checks_goes_back_to_ticket_not_to_review(tmp_path):
@@ -955,7 +959,7 @@ def test_chuoi_null_thanh_none_o_dung_truong_va_de_lai_vet() -> None:
     out = {"ticket_id": "T1", "source": "qa", "verdict": "block", "mutation_score": "null",
            "root_cause": "  N/A ", "test_summary": "42 passed"}
     client = FakeClient(handler=lambda s, u: out)
-    g = AgentRunner(bus, client).generate("qa-debugger", Envelope(
+    g = AgentRunner(bus, client).generate("qa", Envelope(
         topic="pull-requests", key="T1", actor="backend",
         payload={"ticket_id": "T1", "branch": "b", "pr_ref": "#1", "local_checks": {"lint": True, "tests": False}}),
         "review-results")
@@ -970,7 +974,7 @@ def test_chuoi_la_o_truong_nullable_van_hong_nhu_cu() -> None:
     """Chỉ chuỗi mang nghĩa "không có" mới được sửa; một con số viết sai kiểu vẫn phải là đầu ra không hợp lệ."""
     client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "source": "qa", "verdict": "block", "mutation_score": "bảy mươi"})
     with pytest.raises(RunnerError, match="không hợp lệ"):
-        AgentRunner(InMemoryBus(), client).generate("qa-debugger", Envelope(
+        AgentRunner(InMemoryBus(), client).generate("qa", Envelope(
             topic="pull-requests", key="T1", actor="backend",
             payload={"ticket_id": "T1", "branch": "b", "pr_ref": "#1", "local_checks": {"lint": True, "tests": False}}),
             "review-results")
@@ -983,15 +987,15 @@ def test_ban_ghi_mang_phien_ban_luc_BAT_DAU_ghi(tmp_path, monkeypatch):
     Đo được 2026-09-05: stash file prompt trong lúc `make eval-record` chạy → bản ghi ra v11 trong khi agent
     đã v12, `outdated_versions` đỏ mà nội dung bản ghi hoàn toàn đúng."""
     monkeypatch.setattr(evals_mod, "RECORDINGS_DIR", tmp_path)
-    rec = RecordingClient(FakeClient(handler=_reviewer_handler, tokens_per_call=(500, 40)), "reviewer")
+    rec = RecordingClient(FakeClient(handler=_security_handler, tokens_per_call=(500, 40)), "security")
     luc_bat_dau = rec.prompt_version
-    run_eval("reviewer", rec)
+    run_eval("security", rec)
 
     # ai đó sửa prompt trong lúc lượt ghi đang chạy
     that = evals_mod.load_agents
     def agents_da_doi(*a, **kw):
         goc = that(*a, **kw)
-        goc["reviewer"].version += 99
+        goc["security"].version += 99
         return goc
     monkeypatch.setattr(evals_mod, "load_agents", agents_da_doi)
 
@@ -1003,13 +1007,13 @@ def test_mot_ca_loi_khong_duoc_xoa_ca_dang_tot_trong_ban_ghi(tmp_path, monkeypat
     """`--record` gộp vào bản ghi cũ. Một ca lỗi (model từ chối, mạng đứt) mà ghi đè cả file thì ca đang tốt
     biến mất, và replay sau báo "lệch prompt" cho một ca chẳng ai đụng tới. Đo được 2026-09-05 trên qa-debugger."""
     monkeypatch.setattr(evals_mod, "RECORDINGS_DIR", tmp_path)
-    day_du = RecordingClient(FakeClient(handler=_reviewer_handler, tokens_per_call=(500, 40)), "reviewer")
-    run_eval("reviewer", day_du); day_du.save()
-    assert len(json.loads(recording_path("reviewer").read_text(encoding="utf-8"))["cases"]) == 2
+    day_du = RecordingClient(FakeClient(handler=_security_handler, tokens_per_call=(500, 40)), "security")
+    run_eval("security", day_du); day_du.save()
+    assert len(json.loads(recording_path("security").read_text(encoding="utf-8"))["cases"]) == 2
 
     # lượt sau chỉ ghi được MỘT ca (ca kia lỗi giữa chừng)
-    mot_ca = RecordingClient(FakeClient(handler=lambda s, u: {"ok": True}), "reviewer")
+    mot_ca = RecordingClient(FakeClient(handler=lambda s, u: {"ok": True}), "security")
     mot_ca.complete(system="ca moi", user="ca moi", schema={}, model_tier="standard")
     data = json.loads(mot_ca.save().read_text(encoding="utf-8"))
     assert len(data["cases"]) == 3, "hai ca cũ phải còn nguyên, ca mới thêm vào"
-    assert all(r.passed for r in run_eval("reviewer", ReplayClient("reviewer"))), "replay vẫn chạy được"
+    assert all(r.passed for r in run_eval("security", ReplayClient("security"))), "replay vẫn chạy được"

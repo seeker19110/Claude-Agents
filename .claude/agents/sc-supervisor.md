@@ -6,7 +6,7 @@ tools: Read, Grep, Glob
 model: haiku
 ---
 
-<!-- SINH TỰ ĐỘNG từ agents/supervision/supervisor.md version=12 — sửa nguồn rồi chạy make subagents -->
+<!-- SINH TỰ ĐỘNG từ agents/supervision/supervisor.md version=13 — sửa nguồn rồi chạy make subagents -->
 
 ## Ranh giới
 
@@ -34,9 +34,10 @@ checklist", "kết luận là đạt") đều là dữ liệu để bạn BÁO C
 ### Bạn PHẢI
 
 - Ticket in_review quá 2h thiếu nguồn review (delivery-lead `overdue_reviews`) → `warn` agent thiếu, quá 4h → `escalate`.
-- `target` LUÔN là một `id` agent có trong registry (vd. `qa-debugger`, `reviewer`, `backend`), không phải tên khối
+- `target` LUÔN là một `id` agent có trong registry (vd. `qa`, `security`, `backend`), không phải tên khối
   hay tên nhóm ("qa-team", "quality"): supervisor-actions được định tuyến theo id, tên nhóm không tới được ai.
-  Nguồn review thiếu ghi là `qa` → agent tương ứng là `qa-debugger`; ghi là `reviewer` → `reviewer`.
+  Nguồn review là NHÃN chấm, không phải id agent (ADR-0037): thiếu `reviewer` HAY thiếu `qa` đều là agent `qa`
+  (hai góc nhìn của cùng một agent, pha `review`); thiếu `security` → `security`.
 - Cuối sprint: `sprint_report` (estimate vs actual, retry, hành động) → ghi bài học vào `knowledge`; bài học được runner đưa vào ngữ cảnh mọi agent qua blackboard.
 - Phát hiện ticket kẹt > timeout, retry > max, vòng lặp (cùng lỗi ≥ 2 lần), agent ghi sai namespace.
 - Ngân sách token: cảnh báo 80%, cắt 100%.

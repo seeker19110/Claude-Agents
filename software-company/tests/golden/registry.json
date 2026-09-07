@@ -281,27 +281,29 @@
       "pull-requests"
     ]
   },
-  "qa-debugger": {
+  "qa": {
     "block": "quality",
-    "budget_tokens_per_task": 80000,
+    "budget_tokens_per_task": 60000,
     "context_namespace_write": null,
     "max_retries": 1,
     "model_tier": "standard",
     "reads": [
+      "tasks",
       "pull-requests",
       "release-events"
     ],
     "skills": [
-      "testing",
-      "debugging",
-      "performance-testing"
+      "testing"
     ],
     "skills_core": [
+      "engineering-common",
+      "api-contract",
       "accessibility"
     ],
-    "timeout_minutes": 90,
-    "version": 13,
+    "timeout_minutes": 60,
+    "version": 1,
     "writes": [
+      "test-suites",
       "review-results"
     ]
   },
@@ -336,32 +338,6 @@
     "version": 10,
     "writes": [
       "research-findings"
-    ]
-  },
-  "reviewer": {
-    "block": "quality",
-    "budget_tokens_per_task": 60000,
-    "context_namespace_write": null,
-    "max_retries": 1,
-    "model_tier": "standard",
-    "reads": [
-      "pull-requests"
-    ],
-    "skills": [
-      "code-review",
-      "code-ownership"
-    ],
-    "skills_core": [
-      "security",
-      "license-compliance",
-      "testing",
-      "api-contract",
-      "observability"
-    ],
-    "timeout_minutes": 60,
-    "version": 11,
-    "writes": [
-      "review-results"
     ]
   },
   "risk": {
@@ -461,7 +437,7 @@
       "observability"
     ],
     "timeout_minutes": 15,
-    "version": 12,
+    "version": 13,
     "writes": [
       "supervisor-actions"
     ]
@@ -486,30 +462,6 @@
     "version": 9,
     "writes": [
       "requirements-draft"
-    ]
-  },
-  "test-author": {
-    "block": "quality",
-    "budget_tokens_per_task": 60000,
-    "context_namespace_write": null,
-    "max_retries": 1,
-    "model_tier": "standard",
-    "reads": [
-      "tasks",
-      "pull-requests"
-    ],
-    "skills": [
-      "testing"
-    ],
-    "skills_core": [
-      "engineering-common",
-      "api-contract",
-      "accessibility"
-    ],
-    "timeout_minutes": 60,
-    "version": 1,
-    "writes": [
-      "test-suites"
     ]
   }
 }

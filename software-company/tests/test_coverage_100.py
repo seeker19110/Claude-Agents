@@ -275,7 +275,7 @@ def test_escalation_gom_comment_cua_nguoi_va_review_block(tmp_path):
     bus.publish(Envelope(topic="audit-log", key="T1", actor="human:lead",
                          payload={"action": "human.comment", "actor": "human:lead", "ticket_id": "T1",
                                   "evidence": '{"text": "thử đọc lại log CI"}'}))
-    bus.publish(Envelope(topic="review-results", key="T1", actor="reviewer",
+    bus.publish(Envelope(topic="review-results", key="T1", actor="qa",
                          payload={"ticket_id": "T1", "source": "reviewer", "verdict": "block",
                                   "findings": [{"level": "block", "text": "SQL injection ở /orders"}]}))
     b = GB.build(GB.load_state(db), "T1")

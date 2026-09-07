@@ -40,7 +40,7 @@ def test_author_tests_dien_bang_chung_that_va_do_la_dung(tmp_path: Path) -> None
     th = lambda m, t: [_tc("write_file", path=TEST_FILE, content=TEST_BODY)] if _first_turn(m) else []  # noqa: E731
     bus = InMemoryBus()
     g, status = AgentRunner(bus, FakeClient(handler=lambda s, u: _ts(_inp(u)), tool_handler=th)).author_tests(
-        "test-author", _task(), ws)
+        "qa", _task(), ws)
     p = g.payloads[0]
     assert status == "red", "test đỏ khi chưa có code là kết quả ĐÚNG"
     assert p["files"] == [TEST_FILE], "danh sách file do git nói, không phải model khai"
@@ -60,7 +60,7 @@ def test_author_tests_khong_ghi_duoc_file_nguon(tmp_path: Path) -> None:
         seen.extend(m["content"] for m in msgs if m["role"] == "tool")
         return []
     g, _ = AgentRunner(InMemoryBus(), FakeClient(handler=lambda s, u: _ts(_inp(u)), tool_handler=th)).author_tests(
-        "test-author", _task(), ws)
+        "qa", _task(), ws)
     assert seen[0].startswith("lỗi: chỉ được ghi file test")
     assert g.payloads[0]["files"] == [TEST_FILE] and not (ws.path / "feature.py").exists()
 
@@ -71,7 +71,7 @@ def test_author_tests_xanh_ngay_la_dang_ngo(tmp_path: Path) -> None:
     th = lambda m, t: [_tc("write_file", path=TEST_FILE, content="def test_luon_dung():\n    assert True\n")] if _first_turn(m) else []  # noqa: E731
     bus = InMemoryBus()
     _, status = AgentRunner(bus, FakeClient(handler=lambda s, u: _ts(_inp(u)), tool_handler=th)).author_tests(
-        "test-author", _task(), ws)
+        "qa", _task(), ws)
     assert status == "green"
     assert [e.payload["action"] for e in bus.replay(topic="audit-log")][-1] == "tests_green_before_code"
 
@@ -80,7 +80,7 @@ def test_author_tests_khong_viet_gi_thi_khong_co_bo_test_rong(tmp_path: Path) ->
     ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main")
     client = FakeClient(handler=lambda s, u: _ts(_inp(u)), tool_handler=lambda m, t: [_tc("read_file", path="mod.py")] if _first_turn(m) else [])
     with pytest.raises(RunnerError, match="không viết file test nào"):
-        AgentRunner(InMemoryBus(), client).author_tests("test-author", _task(), ws)
+        AgentRunner(InMemoryBus(), client).author_tests("qa", _task(), ws)
 
 
 # ---------- lượt của assignee sau khi có bộ test ----------
@@ -111,9 +111,11 @@ def test_assignee_khong_sua_duoc_test_cua_nguoi_khac(tmp_path: Path) -> None:
 # ---------- luồng qua orchestrator ----------
 
 def _handler(system: str, user: str) -> dict:
+    from test_orchestrator import _qa_phase
     from test_orchestrator import handler as base
     a, p = _agent_of(system), _inp(user)
-    if a == "test-author": return _ts(p)
+    # ADR-0037: `qa` gộp cả vai viết test lẫn vai chấm — chỉ lượt pha `author` trả `test-suites`.
+    if a == "qa" and _qa_phase(system) == "author": return _ts(p)
     return base(system, user)
 
 
@@ -138,10 +140,10 @@ def test_luong_ticket_di_qua_test_author_truoc_roi_moi_toi_code(tmp_path: Path) 
     ts = list(bus.replay(topic="test-suites"))
     prs = list(bus.replay(topic="pull-requests"))
     assert ts and prs, "phải có cả bộ test lẫn PR"
-    assert ts[0].actor == "test-author" and ts[0].payload["files"] == [TEST_FILE]
+    assert ts[0].actor == "qa" and ts[0].payload["files"] == [TEST_FILE]
     assert ts[0].ts <= prs[0].ts, "bộ test có TRƯỚC code"
     t1 = next(e for e in prs if e.key == "T1")
-    assert t1.payload["tests_authored_by"] == "test-author"
+    assert t1.payload["tests_authored_by"] == "qa"
     # File test có trên nhánh (do test-author commit), nhưng nội dung nguyên vẹn: assignee ghi vào đó thì bị chặn.
     ws = orch.workspace("T1")
     assert (ws.path / TEST_FILE).read_text(encoding="utf-8") == TEST_BODY
@@ -189,8 +191,8 @@ def test_tranh_chap_test_quay_ve_test_author_va_lan_nay_co_diff(tmp_path: Path) 
                            "test_dispute": "test khẳng định f() == 1 nhưng acceptance nói 2"})
     from company.orchestrator import ROUTES, StepResult, _has_dispute
     assert _has_dispute(pr, orch) is True
-    r = next(x for x in ROUTES if x.topic_in == "pull-requests" and x.agent == "test-author")
-    orch._call("test-author", pr, r, StepResult("e", "pull-requests", "T1"))
+    r = next(x for x in ROUTES if x.topic_in == "pull-requests" and x.agent == "qa")
+    orch._call("qa", pr, r, StepResult("e", "pull-requests", "T1"))
     out = list(bus.replay(topic="test-suites"))
     assert out and out[0].payload["blind"] is False, "lượt tranh chấp KHÔNG mù"
     assert any("test_dispute" in s for s in seen), "test-author phải đọc được lý do tranh chấp"
@@ -206,8 +208,8 @@ def test_luot_mu_khong_thay_hint_cua_vong_review_truoc(tmp_path: Path) -> None:
     bus = InMemoryBus()
     orch = Orchestrator(bus, FakeClient(handler=lambda s, u: _ts(_inp(u)), tool_handler=th), repo=repo, base="main", test_author=True)
     from company.orchestrator import ROUTES, StepResult
-    r = next(x for x in ROUTES if x.topic_in == "tasks" and x.agent == "test-author")
-    orch._call("test-author", _task(hint="reviewer bảo dùng dict thay vì dataclass", retry=2), r, StepResult("e", "tasks", "T1"))
+    r = next(x for x in ROUTES if x.topic_in == "tasks" and x.agent == "qa")
+    orch._call("qa", _task(hint="reviewer bảo dùng dict thay vì dataclass", retry=2), r, StepResult("e", "tasks", "T1"))
     joined = "\n".join(seen)
     assert "dataclass" not in joined and "given/when/then" in joined
 
@@ -231,8 +233,8 @@ def test_orchestrator_ghi_audit_khi_test_xanh_ngay(tmp_path: Path) -> None:
     bus = InMemoryBus()
     orch = Orchestrator(bus, FakeClient(handler=lambda s, u: _ts(_inp(u)), tool_handler=th), repo=repo, base="main", test_author=True)
     from company.orchestrator import ROUTES, StepResult
-    r = next(x for x in ROUTES if x.topic_in == "tasks" and x.agent == "test-author")
-    orch._call("test-author", _task(), r, StepResult("e", "tasks", "T1"))
+    r = next(x for x in ROUTES if x.topic_in == "tasks" and x.agent == "qa")
+    orch._call("qa", _task(), r, StepResult("e", "tasks", "T1"))
     ev = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "tests_green_before_code"]
     assert ev and ev[-1]["ticket_id"] == "T1"
     assert json.loads(ev[-1]["evidence"])["files"] == [TEST_FILE]
@@ -248,7 +250,7 @@ def test_giu_file_do_dang_cua_lan_truoc_thanh_wip_truoc_khi_viet_tiep(tmp_path: 
     th = lambda m, t: [_tc("write_file", path=TEST_FILE, content=TEST_BODY)] if _first_turn(m) else []  # noqa: E731
     bus = InMemoryBus()
     g, _ = AgentRunner(bus, FakeClient(handler=lambda s, u: _ts(_inp(u)), tool_handler=th)).author_tests(
-        "test-author", _task(), ws)
+        "qa", _task(), ws)
     assert (ws.path / "tests" / "test_do_dang.py").exists()
     assert sorted(g.payloads[0]["files"]) == sorted([TEST_FILE, "tests/test_do_dang.py"])
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
@@ -263,4 +265,83 @@ def test_commit_bo_test_that_bai_thi_noi_thang(tmp_path: Path, monkeypatch: pyte
                         lambda self, msg: (_ for _ in ()).throw(WorkspaceError("index đang khoá")))
     with pytest.raises(RunnerError, match="commit bộ test thất bại"):
         AgentRunner(InMemoryBus(), FakeClient(handler=lambda s, u: _ts(_inp(u)), tool_handler=th)).author_tests(
-            "test-author", _task(), ws)
+            "qa", _task(), ws)
+
+
+# ---------- ADR-0037 PR-5c: một agent `qa`, hai pha, hai bộ quyền ----------
+
+def test_qa_hai_route_khac_tool(tmp_path: Path) -> None:
+    """Gộp `test-author` + `reviewer` + `qa-debugger` thành một agent chỉ an toàn nếu HAI LƯỢT VẪN KHÁC NHAU.
+
+    Đo đúng ba khác biệt mà ADR-0037 hứa, trên cùng một `Orchestrator`:
+    1. đầu vào — lượt `author` đi từ `tasks` bị `BLIND_STRIP` gỡ `hint`/`diff`/`chan_doan`; lượt `review` được
+       `enrich` bơm đúng những thứ đó vào;
+    2. quyền — lượt `author` có tool GHI với `write_scope="tests"` (ghi file nguồn bị runtime từ chối), lượt
+       `review` chỉ-đọc (không có `write_file`/`delete_file` trong toolbox);
+    3. prompt — `cache_key` mang tên pha, nên hai lượt nạp hai bộ skill khác nhau.
+
+    Chiều tắt bản sửa: bỏ `phase=` khỏi hai route trong `orch/routes.py` → cả hai lượt dùng chung prompt
+    (`cache_key == "qa"`) và test đỏ ngay ở khẳng định (3).
+    """
+    from company.orchestrator import ROUTES, StepResult
+
+    repo = _init_repo(tmp_path / "repo")
+    ket_qua_tool: list[str] = []
+
+    def th(msgs, tools):
+        names = {t.name for t in tools} if tools else set()
+        ket_qua_tool.extend(m["content"] for m in msgs if m["role"] == "tool")
+        if not _first_turn(msgs) or "write_file" not in names: return []
+        # thử ghi CẢ file nguồn: `write_scope="tests"` phải chặn, không phải "được ghi rồi mới hối"
+        return [_tc("write_file", path="feature.py", content=SRC_BODY),
+                _tc("write_file", path=TEST_FILE, content=TEST_BODY)]
+
+    def handler(system: str, user: str) -> dict:
+        from test_orchestrator import _qa_phase
+        p = _inp(user)
+        if _qa_phase(system) == "author": return _ts(p)
+        return {"ticket_id": p["ticket_id"], "source": "reviewer", "verdict": "pass"}
+
+    client = FakeClient(handler=handler, tool_handler=th)
+    bus = InMemoryBus()
+    orch = Orchestrator(bus, client, repo=repo, base="main", test_author=True)
+    r_author = next(x for x in ROUTES if x.topic_in == "tasks" and x.agent == "qa")
+    r_review = next(x for x in ROUTES if x.topic_in == "pull-requests" and x.topic_out == "review-results" and x.agent == "qa")
+    assert (r_author.phase, r_review.phase) == ("author", "review")
+
+    orch._call("qa", _task(hint="reviewer bảo dùng dict", retry=2), r_author, StepResult("e1", "tasks", "T1"))
+    pr = Envelope(topic="pull-requests", key="T1", actor="backend",
+                  payload=_pr({"ticket_id": "T1"}, branch="ticket/T1"))
+    orch._call("qa", pr, r_review, StepResult("e2", "pull-requests", "T1"))
+
+    author_call, review_call = client.calls[0], client.calls[-1]
+
+    # (1) đầu vào
+    vao_author = _inp(author_call["user"])
+    assert not ({"hint", "diff", "chan_doan", "test_suite", "retry"} & set(vao_author)), \
+        "lượt author phải MÙ: BLIND_STRIP gỡ hết thứ nói về code (ADR-0028)"
+    assert "acceptance" in vao_author, "nhưng vẫn phải còn đặc tả để mà viết test"
+
+    # (2) quyền
+    assert {"write_file", "delete_file"} <= set(author_call["tools"]), "lượt author phải ghi được vùng test"
+    assert not ({"write_file", "delete_file"} & set(review_call["tools"])), "lượt review chỉ-đọc"
+    assert "read_file" in review_call["tools"], "chỉ-đọc không có nghĩa là mù: vẫn đọc được diff bị cắt"
+    assert any("chỉ được ghi file test" in x for x in ket_qua_tool), \
+        f"write_scope=tests phải từ chối `feature.py`; tool trả về: {ket_qua_tool}"
+    assert not (orch.workspace("T1").path / "feature.py").exists()
+
+    # (3) prompt theo pha — đây là dòng đỏ khi tắt `phase=` trong bảng route
+    assert (author_call["cache_key"], review_call["cache_key"]) == ("qa[author]", "qa[review]")
+    assert "# Skills của pha review" in review_call["system"] and "# Skills của pha" not in author_call["system"], \
+        "pha `author` khai skills rỗng (lượt MÙ), pha `review` nạp thêm code-review/debugging"
+
+
+def test_review_route_khong_co_thi_gay_to() -> None:
+    """`review_route` là chỗ hai đường giao-lại-review lấy route THẬT. Agent không chấm PR mà lọt vào đây nghĩa là
+    `REVIEW_AGENT` và `ROUTES` đã lệch nhau — phải gãy to ngay, chứ không trả một Route dựng tay để lượt giao lại
+    chạy sai pha (đúng cái bug ADR-0037 PR-5c vừa vá)."""
+    from company.orch.routes import review_route
+
+    assert review_route("qa").phase == "review"
+    with pytest.raises(KeyError, match="không có route chấm pull-requests"):
+        review_route("backend")

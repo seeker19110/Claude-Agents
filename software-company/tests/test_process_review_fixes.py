@@ -33,7 +33,7 @@ def _lead(bus: InMemoryBus) -> DeliveryLead:
 
 
 def _review(bus: InMemoryBus, source: str, verdict: str = "pass") -> None:
-    bus.publish(Envelope(topic="review-results", key="T1", actor="reviewer",
+    bus.publish(Envelope(topic="review-results", key="T1", actor="qa",
                          payload={"ticket_id": "T1", "source": source, "verdict": verdict}))
 
 

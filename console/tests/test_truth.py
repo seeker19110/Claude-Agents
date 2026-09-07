@@ -37,7 +37,7 @@ def rc(rid: str, tickets: list[str], version: str = "1.0.0") -> Envelope:
 
 def review(rid: str, source: str, verdict: str, *, ts: datetime = NOW) -> Envelope:
     r = ReviewResult(ticket_id=rid, source=source, verdict=verdict)
-    return Envelope(topic="review-results", key=rid, actor="qa-debugger", ts=ts, payload=r.model_dump())
+    return Envelope(topic="review-results", key=rid, actor="qa", ts=ts, payload=r.model_dump())
 
 
 def lead_stub(**over):
@@ -100,6 +100,8 @@ def test_pheu_release_moi_bac_mot_rc() -> None:
     assert by_id["REL-006"]["sha"] == "d16289b" and by_id["REL-008"]["gate"] == "release" and by_id["REL-005"]["gate"] == "escalation"
     assert by_id["REL-011"]["runbook"] == "infra/x.md" and by_id["REL-005"]["summary"].startswith("Dừng")
     assert by_id["REL-001"]["next"] == "" and "trùng" in by_id["REL-002"]["next"]
+    # ADR-0037 §7: prose "Chờ <agent>" của console để PR-6 đổi cùng lượt viết lại tài liệu (PR-5b đã để lại
+    # "release-engineer" y như vậy) — ở đây vẫn khoá đúng chuỗi đang hiển thị.
     assert "release-engineer" in by_id["REL-003"]["next"] and "qa-debugger" in by_id["REL-006"]["next"]
     assert "Gate 3" in by_id["REL-008"]["next"] and "lượt production" in by_id["REL-009"]["next"]
     assert "nghiệm thu" in by_id["REL-012"]["next"]
@@ -197,7 +199,7 @@ def test_ticket_extra_va_review_trimmed() -> None:
     cut = audit("security-engineer", "context_trimmed", {"max_input_chars": 70000, "trimmed_payload": 804,
                                                           "trimmed_context": {"api-contract": 13170}}, ts=NOW - timedelta(seconds=40))
     too_old = audit("security-engineer", "context_trimmed", {"trimmed_context": {"prd": 1}}, ts=NOW - timedelta(minutes=10))
-    other = audit("reviewer", "context_trimmed", {"trimmed_context": {"prd": 1}}, ts=NOW - timedelta(seconds=10))
+    other = audit("qa", "context_trimmed", {"trimmed_context": {"prd": 1}}, ts=NOW - timedelta(seconds=10))
     empty = audit("security-engineer", "context_trimmed", {"trimmed_payload": 0, "trimmed_context": {}}, ts=NOW - timedelta(seconds=50))
     tr = Truth([rv, prod, too_old, other, cut, audit("orchestrator", "integration.merged", {"ticket_id": "T1", "sha": "abcdef012"})],
                lead, gate, NOW)

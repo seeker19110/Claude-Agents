@@ -95,7 +95,7 @@ def test_causation_chains_through_a_real_agent_run():
                                 payload={"ticket_id": "T1", "branch": "ticket/T1", "pr_ref": "abc1234",
                                          "local_checks": {"lint": True, "tests": True}}))
     client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "source": "reviewer", "verdict": "pass"})
-    out = AgentRunner(bus, client).run("reviewer", root, "review-results").output
+    out = AgentRunner(bus, client).run("qa", root, "review-results").output
     assert out.correlation_id == root.correlation_id, "cùng một chuỗi"
     assert out.causation_id == root.event_id, "biết chính xác event nào sinh ra nó"
     assert out.event_id != root.event_id

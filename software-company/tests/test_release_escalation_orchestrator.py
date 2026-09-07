@@ -111,7 +111,7 @@ def test_release_bi_chan_khong_con_tu_dong_day_ticket_ve_rework(tmp_path):
     orch.lead.state[tid] = "merged"
     orch.lead.releases.append(rid); orch.lead.release_tickets[rid] = [tid]
 
-    bus.publish(Envelope(topic="review-results", key=rid, actor="qa-debugger",
+    bus.publish(Envelope(topic="review-results", key=rid, actor="qa",
                          payload=ReviewResult(ticket_id=rid, source="qa", verdict="fail",
                                               findings=[{"level": "block", "text": "DPIA chưa hoàn thành"}]).model_dump()))
     orch.run()

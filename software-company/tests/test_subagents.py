@@ -17,7 +17,8 @@ from company.registry import load_agents
 from company.subagents import GATE_PREFIX, PREFIX, TOOLS, build, diffs, render_all, sections
 from company.subagents import main as sub_main
 
-N_AGENTS, N_GATES = 19, 4   # ADR-0037: GateKind bỏ `plan`; PR-5b gộp release-engineer+support-docs+account-manager → ops (21→19)
+N_AGENTS, N_GATES = 17, 4   # ADR-0037: GateKind bỏ `plan`; PR-5b gộp → ops (21→19), PR-5c gộp
+# test-author+reviewer+qa-debugger → qa (19→17)
 
 
 def _agent_files() -> dict:
@@ -55,11 +56,11 @@ def test_check_do_khi_sua_tay(tmp_path):
     """Sửa bản dẫn xuất bằng tay = người duyệt đang chấm theo tiêu chuẩn khác tiêu chuẩn công ty dùng thật."""
     build(out=tmp_path)
     assert sub_main(["check", "--out", str(tmp_path)]) == 0
-    victim = tmp_path / f"{PREFIX}qa-debugger.md"
+    victim = tmp_path / f"{PREFIX}qa.md"
     victim.write_text(victim.read_text(encoding="utf-8").replace("Ranh giới", "Ranh gioi", 1), encoding="utf-8")
     assert sub_main(["check", "--out", str(tmp_path)]) == 1
     d = "\n".join(diffs(tmp_path))
-    assert "sc-qa-debugger.md" in d and "Ranh gioi" in d, "diff phải nêu đúng file và đúng chỗ lệch"
+    assert "sc-qa.md" in d and "Ranh gioi" in d, "diff phải nêu đúng file và đúng chỗ lệch"
 
 
 def test_tools_khong_co_bash():
@@ -128,8 +129,8 @@ def test_ban_dan_xuat_tren_dia_khop_nguon():
 
 def test_only_va_agent_la():
     """`--only` nhận cả `sc-x` lẫn `x` lẫn `sc-gate-<kind>`; tên không tồn tại thì gãy to, không sinh im lặng."""
-    assert set(render_all("sc-qa-debugger")) == set(render_all("qa-debugger"))
-    assert len(render_all("qa-debugger")) == 1
+    assert set(render_all("sc-qa")) == set(render_all("qa"))
+    assert len(render_all("qa")) == 1
     assert [p.stem for p in render_all("sc-gate-release")] == ["sc-gate-release"]
     with pytest.raises(SystemExit):
         render_all("khong-ton-tai")
@@ -227,4 +228,4 @@ def test_parser_gay_khi_dong_la_duoi_tieu_de_hoac_rong():
 def test_list_in_ca_gate(capsys):
     assert sub_main(["list"]) == 0
     out = capsys.readouterr().out
-    assert "sc-gate-escalation.md" in out and "sc-qa-debugger.md" in out
+    assert "sc-gate-escalation.md" in out and "sc-qa.md" in out

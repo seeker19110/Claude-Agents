@@ -17,7 +17,11 @@ class DeliveryLead:
     release candidate, QA trên staging trước gate 3, merge/release theo release-events, đóng ticket khi khách nghiệm thu.
     LLM chỉ dùng để viết plan/ticket; phần đóng vòng ở đây là code."""
     BASE_REVIEWS: frozenset[str] = frozenset({SOURCE.REVIEWER})
-    RISK_REVIEWS: frozenset[str] = frozenset({SOURCE.QA, SOURCE.SECURITY})  # ADR-0021: chỉ khi ticket có risk_tags
+    # ADR-0037: `reviewer` và `qa` là hai góc nhìn của CÙNG agent `qa`, và lượt PR của nó chạy cho MỌI ticket
+    # (route `pull-requests` → `qa[review]` không còn guard theo `risk_tags`), nên `qa` không còn là review
+    # "thêm" của ticket rủi ro — chỉ `security` là. Giữ `qa` ở đây thì ticket có `risk_tags` chờ một nhãn
+    # `source: qa` mà lượt PR không bao giờ phát (nó phát `source: reviewer`) và ticket đứng mãi ở `in_review`.
+    RISK_REVIEWS: frozenset[str] = frozenset({SOURCE.SECURITY})  # ADR-0021/0037: chỉ khi ticket có risk_tags
 
     IN_FLIGHT = frozenset({"waiting", "dispatched", "in_progress", "in_review", "changes_requested"})
 
@@ -341,7 +345,7 @@ class DeliveryLead:
         → mới xin gate 3. Fail mà chưa được chấp nhận → xin gate escalation cho CHÍNH RELEASE (không đụng ticket nào;
         xem `waive_release_findings`/`rework_release_tickets` — người quyết định có sửa code hay chấp nhận rủi ro)."""
         rid = r.ticket_id; self.release_reviews[rid][r.source] = r
-        if r.source == "qa": self.release_qa[rid] = r
+        if r.source == SOURCE.QA: self.release_qa[rid] = r
         if r.verdict != "pass" and r.source not in self.release_waived.get(rid, set()):
             # Bằng chứng (finding của reviewer/qa/security) đã nằm trong topic `review-results`, `gate_brief` đọc
             # trực tiếp từ đó — không cần chép lại vào GateRequest.

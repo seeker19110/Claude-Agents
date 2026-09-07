@@ -40,7 +40,7 @@ def topic_event(topic: str, pid: str, key: str) -> Envelope:
 
 def review(tid: str, source: str, verdict: str) -> Envelope:
     r = ReviewResult(ticket_id=tid, source=source, verdict=verdict)
-    return Envelope(topic="review-results", key=tid, actor="qa-debugger", ts=NOW, payload=r.model_dump())
+    return Envelope(topic="review-results", key=tid, actor="qa", ts=NOW, payload=r.model_dump())
 
 
 def task(tid: str = "T1", pid: str = "P1") -> Task:
@@ -159,7 +159,7 @@ def test_c5_liet_ke_dung_tung_nguon_bi_cat_va_so_ky_tu_mat() -> None:
     assert Truth([rv, prod, cut], lead, HumanGate(), NOW).review_trimmed_sources(rv) == \
         [{"src": "api-contract", "chars": 13170}, {"src": "payload", "chars": 804}]
     assert Truth([rv], lead, HumanGate(), NOW).review_trimmed_sources(rv) == [], "không biết thì không nói"
-    other = audit("reviewer", "context_trimmed", {"trimmed_context": {"prd": 1}}, ts=NOW - timedelta(seconds=10))
+    other = audit("qa", "context_trimmed", {"trimmed_context": {"prd": 1}}, ts=NOW - timedelta(seconds=10))
     assert Truth([rv, prod, other], lead, HumanGate(), NOW).review_trimmed_sources(rv) == [], \
         "bản ghi cắt của agent KHÁC không được gán cho verdict này"
 

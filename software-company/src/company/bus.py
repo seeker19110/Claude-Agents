@@ -23,7 +23,7 @@ class PermissionDenied(BusError): ...
 # topic mình khai `writes`. `audit-log` ai cũng ghi; `shared-context` kiểm theo NAMESPACE_OWNERS. Bus là chốt chặn
 # cuối: runner đã kiểm `writes`, nhưng CLI `publish` hay code gọi thẳng `bus.publish` cũng không được vượt quyền.
 ENGINEERING_ACTORS = frozenset(ENGINEERING)
-REVIEW_PRODUCERS = frozenset({ROLE.REVIEWER, ROLE.QA, ROLE.SECURITY, SOURCE.QA, SOURCE.SECURITY})  # tên agent hoặc `source`
+REVIEW_PRODUCERS = frozenset({ROLE.QA, ROLE.SECURITY, SOURCE.QA, SOURCE.SECURITY})  # tên agent hoặc `source`
 TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
     "research-requests": frozenset({ROLE.OPS}),
     "research-findings": frozenset({ROLE.INTAKE, ROLE.RESEARCHER}),
@@ -33,7 +33,7 @@ TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
     "approved-specs": frozenset({ROLE.PRODUCT}),
     "tasks": frozenset({LEAD_ACTOR}),
     "pull-requests": ENGINEERING_ACTORS,
-    "test-suites": frozenset({ROLE.TEST_AUTHOR}),  # ADR-0028: bộ test do một vai KHÁC người viết code phát
+    "test-suites": frozenset({ROLE.QA}),  # ADR-0028: bộ test do một vai KHÁC người viết code phát (qa, pha `author`)
     "review-results": REVIEW_PRODUCERS,
     "release-candidates": frozenset({LEAD_ACTOR}),
     "release-events": frozenset({ROLE.OPS}),
