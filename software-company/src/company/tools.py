@@ -11,12 +11,12 @@ from __future__ import annotations
 import fnmatch
 import json
 import re
-import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar
 
+from .sandbox import RunSpec, Sandbox, SubprocessSandbox
 from .stacks import detect
 from .workspace import TicketWorkspace, clean_env
 
@@ -56,6 +56,11 @@ class ToolBox:
     _tools: dict[str, tuple[ToolSpec, Callable[..., str]]] = field(default_factory=dict)
     calls: list[dict[str, Any]] = field(default_factory=list)  # vết gọi để audit
     root: str | None = None  # thư mục gốc của bảng tool; provider tự chạy tool (claude-code cli_tools) cần biết cwd
+    # K2.5: TÊN sandbox mà lệnh của bảng này chạy trong đó (`subprocess` | `container:<image>`), `None` khi bảng
+    # không có lệnh nào chạy được (`allow_run=False`). LỆCH ĐẶC TẢ có chủ ý: K2.5 viết `calls[].sandbox`, tức
+    # lặp cùng một chuỗi vào từng vết gọi — kể cả `read_file`/`search` không chạy lệnh gì, đọc lên tưởng như
+    # chúng cũng đi qua sandbox. Đặt ở BẢNG (như `root`) và in trong `dump_calls` nói đúng phạm vi hơn.
+    sandbox: str | None = None
 
     def add(self, spec: ToolSpec, fn: Callable[..., str]) -> None:
         self._tools[spec.name] = (spec, fn)
@@ -122,9 +127,14 @@ class WorkspaceTools:
     WRITE_SCOPES: ClassVar[tuple[str, ...]] = ("tests", "src", "all")
 
     def __init__(self, ws: TicketWorkspace | Path | str, allow_write: bool = True, timeout: int = 600,
-                 allow_run: bool = True, write_scope: str = "all"):
+                 allow_run: bool = True, write_scope: str = "all", sandbox: Sandbox | None = None):
         self.ws = ws if isinstance(ws, TicketWorkspace) else None
         self.allow_write, self.allow_run, self.timeout = allow_write, allow_run, timeout
+        # ADR-0035 (K2.4): thứ tự ưu tiên là tham số → sandbox của worktree → `SubprocessSandbox`. Nhờ nhánh giữa,
+        # mọi `WorkspaceTools(ws, ...)` trong `runner.py` nhận sandbox của tiến trình mà KHÔNG phải đổi dòng nào:
+        # sandbox đi theo worktree, không phải theo nơi gọi. Gốc là `Path` (reviewer/QA trên worktree tích hợp)
+        # thì không có worktree để đi theo — nơi gọi phải truyền tường minh.
+        self.sandbox: Sandbox = sandbox or (self.ws.sandbox if self.ws is not None else None) or SubprocessSandbox()
         self.root = (ws.path if isinstance(ws, TicketWorkspace) else Path(ws)).resolve()
         # lint/test lấy theo stack của repo khách (ADR-0013): argv vẫn do code ghép, model chỉ chọn tên lệnh.
         # Thư mục chỉ đọc (researcher trên repo khách) không có TicketWorkspace nên chỉ còn lệnh git.
@@ -249,12 +259,14 @@ class WorkspaceTools:
             if not isinstance(x, str) or x.startswith("-"):
                 raise ToolError(f"paths chỉ nhận đường dẫn, không nhận tuỳ chọn: {x!r}")
         args = [self._path(x).relative_to(self.root).as_posix() for x in (paths or [])]
-        try:  # `--` chốt hết tuỳ chọn trước danh sách đường dẫn
-            r = subprocess.run([*argv, *(["--", *args] if args else [])], cwd=self.root, capture_output=True, text=True,
-                               encoding="utf-8", timeout=self.timeout, env=clean_env())
-        except subprocess.TimeoutExpired:
+        # `--` chốt hết tuỳ chọn trước danh sách đường dẫn. Lệnh đi qua `Sandbox` (ADR-0035): argv vẫn do code
+        # ghép từ allowlist, nhưng NỘI DUNG repo khách thì không — backend `container` chạy nó với mạng tắt và
+        # không thấy `HOME` của người vận hành. `env=clean_env()` tường minh (xem `TicketWorkspace._run`).
+        r = self.sandbox.run(RunSpec(argv=[*argv, *(["--", *args] if args else [])], cwd=self.root,
+                                     env=clean_env(), timeout=float(self.timeout), max_output=MAX_OUTPUT))
+        if r.timed_out:
             return f"lỗi: {command} quá {self.timeout}s"
-        return f"exit={r.returncode}\n{(r.stdout + r.stderr)[-MAX_OUTPUT:]}"
+        return f"exit={r.exit_code}\n{(r.stdout + r.stderr)[-MAX_OUTPUT:]}"
 
     # ---------- bảng tool ----------
 
@@ -263,6 +275,9 @@ class WorkspaceTools:
 
     def add_to(self, tb: ToolBox) -> ToolBox:
         tb.root = str(self.root)
+        # Chỉ khai sandbox khi bảng THẬT SỰ chạy được lệnh: `allow_run=False` (researcher trên repo khách) mà ghi
+        # `sandbox: subprocess` là nói một lớp bảo vệ không tồn tại vì không có gì để bảo vệ.
+        if self.allow_run: tb.sandbox = self.sandbox.name
         def s(desc: str = "") -> dict[str, Any]:
             return {"type": "string", **({"description": desc} if desc else {})}
         tb.add(ToolSpec("read_file", "Đọc file trong worktree (có số dòng). Dùng start/end cho file dài.",
@@ -313,4 +328,8 @@ def tools_prompt(tb: ToolBox, can_write: bool) -> str:
 
 
 def dump_calls(tb: ToolBox) -> str:
-    return json.dumps(tb.summary(), ensure_ascii=False)
+    """Vết gọi tool cho audit `tools_used`. Kèm `sandbox` khi bảng có lệnh chạy được: người đọc audit biết lượt
+    vừa rồi đi qua hàng rào nào, không phải suy từ cấu hình lúc đọc lại (cấu hình có thể đã đổi)."""
+    out: dict[str, Any] = dict(tb.summary())
+    if tb.sandbox: out["sandbox"] = tb.sandbox
+    return json.dumps(out, ensure_ascii=False)

@@ -51,10 +51,23 @@ provider trước**, rồi mới dọn lịch sử. Đổi khóa quan trọng h�
 - **Lệnh con của repo khách** (lint/test theo stack, `git commit/merge`, CLI model): env đã lọc mọi biến trông như bí
   mật (`workspace.SECRET_ENV`: khoá API, token, mật khẩu, `*_URL`/`*_DSN`, `AWS_*`/`AZURE_*`/`GOOGLE_*`, `GITHUB_*`,
   `SSH_AUTH_SOCK`, `COMPANY_LLM_*`…), và git chạy với `core.hooksPath` trỏ vào chỗ không tồn tại nên hook của khách
-  (`.git/hooks`, `.husky/`) không bao giờ chạy dưới quyền orchestrator. **Giới hạn còn lại**: sandbox là *đường dẫn +
-  env*, không phải *tiến trình* — `pytest`/`npm test`/`./gradlew` của khách vẫn là mã của khách chạy bằng quyền người
-  vận hành và thấy `HOME` (`~/.ssh`, `~/.claude`). Chạy orchestrator trong container hoặc user riêng khi repo khách
-  không tin cậy.
+  (`.git/hooks`, `.husky/`) không bao giờ chạy dưới quyền orchestrator.
+- **Sandbox tiến trình** (ADR-0035): ba điểm chạy mã của khách — tool `run` của model (`tools.py`), lint/test của
+  `run_checks` (`workspace.py`), lệnh khởi động smoke theo `runtime` của spec (`smoke.py`) — đi qua một giao diện
+  `Sandbox` duy nhất. Backend `container` (docker/podman `run --rm`) chạy chúng với **mạng tắt**, hạn mức
+  cpu/ram/pid, cwd mount vào `/w`, env qua `--env-file -` (không hiện trong danh sách tiến trình của máy); backend
+  `subprocess` giữ nguyên hành vi cũ. Chọn bằng `COMPANY_SANDBOX` (env) hoặc `sandbox:` trong `llm.yaml`:
+  `auto` (mặc định — container nếu máy có runtime), `container`, `subprocess`. **Fail-closed**: khai đích danh
+  `container` mà thiếu binary thì `SandboxError` ngay lúc khởi động `run`/`redeploy`, không bao giờ âm thầm tụt
+  hạng bảo vệ. Lớp bảo vệ đã dùng được ghi vào chính bằng chứng: `pull-requests.local_checks.sandbox` và
+  `release-events.smoke.sandbox` — người ký gate đọc được lint/test vừa chạy trong container hay bằng quyền người
+  vận hành, thay vì phải suy từ tài liệu này.
+  **Giới hạn còn lại**: (1) `git` KHÔNG đi qua sandbox — argv hard-code, hook đã bị vô hiệu, và push cần credential
+  của người vận hành; (2) CLI model (`claude`/`codex`) cũng không — nó là đường ra API, nhốt vào mạng tắt là cắt
+  chính nó; tool nó xin chạy vẫn quay về `tools.py` qua cầu MCP nên vẫn trong sandbox; (3) `subprocess` (kể cả khi
+  `auto` chọn nó vì máy không có docker) vẫn là mã của khách chạy bằng quyền người vận hành và thấy `HOME`
+  (`~/.ssh`, `~/.claude`) — repo khách không tin cậy thì đặt `COMPANY_SANDBOX=container`, hoặc chạy cả orchestrator
+  trong container/user riêng.
 - **Guardrail chi phí**: ước lượng token trước khi dispatch, ngân sách theo việc, supervisor cắt khi vượt hạn mức;
   audit-log ghi token thật và quy ra USD.
 - **Trần quyền theo agent**: mỗi agent chỉ được đọc/ghi những topic đã khai trong registry; ghi sai topic là lỗi

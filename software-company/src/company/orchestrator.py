@@ -88,6 +88,7 @@ from .orch.ticket_fsm import _cycle as _cycle
 from .registry import AgentSpec, load_agents
 from .routing import retry_after_seconds
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError
+from .sandbox import Sandbox, SubprocessSandbox
 from .supervisor import Supervisor
 from .web import WebTools, research_toolbox
 from .workspace import Integration
@@ -143,8 +144,14 @@ class Orchestrator:
                  integration: str = "company/integration", workers: int = 1, web: WebTools | bool = False,
                  artifacts: Path | None = None, project_budget_usd: float | None = None,
                  deliver: bool = False, push_remote: str | None = None, release_branch: str = "company/release",
-                 test_author: bool = False):
+                 test_author: bool = False, sandbox: Sandbox | None = None):
         self.bus = bus
+        # ADR-0035 (K2.4): sandbox chạy MỌI lệnh có đối số hoặc nội dung do model/repo khách sinh — lint/test của
+        # `run_checks`, tool `run` của model, lệnh khởi động trong `run_smoke`. Mặc định `SubprocessSandbox`
+        # (= hành vi trước ADR) chứ KHÔNG phải `sandbox_from_config`: `Orchestrator` được dựng thẳng trong hàng
+        # trăm test, và `auto` sẽ chọn container ngay khi máy có docker — CI ubuntu có. Tiến trình thật đọc cấu
+        # hình ở `orch/cli.py` cho đúng hai lệnh chạy model (`run`, `redeploy`) rồi truyền xuống đây.
+        self.sandbox: Sandbox = sandbox if sandbox is not None else SubprocessSandbox()
         # ADR-0028: bật vai viết test độc lập. Mặc định TẮT — nó thêm một lượt model mỗi ticket, nên phải là
         # lựa chọn có ý thức của người vận hành, không phải thứ tự bật lên sau một lần `git pull`.
         self.test_author = bool(test_author)

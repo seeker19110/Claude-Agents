@@ -63,6 +63,10 @@
             },
             "stack": {
               "type": "string"
+            },
+            "sandbox": {
+              "type": "string",
+              "description": "ADR-0035: lớp bảo vệ đã chạy lint/test — `subprocess` (quyền người vận hành, cô lập bằng cwd + env đã lọc khoá) hay `container:<image>` (mạng tắt, hạn mức cpu/ram/pid). Code điền, model không khai được."
             }
           }
         },

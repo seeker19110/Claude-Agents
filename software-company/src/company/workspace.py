@@ -97,6 +97,12 @@ class TicketWorkspace:
     repo: Path
     ticket_id: str
     base: str = "HEAD"
+    # ADR-0035 (K2.4): sandbox chạy lint/test của repo KHÁCH. `None` = `SubprocessSandbox` (hành vi trước ADR)
+    # — mặc định phải là hành vi cũ vì `TicketWorkspace` được dựng ở rất nhiều nơi, kể cả trong test; tiến trình
+    # thật nhận sandbox theo cấu hình từ `Orchestrator.sandbox` (xem `orch/worktree_flow.workspace`).
+    # Kiểu để `Any` chứ không phải `Sandbox`: `sandbox.py` nhập `clean_env`/`SECRET_ENV` từ chính file này, nhập
+    # ngược ở đây (kể cả trong `TYPE_CHECKING`) là vòng lặp import lúc mypy dựng đồ thị.
+    sandbox: Any = None
 
     @property
     def branch(self) -> str: return f"ticket/{self.ticket_id}"
@@ -120,10 +126,24 @@ class TicketWorkspace:
         if delete_branch:
             _git(self.repo, "branch", "-D", self.branch)
 
+    def _sandbox(self) -> Any:
+        """Nhập lười: `sandbox.py` nhập `clean_env`/`SECRET_ENV` từ module này, nhập ở đỉnh file là vòng lặp."""
+        if self.sandbox is None:
+            from .sandbox import SubprocessSandbox
+            self.sandbox = SubprocessSandbox()
+        return self.sandbox
+
     def _run(self, *cmd: str, timeout: int = 600) -> CheckResult:
         # Env đã lọc khoá API (như tool của model): lint/test của repo khách không được thấy secret của công ty.
-        r = subprocess.run(cmd, cwd=self.path, capture_output=True, text=True, encoding="utf-8", timeout=timeout, env=clean_env())
-        return CheckResult(ok=r.returncode == 0, output=(r.stdout + r.stderr)[-4000:])
+        # Qua `Sandbox` từ ADR-0035: cùng cách cắt output (4000), cùng timeout; backend `container` thêm mạng tắt
+        # và hạn mức. `env=clean_env()` truyền TƯỜNG MINH — `RunSpec.env` mặc định là `{}` (rỗng thật, không phải
+        # "chưa khai"), để rỗng là lệnh chạy không có cả `PATH`.
+        from .sandbox import RunSpec
+        r = self._sandbox().run(RunSpec(argv=list(cmd), cwd=self.path, env=clean_env(), timeout=float(timeout),
+                                        max_output=4000))
+        if r.timed_out:
+            return CheckResult(ok=False, output=r.stderr[-4000:])
+        return CheckResult(ok=r.exit_code == 0, output=(r.stdout + r.stderr)[-4000:])
 
     def stack(self) -> Stack:
         """Stack của repo khách (ADR-0013); quyết định lệnh lint/test thật sự chạy được."""
@@ -145,8 +165,11 @@ class TicketWorkspace:
         thà nói không kiểm được còn hơn báo pass bằng một lệnh không liên quan đến code vừa sửa."""
         st = self.stack()
         lint, test = self.lint(), self.test()
+        # K2.5: `sandbox` là BẰNG CHỨNG, không phải trang trí — người đọc PR phải biết lint/test vừa chạy bằng
+        # quyền người vận hành (`subprocess`) hay trong container mạng tắt. `sandbox=subprocess` không phải lỗi,
+        # nhưng nó nói rõ lớp bảo vệ nào ĐANG có, thay vì để người đọc suy từ tài liệu.
         return {"lint": lint.ok, "tests": test.ok, "lint_output": lint.output, "test_output": test.output,
-                "stack": st.name}
+                "stack": st.name, "sandbox": self._sandbox().name}
 
     def commit_all(self, message: str) -> str:
         exclude_worktrees(self.repo)  # rác lint/test không vào index (F14), kể cả khi worktree được tạo bởi bản cũ

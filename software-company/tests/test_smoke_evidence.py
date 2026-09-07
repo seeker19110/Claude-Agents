@@ -169,7 +169,7 @@ def test_run_smoke_communicate_qua_gio_khong_lam_hong_bang_chung(tmp_path, monke
     """Tiến trình bị kill mà `communicate` vẫn treo (pipe stderr bị con giữ) → bỏ qua stderr, bằng chứng còn lại giữ nguyên."""
     import subprocess as sp
 
-    from company import smoke as sm
+    from company.sandbox import SubprocessSandbox
 
     class Proc:
         returncode = 7
@@ -177,8 +177,11 @@ def test_run_smoke_communicate_qua_gio_khong_lam_hong_bang_chung(tmp_path, monke
         def kill(self): raise AssertionError("đã chết thì không kill")
         def communicate(self, timeout=None): raise sp.TimeoutExpired(cmd="x", timeout=timeout)
 
-    monkeypatch.setattr(sm.subprocess, "Popen", lambda *a, **k: Proc())
-    r = run_smoke(tmp_path, Runtime(("x",), timeout_s=2))
+    # K2.4: `Popen` không còn nằm trong `smoke.py` mà trong `SubprocessSandbox` — tiêm qua đúng seam đó thay vì
+    # monkeypatch module. Nhờ vậy test đi qua CẢ `_ProcHandle` (nơi `communicate` treo được nuốt), không chỉ qua
+    # vòng lặp poll của `run_smoke`.
+    r = run_smoke(tmp_path, Runtime(("x",), timeout_s=2),
+                  sandbox=SubprocessSandbox(popen=lambda *a, **k: Proc()))
     assert r["ok"] is False and r["exit_code"] == 7 and "stderr_tail" not in r
 
 
@@ -197,7 +200,7 @@ def _fake_smoke(monkeypatch, results):
     từng kết quả (lượt deployed rồi lượt QA hồi quy)."""
     from company.orch import verify as ov
     calls: list[Path] = []
-    def fake(root, rt):
+    def fake(root, rt, sandbox=None):   # `sandbox=` từ K2.4: verify truyền sandbox của tiến trình xuống
         calls.append(root)
         return dict(results[min(len(calls), len(results)) - 1])
     monkeypatch.setattr(ov, "run_smoke", fake)
