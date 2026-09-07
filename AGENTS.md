@@ -59,6 +59,11 @@ hạn mức; self-hosted, resume được; trung lập provider.
 8. **Sau `git push`, kiểm commit đã vào PR** (`gh pr view <n> --json commits`) trước khi báo xong.
 9. **Cuối phiên**: ghi `docs/sessions/<ngày>.md` (việc dở, PR mở, thứ người sau không được quên) và một dòng
    `CHANGELOG.md` cho mỗi PR đã merge.
+10. **Tài liệu đi CÙNG PR, không đi sau nó**: dòng `CHANGELOG.md`, `docs/sessions/<ngày>.md` và số liệu
+   `README.md` nằm trong **chính PR** làm ra thay đổi, không để lại cho một PR dọn dẹp. Số PR chỉ có sau khi
+   tạo PR, nên ngay sau `gh pr create`: điền `(#<n>)` vào dòng CHANGELOG (và nhật ký phiên) rồi **commit tiếp
+   vào chính PR đó** trước khi nó merge — không phải mở PR khác để vá số. Đẩy xong thì kiểm commit đã vào PR
+   (luật 8). Dòng CHANGELOG xếp mới nhất trên cùng theo **thời điểm merge**, không theo thứ tự tạo PR.
 
 ## Chạy cái gì ở đâu
 
