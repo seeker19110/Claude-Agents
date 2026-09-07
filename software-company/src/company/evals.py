@@ -22,7 +22,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -237,11 +239,41 @@ def run_eval(agent_id: str, client: ModelClient, agents: dict | None = None) -> 
     return results
 
 
-def _print(agent_id: str, res: list[CaseResult]) -> bool:
-    for r in res:
-        print(f"{'PASS' if r.passed else 'FAIL'} {agent_id}/{r.name} ({r.tokens} tok)" + "".join(f"\n   - {f}" for f in r.failures))
-    print(f"{agent_id}: {sum(r.passed for r in res)}/{len(res)} pass")
-    return all(r.passed for r in res)
+def _lines(agent_id: str, res: list[CaseResult]) -> list[str]:
+    out = [f"{'PASS' if r.passed else 'FAIL'} {agent_id}/{r.name} ({r.tokens} tok)"
+           + "".join(f"\n   - {f}" for f in r.failures) for r in res]
+    return [*out, f"{agent_id}: {sum(r.passed for r in res)}/{len(res)} pass"]
+
+
+@dataclass
+class _AgentOutcome:
+    """Kết quả một agent, tách hai loại đúng như `main`: `gate_ok` (bản ghi đủ và khớp prompt — thứ DUY NHẤT
+    làm CI đỏ, ADR-0010) và `cases_ok` (điểm chấm — tín hiệu chất lượng, không phải cổng)."""
+    agent_id: str
+    lines: list[str]
+    gate_ok: bool
+    cases_ok: bool
+    res: list[CaseResult] = field(default_factory=list)
+
+
+def _summary(outcomes: list[_AgentOutcome]) -> None:
+    """Bảng điểm vào `$GITHUB_STEP_SUMMARY` khi chạy trong Actions (K5.4). Điểm KHÔNG phải cổng — nhưng "CI xanh"
+    cũng không được đọc thành "eval đạt", nên phải có chỗ nhìn thấy điểm mà không phải mở log job."""
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    rows = [o for o in outcomes if o.res]
+    if not path or not rows: return
+    body = ["| agent | ca đạt | bản ghi |", "|---|---|---|"]
+    for o in rows:
+        body.append(f"| `{o.agent_id}` | {sum(r.passed for r in o.res)}/{len(o.res)} | "
+                    f"{'ok' if o.gate_ok else '**lệch/thiếu**'} |")
+    body.append("")
+    body.append("Điểm chấm không phải cổng (CONTRIBUTING §3): chỉ bản ghi thiếu hoặc lệch phiên bản prompt mới "
+                "làm CI đỏ. Bảng này để đọc xu hướng giữa các lần ghi lại.")
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write("\n".join(body) + "\n")
+    except OSError:   # summary không ghi được thì thôi — nó là thông tin, không phải kết quả
+        pass
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -255,7 +287,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--strict", action="store_true",
                     help="với --replay: agent trong evals/recordings/REQUIRED.txt mà thiếu bản ghi hoặc bản ghi lệch "
                          "phiên bản prompt thì tính là fail")
+    ap.add_argument("--jobs", type=int, default=1, metavar="N",
+                    help="chạy N agent song song (K5.3). Mỗi agent một client và một file bản ghi riêng nên "
+                         "không tranh nhau; thứ tự IN vẫn theo id. Song song ở đây là chờ MẠNG, không phải CPU")
     ns = ap.parse_args(argv)
+    if ns.jobs < 1: ap.error("--jobs phải >= 1")
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8")  # Windows console cp1252
     agents = load_agents()
     ids = sorted(agents) if ns.agent == "all" else [ns.agent]
@@ -267,22 +303,40 @@ def main(argv: list[str] | None = None) -> int:
     if ns.strict:
         for aid, why in outdated_versions(ids).items():
             print(f"FAIL {aid}: {why} — chạy `make eval-record AGENT={aid}` rồi commit lại"); gate_ok = False
-    for aid in ids:
-        if not load_cases(aid): continue
+    def _one(aid: str) -> _AgentOutcome:
+        """Một agent, chạy độc lập được: mỗi agent có `RecordingClient` riêng ghi file riêng của nó, và
+        `save()` GỘP vào bản ghi cũ chứ không ghi đè — nên chạy song song theo agent không tranh nhau file.
+        In ra được GOM lại (`lines`) thay vì `print` thẳng: với `--jobs > 1`, in thẳng là dòng của bốn agent
+        cài răng lược, đọc log không biết `FAIL` thuộc về ai."""
+        lines: list[str] = []
+        if not load_cases(aid): return _AgentOutcome(aid, lines, True, True)
         if ns.replay:
             try: client: ModelClient = ReplayClient(aid)
             except LLMError as e:
-                print(f"{'FAIL' if aid in required else 'SKIP'} {aid}: {e}")
-                gate_ok = gate_ok and aid not in required
-                continue
+                lines.append(f"{'FAIL' if aid in required else 'SKIP'} {aid}: {e}")
+                return _AgentOutcome(aid, lines, aid not in required, True)
         else:
             from .llm import make_client
             client = RecordingClient(make_client(), aid) if ns.record else make_client()
         res = run_eval(aid, client, agents)
-        cases_ok = _print(aid, res) and cases_ok
-        if any(r.broken_recording for r in res): gate_ok = False
+        lines += _lines(aid, res)
         if ns.record and isinstance(client, RecordingClient):
-            print(f"đã ghi {client.save()}")
+            lines.append(f"đã ghi {client.save()}")
+        return _AgentOutcome(aid, lines, not any(r.broken_recording for r in res),
+                             all(r.passed for r in res), res)
+
+    # Thứ tự IN luôn theo id, kể cả khi chạy song song: log so được giữa hai lần chạy. `--jobs` chỉ đổi thứ tự
+    # CHẠY, không đổi thứ tự đọc.
+    if ns.jobs > 1 and len(ids) > 1:
+        with ThreadPoolExecutor(max_workers=ns.jobs) as pool:
+            outcomes = list(pool.map(_one, ids))
+    else:
+        outcomes = [_one(aid) for aid in ids]
+    for o in outcomes:
+        for ln in o.lines: print(ln)
+        gate_ok = gate_ok and o.gate_ok
+        cases_ok = cases_ok and o.cases_ok
+    _summary(outcomes)
     # Điểm chấm KHÔNG phải cổng (CONTRIBUTING §3): bản ghi thật vừa commit mà đỏ ngay thì không ai dám ghi lại.
     # Nhưng "CI xanh" cũng không được hiểu là "eval đạt": in một dòng tổng kết để đọc log là thấy, và
     # `--fail-on-score` cho người vận hành bật cổng khi muốn.

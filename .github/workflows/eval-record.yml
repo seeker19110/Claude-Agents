@@ -1,0 +1,145 @@
+name: eval-record
+
+# K5 kịch bản B: ghi lại bản ghi eval bằng API key trong Secrets, kết quả về dưới dạng PR.
+#
+# Vì sao có workflow này: trước nó, `make eval-record` chỉ chạy được trên MÁY CÁ NHÂN có API key — nghĩa là bước
+# 3 của checklist 7 bước (CONTRIBUTING §3) là cửa hẹp một người. Người thứ hai sửa prompt xong thì không ghi lại
+# được bản ghi, và CI đỏ ở `eval-replay` mà họ không tự gỡ được.
+#
+# Chỉ chạy khi người có quyền bấm nút (`workflow_dispatch`) — KHÔNG chạy tự động mỗi PR: mỗi lượt là tiền thật.
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Công ty nào"
+        type: choice
+        required: true
+        default: company
+        options: [company, studio]
+      agents:
+        description: "`all`, hoặc danh sách id cách nhau bởi khoảng trắng (vd. `backend reviewer`)"
+        type: string
+        required: true
+        default: all
+      provider:
+        description: "Provider gọi model"
+        type: choice
+        required: true
+        default: anthropic
+        options: [anthropic, openai]
+      jobs:
+        description: "Số agent chạy song song (K5.3). Song song ở đây là chờ mạng, không phải CPU"
+        type: string
+        required: false
+        default: "3"
+
+concurrency:
+  # Một lượt ghi cho mỗi (công ty, provider). Hai lượt song song ghi cùng file bản ghi là mất một nửa kết quả —
+  # `RecordingClient.save()` gộp, nhưng hai tiến trình gộp lên hai bản sao khác nhau của cùng file thì bản sau đè.
+  group: eval-record-${{ inputs.package }}-${{ inputs.provider }}
+  cancel-in-progress: false
+
+jobs:
+  record:
+    name: eval-record (${{ inputs.package }} · ${{ inputs.agents }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write        # tạo nhánh cho PR
+      pull-requests: write   # mở PR
+    env:
+      DIR: ${{ inputs.package == 'company' && 'software-company' || 'Studio-creators' }}
+      PREFIX: ${{ inputs.package == 'company' && 'COMPANY' || 'STUDIO' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.13"
+      - run: uv sync --locked
+
+      - name: Kiểm tham số trước khi tiêu tiền
+        env:
+          AGENTS: ${{ inputs.agents }}
+          JOBS: ${{ inputs.jobs }}
+        run: |
+          # `agents` đi thẳng vào argv nên phải chặn ký tự lạ ngay: nó là chuỗi người gõ trong form.
+          if ! printf '%s' "$AGENTS" | grep -Eq '^[a-z0-9 _-]+$'; then
+            echo "agents chỉ nhận chữ thường, số, gạch, gạch dưới và khoảng trắng: $AGENTS" >&2; exit 2
+          fi
+          if ! printf '%s' "$JOBS" | grep -Eq '^[1-9][0-9]?$'; then
+            echo "jobs phải là số 1..99: $JOBS" >&2; exit 2
+          fi
+
+      - name: Ghi lại eval (model THẬT — tốn tiền)
+        working-directory: ${{ env.DIR }}
+        env:
+          AGENTS: ${{ inputs.agents }}
+          JOBS: ${{ inputs.jobs }}
+          # Provider và model do workflow chỉ đích danh, KHÔNG lấy từ `llm.yaml` (file đó không có trong repo —
+          # luật cấm 3). Biến môi trường thắng file, xem `load_config`.
+          COMPANY_LLM_PROVIDER: ${{ inputs.package == 'company' && inputs.provider || '' }}
+          COMPANY_LLM_API_KEY: ${{ inputs.package == 'company' && (inputs.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || secrets.OPENAI_API_KEY) || '' }}
+          COMPANY_MODEL_STRONG: ${{ inputs.package == 'company' && vars.COMPANY_MODEL_STRONG || '' }}
+          COMPANY_MODEL_STANDARD: ${{ inputs.package == 'company' && vars.COMPANY_MODEL_STANDARD || '' }}
+          COMPANY_MODEL_LIGHT: ${{ inputs.package == 'company' && vars.COMPANY_MODEL_LIGHT || '' }}
+          STUDIO_LLM_PROVIDER: ${{ inputs.package == 'studio' && inputs.provider || '' }}
+          STUDIO_LLM_API_KEY: ${{ inputs.package == 'studio' && (inputs.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || secrets.OPENAI_API_KEY) || '' }}
+          STUDIO_MODEL_STRONG: ${{ inputs.package == 'studio' && vars.STUDIO_MODEL_STRONG || '' }}
+          STUDIO_MODEL_STANDARD: ${{ inputs.package == 'studio' && vars.STUDIO_MODEL_STANDARD || '' }}
+          STUDIO_MODEL_LIGHT: ${{ inputs.package == 'studio' && vars.STUDIO_MODEL_LIGHT || '' }}
+        run: |
+          key_var="${PREFIX}_LLM_API_KEY"
+          if [ -z "${!key_var}" ]; then
+            echo "Thiếu secret API key cho provider '${{ inputs.provider }}'." >&2
+            echo "Đặt ANTHROPIC_API_KEY hoặc OPENAI_API_KEY trong Settings → Secrets → Actions." >&2
+            exit 2
+          fi
+          mod="${{ inputs.package == 'company' && 'company' || 'studio' }}"
+          # Điểm chấm KHÔNG phải cổng (K5.4, CONTRIBUTING §3): bước này xanh khi bản ghi ghi được, kể cả có ca
+          # không đạt — bản ghi thật vừa ghi mà đỏ ngay thì không ai dám ghi lại. Bảng điểm ở job summary.
+          for a in $AGENTS; do
+            uv run python -m "$mod.evals" "$a" --record --jobs "$JOBS"
+          done
+
+      - name: Có gì để commit không
+        id: diff
+        working-directory: ${{ env.DIR }}
+        run: |
+          if git diff --quiet -- evals/recordings; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Không có bản ghi mới::Model trả đúng như bản ghi cũ, hoặc mọi ca đều lỗi. Đọc log bước trên trước khi chạy lại."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --stat -- evals/recordings
+          fi
+
+      # Không push thẳng `main`: ruleset chặn, và bản ghi là thứ cần người đọc diff trước khi vào
+      # (điểm tụt là tín hiệu, không phải lỗi — `docs/sessions` 2026-09-06).
+      - name: Mở PR với bản ghi mới
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          add-paths: ${{ env.DIR }}/evals/recordings
+          branch: eval-record/${{ inputs.package }}-${{ github.run_id }}
+          delete-branch: true
+          commit-message: |
+            chore(${{ inputs.package }}): ghi lại eval ${{ inputs.agents }}
+
+            Ghi bằng workflow `eval-record` (K5), provider ${{ inputs.provider }}, run ${{ github.run_id }}.
+
+            Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+          title: "chore(${{ inputs.package }}): ghi lại eval ${{ inputs.agents }}"
+          labels: no-changelog
+          body: |
+            Bản ghi eval ghi lại bằng workflow `eval-record` (K5 kịch bản B) — model **thật**, provider
+            `${{ inputs.provider }}`, agent `${{ inputs.agents }}`.
+
+            **Đọc bảng điểm trong job summary trước khi merge.** Điểm chấm không phải cổng (CONTRIBUTING §3):
+            CI chỉ đỏ khi bản ghi thiếu hoặc lệch phiên bản prompt. Một lần điểm tụt chưa phải hồi quy — điểm
+            chấm dao động giữa các lần ghi, so xu hướng chứ đừng so một lần.
+
+            [Run ${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            🤖 Generated with [Claude Code](https://claude.com/claude-code)

@@ -327,7 +327,7 @@ Nếu chỉ làm được một nửa: **K0, K1, K2, K3.0–K3.5, K8.3, K9.1**. 
 | K2.8 | xong | #129, #133 | `SECURITY.md` mục **Sandbox tiến trình** ở #129; `software-company/README.md` mục "Chưa có" + "Bước tiếp theo" cập nhật ở #133 (dòng cũ nói sandbox chỉ là allowlist + env — đã sai từ #129) |
 | K3.0–K3.7 | chưa | | ADR gốc 0001 trước; K3.6 đợi 5 ngày sau K3.5 |
 | K4.1–K4.5 | chưa | | ADR gốc 0002 |
-| K5.1–K5.5 | chưa | | sau K3.3 |
+| K5.1–K5.5 | xong | #134 | `.github/workflows/eval-record.yml` (`workflow_dispatch`: package/agents/provider/jobs, timeout 45', key từ Secrets, tên model từ Variables) → PR `chore(<package>): ghi lại eval <agents>` nhãn `no-changelog` qua `peter-evans/create-pull-request`, KHÔNG push thẳng `main`; `--jobs N` ở CẢ HAI package (`ThreadPoolExecutor`, thứ tự in vẫn theo id); bảng điểm vào `$GITHUB_STEP_SUMMARY`, cổng vẫn là `gate_ok`; `CONTRIBUTING.md` §3 bước 3 ghi hai đường. Bảng theo dõi ghi "sau K3.3" là sai — K5 không phụ thuộc K3 |
 | K6.1–K6.3 | chưa | | |
 | K7.1–K7.6 | chưa | | |
 | K8.1, K8.2, K8.5, K8.6 | chưa | | gateway README §rủi ro tài khoản, `make llm` một tài khoản, "ngày đầu của người thứ hai", gateway `stop` kiểm cmdline |
