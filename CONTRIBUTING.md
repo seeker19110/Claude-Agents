@@ -10,7 +10,7 @@ chạy lại những gì.
 Cần Python 3.11+ và [`uv`](https://docs.astral.sh/uv/). `ffmpeg` chỉ cần khi muốn render video thật ở
 Studio-creators (thiếu thì test render tự bỏ qua).
 
-Cả repo là **một project** (uv workspace): `pyproject.toml` + `uv.lock` duy nhất ở gốc, bốn thư mục là bốn package
+Cả repo là **một project** (uv workspace): `pyproject.toml` + `uv.lock` duy nhất ở gốc, năm thư mục là năm package
 thành viên, một `.venv` chung. Cài một lần ở gốc:
 
 ```bash
@@ -25,15 +25,15 @@ uv sync
 | `console/` | `console` | trực ban hợp nhất, phụ thuộc hai công ty qua workspace |
 
 Mỗi thư mục vẫn có `Makefile` riêng cho các lệnh của package đó; `uv run` trong thư mục con dùng `.venv` ở gốc.
-Thêm/đổi phụ thuộc: sửa `pyproject.toml` của package liên quan rồi `uv lock` ở gốc (một lock cho cả bốn).
+Thêm/đổi phụ thuộc: sửa `pyproject.toml` của package liên quan rồi `uv lock` ở gốc (một lock cho cả năm).
 Không có `[project.scripts]`: mọi entry point đều là `python -m <package>.<module>`.
 
 ## 2. Cổng chất lượng
 
-Chạy trước khi mở PR — ở gốc cho cả bốn, hoặc trong thư mục đã sửa:
+Chạy trước khi mở PR — ở gốc cho cả năm, hoặc trong thư mục đã sửa:
 
 ```bash
-make lint && make test      # gốc: lặp qua cả bốn package
+make lint && make test      # gốc: lặp qua cả năm package
 ```
 
 `software-company` và `Studio-creators` có cùng bộ target: `test`, `cov`, `lint` (ruff + mypy), `types`, `fix`,

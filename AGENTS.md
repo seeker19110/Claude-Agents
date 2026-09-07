@@ -8,7 +8,7 @@ sửa ở đâu) · `CHANGELOG.md` (đã đổi gì) · `docs/TASK-PACK.md` (gó
 
 ## Repo này là gì
 
-X-Agents: hub các "công ty AI" đa agent. Bốn package Python trong **một uv workspace** (một `pyproject.toml`,
+X-Agents: hub các "công ty AI" đa agent. Năm package Python trong **một uv workspace** (một `pyproject.toml`,
 một `uv.lock`, một `.venv` ở gốc):
 
 | Thư mục | Package | Là gì |
@@ -17,6 +17,7 @@ một `uv.lock`, một `.venv` ở gốc):
 | `Studio-creators/` | `studio` | phòng ban video YouTube: kế hoạch → kịch bản → render → review → đăng |
 | `gateway/` | `gateway` | proxy OpenAI-compatible xoay vòng tài khoản Google Antigravity |
 | `console/` | `console` | trực ban hợp nhất: một trang web cục bộ nhìn cả hai công ty, duyệt gate tại chỗ |
+| `xagents-core/` | `xagents_core` | lõi chung hai công ty dùng (bus, llm, runner, guard, gate) — đang xây theo bảy bước K3, xem `docs/adr/0001-loi-chung-xagents-core.md` |
 
 Nguyên tắc chung (chi tiết ở `ARCHITECTURE.md`): model quyết định – code hành động; prompt là code; guardrail có
 hạn mức; self-hosted, resume được; trung lập provider.
@@ -32,7 +33,7 @@ hạn mức; self-hosted, resume được; trung lập provider.
 4. **Không gọi provider trả phí trong test.** Provider `fake` + bản ghi eval đủ chạy offline toàn bộ.
 5. **Không sửa tay bản dẫn xuất**: `.claude/agents/sc-*.md` sinh từ `software-company/agents/`, `skills/`,
    `gates/checklists.md` bằng `make subagents`; `tests/golden/` sinh bằng `make golden`. Sửa nguồn rồi sinh lại.
-6. **Không hạ ngưỡng coverage để PR qua cổng.** `fail_under = 100` ở cả bốn package; mất một dòng phủ là CI đỏ
+6. **Không hạ ngưỡng coverage để PR qua cổng.** `fail_under = 100` ở cả năm package; mất một dòng phủ là CI đỏ
    — thêm test, không hạ số.
 7. **Không "sửa" code cạnh bên.** Mỗi dòng đổi phải truy được về yêu cầu. Thấy dead code thì nói, đừng xoá.
 8. **Không tin lời khai.** Của model, của agent, của chính mình. "Tests pass" cần output lệnh vừa chạy; "đã
@@ -63,7 +64,7 @@ hạn mức; self-hosted, resume được; trung lập provider.
 
 ```bash
 uv sync                          # một lần ở gốc
-make test                        # cả bốn package; hoặc cd <pkg> && uv run pytest -q
+make test                        # cả năm package; hoặc cd <pkg> && uv run pytest -q
 cd software-company && uv run python -m company.orchestrator status      # PHẢI ở trong software-company/ (gốc có company.sqlite rỗng)
 cd console && uv run python -m console --allow-decide                    # trực ban; bật console thì bật luôn orchestrator run --watch
 ```

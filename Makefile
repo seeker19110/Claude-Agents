@@ -1,10 +1,10 @@
-# Root của uv workspace — một lệnh cho cả bốn package. Target riêng của từng package (demo, run, login...)
+# Root của uv workspace — một lệnh cho cả năm package. Target riêng của từng package (demo, run, login...)
 # vẫn nằm trong Makefile của thư mục đó; `make -C gateway login` hoặc `cd gateway && make login`.
-MEMBERS := console gateway software-company Studio-creators
+MEMBERS := console gateway software-company Studio-creators xagents-core
 
 .PHONY: sync test cov lint types fix build clean $(MEMBERS)
 
-sync:          # một .venv chung ở root, cài cả bốn package editable theo uv.lock
+sync:          # một .venv chung ở root, cài cả năm package editable theo uv.lock
 	uv sync --locked
 
 test:          # pytest từng package (ngưỡng coverage của từng package nằm trong pyproject của nó)
@@ -22,7 +22,7 @@ types:
 fix:
 	@for d in $(MEMBERS); do echo "== $$d"; $(MAKE) -C $$d fix || exit 1; done
 
-build:         # wheel + sdist của cả bốn vào dist/
+build:         # wheel + sdist của cả năm vào dist/
 	uv build --all-packages
 
 clean:
