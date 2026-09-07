@@ -6,6 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs: nhật ký phiên `docs/sessions/2026-09-07.md` cho ADR-0037 PR-1 (#154) — luật bắt buộc 9 của `AGENTS.md`
 - fix(company): ADR-0037 PR-1 — `_check_plan` (`orch/ticket_fsm.py`) nhận thêm `project_id`, chặn đủ các khoá "Code
   gửi kèm" của gate plan cũ (kind `plan`) bằng code trước khi plan tới người duyệt: ticket > 1 ngày/200k token
   (`MAX_TICKET_TOKENS`), ticket chạm từ khoá nhạy cảm (`RISK_HINTS`: auth/login/password/payment/pii/…) mà thiếu
