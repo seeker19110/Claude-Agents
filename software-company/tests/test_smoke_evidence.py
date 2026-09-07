@@ -157,6 +157,50 @@ def test_khong_khai_runtime_thi_unverified_khong_chan(tmp_path):
     assert acts.count("release.smoke_unverified") == 1
 
 
+def _spec_ung_dung(bus, **them):
+    """Publish đè spec `kind=application` KHÔNG có `runtime` — trạng thái mà ADR-0031 chặn ở gate spec, nhưng
+    dự án duyệt trước ADR-0031 vẫn mang tới giai đoạn release. Đây là ca K1.5 phải xử."""
+    bus.publish(Envelope(topic="approved-specs", key="P", actor="spec-writer",
+                         payload={"project_id": "P", "status": "approved", "kind": "application",
+                                  "artifacts": {"prd": "prd", "requirements": "req"}, **them}))
+
+
+def test_k15_ung_dung_khong_smoke_duoc_thi_khong_len_deployed(tmp_path):
+    """K1.5 — `unverified` KHÔNG phải trạng thái trung lập với sản phẩm phải-chạy-được. Trước bản sửa, spec
+    `kind=application` thiếu `runtime` vẫn cho RC lên `deployed` với một dòng "chưa kiểm" trong bằng chứng: đúng
+    hình dạng của QLKH (2026-09-06 — 25 release, 4 gate xanh, 0 điểm vào). Nay nó đi ĐÚNG đường smoke fail.
+
+    Đo hai chiều: bỏ nhánh `kind != "application"` trong `_chua_kiem` (luôn `return {**p, "smoke": smoke}`) →
+    `status` trở lại `deployed` và không có gate nào mở, test ĐỎ ở cả ba assert dưới."""
+    repo = _repo(tmp_path, SERVER_DIE)
+    bus, orch = _orch(tmp_path, repo, None)
+    _spec_ung_dung(bus)
+    orch.run()
+    st = _staging(bus)
+    assert st[-1]["status"] == "failed", "sản phẩm phải chạy được mà không kiểm được thì không được lên deployed"
+    assert st[-1]["smoke"]["unverified"] is True and "runtime" in st[-1]["smoke"]["reason"]
+    g = orch.gate.pending.get("REL-001")
+    assert g is not None and g.kind == "escalation", "RC failed không được nằm im — mở escalation cho người quyết"
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "release.smoke_blocked" in acts, "phải ghi rõ vì sao chặn, không chỉ đổi status"
+
+
+def test_k15_co_co_legacy_thi_van_di_tiep(tmp_path):
+    """Chiều còn lại: dự án khai `legacy: true` (có trước ADR-0031, không đòi được `runtime`) vẫn đi tiếp —
+    nếu không thì bản sửa này chặn đứng mọi dự án cũ đang chạy. Bằng chứng vẫn nói thẳng là chưa kiểm."""
+    repo = _repo(tmp_path, SERVER_DIE)
+    bus, orch = _orch(tmp_path, repo, None)
+    _spec_ung_dung(bus)
+    bus.publish(Envelope(topic="research-requests", key="P", actor="human:chu-du-an",
+                         payload={"project_id": "P", "description": "dự án cũ", "legacy": True}))
+    orch.run()
+    st = _staging(bus)
+    assert st[-1]["status"] == "deployed", "dự án legacy vẫn đi tiếp"
+    assert st[-1]["smoke"]["unverified"] is True, "…nhưng bằng chứng không được nói dối là đã kiểm"
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "release.smoke_blocked" not in acts
+
+
 def test_khong_co_repo_thi_unverified_noi_ro_ly_do(tmp_path):
     bus, orch = _orch(tmp_path, None, {"command": "python serve.py"})
     orch.run()
@@ -247,12 +291,21 @@ def test_regression_staging_pass_ma_smoke_fail_thi_ha_fail_rc_khong_di_tiep(tmp_
     assert g is not None and g.kind == "escalation", "RC fail không nằm im: escalation cho người quyết"
 
 
-def test_khong_runtime_kind_application_thi_unverified_va_rc_khong_di_tiep(tmp_path, monkeypatch):
+def test_khong_runtime_kind_application_legacy_thi_qa_hoi_quy_van_chan(tmp_path, monkeypatch):
+    """Dự án `legacy: true` (K1.5) là đường DUY NHẤT còn lại để một spec `kind=application` thiếu `runtime` đi
+    qua được smoke. Nó phải vẫn bị chặn ở chặng sau — QA hồi quy hạ `fail` rồi mở escalation (ADR-0029 mục 3).
+
+    Trước K1.5 ca này KHÔNG cần cờ `legacy`: mọi dự án đều qua smoke rồi mới bị QA chặn. Nay dự án không khai
+    `legacy` bị chặn sớm hơn một chặng, đo ở `test_k15_ung_dung_khong_smoke_duoc_thi_khong_len_deployed` — chặn
+    sớm hơn vì `waive_release_findings` (người duyệt escalation) waive MỌI nguồn chưa pass, kể cả `qa`, nên
+    "chưa bao giờ kiểm sản phẩm có chạy không" bị waive chung với finding compliance không có code để sửa."""
     repo = _repo(tmp_path, SERVER_DIE)
     calls = _fake_smoke(monkeypatch, [OK])
     bus, orch = _orch(tmp_path, repo, None)
     spec = bus.latest("approved-specs", "P").payload
     bus.publish(Envelope(topic="approved-specs", key="P", actor="spec-writer", payload={**spec, "kind": "application"}))
+    bus.publish(Envelope(topic="research-requests", key="P", actor="human:chu-du-an",
+                         payload={"project_id": "P", "description": "dự án có trước ADR-0031", "legacy": True}))
     orch.run()
     assert calls == [], "không có runtime thì không có gì để chạy — không đoán lệnh"
     st = _staging(bus)
