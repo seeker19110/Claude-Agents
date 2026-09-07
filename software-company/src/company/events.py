@@ -21,8 +21,10 @@ Namespace = Literal[
 ]
 
 NAMESPACE_OWNERS: dict[str, set[str]] = {
-    "prd": {ROLE.PRODUCT}, "glossary": {ROLE.RESEARCHER}, "design": {ROLE.RESEARCHER},
-    "architecture": {ROLE.LEAD}, "api-contract": {ROLE.LEAD, ROLE.BUILDER},
+    # ADR-0037 PR-5e: bốn namespace của khối nghiên cứu/kế hoạch về cùng một chủ — `product` (pha `research` ghi
+    # glossary/design, pha `spec` ghi prd, pha `plan` ghi architecture/api-contract).
+    "prd": {ROLE.PRODUCT}, "glossary": {ROLE.PRODUCT}, "design": {ROLE.PRODUCT},
+    "architecture": {ROLE.PRODUCT}, "api-contract": {ROLE.PRODUCT, ROLE.BUILDER},
     "schema": {ROLE.BUILDER}, "threat-model": {ROLE.SECURITY}, "infra": {ROLE.BUILDER},
     "analytics": {ROLE.BUILDER}, "docs": {ROLE.OPS}, "knowledge": {ROLE.SUPERVISOR}, "contract": {ROLE.OPS},
 }

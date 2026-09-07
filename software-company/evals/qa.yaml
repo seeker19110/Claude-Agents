@@ -10,7 +10,7 @@ cases:
     phase: author
     topic_out: test-suites
     context:
-      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "GET /orders/{id} trả 200 với đơn hàng, 404 Problem Details khi không có"}
+      - {actor: product, namespace: api-contract, content_ref: openapi.yaml, summary: "GET /orders/{id} trả 200 với đơn hàng, 404 Problem Details khi không có"}
     input:
       topic: tasks
       key: TCK-1
@@ -54,7 +54,7 @@ cases:
     phase: review
     topic_out: review-results
     context:
-      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "GET /orders/{id} trả 200/404 theo RFC 9457"}
+      - {actor: product, namespace: api-contract, content_ref: openapi.yaml, summary: "GET /orders/{id} trả 200/404 theo RFC 9457"}
     input:
       topic: pull-requests
       key: TCK-1

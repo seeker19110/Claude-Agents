@@ -19,7 +19,9 @@ from company.registry import load_agents
 from company.roles import (
     BUILD_PHASES,
     ENGINEERING,
+    FINDING_KIND,
     LEAD_ACTOR,
+    PHASE,
     ROLE,
     SOURCE,
     STACK,
@@ -51,12 +53,17 @@ MIGRATED: dict[str, str] = {
     # (`roles.STACK`/`BUILD_PHASES`), không còn là id agent. Vì thế chúng vẫn bị cấm dưới dạng chuỗi ngoài roles.py.
     "backend": "builder", "frontend": "builder", "mobile": "builder",
     "database": "builder", "platform": "builder", "data": "builder",
+    # PR-5e (gộp 7→1): bốn PHA của `product`. Hai tên cũ SỐNG TIẾP nhưng đổi nghĩa — `intake`/`researcher` là
+    # `kind` của `research-findings` (`roles.FINDING_KIND`), `delivery-lead` là `LEAD_ACTOR` (actor của event do
+    # `delivery.py` phát). Vì trùng id agent cũ, chúng vẫn bị cấm dưới dạng chuỗi ngoài roles.py.
+    "intake": "product", "clarifier": "product", "researcher": "product", "synthesizer": "product",
+    "risk": "product", "spec-writer": "product", "delivery-lead": "product",
 }
 
 # Chuỗi trùng tên vai nhưng KHÔNG phải vai. Miễn theo (file, đúng nguyên dòng): đổi dòng là phải xét lại lý do,
 # không có chuyện dòng khác trong cùng file "thừa hưởng" miễn trừ.
 EXEMPT_LINES: dict[tuple[str, str], str] = {
-    ("orch/routes.py", 'return {ROLE.INTAKE: found[-1].payload.get("data")} if found and found[-1].payload.get("data") else {}'):
+    ("orch/routes.py", 'return {FINDING_KIND.INTAKE: found[-1].payload.get("data")} if found and found[-1].payload.get("data") else {}'):
         "`data` là TRƯỜNG của research-findings (schema bắt buộc `kind` + `data`), không phải agent `data`",
     ("orch/routes.py", '"incidents": _field("root_cause_class", "code", "ops", "design"),'):
         "`\"ops\"` ở đây là GIÁ TRỊ enum `root_cause_class` của incidents.json (code/ops/design/…), không phải "
@@ -122,7 +129,9 @@ def test_hang_role_khop_front_matter_hai_chieu():
     assert len(set(consts.values())) == len(consts), "hai hằng cùng một id"
     assert set(consts.values()) == (OLD_IDS - set(MIGRATED)) | set(MIGRATED.values()), \
         "hằng phải là 21 id cũ, trừ những id đã gộp/đổi tên trong MIGRATED"
-    assert LEAD_ACTOR == ROLE.LEAD  # hôm nay trùng; PR-5e tách (agent vào product, actor giữ)
+    # PR-5e đã tách: AGENT delivery-lead vào `product`, còn ACTOR của event do `delivery.py` phát giữ nguyên
+    # chuỗi cũ. Nó không được là id agent nữa — nếu trùng lại thì một agent đang mạo danh phần code đóng vòng.
+    assert LEAD_ACTOR not in set(consts.values()), "LEAD_ACTOR là actor của code, không phải agent"
 
 
 def test_source_va_literal_khop_hang():
@@ -133,8 +142,8 @@ def test_source_va_literal_khop_hang():
     assert set(SOURCE.__dict__) & {"REVIEWER", "QA", "SECURITY"} == {"REVIEWER", "QA", "SECURITY"}
 
 
-@pytest.mark.parametrize("name", ["ROLE", "SOURCE", "STACK"])
+@pytest.mark.parametrize("name", ["ROLE", "SOURCE", "STACK", "FINDING_KIND", "PHASE"])
 def test_namespace_khong_khoi_tao_duoc_thay_doi(name):
     """Hằng là hằng: gán đè vào namespace phải bị mypy `Final` chặn lúc kiểm tĩnh; lúc chạy chỉ kiểm nó không rỗng."""
-    ns = {"ROLE": ROLE, "SOURCE": SOURCE, "STACK": STACK}[name]
+    ns = {"ROLE": ROLE, "SOURCE": SOURCE, "STACK": STACK, "FINDING_KIND": FINDING_KIND, "PHASE": PHASE}[name]
     assert all(isinstance(v, str) and v for k, v in vars(ns).items() if not k.startswith("_"))

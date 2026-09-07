@@ -7,10 +7,9 @@ from company.registry import SKILLS_DIR, _split, load_agents, load_skill
 from company.roles import SOURCE
 
 EXPECTED = {
-    # research (6) — ADR-0006 gộp domain/ux-designer/codebase/tech-scout thành researcher
-    "intake", "researcher", "synthesizer", "risk", "clarifier", "spec-writer",
-    # delivery (1)
-    "delivery-lead",
+    # research (1) — ADR-0037 PR-5e: intake + clarifier (pha `intake`) + researcher (pha `research`) +
+    # synthesizer + risk + spec-writer (pha `spec`) + delivery-lead (pha `plan`) gộp thành `product`
+    "product",
     # engineering (1) — ADR-0037 PR-5d: backend + frontend + mobile + database + platform + data gộp thành
     # `builder`, sáu tên cũ thành PHA chọn theo `stack` của ticket
     "builder",
@@ -22,10 +21,15 @@ EXPECTED = {
     "supervisor",
 }
 
-def test_all_12_agents_load():
+def test_all_6_agents_load():
+    """ADR-0037 nói "21 agent → 5"; con số ở đây là **6** và đó không phải sai lệch: `supervisor` là một file
+    trong `agents/` (khối `supervisor`) nên `load_agents()` đếm nó, còn ADR đếm năm CÔNG ĐOẠN và không tính
+    supervisor — nó là phần code giám sát, không nhận ticket nào. Khoá cả hai con số ở đây để lần sau không ai
+    phải đoán bên nào đúng."""
     agents = load_agents()
     assert set(agents) == EXPECTED
-    assert len(agents) == 12
+    assert len(agents) == 6
+    assert len(EXPECTED - {"supervisor"}) == 5, "5 công đoạn theo ADR-0037 + supervisor (code)"
 
 def test_prompts_have_skills_and_dod():
     for a in load_agents().values():

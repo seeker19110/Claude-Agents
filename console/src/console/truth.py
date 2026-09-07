@@ -68,7 +68,7 @@ HINT_TEMPLATE = "root_cause: \ndecision: \nhint: "
 # Agent chạy lại sau khi DUYỆT từng loại gate — người trực phải biết mình vừa đánh thức ai (C2).
 # ADR-0037: software-company không còn gate `plan` (kế hoạch do `_check_plan` cho đi thẳng). Studio vẫn có
 # `GateKind` `plan` riêng, nhưng `StudioView` không dùng bảng này — chỉ `CompanyView` gọi (`collect.py`).
-NEXT_AGENT = {"release": ROLE.OPS, "spec": f"{ROLE.SECURITY} + {ROLE.LEAD}",
+NEXT_AGENT = {"release": ROLE.OPS, "spec": f"{ROLE.SECURITY} + {ROLE.PRODUCT}",
               "acceptance": ROLE.OPS, "escalation": "agent đang giữ ticket"}
 
 
@@ -86,7 +86,7 @@ def gate_reject_effect(kind: str, subject_id: str) -> str:
             return "Từ chối = finding vẫn chặn; RC nằm nguyên bậc hiện tại cho tới khi có RC mới."
         return "Từ chối = ticket ĐÓNG hẳn (`closed`), không ai làm tiếp — không phải \"để đó tính sau\"."
     if kind == "spec":
-        return "Từ chối = spec-writer viết lại PRD; chưa có ticket nào tồn tại để mà quay về."
+        return "Từ chối = `product` (pha spec) viết lại PRD; chưa có ticket nào tồn tại để mà quay về."
     if kind == "acceptance":
         return "Từ chối = release không được nghiệm thu; ticket của release mở lại chờ sửa."
     return ""
@@ -95,13 +95,13 @@ def gate_reject_effect(kind: str, subject_id: str) -> str:
 # Hậu quả của việc DUYỆT từng loại gate — hiện ngay trên nút, vì duyệt `escalation` cho REL-xxx KHÔNG deploy gì cả.
 def gate_effect(kind: str, subject_id: str) -> str:
     if kind == "release":
-        return "Duyệt = release-engineer deploy production, tag phiên bản, push. Đây là bước GIAO HÀNG."
+        return "Duyệt = `ops` (pha deploy) deploy production, tag phiên bản, push. Đây là bước GIAO HÀNG."
     if kind == "escalation":
         if subject_id.startswith("REL-"):
             return "Duyệt = chấp nhận finding đang chặn release này (waive), KHÔNG deploy gì. Từ chối = trả ticket về làm lại."
         return "Duyệt = mở lại ticket với lý do bạn ghi làm hint cho agent, cấp thêm một ngân sách. Từ chối = đóng ticket."
     if kind == "spec":
-        return "Duyệt = security viết threat model, delivery-lead chia ticket và GIAO NGAY (ADR-0037: không còn gate plan)."
+        return "Duyệt = security viết threat model, `product` (pha plan) chia ticket và GIAO NGAY (ADR-0037: không còn gate plan)."
     if kind == "acceptance":
         return "Duyệt = khách ký nghiệm thu, ticket của release đóng."
     return ""

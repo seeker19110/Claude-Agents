@@ -16,7 +16,7 @@ def _orch() -> Orchestrator:
 
 
 def _task(**kw) -> Task:
-    base = dict(ticket_id="T1", project_id="P1", requirement_id="REQ-1", assignee="builder", title="x",
+    base = dict(ticket_id="T1", project_id="P1", requirement_id="REQ-1", assignee="builder", stack="backend", title="x",
                 acceptance=["given/when/then"], estimate_tokens=4_000, budget_tokens=6_000)
     base.update(kw)
     return Task(**base)
@@ -25,13 +25,34 @@ def _task(**kw) -> Task:
 def _satisfy_threat_and_blackboard(o: Orchestrator, project: str = "P1") -> None:
     o.bus.publish(Envelope(topic="review-results", key=f"SPEC-{project}", actor="security",
                             payload=ReviewResult(ticket_id=f"SPEC-{project}", source="security", verdict="pass").model_dump()))
-    o.blackboard.write("delivery-lead", "architecture", "docs/c4.md", "L1-L2", project_id=project)
-    o.blackboard.write("delivery-lead", "api-contract", "openapi.yaml", "v1", project_id=project)
+    o.blackboard.write("product", "architecture", "docs/c4.md", "L1-L2", project_id=project)
+    o.blackboard.write("product", "api-contract", "openapi.yaml", "v1", project_id=project)
 
 
 def _baseline_ok(o: Orchestrator, project: str = "P1") -> list[Task]:
     _satisfy_threat_and_blackboard(o, project)
     return [_task()]
+
+
+# ---------- thiếu `stack` (ADR-0037 §4.2, PR-5e) ----------
+
+def test_ticket_thieu_stack_bi_tu_choi(monkeypatch):
+    """`stack` chọn bộ skill của `builder` cho lượt ấy (`routes.phase_for`), nên ticket thiếu `stack` được làm
+    bằng prompt CHUNG — mất skill của mảng mà không ai đỏ. Kiểm ở `_check_plan` chứ không `required` trong
+    `tasks.json`: bus từ chối một ticket là kế hoạch chết giữa chừng, ở đây cả kế hoạch quay về cho `product`."""
+    o = _orch()
+    tickets = _baseline_ok(o)
+    tickets[0] = _task(stack=None)
+    assert "T1 thiếu stack" in o._check_plan(tickets, "P1")
+    # bật lại: cùng ticket, chỉ thêm `stack` → problem biến mất (không phải một problem khác che mất)
+    tickets[0] = _task(stack="frontend")
+    assert not any("thiếu stack" in p for p in o._check_plan(tickets, "P1"))
+    # tắt bản sửa: bỏ đúng dòng kiểm → ticket thiếu `stack` đi lọt, chứng minh test đo đúng dòng đó
+    goc = ticket_fsm._check_plan
+    def khong_kiem_stack(o_, tickets_, project):
+        return [p for p in goc(o_, tickets_, project) if "thiếu stack" not in p]
+    monkeypatch.setattr(ticket_fsm, "_check_plan", khong_kiem_stack)
+    assert not any("thiếu stack" in p for p in khong_kiem_stack(o, [_task(stack=None)], "P1"))
 
 
 # ---------- ticket quá 1 ngày / 200k token ----------
@@ -97,8 +118,8 @@ def test_tat_risk_hints_thi_khong_con_problem(monkeypatch):
 
 def test_thieu_threat_model():
     o = _orch()
-    o.blackboard.write("delivery-lead", "architecture", "docs/c4.md", "L1-L2", project_id="P1")
-    o.blackboard.write("delivery-lead", "api-contract", "openapi.yaml", "v1", project_id="P1")
+    o.blackboard.write("product", "architecture", "docs/c4.md", "L1-L2", project_id="P1")
+    o.blackboard.write("product", "api-contract", "openapi.yaml", "v1", project_id="P1")
     problems = o._check_plan([_task()], "P1")
     assert any("thiếu threat model" in p for p in problems)
 
@@ -126,8 +147,8 @@ def test_thieu_architecture_tren_blackboard():
     assert any("blackboard thiếu architecture" in p for p in problems)
     assert any("blackboard thiếu api-contract" in p for p in problems)
 
-    o.blackboard.write("delivery-lead", "architecture", "docs/c4.md", "L1-L2", project_id="P1")
-    o.blackboard.write("delivery-lead", "api-contract", "openapi.yaml", "v1", project_id="P1")
+    o.blackboard.write("product", "architecture", "docs/c4.md", "L1-L2", project_id="P1")
+    o.blackboard.write("product", "api-contract", "openapi.yaml", "v1", project_id="P1")
     problems = o._check_plan([_task()], "P1")
     assert not any("blackboard thiếu" in p for p in problems)
 

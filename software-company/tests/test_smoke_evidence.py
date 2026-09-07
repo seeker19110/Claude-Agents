@@ -105,7 +105,7 @@ def _orch(tmp_path: Path, repo: Path | None, runtime: dict | None):
     spec = {"project_id": "P", "status": "approved", "kind": "library",
             "artifacts": {"prd": "prd", "requirements": "req"}}
     if runtime is not None: spec["runtime"] = runtime
-    bus.publish(Envelope(topic="approved-specs", key="P", actor="spec-writer", payload=spec))
+    bus.publish(Envelope(topic="approved-specs", key="P", actor="product", payload=spec))
     bus.publish(Envelope(topic="release-candidates", key="REL-001", actor="delivery-lead",
                          payload={"release_id": "REL-001", "project_id": "P", "tickets": ["T1"], "version": "0.1.0",
                                   "notes": "rc"}))
@@ -160,7 +160,7 @@ def test_khong_khai_runtime_thi_unverified_khong_chan(tmp_path):
 def _spec_ung_dung(bus, **them):
     """Publish đè spec `kind=application` KHÔNG có `runtime` — trạng thái mà ADR-0031 chặn ở gate spec, nhưng
     dự án duyệt trước ADR-0031 vẫn mang tới giai đoạn release. Đây là ca K1.5 phải xử."""
-    bus.publish(Envelope(topic="approved-specs", key="P", actor="spec-writer",
+    bus.publish(Envelope(topic="approved-specs", key="P", actor="product",
                          payload={"project_id": "P", "status": "approved", "kind": "application",
                                   "artifacts": {"prd": "prd", "requirements": "req"}, **them}))
 
@@ -303,7 +303,7 @@ def test_khong_runtime_kind_application_legacy_thi_qa_hoi_quy_van_chan(tmp_path,
     calls = _fake_smoke(monkeypatch, [OK])
     bus, orch = _orch(tmp_path, repo, None)
     spec = bus.latest("approved-specs", "P").payload
-    bus.publish(Envelope(topic="approved-specs", key="P", actor="spec-writer", payload={**spec, "kind": "application"}))
+    bus.publish(Envelope(topic="approved-specs", key="P", actor="product", payload={**spec, "kind": "application"}))
     bus.publish(Envelope(topic="research-requests", key="P", actor="human:chu-du-an",
                          payload={"project_id": "P", "description": "dự án có trước ADR-0031", "legacy": True}))
     orch.run()
@@ -332,7 +332,7 @@ def test_khong_runtime_kind_library_hay_docs_thi_unverified_khong_chan(tmp_path,
         _fake_smoke(monkeypatch, [OK])
         bus, orch = _orch(d, repo, None)
         spec = bus.latest("approved-specs", "P").payload
-        bus.publish(Envelope(topic="approved-specs", key="P", actor="spec-writer", payload={**spec, "kind": kind}))
+        bus.publish(Envelope(topic="approved-specs", key="P", actor="product", payload={**spec, "kind": kind}))
         orch.run()
         qa = _qa_reviews(bus)
         assert qa[-1]["verdict"] == "pass" and qa[-1]["evidence"]["run"]["unverified"] is True

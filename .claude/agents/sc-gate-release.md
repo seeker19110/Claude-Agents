@@ -75,7 +75,7 @@ Mỗi mục phải xuất hiện trong báo cáo với đúng một kết luận
 - sc-qa
 - sc-security
 - sc-ops
-- sc-delivery-lead
+- sc-product
 
 ## Đầu ra
 

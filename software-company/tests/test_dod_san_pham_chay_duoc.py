@@ -26,7 +26,7 @@ DOD_CHUNG = "khởi động bằng một lệnh ghi trong README và trả lời
 # ADR-0037 PR-5b: `release-engineer` và `account-manager` gộp vào `ops` (pha `deploy`/`account`) — mỗi pha vẫn
 # giữ dòng DoD riêng dưới `## Definition of done` (một H2 chung, nhiều H3 theo pha), nên soát cả prompt của
 # `ops` vẫn thấy đủ hai câu như trước, chỉ còn hai định danh thay vì ba.
-DIEU_PHOI = ("delivery-lead", "ops")
+DIEU_PHOI = ("product", "ops")
 
 
 @pytest.fixture(scope="module")

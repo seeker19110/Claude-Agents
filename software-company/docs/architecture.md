@@ -25,22 +25,22 @@ phải có mặt; agent được liệt kê mà không có route phải ghi `(ch
 
 | Topic | Producer | Consumer | Key |
 |-------|----------|----------|-----|
-| research-requests | human / ops | intake | project_id |
-| research-findings | intake, researcher | synthesizer, researcher | project_id |
-| requirements-draft | synthesizer | risk, clarifier, researcher (chỉ đọc) | project_id |
-| clarification-questions | clarifier | human gate | project_id |
-| clarification-answers | human gate | clarifier (hỏi lại khi trả lời thiếu), spec-writer (khi đủ) | project_id |
-| approved-specs | spec-writer → human gate `spec` | không có route trong `ROUTES`: security (threat model, `THREAT_ROUTE`), delivery-lead (plan, `PLAN_INPUTS`), ops (chỉ đọc) | project_id |
-| tasks | delivery-lead | qa[author] (khi bật, ADR-0028), builder (pha = `stack`) | ticket_id |
+| research-requests | human / ops | product (pha `intake`) | project_id |
+| research-findings | product (pha `intake`, `research`) | product (pha `research` khi `kind=intake`, pha `spec` khi `kind=researcher`) | project_id |
+| requirements-draft | product (pha `spec`, kèm `risks`) | product (pha `intake`, sinh câu hỏi) | project_id |
+| clarification-questions | product (pha `intake`) | human gate | project_id |
+| clarification-answers | human gate | product (pha `intake` hỏi lại khi trả lời thiếu; pha `spec` khi đủ) | project_id |
+| approved-specs | product (pha `spec`) → human gate `spec` | không có route trong `ROUTES`: security (threat model, `THREAT_ROUTE`), product (pha `plan`, `PLAN_INPUTS`), ops (chỉ đọc) | project_id |
+| tasks | code (`delivery.py`, actor `delivery-lead`) từ lượt product[plan] | qa[author] (khi bật, ADR-0028), builder (pha = `stack`) | ticket_id |
 | test-suites | qa[author] | builder (pha = `stack`) | ticket_id |
 | pull-requests | builder | qa[review], security (khi risk_tags), qa[author] (khi có `test_dispute`) | ticket_id |
-| review-results | qa (`source` = reviewer ở PR, qa ở hồi quy staging), security | delivery-lead | ticket_id (hoặc release_id cho QA staging) |
-| release-candidates | delivery-lead | ops, security | release_id |
-| release-events | ops (pha `deploy`) | delivery-lead, qa[review] (staging), ops (pha `docs`, production), ops (pha `account`, chỉ đọc), human gate | release_id |
-| incidents | ops (pha `docs`) | delivery-lead (plan khi root_cause_class code/ops/design), ops (pha `docs`, → research-requests khi requirement) | incident_id |
+| review-results | qa (`source` = reviewer ở PR, qa ở hồi quy staging), security | code (`delivery.py`) gom đủ nguồn rồi mở release | ticket_id (hoặc release_id cho QA staging) |
+| release-candidates | code (`delivery.py`, actor `delivery-lead`) | ops, security | release_id |
+| release-events | ops (pha `deploy`) | code (`delivery.py`), qa[review] (staging), ops (pha `docs`, production), ops (pha `account`, chỉ đọc), human gate | release_id |
+| incidents | ops (pha `docs`) | product (pha `plan` khi root_cause_class code/ops/design), ops (pha `docs`, → research-requests khi requirement) | incident_id |
 | external-feedback | human (khách, người dùng) | ops (pha `docs`), ops (pha `account`) | project_id |
-| change-requests | ops (pha `account`) | delivery-lead, intake | change_id |
-| acceptance-results | ops (pha `account`) | delivery-lead, ops (pha `account`, → change-requests khi verdict conditional) | release_id |
+| change-requests | ops (pha `account`) | product (pha `plan` khi decision=pending hoặc accepted; pha `intake` khi accepted và đổi yêu cầu) | change_id |
+| acceptance-results | ops (pha `account`) | code (`delivery.py`, đóng ticket của release), ops (pha `account`, → change-requests khi verdict conditional) | release_id |
 | shared-context | theo namespace | tất cả | namespace |
 | audit-log | tất cả | supervisor | actor |
 | supervisor-actions | supervisor | tất cả | target |

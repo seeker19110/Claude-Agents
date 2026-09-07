@@ -26,7 +26,7 @@ from company.llm import FakeClient
 from company.orchestrator import Orchestrator
 from company.registry import ROOT
 from company.sqlite_bus import SQLiteBus
-from test_orchestrator import _agent_of, _drive_to_plan, _inp, _pub, handler
+from test_orchestrator import _agent_of, _drive_to_plan, _inp, _product_phase, _pub, handler
 
 
 def _acts(bus) -> list[str]:
@@ -69,10 +69,10 @@ def test_action_dispatch_nam_ngay_sau_plan_trong_cung_mot_step():
 # ---------- 2. plan bẩn: không giao gì, escalation như cũ ----------
 
 def _lead_thieu_acceptance(system, user):
-    """delivery-lead trả ticket thiếu `acceptance` → `_check_plan` ra `problems`."""
-    if _agent_of(system) == "delivery-lead" and "decision" not in _inp(user):
+    """`product` pha `plan` trả ticket thiếu `acceptance` → `_check_plan` ra `problems`."""
+    if _agent_of(system) == "product" and _product_phase(system) == "plan" and "decision" not in _inp(user):
         return {"items": [{"ticket_id": "TX", "project_id": "P1", "requirement_id": "REQ-1", "assignee": "builder",
-                           "title": "x", "acceptance": [], "estimate_tokens": 4_000, "budget_tokens": 6_000}],
+                           "stack": "backend", "title": "x", "acceptance": [], "estimate_tokens": 4_000, "budget_tokens": 6_000}],
                 "context_writes": [{"namespace": "architecture", "content_ref": "docs/c4.md", "summary": "L1-L2"},
                                    {"namespace": "api-contract", "content_ref": "openapi.yaml", "summary": "v1"}]}
     return handler(system, user)

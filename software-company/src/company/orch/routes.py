@@ -7,12 +7,12 @@ khởi động (`Orchestrator.__init__`), nên lệch route/schema vỡ ngay, kh
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 from ..events import Envelope
 from ..registry import AgentSpec
-from ..roles import BUILD_PHASES, ROLE, SOURCE
+from ..roles import BUILD_PHASES, FINDING_KIND, PHASE, ROLE, SOURCE
 from ..runner import CONTEXT_ONLY
 from ..smoke import parse_runtime
 from ..workspace import WorkspaceError
@@ -55,7 +55,7 @@ class Route:
     when: When | None = None
     target_env: str | None = None  # route release: đầu ra phải có env đúng như yêu cầu
     many: bool = False  # 0..n payload một lượt (agent được quyền "không có gì để phát")
-    enrich: Enrich | None = None  # thêm dữ liệu vào payload đầu vào (vd. bản draft mới nhất cho spec-writer)
+    enrich: Enrich | None = None  # thêm dữ liệu vào payload đầu vào (vd. bản draft mới nhất cho pha `spec`)
     tools: str | None = None  # "rw": sửa code trong worktree (kỹ thuật); "ro": chỉ đọc + chạy test (QA); "research": đọc repo khách + web
     # ADR-0037: pha của lượt — agent nạp thêm skill của pha này (`AgentSpec.phases`). None = chỉ skill cấp agent,
     # trừ route sửa code: pha lấy theo `stack` của ticket lúc chạy, xem `phase_for`.
@@ -76,8 +76,27 @@ def phase_for(r: Route, spec: AgentSpec, inp: Envelope) -> str | None:
     return stack if stack in spec.phases else None
 
 
-def _from(*actors: str) -> When:
-    return lambda e, _o: e.actor in actors
+# `_from(*actors)` (guard theo `env.actor`) BIẾN MẤT ở PR-5e: sau khi bảy vai nghiên cứu thành bốn pha của cùng
+# một `product`, mọi chỗ dùng nó đều so một hằng với chính nó. Hai guard dưới đây thay nó — không giữ lại làm
+# "tiện sau này": một hàm không ai gọi là một hàm không ai chạy, và `fail_under = 100` nói đúng điều đó.
+
+
+def _from_phase(name: str) -> When:
+    """Event này do lượt của PHA nào sinh ra (ADR-0037 §1.2)? Thay `_from(<agent>)` khi nhiều pha của CÙNG một
+    agent phát cùng một topic: từ PR-5e cả `requirements-draft` lẫn `clarification-questions` đều mang
+    `actor="product"`, nên guard theo actor không còn phân biệt được lượt nào.
+
+    Đọc `payload["_phase"]` — trường do RUNNER ghi (PR-3, `runner.generate`), không phải lời khai của model,
+    cùng nguyên tắc với `env`/`release_id` của `_release`. Event cũ trong bus (trước PR-3) không có trường này
+    nên guard trả False: chuỗi nghiên cứu của dự án đang chạy dừng ở đó thay vì chạy sai pha, và `_stall` hiện nó
+    ra cho người."""
+    return lambda e, _o: e.payload.get("_phase") == name
+
+
+def _from_kind(kind: str) -> When:
+    """`research-findings` tự mang `kind` (schema bắt buộc) nên chuỗi intake → research → spec phân biệt được
+    bằng chính dữ liệu, không cần `_phase`: một event của dự án cũ vẫn đi đúng đường."""
+    return lambda e, _o: e.payload.get("kind") == kind
 
 
 def _field(name: str, *values: Any) -> When:
@@ -102,12 +121,12 @@ def _deployed(env_name: str) -> When:
 
 
 def _answers_complete(e: Envelope, o: Orchestrator) -> bool:
-    """Người đã trả lời hết câu hỏi của vòng gần nhất (hoặc clarifier đã hết vòng) → đi thẳng spec-writer.
+    """Người đã trả lời hết câu hỏi của vòng gần nhất (hoặc đã hết vòng hỏi) → đi thẳng pha `spec`.
     Thiếu câu trả lời mà vẫn viết spec thì spec dựa trên giả định người chưa xác nhận.
 
     Câu trả lời TÍCH LUỸ trong vòng hiện tại, không chỉ tính event này: người trả lời bổ sung một câu ở lượt
     sau (vd. sau khi `security` nêu thêm câu hỏi mở) không phải gửi lại toàn bộ câu cũ. Trước đây chỉ
-    đọc `e.payload`, nên lượt bổ sung luôn bị coi là "thiếu hết các câu trước" và spec-writer không bao giờ
+    đọc `e.payload`, nên lượt bổ sung luôn bị coi là "thiếu hết các câu trước" và pha `spec` không bao giờ
     chạy lại — câu trả lời nằm im trong bus, không audit, không báo ai (đo được khi chạy thật 2026-09-04)."""
     pid = str(e.payload.get("project_id") or e.key)
     q = o.latest("clarification-questions", pid)
@@ -127,7 +146,7 @@ def _answers_incomplete(e: Envelope, o: Orchestrator) -> bool:
 
 
 def _spec_ready(e: Envelope, o: Orchestrator) -> bool:
-    """Spec-writer chỉ chạy khi đã trả lời hết câu hỏi VÀ dự án có `requirements-draft`. Trước đây câu trả lời gửi cho
+    """Pha `spec` chỉ chạy khi đã trả lời hết câu hỏi VÀ dự án có `requirements-draft`. Trước đây câu trả lời gửi cho
     một dự án chưa có bản nháp (chuỗi nghiên cứu chết, hoặc gửi nhầm dự án) vẫn sinh PRD từ đầu vào trống."""
     if not _answers_complete(e, o): return False
     pid = str(e.payload.get("project_id") or e.key)
@@ -174,11 +193,12 @@ def _with_draft(e: Envelope, o: Orchestrator) -> dict[str, Any]:
 
 
 def _with_intake(e: Envelope, o: Orchestrator) -> dict[str, Any]:
-    """Synthesizer cần CẢ báo cáo intake lẫn báo cáo 4 mục của researcher (ADR-0006), nhưng nó chỉ được đánh thức bởi
-    báo cáo của researcher. Không đính kèm đề bài của intake thì tiêu chí bắt đầu không bao giờ đủ và draft luôn rỗng."""
+    """Pha `spec` cần CẢ báo cáo của pha `intake` lẫn báo cáo 4 mục của pha `research` (ADR-0006), nhưng nó chỉ được
+    đánh thức bởi báo cáo của pha `research`. Không đính kèm đề bài của pha `intake` thì tiêu chí bắt đầu không bao
+    giờ đủ và draft luôn rỗng."""
     key = e.payload.get("project_id") or e.key
-    found = [x for x in o.bus.replay("research-findings", key) if x.payload.get("kind") == ROLE.INTAKE]
-    return {ROLE.INTAKE: found[-1].payload.get("data")} if found and found[-1].payload.get("data") else {}
+    found = [x for x in o.bus.replay("research-findings", key) if x.payload.get("kind") == FINDING_KIND.INTAKE]
+    return {FINDING_KIND.INTAKE: found[-1].payload.get("data")} if found and found[-1].payload.get("data") else {}
 
 
 def _with_diff(e: Envelope, o: Orchestrator) -> dict[str, Any]:
@@ -256,14 +276,20 @@ def _with_task(e: Envelope, o: Orchestrator) -> dict[str, Any]:
 
 STAGING_ROUTE = Route("release-candidates", ROLE.OPS, "release-events", target_env="staging", phase="deploy")
 ROUTES: tuple[Route, ...] = (
-    # khối nghiên cứu: intake → researcher → synthesizer → risk → clarifier → (người trả lời) → spec-writer
-    Route("research-requests", ROLE.INTAKE, "research-findings"),
-    Route("research-findings", ROLE.RESEARCHER, "research-findings", _from(ROLE.INTAKE), tools="research"),
-    Route("research-findings", ROLE.SYNTHESIZER, "requirements-draft", _from(ROLE.RESEARCHER), enrich=_with_intake),
-    Route("requirements-draft", ROLE.RISK, "requirements-draft", _from(ROLE.SYNTHESIZER)),
-    Route("requirements-draft", ROLE.CLARIFIER, "clarification-questions", _from(ROLE.RISK)),
-    Route("clarification-answers", ROLE.CLARIFIER, "clarification-questions", _answers_incomplete, enrich=_with_draft),
-    Route("clarification-answers", ROLE.PRODUCT, "approved-specs", _spec_ready, enrich=_with_draft),
+    # ADR-0037 PR-5e — khối nghiên cứu: MỘT agent `product`, bốn pha, cùng chuỗi cũ trừ một mắt xích.
+    # intake → research → spec (draft đã kèm `risks`) → intake (câu hỏi) → (người trả lời) → spec (PRD).
+    # Lượt `risk` riêng (`requirements-draft` → `requirements-draft`) BỊ BỎ: draft của pha `spec` phải có sẵn mục
+    # `risks` (schema nâng lên required ở PR-5e), nên một lượt ít hơn cho mỗi dự án và không còn hai bản draft
+    # chồng nhau cho cùng một key.
+    Route("research-requests", ROLE.PRODUCT, "research-findings", phase=PHASE.INTAKE),
+    Route("research-findings", ROLE.PRODUCT, "research-findings", _from_kind(FINDING_KIND.INTAKE),
+          tools="research", phase=PHASE.RESEARCH),
+    Route("research-findings", ROLE.PRODUCT, "requirements-draft", _from_kind(FINDING_KIND.RESEARCH),
+          enrich=_with_intake, phase=PHASE.SPEC),
+    Route("requirements-draft", ROLE.PRODUCT, "clarification-questions", _from_phase(PHASE.SPEC), phase=PHASE.INTAKE),
+    Route("clarification-answers", ROLE.PRODUCT, "clarification-questions", _answers_incomplete,
+          enrich=_with_draft, phase=PHASE.INTAKE),
+    Route("clarification-answers", ROLE.PRODUCT, "approved-specs", _spec_ready, enrich=_with_draft, phase=PHASE.SPEC),
     # kỹ thuật + chất lượng
     # ADR-0028: có repo và phân vùng được vùng test → test-author viết test MÙ trước, rồi assignee viết code cho
     # tới khi xanh mà KHÔNG ghi được file test. Không phân vùng được (stack lạ, không repo) → đường cũ, và PR mang
@@ -295,8 +321,8 @@ ROUTES: tuple[Route, ...] = (
     Route("external-feedback", ROLE.OPS, "incidents", many=True, phase="docs"),
     Route("incidents", ROLE.OPS, "research-requests", _field("root_cause_class", "requirement"), many=True, phase="docs"),
     Route("acceptance-results", ROLE.OPS, "change-requests", _field("verdict", "conditional"), many=True, phase="account"),
-    Route("change-requests", ROLE.LEAD, "audit-log", _field("decision", "pending")),  # ước lượng impact → người quyết
-    Route("change-requests", ROLE.INTAKE, "research-findings", _cr_accepted_needs_research),
+    Route("change-requests", ROLE.PRODUCT, "audit-log", _field("decision", "pending"), phase=PHASE.PLAN),  # ước lượng impact → người quyết
+    Route("change-requests", ROLE.PRODUCT, "research-findings", _cr_accepted_needs_research, phase=PHASE.INTAKE),
 )
 PROD_ROUTE = Route("release-candidates", ROLE.OPS, "release-events", target_env="production", phase="deploy")
 
@@ -312,9 +338,24 @@ def review_route(agent: str) -> Route:
         if r.topic_in == "pull-requests" and r.topic_out == "review-results" and r.agent == agent:
             return r
     raise KeyError(f"không có route chấm pull-requests cho {agent}")
+def spec_route(topic_in: str) -> Route:
+    """Route đưa một event THẲNG về lượt viết PRD của `product` (pha `spec`), cho hai chỗ gọi lại ngoài vòng
+    `ROUTES`: `_spec_runtime_missing` (trả spec về vì thiếu `runtime`) và `_act_clarification_fallback`
+    (không còn câu hỏi nào để hỏi).
+
+    Không dựng `Route(...)` tay: một Route dựng tay không mang `phase`, nên từ PR-5e lượt ấy chạy bằng prompt
+    CHUNG của `product` (không skill `risk-analysis`, không threat-modeling) rồi vẫn trả `approved-specs` — sai
+    bộ skill mà không test nào đỏ (đúng bẫy PR-5c đã trả giá với `qa`). Lấy đúng dòng trong `ROUTES` rồi chỉ đổi
+    `topic_in`/`when` thì `phase` và `enrich` không thể lệch."""
+    base = next(r for r in ROUTES if r.topic_in == "clarification-answers" and r.topic_out == "approved-specs")
+    if topic_in == "clarification-answers": return base
+    # `requirements-draft` CHÍNH LÀ bản draft: đính kèm nó lần nữa qua `_with_draft` là gửi cùng một thứ hai lần.
+    return replace(base, topic_in=topic_in, when=None, enrich=None if topic_in == "requirements-draft" else base.enrich)
+
+
 THREAT_ROUTE = Route("approved-specs", ROLE.SECURITY, "review-results")  # threat model trước ticket đầu (ADR-0003)
 
-# Đầu vào khiến delivery-lead lập kế hoạch (sinh nhiều ticket một lượt) → `_check_plan` → dispatch (ADR-0037).
+# Đầu vào khiến `product` pha `plan` lập kế hoạch (sinh nhiều ticket một lượt) → `_check_plan` → dispatch (ADR-0037).
 PLAN_INPUTS: dict[str, When] = {
     "approved-specs": lambda e, _o: True,
     "incidents": _field("root_cause_class", "code", "ops", "design"),
@@ -338,6 +379,6 @@ def check_routes(agents: dict[str, AgentSpec]) -> list[str]:
     # sáu `stack` hợp lệ — lệch một tên là ticket mảng ấy chạy bằng prompt chung mà không ai thấy.
     build = agents[ROLE.BUILDER]
     bad += [f"{ROLE.BUILDER} không có pha {p} (stack của ticket)" for p in BUILD_PHASES if p not in build.phases]
-    lead = agents[ROLE.LEAD]
-    bad += [f"{ROLE.LEAD} không đọc {t}" for t in PLAN_INPUTS if t not in lead.reads]
+    lead = agents[ROLE.PRODUCT]
+    bad += [f"{ROLE.PRODUCT} không đọc {t}" for t in PLAN_INPUTS if t not in lead.reads]
     return bad

@@ -61,8 +61,8 @@ Mỗi mục phải xuất hiện trong báo cáo với đúng một kết luận
 
 ## Trợ lý chuyên môn nên gọi cùng hồ sơ
 
-- sc-spec-writer
-- sc-risk
+- sc-product
+- sc-security
 
 ## Đầu ra
 

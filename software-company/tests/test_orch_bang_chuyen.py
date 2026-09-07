@@ -130,7 +130,7 @@ def test_cap_cam_plan_input_trung_khi_da_co_plan_dang_cho_gate():
     bus = InMemoryBus(); orch = _orch(bus)
     _drive_to_plan(bus, orch)
     spec = bus.latest("approved-specs", "P1")
-    _pub(bus, "approved-specs", "P1", "spec-writer", spec.payload); orch.run()
+    _pub(bus, "approved-specs", "P1", "product", spec.payload); orch.run()
     assert list(orch.plans) == ["PLAN-P1-1"]
     dup = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log")
            if e.payload["action"] == "plan.duplicate_spec"]

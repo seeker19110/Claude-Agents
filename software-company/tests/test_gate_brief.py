@@ -18,7 +18,7 @@ from company.events import Envelope
 from company.llm import FakeClient, LLMError
 from company.orchestrator import ENGINEERING, Orchestrator
 from company.sqlite_bus import SQLiteBus
-from test_orchestrator import _agent_of, _drive_to_plan, _pub, handler
+from test_orchestrator import _agent_of, _drive_to_plan, _product_phase, _pub, handler
 from test_tools_and_agentic import _init_repo, _repo_tool_handler
 
 GOLDEN = Path(__file__).parent / "golden" / "gate_brief"
@@ -43,8 +43,11 @@ THREAT = "# Threat model\nPhân loại dữ liệu: PII mức 2; DPIA: cần\n"
 def rich_handler(system: str, user: str) -> dict:
     """`handler` của test_orchestrator + TOÀN VĂN artifact để hồ sơ có gì mà rút."""
     out = handler(system, user); a = _agent_of(system)
-    if a == "spec-writer": out["context_writes"][0]["content"] = PRD
-    elif a == "delivery-lead" and "items" in out:
+    # ADR-0037 PR-5e: PRD và C4/contract nay do CÙNG một agent viết ở hai pha khác nhau — phân biệt bằng pha,
+    # không bằng tên agent (nếu chỉ so tên thì nhánh thứ hai chết và hồ sơ gate mất `architecture`).
+    if a == "product" and _product_phase(system) == "spec" and "context_writes" in out:
+        out["context_writes"][0]["content"] = PRD
+    elif a == "product" and _product_phase(system) == "plan" and "items" in out:
         out["context_writes"][0]["content"] = C4; out["context_writes"][1]["content"] = CONTRACT
     elif a == "security" and "context_writes" in out: out["context_writes"][0]["content"] = THREAT
     return out
@@ -57,7 +60,7 @@ def fail_handler(system: str, user: str) -> dict:
 
 
 def stall_handler(system: str, user: str) -> dict:
-    if _agent_of(system) == "intake": raise LLMError("intake nổ")
+    if _agent_of(system) == "product" and _product_phase(system) == "intake": raise LLMError("product[intake] nổ")
     return rich_handler(system, user)
 
 
@@ -173,7 +176,7 @@ def test_spec_rut_nfr_out_of_scope_pii_va_cau_hoi_mo(tmp_path):
     assert src["kind"] == "namespace" and src["ref"] == "prd"
     assert Path(src["path"]).parts[-2:] == ("prd", "latest.md")
     # thêm một vòng câu hỏi chưa ai trả lời → gap
-    bus.publish(Envelope(topic="clarification-questions", key="P1", actor="clarifier",
+    bus.publish(Envelope(topic="clarification-questions", key="P1", actor="product",
                          payload={"project_id": "P1", "round": 2, "questions": [{"id": "Q9", "text": "?", "options": ["a"], "default": "a"}]}))
     b2 = GB.build(GB.load_state(db), "SPEC-P1", closed=True)
     assert _verdicts(b2)["spec.cau-hoi-mo"] == "gap" and any("Q9" in f for f in next(it for it in b2["self_check"] if it["id"] == "spec.cau-hoi-mo")["facts"])
@@ -194,7 +197,8 @@ def test_pii_cat_200_ky_tu(tmp_path):
     long_line = "Email khách hàng: " + "a" * 900 + "@x.vn"
     def h(system, user):
         out = rich_handler(system, user)
-        if _agent_of(system) == "spec-writer": out["context_writes"][0]["content"] = PRD + "\n" + long_line + "\n"
+        if _agent_of(system) == "product" and _product_phase(system) == "spec" and "context_writes" in out:
+            out["context_writes"][0]["content"] = PRD + "\n" + long_line + "\n"
         return out
     db, _, _ = _scenario(tmp_path, h, to="plan")
     b = GB.build(GB.load_state(db), "SPEC-P1", closed=True)
@@ -222,7 +226,7 @@ def test_release_uoc_luong_va_ngan_sach_doi_tu_gate_plan(tmp_path):
 def test_release_gap_khi_budget_vuot_tran_agent_hoac_duoi_estimate(tmp_path):
     def h(system, user):
         out = rich_handler(system, user)
-        if _agent_of(system) == "delivery-lead" and "items" in out:
+        if _agent_of(system) == "product" and "items" in out:
             out["items"] = [{**out["items"][0], "budget_tokens": 10_000_000}, {**out["items"][1]}]
         return out
     db, _, _ = _scenario(tmp_path, h, to="release")
@@ -341,9 +345,9 @@ SERVER_DIE = "import sys;sys.stderr.write('config thiếu DATABASE_URL\\n');sys.
 
 
 def _runtime_handler(system, user):
-    """spec-writer khai `runtime` là một http.server thật (fake runtime, không cần file trong repo)."""
+    """`product` pha `spec` khai `runtime` là một http.server thật (fake runtime, không cần file trong repo)."""
     out = rich_handler(system, user)
-    if _agent_of(system) == "spec-writer":
+    if _agent_of(system) == "product" and "payload" in out:
         out["payload"]["runtime"] = {"command": ["python", "-c", SERVER_OK, "{port}"], "health": "/", "timeout_s": 20}
     return out
 
@@ -441,7 +445,7 @@ def test_escalation_cap_du_an(tmp_path):
     db, _, orch = _scenario(tmp_path, stall_handler, to="stalled")
     assert orch.gate.pending["P1"].kind == "escalation" and "P1" in orch.stalled
     b = GB.build(GB.load_state(db), "P1")
-    assert b["extra"]["scope"] == "project" and b["extra"]["stalled"]["agent"] == "intake" and b["project_id"] == "P1"
+    assert b["extra"]["scope"] == "project" and b["extra"]["stalled"]["agent"] == "product" and b["project_id"] == "P1"
     assert any("project.stalled" in h["action"] for h in b["extra"]["history"])
     ns = b["self_check"][0]
     assert ns["id"] == "escalation.ngan-sach" and ns["verdict"] == "unknown" and "chưa đặt" in ns["facts"][0]

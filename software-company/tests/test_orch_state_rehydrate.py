@@ -55,7 +55,7 @@ def _repo_that(tmp_path, ten):
 SEED = {
     "processed": lambda bus, tmp: _audit(bus, "orchestrated", {"event_id": E1}),
     "queue": lambda bus, tmp: _viec(bus),
-    "partial": lambda bus, tmp: bus.publish(Envelope(topic="approved-specs", key="P1", actor="spec-writer",
+    "partial": lambda bus, tmp: bus.publish(Envelope(topic="approved-specs", key="P1", actor="product",
                                                      causation_id=E1,
                                                      payload={"project_id": "P1", "status": "approved",
                                                               "artifacts": {"prd": "prd.md", "requirements": "req.md"}})),

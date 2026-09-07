@@ -251,9 +251,10 @@ def test_spec_thieu_nfr_va_out_of_scope(tmp_path):
     prd = "# PRD P1\n## Yêu cầu\n- REQ-1 GET /orders p95 < 300 ms\n- REQ-2 không số\n"
 
     def h(system, user):
-        from test_gate_brief import _agent_of
+        from test_orchestrator import _agent_of, _product_phase
         out = rich_handler(system, user)
-        if _agent_of(system) == "spec-writer": out["context_writes"][0]["content"] = prd
+        if _agent_of(system) == "product" and _product_phase(system) == "spec" and "context_writes" in out:
+            out["context_writes"][0]["content"] = prd
         return out
     db, _, _ = _scenario(tmp_path, h, to="plan")
     b = GB.build(GB.load_state(db), "SPEC-P1", closed=True)

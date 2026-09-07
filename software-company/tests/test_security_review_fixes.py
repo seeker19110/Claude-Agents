@@ -128,7 +128,7 @@ def test_architecture_topic_table_matches_routes():
     routed: dict[str, set[str]] = {}
     for r in (*ROUTES, THREAT_ROUTE):
         routed.setdefault(r.topic_in, set()).add("engineering" if r.agent == "$assignee" else r.agent)
-    for topic in PLAN_INPUTS: routed.setdefault(topic, set()).add("delivery-lead")
+    for topic in PLAN_INPUTS: routed.setdefault(topic, set()).add("product")
     agents = set(load_agents()) | {"engineering"}
     for topic, wanted in routed.items():
         assert topic in rows, f"docs thiếu topic {topic}"

@@ -26,12 +26,17 @@ ENGINEERING_ACTORS = frozenset(ENGINEERING)
 REVIEW_PRODUCERS = frozenset({ROLE.QA, ROLE.SECURITY, SOURCE.QA, SOURCE.SECURITY})  # tên agent hoặc `source`
 TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
     "research-requests": frozenset({ROLE.OPS}),
-    "research-findings": frozenset({ROLE.INTAKE, ROLE.RESEARCHER}),
-    "requirements-draft": frozenset({ROLE.SYNTHESIZER, ROLE.RISK}),
-    "clarification-questions": frozenset({ROLE.CLARIFIER}),
+    "research-findings": frozenset({ROLE.PRODUCT}),
+    "requirements-draft": frozenset({ROLE.PRODUCT}),
+    "clarification-questions": frozenset({ROLE.PRODUCT}),
     "clarification-answers": frozenset(),
     "approved-specs": frozenset({ROLE.PRODUCT}),
-    "tasks": frozenset({LEAD_ACTOR}),
+    # ADR-0037 PR-5e: HAI producer, hai vai khác nhau — `LEAD_ACTOR` là CODE (`delivery.py`) đóng vòng dispatch
+    # sau `_check_plan`, `product` là AGENT sinh danh sách ticket (front matter `writes: tasks`, và `runner`
+    # publish dưới danh nghĩa agent trong eval). Trước PR-5e hai thứ này tình cờ cùng một chuỗi nên không ai
+    # phải nói ra. Chốt chặn "ticket chỉ ra đời sau khi kế hoạch qua kiểm" KHÔNG nằm ở đây mà ở
+    # `DeliveryLead.dispatch` (`plans_ok`, PR-2) — bảng này chỉ nói ai được phát topic, không nói khi nào.
+    "tasks": frozenset({LEAD_ACTOR, ROLE.PRODUCT}),
     "pull-requests": ENGINEERING_ACTORS,
     "test-suites": frozenset({ROLE.QA}),  # ADR-0028: bộ test do một vai KHÁC người viết code phát (qa, pha `author`)
     "review-results": REVIEW_PRODUCERS,

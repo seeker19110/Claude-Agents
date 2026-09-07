@@ -132,8 +132,8 @@ SELF_CHECK_SOURCES: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {
 
 # §5.6: kind → trợ lý chuyên môn nên gọi cùng hồ sơ.
 EXPERTS: dict[str, tuple[str, ...]] = {
-    "spec": (f"sc-{ROLE.PRODUCT}", f"sc-{ROLE.RISK}"),
-    "release": (f"sc-{ROLE.QA}", f"sc-{ROLE.SECURITY}", f"sc-{ROLE.OPS}", f"sc-{ROLE.LEAD}"),
+    "spec": (f"sc-{ROLE.PRODUCT}", f"sc-{ROLE.SECURITY}"),
+    "release": (f"sc-{ROLE.QA}", f"sc-{ROLE.SECURITY}", f"sc-{ROLE.OPS}", f"sc-{ROLE.PRODUCT}"),
     "acceptance": (f"sc-{ROLE.OPS}",),
     "escalation": (f"sc-{ROLE.QA}", f"sc-{ROLE.BUILDER}"),  # ADR-0037: một agent viết code, không còn "sc-<assignee>"
 }
