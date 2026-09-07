@@ -56,9 +56,26 @@ class Route:
     many: bool = False  # 0..n payload một lượt (agent được quyền "không có gì để phát")
     enrich: Enrich | None = None  # thêm dữ liệu vào payload đầu vào (vd. bản draft mới nhất cho spec-writer)
     tools: str | None = None  # "rw": sửa code trong worktree (kỹ thuật); "ro": chỉ đọc + chạy test (QA); "research": đọc repo khách + web
+    # ADR-0037: pha của lượt — agent nạp thêm skill của pha này (`AgentSpec.phases`). None = chỉ skill cấp agent,
+    # trừ route sửa code: pha lấy theo `stack` của ticket lúc chạy, xem `phase_for`.
+    phase: str | None = None
 
     def agents(self) -> tuple[str, ...]:
         return ENGINEERING if self.agent == "$assignee" else (self.agent,)
+
+
+def phase_for(r: Route, spec: AgentSpec, inp: Envelope) -> str | None:
+    """Pha của một lượt (ADR-0037). Route khai sẵn thì dùng; route sửa code lấy theo `stack` của ticket (ADR-0013)
+    vì cùng một `builder` làm cả sáu stack.
+
+    `stack` là DỮ LIỆU trong payload chứ không phải bảng route, nên nó chỉ được nhận khi agent thật sự khai pha
+    đó — trong lúc chuyển đổi (một số agent đã gộp, một số chưa) `stack=backend` gửi cho agent `backend` cũ,
+    vốn không có pha nào, phải chạy như trước chứ không được ném lỗi. Pha do ROUTE khai thì `check_routes` đã
+    đối chiếu với front matter lúc khởi động."""
+    if r.phase is not None: return r.phase
+    if r.tools != "rw": return None
+    stack = str(inp.payload.get("stack") or inp.payload.get("assignee") or "")
+    return stack if stack in spec.phases else None
 
 
 def _from(*actors: str) -> When:
@@ -304,6 +321,8 @@ def check_routes(agents: dict[str, AgentSpec]) -> list[str]:
         for a in r.agents():
             spec = agents[a]
             if r.topic_in not in spec.reads and "*" not in spec.reads: bad.append(f"{a} không đọc {r.topic_in}")
+            if r.phase is not None and r.phase not in spec.phases:
+                bad.append(f"{a} không có pha {r.phase} (front matter khai: {sorted(spec.phases) or 'không pha nào'})")
             if r.topic_out == CONTEXT_ONLY:
                 if not spec.namespaces_write: bad.append(f"{a} không có namespace để ghi blackboard")
             elif r.topic_out not in spec.writes: bad.append(f"{a} không ghi {r.topic_out}")

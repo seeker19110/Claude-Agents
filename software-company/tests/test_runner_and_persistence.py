@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import threading
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import ClassVar
@@ -30,6 +31,7 @@ from company.llm import (
     make_client,
     strict_schema,
 )
+from company.registry import load_agents
 from company.runner import AgentRunner, RunnerError, payload_schema
 from company.runner import main as runner_main
 from company.sqlite_bus import SQLiteBus
@@ -73,6 +75,44 @@ def test_runner_publishes_output_and_audit_with_real_tokens():
     assert "# reviewer" in call["system"] and "Skill:" in call["system"], "system prompt = prompt + skill"
     assert "api-contract" in call["user"] and "DỮ LIỆU" in call["user"]
     assert call["model_tier"] == "standard", "tier lấy từ front matter của reviewer (ADR-0021)"
+
+
+def _agents_co_pha(phase_skills: list[str], phase: str = "review") -> dict:
+    """Agent thật `reviewer` nhưng khai thêm một pha (ADR-0037) — không đụng `agents/` trên đĩa."""
+    from company.registry import Phase, _load_phases
+    agents = load_agents()
+    spec = replace(agents["reviewer"], phases={phase: Phase(skills=phase_skills)}, _phase_text={})
+    _load_phases(spec)
+    return {**agents, "reviewer": spec}
+
+
+def test_generate_theo_pha_nap_skill_cua_pha_va_ghi_pha_vao_audit_lan_payload():
+    """ADR-0037: một lượt có pha thì (1) prompt gửi model mang skill của pha, (2) audit ghi `phase`, (3) payload
+    đầu ra mang `_phase` — guard hạ nguồn phân biệt hai lượt CÙNG agent khác pha bằng trường này, không bằng actor."""
+    bus = InMemoryBus()
+    client = FakeClient(responses=[{"ticket_id": "TCK-1", "source": "reviewer", "verdict": "pass"}])
+    runner = AgentRunner(bus, client, agents=_agents_co_pha(["debugging"]))
+    g = runner.generate("reviewer", _pr_env(), "review-results", phase="review")
+    assert g.phase == "review" and g.payloads[0]["_phase"] == "review"
+    assert "# Skills của pha review" in client.calls[0]["system"]
+    assert client.calls[0]["cache_key"] == "reviewer[review]", "prompt khác thì khoá cache phải khác"
+    out = runner.publish("reviewer", _pr_env(), "review-results", g.payloads[0], generated=g)
+    assert out.payload["_phase"] == "review"
+    produced = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "produced:review-results"]
+    assert produced[-1]["phase"] == "review"
+
+
+def test_generate_khong_pha_giu_nguyen_prompt_va_khong_ghi_phase():
+    """Chiều tắt bản sửa: agent không chia pha (mọi agent hiện tại) chạy y như trước — prompt không có mục pha,
+    audit `phase=None`, payload không có `_phase`."""
+    bus = InMemoryBus()
+    client = FakeClient(responses=[{"ticket_id": "TCK-1", "source": "reviewer", "verdict": "pass"}])
+    runner = AgentRunner(bus, client)
+    g = runner.generate("reviewer", _pr_env(), "review-results")
+    assert g.phase is None and "_phase" not in g.payloads[0]
+    assert "# Skills của pha" not in client.calls[0]["system"] and client.calls[0]["cache_key"] == "reviewer"
+    runner.publish("reviewer", _pr_env(), "review-results", g.payloads[0], generated=g)
+    assert [e.payload for e in bus.replay(topic="audit-log")][-1]["phase"] is None
 
 
 def test_runner_feeds_supervisor_budget():

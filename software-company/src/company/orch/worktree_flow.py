@@ -156,7 +156,7 @@ def read_only_tools(o: Orchestrator, inp: Envelope) -> ToolBox | None:
         return WorkspaceTools(integ.path, allow_write=False, sandbox=o.sandbox).toolbox()
     return None
 
-def author_tests(o: Orchestrator, agent: str, task: Envelope, r: Route) -> Envelope | None:
+def author_tests(o: Orchestrator, agent: str, task: Envelope, r: Route, phase: str | None = None) -> Envelope | None:
     """ADR-0028: lượt viết test MÙ. Đầu vào bị cắt còn đặc tả — không `hint`, không diff, không nhắc gì tới
     cách cài đặt — vì test viết theo cách cài đặt là test không ràng buộc được gì."""
     tid = str(task.payload.get("ticket_id") or task.key)
@@ -165,7 +165,7 @@ def author_tests(o: Orchestrator, agent: str, task: Envelope, r: Route) -> Envel
     # Chỉ lượt đi từ `tasks` mới mù; lượt tranh chấp (`pull-requests` mang `test_dispute`) ĐƯỢC xem diff.
     inp = task if task.topic != "tasks" else task.model_copy(
         update={"payload": {k: v for k, v in task.payload.items() if k not in BLIND_STRIP}})
-    g, status = o.runner.author_tests(agent, inp, ws, max_turns=o.max_turns)
+    g, status = o.runner.author_tests(agent, inp, ws, max_turns=o.max_turns, phase=phase)
     p = g.payloads[0]
     if status == "green":
         # Test xanh khi code chưa có: có thể là test rỗng/assert vô nghĩa. Không chặn (bộ test vẫn có thể
@@ -175,7 +175,7 @@ def author_tests(o: Orchestrator, agent: str, task: Envelope, r: Route) -> Envel
     return o.runner.publish(agent, task, r.topic_out, p, key=key_for(r.topic_out, p, task.key),
                                tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
 
-def engineer(o: Orchestrator, agent: str, task: Envelope, r: Route) -> Envelope | None:
+def engineer(o: Orchestrator, agent: str, task: Envelope, r: Route, phase: str | None = None) -> Envelope | None:
     """Ticket → PR. Có repo: agent làm trong worktree, bằng chứng do code điền. Không repo: PR đi tiếp nhưng
     `local_checks` của model bị thay bằng `{"unverified": true}` và ghi audit — không có bằng chứng giả."""
     tid = task.payload.get("ticket_id") or task.key
@@ -191,7 +191,7 @@ def engineer(o: Orchestrator, agent: str, task: Envelope, r: Route) -> Envelope 
     doc_lap = task.topic == "test-suites"
     if ws is not None:
         g = o.runner.generate_in_workspace(agent, task, ws, budget=budget, max_turns=o.max_turns,
-                                              write_scope="src" if doc_lap else "all")
+                                              write_scope="src" if doc_lap else "all", phase=phase)
         p = g.payloads[0]
         lc = p["local_checks"]
         if lc.get("lint") is False or lc.get("tests") is False:
@@ -205,7 +205,7 @@ def engineer(o: Orchestrator, agent: str, task: Envelope, r: Route) -> Envelope 
             if tid in o.lead.tickets: o.lead.rework(tid, hint)
             return None
     else:
-        g = o.runner.generate(agent, task, r.topic_out)
+        g = o.runner.generate(agent, task, r.topic_out, phase=phase)
         p = {**g.payloads[0], "local_checks": {"unverified": True}}
         o._audit("local_checks.unverified", {"ticket_id": tid, "agent": agent, "claimed": g.payloads[0].get("local_checks")},
                     actor=agent, ticket_id=tid)

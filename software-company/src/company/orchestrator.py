@@ -74,6 +74,7 @@ from .orch.routes import (
     _dict_of,
     check_routes,
     key_for,
+    phase_for,
 )
 from .orch.routes import SPEC_RUNTIME_REWORKS as SPEC_RUNTIME_REWORKS
 from .orch.routes import THREAT_ROUTE as THREAT_ROUTE
@@ -317,19 +318,20 @@ class Orchestrator:
             extra = dict(r.enrich(env, self)) if r.enrich else {}
             if (pid := self.project_for(env)) and not env.payload.get("project_id"): extra["project_id"] = pid
             inp = env.model_copy(update={"payload": {**env.payload, **extra}}) if extra else env
+            phase = phase_for(r, self.runner.agents[agent], inp)  # ADR-0037
             if r.target_env:
                 out = self._release(agent, inp, r); res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
             elif r.tools == "tests":
-                ts = self._author_tests(agent, inp, r)
+                ts = self._author_tests(agent, inp, r, phase)
                 res.actions.append(f"{agent}→{r.topic_out}:{ts.key}" if ts is not None else f"{agent}→bỏ:{inp.key}")
             elif r.tools == "rw":
-                pr = self._engineer(agent, inp, r)
+                pr = self._engineer(agent, inp, r, phase)
                 res.actions.append(f"{agent}→{r.topic_out}:{pr.key}" if pr is not None else f"{agent}→rework:{inp.key}")
             elif r.topic_out == CONTEXT_ONLY:
-                g = self.runner.run_context(agent, inp)
+                g = self.runner.run_context(agent, inp, phase=phase)
                 res.actions.append(f"{agent}→blackboard:{','.join(w['namespace'] for w in g.context_writes) or '-'}")
             elif r.many:
-                g = self.runner.generate(agent, inp, r.topic_out, many=True)
+                g = self.runner.generate(agent, inp, r.topic_out, many=True, phase=phase)
                 if g.context_writes: self.runner.write_context(agent, inp, g.context_writes)  # inp mang project_id (ADR-0018)
                 if env.topic == "acceptance-results":  # CR từ nghiệm thu conditional phải truy được release (đóng ticket khi quyết)
                     g.payloads = [{**p, "release_id": env.key} for p in g.payloads]
@@ -353,7 +355,7 @@ class Orchestrator:
                 elif r.tools == "research":
                     integ = self.integration_for(self.project_for(env))  # researcher đọc đúng codebase của dự án
                     tools = research_toolbox(integ.repo if integ is not None else None, self.web)
-                g = self.runner.generate(agent, inp, r.topic_out, tools=tools, max_turns=self.max_turns)
+                g = self.runner.generate(agent, inp, r.topic_out, tools=tools, max_turns=self.max_turns, phase=phase)
                 if r.tools == "ro" and tools is not None and not g.tool_calls:
                     # Có tool mà không chạy gì: verdict chỉ là lời khai. Không chặn (người đọc review vẫn quyết), nhưng phải hiện.
                     self._audit("review.no_tool_evidence", {"agent": agent, "topic": env.topic, "key": env.key},

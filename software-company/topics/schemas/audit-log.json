@@ -60,6 +60,13 @@
           "minimum": 0,
           "description": "token đầu ra (ngân sách ticket đo theo đây, không đo tổng)"
         },
+        "phase": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "ADR-0037: pha của lượt (`AgentSpec.phases`); null khi agent không chia pha"
+        },
         "rulings": {
           "type": "array",
           "description": "ADR-0030 sổ Ruling: quyết định bạn TỰ đưa ra thay vì dừng chờ người. Chỉ dừng chờ người ở bốn việc: không đảo ngược được; nhạy cảm bảo mật; tác động ra ngoài worktree (merge/push/publish); kế hoạch hỏng tới mức mọi hướng đều là đoán. Mọi chỗ bí khác: tự quyết theo spec/shared-context, ghi một mục ở đây rồi đi tiếp. Rỗng khi không có gì phải quyết.",
