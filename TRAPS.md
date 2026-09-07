@@ -54,6 +54,7 @@ chỉ lo `tools="rw"`). Cái rơi ra ngoài luôn rơi vào im lặng.
 | **Tin dashboard xanh** | Đêm 2026-09-05: `queue: 0, blocked: [], gates: {}` trong khi 18/19 release không đi đâu; `delivery: {}` nghĩa là chưa giao gì; nhãn `merged` ≠ đã gộp | Hỏi "còn việc nào chạy được không?"; tách sự thật git khỏi nhãn FSM. Ghi nhận thiết kế lại: `console/TRAPS.md` |
 | **Bốn gate xanh, sản phẩm không chạy** | 2026-09-06 QLKH: 389 test pass, 25 release, 0 điểm vào — `deployed` là lời khai, `regression-staging` là verdict đọc diff | "Chạy cho tôi xem" trước khi tin. Vá: ADR-0029 smoke do orchestrator chạy (PR #90) |
 | **Tin test canh quy ước kiểu grep** | 2026-09-07 (#127): test khuôn 3 canh "mọi khoá `once` có thế hệ" xanh suốt #125→#126 trong khi `gate.escalate:{sid}` vẫn hỏng — mẫu chỉ bắt `once=`, mà chuỗi `"once_key="` KHÔNG chứa chuỗi con `"once="` | Test grep xanh chỉ chứng minh **những gì mẫu nhìn thấy** là sạch. Chạy mẫu trên một vi phạm đã biết trước khi tin nó; và kiểm lại LÝ DO từng mục trong danh sách miễn, đừng kế thừa |
+| **Tiêu chí nghiệm thu cũng có thể là proxy sai** | 2026-09-07 (#131): K1.8 đặt `wc -l orchestrator.py ≤ 300`, nhưng 250/498 dòng là import + re-export + bảng gán method — chính bề mặt shim mà K1.7 của cùng epic CỐ Ý tạo ra; hai tiêu chí không thể cùng đúng | Tiêu chí không đạt được mà không phá một tiêu chí khác của cùng epic → nghi tiêu chí sai, đừng nghi việc chưa xong. Đo lại rồi đổi **tiêu chí**, và ghi lý do ở nơi người sau đọc (đặc tả + file test) — khác hẳn lặng lẽ hạ số |
 
 ## 3. Bẫy thao tác git / CI
 
