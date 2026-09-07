@@ -8,6 +8,8 @@ Luật đầy đủ nằm ở `AGENTS.md` (nhập ở dòng đầu). Dưới đ�
 
 1. Không commit lên `main`; nhánh → PR → auto-merge squash. Scope PR một từ chữ thường.
 2. Mỗi phiên một `git worktree` — có phiên khác đang mở cùng thư mục này (`git worktree list` để kiểm).
+2b. Chỉ một PR mở tại một thời điểm: `gh pr list --state open` trước khi mở PR mới; PR khác đang mở thì
+   chờ nó merge, rồi `git fetch` + `git rebase origin/main` trên nhánh mình trước khi `gh pr create` (`docs/QUY-TRINH-GIT.md` §2c).
 3. Không commit `llm.yaml`, `*.sqlite*`, bí mật. Không hạ `fail_under = 100`.
 4. Sửa `agents/`/`skills/` → 7 bước `CONTRIBUTING.md` §3, không bỏ bước.
 5. "Xong" phải có output lệnh vừa chạy trong chính lượt này. Không có thì chưa xong.
