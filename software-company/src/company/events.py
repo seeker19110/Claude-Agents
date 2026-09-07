@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from .roles import ROLE, Assignee, ReviewSource
+from .roles import ROLE, Assignee, BuildPhase, ReviewSource
 
 Topic = Literal[
     "research-requests", "research-findings", "requirements-draft",
@@ -22,9 +22,9 @@ Namespace = Literal[
 
 NAMESPACE_OWNERS: dict[str, set[str]] = {
     "prd": {ROLE.PRODUCT}, "glossary": {ROLE.RESEARCHER}, "design": {ROLE.RESEARCHER},
-    "architecture": {ROLE.LEAD}, "api-contract": {ROLE.LEAD, ROLE.BACKEND},
-    "schema": {ROLE.DATABASE}, "threat-model": {ROLE.SECURITY}, "infra": {ROLE.PLATFORM},
-    "analytics": {ROLE.DATA}, "docs": {ROLE.OPS}, "knowledge": {ROLE.SUPERVISOR}, "contract": {ROLE.OPS},
+    "architecture": {ROLE.LEAD}, "api-contract": {ROLE.LEAD, ROLE.BUILDER},
+    "schema": {ROLE.BUILDER}, "threat-model": {ROLE.SECURITY}, "infra": {ROLE.BUILDER},
+    "analytics": {ROLE.BUILDER}, "docs": {ROLE.OPS}, "knowledge": {ROLE.SUPERVISOR}, "contract": {ROLE.OPS},
 }
 
 # Namespace phạm vi toàn công ty (không thuộc dự án nào): bài học dùng chung cho mọi dự án.
@@ -81,9 +81,9 @@ class Task(BaseModel):
     requirement_id: str
     assignee: Assignee
     # ADR-0037: mảng kỹ thuật của ticket = PHA của agent làm ticket (`AgentSpec.phases`), thay cho việc chọn một
-    # agent riêng cho mỗi stack. Chưa khai thì `routes.phase_for` lấy tạm `assignee` — hai trường trùng nghĩa
-    # trong lúc chuyển đổi, `assignee` bỏ khi bảng route đã chuyển hẳn sang một agent kỹ thuật.
-    stack: Assignee | None = None
+    # agent riêng cho mỗi stack. Từ PR-5d `assignee` chỉ còn một giá trị (`builder`) nên đây là trường DUY NHẤT
+    # nói ticket thuộc mảng nào; thiếu nó thì `routes.phase_for` trả None và builder chạy bằng prompt chung.
+    stack: BuildPhase | None = None
     title: str
     acceptance: list[str]
     scope: list[str] = []

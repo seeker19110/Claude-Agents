@@ -163,7 +163,7 @@ def test_chan_doan_hong_khong_lam_hong_luot_review(monkeypatch):
     from company import orchestrator as O
     monkeypatch.setattr(metrics, "diagnose", lambda bus, top=30: (_ for _ in ()).throw(RuntimeError("bus hỏng")))
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
-    env = Envelope(topic="pull-requests", key="T1", actor="backend", payload={"ticket_id": "T1"})
+    env = Envelope(topic="pull-requests", key="T1", actor="builder", payload={"ticket_id": "T1"})
     out = O._with_chan_doan(env, orch)
     assert out == {"chan_doan_error": "bus hỏng"}
 

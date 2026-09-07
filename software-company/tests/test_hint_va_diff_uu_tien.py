@@ -25,7 +25,7 @@ def _lead():
 
 
 def _task(tid="T1", **kw):
-    return Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="backend", title=tid,
+    return Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="builder", title=tid,
                 acceptance=["a"], **kw)
 
 
@@ -115,7 +115,7 @@ def test_review_van_chay_binh_thuong_voi_task_co_human_hint(tmp_path):
     bus, lead = _lead()
     lead.dispatch(_task(tid="T3"), "PLAN")
     lead.human_hint("T3", "gợi ý của người")
-    bus.publish(Envelope(topic="pull-requests", key="T3", actor="backend",
+    bus.publish(Envelope(topic="pull-requests", key="T3", actor="builder",
                          payload=PullRequest(ticket_id="T3", branch="b", pr_ref="#1",
                                              local_checks={"lint": True}).model_dump()))
     for src in ("reviewer", "qa"):   # hai NHÃN chấm, cùng một agent phát (ADR-0037)

@@ -96,7 +96,7 @@ def _repo(tmp_path: Path, server_src: str) -> Path:
 def _orch(tmp_path: Path, repo: Path | None, runtime: dict | None):
     bus = SQLiteBus(tmp_path / "c.sqlite")
     orch = Orchestrator(bus, FakeClient(handler=handler), repo=repo)
-    orch.lead.tickets["T1"] = Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="backend",
+    orch.lead.tickets["T1"] = Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="builder",
                                    title="T1", acceptance=["a"])
     orch.lead.state["T1"] = "approved"
     # ADR-0031: spec ứng dụng chưa khai `runtime` không được mở gate spec — các ca dưới đây đo giai đoạn RELEASE

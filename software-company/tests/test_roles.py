@@ -16,7 +16,17 @@ from typing import get_args
 import pytest
 
 from company.registry import load_agents
-from company.roles import ENGINEERING, LEAD_ACTOR, ROLE, SOURCE, Assignee, ReviewSource
+from company.roles import (
+    BUILD_PHASES,
+    ENGINEERING,
+    LEAD_ACTOR,
+    ROLE,
+    SOURCE,
+    STACK,
+    Assignee,
+    BuildPhase,
+    ReviewSource,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "company"
@@ -37,6 +47,10 @@ MIGRATED: dict[str, str] = {
     "security-engineer": "security",  # PR-5a
     "release-engineer": "ops", "support-docs": "ops", "account-manager": "ops",  # PR-5b (gộp 3→1)
     "test-author": "qa", "reviewer": "qa", "qa-debugger": "qa",  # PR-5c (gộp 3→1, pha `author`/`review`)
+    # PR-5d (gộp 6→1): sáu tên cũ SỐNG TIẾP nhưng đổi nghĩa — chúng là `stack` của ticket và pha của `builder`
+    # (`roles.STACK`/`BUILD_PHASES`), không còn là id agent. Vì thế chúng vẫn bị cấm dưới dạng chuỗi ngoài roles.py.
+    "backend": "builder", "frontend": "builder", "mobile": "builder",
+    "database": "builder", "platform": "builder", "data": "builder",
 }
 
 # Chuỗi trùng tên vai nhưng KHÔNG phải vai. Miễn theo (file, đúng nguyên dòng): đổi dòng là phải xét lại lý do,
@@ -113,12 +127,14 @@ def test_hang_role_khop_front_matter_hai_chieu():
 
 def test_source_va_literal_khop_hang():
     assert get_args(Assignee) == ENGINEERING
+    assert get_args(BuildPhase) == BUILD_PHASES
+    assert BUILD_PHASES == tuple(v for k, v in vars(STACK).items() if not k.startswith("_"))
     assert get_args(ReviewSource) == (SOURCE.REVIEWER, SOURCE.QA, SOURCE.SECURITY)
     assert set(SOURCE.__dict__) & {"REVIEWER", "QA", "SECURITY"} == {"REVIEWER", "QA", "SECURITY"}
 
 
-@pytest.mark.parametrize("name", ["ROLE", "SOURCE"])
+@pytest.mark.parametrize("name", ["ROLE", "SOURCE", "STACK"])
 def test_namespace_khong_khoi_tao_duoc_thay_doi(name):
     """Hằng là hằng: gán đè vào namespace phải bị mypy `Final` chặn lúc kiểm tĩnh; lúc chạy chỉ kiểm nó không rỗng."""
-    ns = {"ROLE": ROLE, "SOURCE": SOURCE}[name]
+    ns = {"ROLE": ROLE, "SOURCE": SOURCE, "STACK": STACK}[name]
     assert all(isinstance(v, str) and v for k, v in vars(ns).items() if not k.startswith("_"))

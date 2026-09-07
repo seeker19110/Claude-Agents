@@ -187,8 +187,8 @@ def engineer(o: Orchestrator, agent: str, task: Envelope, r: Route, phase: str |
         # ngân sách bằng 0 ngay từ lần làm lại đầu tiên (đo được: output 18868 nhưng tổng 734862).
         budget = max(b.limit - b.output_used, 0)
     ws = o.workspace(tid)
-    # ADR-0028: đi từ `test-suites` nghĩa là bộ test đã do test-author viết — assignee viết code cho tới khi
-    # xanh nhưng KHÔNG ghi (và không xoá) được file test. Đi thẳng từ `tasks` thì bộ test vẫn là của chính nó.
+    # ADR-0028: đi từ `test-suites` nghĩa là bộ test đã do `qa` (pha `author`) viết — `builder` viết code cho tới
+    # khi xanh nhưng KHÔNG ghi (và không xoá) được file test. Đi thẳng từ `tasks` thì bộ test vẫn là của chính nó.
     doc_lap = task.topic == "test-suites"
     if ws is not None:
         g = o.runner.generate_in_workspace(agent, task, ws, budget=budget, max_turns=o.max_turns,

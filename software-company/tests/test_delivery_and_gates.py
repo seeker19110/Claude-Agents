@@ -13,8 +13,8 @@ def _setup():
     bus = InMemoryBus(); gate = HumanGate(); lead = DeliveryLead(bus, gate)
     return bus, gate, lead
 
-def _task(**kw): return Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="backend", title="x", acceptance=["a"], **kw)
-def _pr(bus): bus.publish(Envelope(topic="pull-requests", key="T1", actor="backend", payload=PullRequest(ticket_id="T1", branch="b", pr_ref="#1", local_checks={"lint": True}).model_dump()))
+def _task(**kw): return Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="builder", title="x", acceptance=["a"], **kw)
+def _pr(bus): bus.publish(Envelope(topic="pull-requests", key="T1", actor="builder", payload=PullRequest(ticket_id="T1", branch="b", pr_ref="#1", local_checks={"lint": True}).model_dump()))
 # `source` là NHÃN chấm, `actor` là AGENT phát (ADR-0037: `reviewer` và `qa` cùng là agent `qa`) — bus kiểm actor.
 def _rev(bus, src, verdict, rc=None): bus.publish(Envelope(topic="review-results", key="T1", actor=REVIEW_AGENT[src], payload=ReviewResult(ticket_id="T1", source=src, verdict=verdict, root_cause=rc).model_dump()))
 
@@ -118,7 +118,7 @@ def test_replay_nuot_loi_nghiep_vu_khong_lam_sap_viec_dung_lai_log():
     _, _, lead = _setup()
     # PR cho ticket chưa từng dispatch (không ở draft→in_review hợp lệ): `_on_pr`→`_set` ném ValueError chuyển
     # trạng thái sai — trên đường chạy thật đó là lỗi thật, nhưng khi khôi phục từ log thì event đã xảy ra rồi.
-    ev = Envelope(topic="pull-requests", key="T-chua-tung-dispatch", actor="backend",
+    ev = Envelope(topic="pull-requests", key="T-chua-tung-dispatch", actor="builder",
                  payload=PullRequest(ticket_id="T-chua-tung-dispatch", branch="b", pr_ref="#1",
                                      local_checks={"lint": True}).model_dump())
     lead.replay(ev)   # không được ném lỗi ra ngoài

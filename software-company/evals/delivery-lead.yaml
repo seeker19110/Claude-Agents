@@ -18,7 +18,7 @@ cases:
       # ticket không truy được về requirement_id là ticket không ai biết vì sao phải làm
       equals: {project_id: P1, retry: 0}
       min_len: {acceptance: 1, requirement_id: 3}
-      one_of: {assignee: [backend, frontend, mobile, database, platform, data]}
+      one_of: {stack: [backend, frontend, mobile, database, platform, data]}
 
   - name: su-co-code-phai-thanh-ticket-uu-tien-cao
     topic_out: tasks
@@ -35,5 +35,5 @@ cases:
         root_cause_class: code
     expect:
       equals: {project_id: P1, retry: 0}
-      one_of: {priority: [1, 2], assignee: [backend, frontend, mobile, database, platform, data]}
+      one_of: {priority: [1, 2], stack: [backend, frontend, mobile, database, platform, data]}
       min_len: {acceptance: 1}

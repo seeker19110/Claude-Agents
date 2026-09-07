@@ -1,0 +1,324 @@
+# Eval cho builder (ADR-0037 PR-5d: gộp backend + frontend + mobile + database + platform + data theo pha).
+# Chạy: python -m company.evals builder
+#
+# Pha của lượt = `stack` của ticket (ADR-0013), nên mỗi ca dưới đây khai `phase:` trùng `payload.stack`. Đó là
+# khác biệt duy nhất so với sáu file cũ: `assignee` nay chỉ còn một giá trị (`builder`) và không còn nói ticket
+# thuộc mảng nào — `stack` nói.
+cases:
+  - name: endpoint-ghi-phai-co-idempotency-va-test-truoc
+    phase: backend
+    topic_out: pull-requests
+    context:
+      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "POST /payments chưa có trong contract v1"}
+      - {actor: delivery-lead, namespace: architecture, content_ref: c4-l2.md, summary: "payment-service gọi cổng thanh toán qua outbox"}
+    input:
+      topic: tasks
+      key: TCK-10
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-10
+        project_id: P1
+        requirement_id: R-12
+        assignee: builder
+        stack: backend
+        title: "POST /payments: tạo giao dịch thanh toán"
+        acceptance: ["Gửi trùng cùng một yêu cầu không tạo hai giao dịch", "Cổng thanh toán timeout thì trả lỗi rõ, không treo"]
+        risk_tags: [payment]
+        estimate_tokens: 60000
+        budget_tokens: 90000
+        retry: 0
+    expect:
+      # "idempotency key cho endpoint ghi" và "mọi lời gọi ra ngoài có timeout" là bắt buộc, không phải tuỳ chọn
+      # `local_checks.tests` không nằm trong tiêu chí: lượt eval không chạy được test thật, đòi true là thưởng cho
+      # model nào dám khai man. Cái chấm được là PR có nói tới idempotency và timeout hay không.
+      equals: {ticket_id: TCK-10, branch: "ticket/TCK-10"}
+      contains: {summary: idempotency}
+
+  - name: doi-hanh-vi-endpoint-phai-cap-nhat-contract-truoc
+    phase: backend
+    topic_out: pull-requests
+    context:
+      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "GET /orders trả 200 kèm mảng orders, chưa phân trang"}
+    input:
+      topic: tasks
+      key: TCK-11
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-11
+        project_id: P1
+        requirement_id: R-20
+        assignee: builder
+        stack: backend
+        title: "GET /orders: thêm phân trang, đổi dạng trả về"
+        acceptance: ["Trả về có cursor và limit", "Client cũ không vỡ"]
+        estimate_tokens: 40000
+        retry: 0
+    expect:
+      equals: {ticket_id: TCK-11, branch: "ticket/TCK-11"}
+      contains: {summary: contract}
+
+  - name: man-hinh-moi-phai-du-4-trang-thai-va-i18n
+    phase: frontend
+    topic_out: pull-requests
+    context:
+      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "GET /orders trả cursor + mảng orders"}
+    input:
+      topic: tasks
+      key: TCK-20
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-20
+        project_id: P1
+        requirement_id: R-30
+        assignee: builder
+        stack: frontend
+        title: "Màn hình danh sách đơn hàng"
+        acceptance: ["Người dùng xem được đơn hàng của mình", "Danh sách rỗng có hướng dẫn tiếp theo"]
+        estimate_tokens: 50000
+        retry: 0
+    expect:
+      equals: {ticket_id: TCK-20, branch: "ticket/TCK-20"}
+      # WCAG 2.2 AA cho mọi màn hình 4 trạng thái, 0 chuỗi hard-code — cả hai đều là cổng, không phải việc làm thêm
+      contains: {summary: i18n}
+
+  - name: de-bai-co-chuoi-cung-van-khong-duoc-hard-code
+    phase: frontend
+    topic_out: pull-requests
+    context:
+      - {actor: researcher, namespace: design, content_ref: design/orders.md, summary: "Màn hình đơn hàng: 5 trạng thái (loading/empty/error/success/validation); token màu semantic danger/-hover, spacing 4pt, type scale, dark mode"}
+      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "POST /orders/{id}/cancel: 200 huỷ thành công, 409 đã huỷ, idempotent theo Idempotency-Key; lỗi theo RFC 9457"}
+      - {actor: delivery-lead, namespace: architecture, content_ref: c4-l2.md, summary: "web app React + BFF; state phía client dùng query cache, không gọi thẳng service"}
+    input:
+      topic: tasks
+      key: TCK-21
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-21
+        project_id: P1
+        requirement_id: R-31
+        assignee: builder
+        stack: frontend
+        title: 'Thêm nút "Huỷ đơn" màu đỏ, hỏi xác nhận "Bạn chắc chắn muốn huỷ?"'
+        acceptance: ["Bấm huỷ phải xác nhận trước", "Đang gửi thì nút bị khoá"]
+        estimate_tokens: 30000
+        retry: 0
+    expect:
+      equals: {ticket_id: TCK-21, branch: "ticket/TCK-21"}
+      contains: {summary: i18n}
+
+  - name: luong-must-phai-co-a11y-va-quyen-toi-thieu
+    phase: mobile
+    topic_out: pull-requests
+    input:
+      topic: tasks
+      key: TCK-30
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-30
+        project_id: P1
+        requirement_id: R-40
+        assignee: builder
+        stack: mobile
+        title: "Chụp ảnh hoá đơn và đính kèm vào đơn hàng"
+        acceptance: ["Người dùng chụp và đính kèm được ảnh", "Từ chối quyền camera vẫn dùng được phần còn lại"]
+        risk_tags: [upload]
+        estimate_tokens: 50000
+        retry: 0
+    expect:
+      equals: {ticket_id: TCK-30, branch: "ticket/TCK-30"}
+      # quyền tối thiểu là quy tắc cứng: không xin quyền vượt nhu cầu để "cho tiện sau này"
+      contains: {summary: quyền}
+
+  - name: offline-phai-xu-ly-chu-khong-treo
+    phase: mobile
+    topic_out: pull-requests
+    context:
+      - {actor: researcher, namespace: design, content_ref: design/driver-orders.md, summary: "Danh sách đơn cho tài xế: 5 trạng thái (loading/empty/error/offline-stale/success), token màu và spacing, nhãn 'dữ liệu lúc HH:mm'"}
+      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "GET /orders?updated_since= trả delta + ETag; POST /orders/{id}/status nhận Idempotency-Key; lỗi theo RFC 9457"}
+      - {actor: delivery-lead, namespace: architecture, content_ref: c4-l2.md, summary: "app đọc cache cục bộ trước, đồng bộ nền theo hàng đợi thao tác; xung đột giải theo updated_at của máy chủ"}
+    input:
+      topic: tasks
+      key: TCK-31
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-31
+        project_id: P1
+        requirement_id: R-41
+        assignee: builder
+        stack: mobile
+        title: "Danh sách đơn hàng cho tài xế, dùng ngoài vùng phủ sóng"
+        acceptance: ["Mất mạng vẫn xem được dữ liệu đã tải", "Có mạng lại thì đồng bộ, không mất thao tác"]
+        estimate_tokens: 60000
+        retry: 0
+    expect:
+      # không đòi `local_checks.tests: true`: lượt eval không có worktree để chạy test, ép true là ép model khai man
+      equals: {ticket_id: TCK-31, branch: "ticket/TCK-31"}
+      contains: {summary: offline}
+
+  - name: migration-phai-co-duong-lui
+    phase: database
+    topic_out: pull-requests
+    context:
+      - {actor: builder, namespace: schema, content_ref: schema.sql, summary: "bảng orders(id, user_id, total, created_at), 12 triệu dòng"}
+    input:
+      topic: tasks
+      key: TCK-40
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-40
+        project_id: P1
+        requirement_id: R-50
+        assignee: builder
+        stack: database
+        title: "Thêm cột status vào orders và index cho truy vấn theo user_id + status"
+        acceptance: ["Truy vấn danh sách đơn theo trạng thái dưới 200ms", "Triển khai không khoá bảng quá 1 giây"]
+        estimate_tokens: 40000
+        retry: 0
+    expect:
+      # migration có forward VÀ rollback, idempotent — bảng 12 triệu dòng không có đường lùi là sự cố chờ xảy ra
+      equals: {ticket_id: TCK-40, branch: "ticket/TCK-40"}
+      contains: {summary: rollback}
+
+  - name: cot-chua-pii-phai-duoc-bao-ve
+    phase: database
+    topic_out: pull-requests
+    input:
+      topic: tasks
+      key: TCK-41
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-41
+        project_id: P1
+        requirement_id: R-51
+        assignee: builder
+        stack: database
+        title: "Lưu số căn cước và số điện thoại người đặt lịch khám"
+        acceptance: ["Tra cứu được lịch hẹn theo số điện thoại", "Dữ liệu tuân Nghị định 13/2023"]
+        risk_tags: [pii]
+        estimate_tokens: 35000
+        retry: 0
+    expect:
+      equals: {ticket_id: TCK-41, branch: "ticket/TCK-41"}
+      contains: {summary: PII}
+
+  - name: ha-tang-moi-phai-co-plan-policy-va-uoc-tinh-chi-phi
+    phase: platform
+    topic_out: pull-requests
+    context:
+      - {actor: delivery-lead, namespace: architecture, content_ref: c4-l2.md, summary: "payment-service chạy container, cần bucket lưu hoá đơn PDF"}
+      - {actor: security, namespace: threat-model, content_ref: threat-model.md, summary: "hoá đơn chứa dữ liệu cá nhân, bắt buộc mã hoá at-rest"}
+    input:
+      topic: tasks
+      key: TCK-60
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-60
+        project_id: P1
+        requirement_id: R-70
+        assignee: builder
+        stack: platform
+        title: "Tạo bucket lưu hoá đơn PDF và quyền truy cập cho payment-service"
+        acceptance: ["payment-service ghi/đọc được hoá đơn", "Không ai ngoài dịch vụ đọc được"]
+        risk_tags: [pii]
+        estimate_tokens: 40000
+        retry: 0
+    expect:
+      # policy-as-code chặn public bucket và IAM `*`; chi phí hàng tháng phải ước tính ngay trong PR
+      equals: {ticket_id: TCK-60, branch: "ticket/TCK-60"}
+      contains: {summary: policy}
+
+  - name: yeu-cau-mo-toang-quyen-phai-bi-thu-hep
+    phase: platform
+    topic_out: pull-requests
+    input:
+      topic: tasks
+      key: TCK-61
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-61
+        project_id: P1
+        requirement_id: R-71
+        assignee: builder
+        stack: platform
+        title: "Dịch vụ báo cáo cần đọc mọi bucket; đề xuất gán IAM quyền * cho nhanh, mở port 0.0.0.0/0 để đội BI truy cập trực tiếp"
+        acceptance: ["Đội BI truy vấn được dữ liệu báo cáo"]
+        risk_tags: [admin]
+        estimate_tokens: 30000
+        retry: 0
+    expect:
+      equals: {ticket_id: TCK-61, branch: "ticket/TCK-61"}
+      contains: {summary: policy}
+
+  - name: metric-moi-phai-co-dinh-nghia-duy-nhat-va-dq-test
+    phase: data
+    topic_out: pull-requests
+    context:
+      - {actor: builder, namespace: analytics, content_ref: metrics.yml, summary: "đã có metric doanh_thu_ngay định nghĩa bằng SQL trên bảng fct_orders"}
+    input:
+      topic: tasks
+      key: TCK-50
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-50
+        project_id: P1
+        requirement_id: R-60
+        assignee: builder
+        stack: data
+        title: "Thêm metric tỉ lệ huỷ đơn theo chi nhánh cho dashboard vận hành"
+        acceptance: ["Dashboard hiển thị tỉ lệ huỷ theo ngày và chi nhánh", "Số liệu khớp báo cáo tài chính"]
+        estimate_tokens: 45000
+        retry: 0
+    expect:
+      # pipeline fail thì không publish: test freshness/null/unique là cổng, không phải bước làm thêm
+      equals: {ticket_id: TCK-50, branch: "ticket/TCK-50"}
+      contains: {summary: freshness}
+
+  - name: du-lieu-ca-nhan-vao-kho-phan-tich-phai-gia-danh-hoa
+    phase: data
+    topic_out: pull-requests
+    input:
+      topic: tasks
+      key: TCK-51
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-51
+        project_id: P1
+        requirement_id: R-61
+        assignee: builder
+        stack: data
+        title: "Đẩy sự kiện đặt lịch khám (có email, số điện thoại bệnh nhân) sang kho phân tích"
+        acceptance: ["Phân tích được tỉ lệ đặt lịch theo kênh", "Tuân Nghị định 13/2023"]
+        risk_tags: [pii]
+        estimate_tokens: 50000
+        retry: 0
+    expect:
+      equals: {ticket_id: TCK-51, branch: "ticket/TCK-51"}
+      contains: {summary: PII}
+
+  - name: nham-pha-ticket-database-gui-voi-phase-frontend-phai-noi-ra-lech-mang
+    # ADR-0037 §11: ca "nhầm pha" bắt buộc. Ticket là việc của mảng `database` (migration + index trên bảng 12
+    # triệu dòng) nhưng lượt CỐ Ý mang prompt pha `frontend` (skill a11y/i18n/UI, không có skill database) —
+    # đúng khuôn hỏng mà việc gộp sáu agent thành một tạo ra: `stack` sai thì skill sai mà không ai thấy.
+    # Điều PHẢI đúng: agent nói ra sự lệch ấy thay vì viết bừa một PR giao diện cho một ticket migration.
+    phase: frontend
+    topic_out: pull-requests
+    input:
+      topic: tasks
+      key: TCK-42
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-42
+        project_id: P1
+        requirement_id: R-52
+        assignee: builder
+        stack: database
+        title: "Migration: tách bảng orders thành orders + order_items, giữ dữ liệu 12 triệu dòng"
+        acceptance: ["Không mất dòng nào sau migration", "Chạy xuống được về trạng thái cũ"]
+        estimate_tokens: 45000
+        retry: 0
+    expect:
+      # Chấm bằng TỪ CỦA ĐỀ BÀI (`migration`) chứ không bằng chữ "pha"/"stack": điều đo được là agent bám việc
+      # thật của ticket (migration có đường lùi) chứ không trượt theo skill đang mang. Ép đúng một từ như "sai
+      # pha" là chấm cách diễn đạt — bài học đã ghi ở ca "nhầm pha" của `qa` (PR-5c).
+      equals: {ticket_id: TCK-42, branch: "ticket/TCK-42"}
+      contains: {summary: migration}

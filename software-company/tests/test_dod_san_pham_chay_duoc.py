@@ -55,7 +55,9 @@ def test_frontend_doi_anh_chup_va_bat_noi_ra_khi_khong_chup_duoc(agents):
     """Hai nửa, nửa sau quan trọng hơn: công ty KHÔNG có tool chụp ảnh (ADR-0033 mục 3 bác playwright), nên
     prompt phải dặn agent NÓI RA khi không chụp được — `TRAPS.md` §2 "ép agent làm việc nó không có tool":
     agent thiếu năng lực thì lặng lẽ sửa việc khác, bốn vòng rework không ai biết."""
-    dod = agents["frontend"].prompt.split("## Definition of done", 1)[1].split("\n## ", 1)[0]
+    # ADR-0037 PR-5d: `frontend` là một PHA của `builder`, DoD của nó là tiểu mục `### Stack frontend`
+    dod = agents["builder"].prompt.split("## Definition of done", 1)[1].split("\n## ", 1)[0]
+    dod = dod.split("### Stack frontend", 1)[1].split("\n### ", 1)[0]
     assert "evidence.screenshots[]" in dod, "frontend: ảnh chụp phải vào evidence.screenshots[] của pull-requests"
     assert "ADR-0033" in dod
     assert "skipped" in dod and "reason" in dod, "frontend: không chụp được thì phải trả mục skipped kèm lý do"
@@ -76,7 +78,7 @@ def test_evidence_screenshots_co_trong_schema_va_model():
 
 
 def _pr(evidence: dict) -> Envelope:
-    return Envelope(topic="pull-requests", key="T-1", actor="frontend",
+    return Envelope(topic="pull-requests", key="T-1", actor="builder",
                     payload={"ticket_id": "T-1", "branch": "ticket/T-1", "pr_ref": "PR-1",
                              "local_checks": {"lint": True, "tests": True, "verified_by": "workspace"},
                              "evidence": evidence})

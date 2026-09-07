@@ -81,7 +81,7 @@ def test_c7_cot_vuot_integration_doc_repo_tu_chinh_bus(tmp_path: Path) -> None:
     bus = SQLiteBus(db)
     now = datetime.now(UTC)
     for tid in ("T-dang-lam", "T-xong"):
-        t = Task(ticket_id=tid, project_id="P1", requirement_id="R1", assignee="backend", title=tid,
+        t = Task(ticket_id=tid, project_id="P1", requirement_id="R1", assignee="builder", title=tid,
                  acceptance=["ok"], estimate_tokens=1, budget_tokens=2)
         bus.publish(Envelope(topic="tasks", key=tid, actor="delivery-lead", ts=now, payload=t.model_dump()))
     def audit(action: str, ev: dict[str, Any]) -> None:

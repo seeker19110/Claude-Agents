@@ -43,10 +43,10 @@ def test_bus_rejects_human_on_agent_topic_and_audits():
 
 def test_bus_rejects_agent_outside_declared_writes():
     bus = InMemoryBus()
-    with pytest.raises(PermissionDenied, match="backend không được phát topic tasks"):
-        bus.publish(Envelope(topic="tasks", key="T1", actor="backend", payload=T1))
+    with pytest.raises(PermissionDenied, match="builder không được phát topic tasks"):
+        bus.publish(Envelope(topic="tasks", key="T1", actor="builder", payload=T1))
     with pytest.raises(PermissionDenied):
-        bus.publish(Envelope(topic="release-events", key="R", actor="backend",
+        bus.publish(Envelope(topic="release-events", key="R", actor="builder",
                              payload={"release_id": "R", "env": "staging", "status": "deployed", "version": "1.0.0"}))
     # producer đúng và người trên topic đầu vào của khách thì đi qua
     bus.publish(Envelope(topic="clarification-answers", key="P", actor="human:po", payload={"project_id": "P", "answers": []}))
@@ -99,7 +99,7 @@ def test_generate_in_workspace_keeps_wip_from_previous_run(tmp_path):
     client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "branch": "x", "pr_ref": "x", "summary": "ok", "local_checks": {}},
                         tool_handler=lambda m, t: [_tc("write_file", path="f.py", content="def f():\n    return 1\n")]
                         if not any(x["role"] == "assistant" for x in m) else [])
-    bus = InMemoryBus(); g = AgentRunner(bus, client).generate_in_workspace("backend", _task_env(), ws)
+    bus = InMemoryBus(); g = AgentRunner(bus, client).generate_in_workspace("builder", _task_env(), ws)
     assert g.payloads[0]["impact"]["files"] == ["do_dang.py", "f.py"], "việc dở của lần trước đi cùng PR"
     assert (ws.path / "do_dang.py").exists() and g.payloads[0]["local_checks"]["tests"] is True
     kept = _audits(bus, "workspace_kept"); assert kept and "WIP" in kept[0]["evidence"]
@@ -117,14 +117,14 @@ def test_luot_sau_nua_worktree_sach_nhung_head_la_wip_van_ra_pr(tmp_path):
     assert ws.keep_wip("wip(T1): giữ lại") and not ws.dirty() and ws.head_is_wip()
     client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "branch": "x", "pr_ref": "x", "summary": "đã đủ", "local_checks": {}},
                         tool_handler=lambda m, t: [])
-    bus = InMemoryBus(); g = AgentRunner(bus, client).generate_in_workspace("backend", _task_env(), ws)
+    bus = InMemoryBus(); g = AgentRunner(bus, client).generate_in_workspace("builder", _task_env(), ws)
     assert g.payloads[0]["impact"]["files"] == ["xong.py"] and g.payloads[0]["pr_ref"] == ws.head_sha()
     assert not _audits(bus, "invalid_output") and not _audits(bus, "workspace_kept")
     # nhưng HEAD là commit PR thật (không phải wip) mà không sửa gì → vẫn invalid như cũ
     (ws.path / "them.py").write_text("y = 1\n", encoding="utf-8"); ws.commit_all("feat(T1): them")
     assert not ws.head_is_wip()
     with pytest.raises(RunnerError, match="không sửa file nào"):
-        AgentRunner(InMemoryBus(), client).generate_in_workspace("backend", _task_env(), ws)
+        AgentRunner(InMemoryBus(), client).generate_in_workspace("builder", _task_env(), ws)
 
 
 def test_khong_sua_gi_nhung_ly_do_qua_ngan_van_bi_invalid_output(tmp_path):
@@ -137,7 +137,7 @@ def test_khong_sua_gi_nhung_ly_do_qua_ngan_van_bi_invalid_output(tmp_path):
                         tool_handler=lambda m, t: [])
     bus = InMemoryBus()
     with pytest.raises(RunnerError, match="không sửa file nào"):
-        AgentRunner(bus, client).generate_in_workspace("backend", _task_env(), ws)
+        AgentRunner(bus, client).generate_in_workspace("builder", _task_env(), ws)
     assert _audits(bus, "invalid_output") and not _audits(bus, "no_changes_confirmed")
 
 
@@ -151,7 +151,7 @@ def test_khong_sua_gi_nhung_ly_do_du_dai_thi_khong_bi_chan(tmp_path):
                                               "local_checks": {}, "no_changes_reason": ly_do},
                         tool_handler=lambda m, t: [])
     bus = InMemoryBus()
-    g = AgentRunner(bus, client).generate_in_workspace("backend", _task_env(), ws)
+    g = AgentRunner(bus, client).generate_in_workspace("builder", _task_env(), ws)
     assert g.payloads[0]["pr_ref"] == ws.head_sha() and g.payloads[0]["local_checks"]["verified_by"] == "workspace"
     confirmed = _audits(bus, "no_changes_confirmed")
     assert confirmed and ly_do in confirmed[0]["evidence"]
@@ -164,7 +164,7 @@ def test_wip_da_du_va_luot_nay_khong_them_gi_van_ra_pr(tmp_path):
     (ws.path / "xong.py").write_text("def done():\n    return 1\n", encoding="utf-8")
     client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "branch": "x", "pr_ref": "x", "summary": "đã đủ", "local_checks": {}},
                         tool_handler=lambda m, t: [])
-    bus = InMemoryBus(); g = AgentRunner(bus, client).generate_in_workspace("backend", _task_env(), ws)
+    bus = InMemoryBus(); g = AgentRunner(bus, client).generate_in_workspace("builder", _task_env(), ws)
     assert g.payloads[0]["impact"]["files"] == ["xong.py"] and g.payloads[0]["pr_ref"] == ws.head_sha()
     assert not _audits(bus, "invalid_output")
 
@@ -185,7 +185,7 @@ def test_llm_error_audit_carries_tokens_burned_in_tool_loop(tmp_path):
     bus = InMemoryBus(); sup = Supervisor(bus)
     bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload={**T1, "budget_tokens": 100_000}))
     with pytest.raises(TransientError):
-        AgentRunner(bus, _FlakyClient()).generate("backend", _task_env(), "pull-requests", tools=WorkspaceTools(ws).toolbox())
+        AgentRunner(bus, _FlakyClient()).generate("builder", _task_env(), "pull-requests", tools=WorkspaceTools(ws).toolbox())
     err = _audits(bus, "llm_error")
     assert len(err) == 1 and err[0]["tokens"] == 2_100 and sup.budgets["T1"].used == 2_100
 
@@ -194,11 +194,11 @@ def test_llm_error_audit_carries_tokens_burned_in_tool_loop(tmp_path):
 
 def test_supervisor_thresholds_fire_once_until_budget_extended():
     bus = InMemoryBus(); sup = Supervisor(bus)
-    t = Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="backend", title="x", acceptance=["a"], budget_tokens=1000)
+    t = Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="builder", title="x", acceptance=["a"], budget_tokens=1000)
     bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=t.model_dump()))
     def audit(tokens, action="produced:x"):
-        bus.publish(Envelope(topic="audit-log", key="backend", actor="backend",
-                             payload=AuditLog(actor="backend", action=action, ticket_id="T1", tokens=tokens, output_tokens=tokens).model_dump()))
+        bus.publish(Envelope(topic="audit-log", key="builder", actor="builder",
+                             payload=AuditLog(actor="builder", action=action, ticket_id="T1", tokens=tokens, output_tokens=tokens).model_dump()))
     audit(850); audit(0); audit(10)
     assert [a.action for a in sup.actions] == ["warn"]
     audit(200); audit(0); audit(50)
@@ -223,7 +223,7 @@ def test_openai_compat_keeps_features_when_400_is_unrelated(monkeypatch):
         raise LLMError('HTTP 400: {"error": "context length exceeded"}')
     c = _openai(monkeypatch, unrelated)
     with pytest.raises(LLMError, match="context length"):
-        c.complete(system="s", user="u", schema={"type": "object"}, model_tier="fast", cache_key="backend")
+        c.complete(system="s", user="u", schema={"type": "object"}, model_tier="fast", cache_key="builder")
     assert c._json_schema_ok is None and c._cache_key_ok is None, "không quy lỗi cho tính năng rồi tắt vĩnh viễn"
 
 
@@ -235,7 +235,7 @@ def test_openai_compat_falls_back_only_when_400_names_the_feature(monkeypatch):
         if body.get("response_format", {}).get("type") == "json_schema": raise LLMError("HTTP 400: response_format unsupported")
         return {"choices": [{"finish_reason": "stop", "message": {"content": "{}"}}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
     c = _openai(monkeypatch, responder)
-    c.complete(system="s", user="u", schema={"type": "object"}, model_tier="fast", cache_key="backend")
+    c.complete(system="s", user="u", schema={"type": "object"}, model_tier="fast", cache_key="builder")
     assert c._json_schema_ok is False and c._cache_key_ok is False
     assert "prompt_cache_key" not in seen[-1] and seen[-1]["response_format"] == {"type": "json_object"}
 
@@ -331,7 +331,7 @@ def test_invalid_output_ghi_kem_loi_agent(tmp_path):
                         tool_handler=lambda m, t: [])
     bus = InMemoryBus()
     with pytest.raises(RunnerError, match="không sửa file nào"):
-        AgentRunner(bus, client).generate_in_workspace("backend", _task_env(), ws)
+        AgentRunner(bus, client).generate_in_workspace("builder", _task_env(), ws)
     ev = _audits(bus, "invalid_output")[-1]["evidence"]
     assert "agent nói: Không làm: cần người chốt DEF-03 trước" in ev
     from company.runner import _said

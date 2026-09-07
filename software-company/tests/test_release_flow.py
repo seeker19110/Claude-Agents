@@ -21,11 +21,11 @@ def _setup():
 
 
 def _task(tid="T1", **kw):
-    return Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="backend", title=tid, acceptance=["a"], **kw)
+    return Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="builder", title=tid, acceptance=["a"], **kw)
 
 
 def _pr(bus, tid="T1"):
-    bus.publish(Envelope(topic="pull-requests", key=tid, actor="backend",
+    bus.publish(Envelope(topic="pull-requests", key=tid, actor="builder",
                          payload=PullRequest(ticket_id=tid, branch="b", pr_ref="#1", local_checks={"lint": True}).model_dump()))
 
 
@@ -185,8 +185,8 @@ def test_sprint_report_estimate_vs_actual():
     bus = InMemoryBus(); sup = Supervisor(bus)
     t = _task(estimate_tokens=10_000, budget_tokens=15_000)
     bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=t.model_dump()))
-    bus.publish(Envelope(topic="audit-log", key="backend", actor="backend",
-                         payload=AuditLog(actor="backend", action="code", ticket_id="T1",
+    bus.publish(Envelope(topic="audit-log", key="builder", actor="builder",
+                         payload=AuditLog(actor="builder", action="code", ticket_id="T1",
                                           tokens=12_500, output_tokens=12_500).model_dump()))
     r = sup.sprint_report()
     assert r["tickets"]["T1"]["actual_tokens"] == 12_500 and r["tickets"]["T1"]["ratio"] == 1.25

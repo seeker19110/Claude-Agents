@@ -17,8 +17,8 @@ from company.registry import load_agents
 from company.subagents import GATE_PREFIX, PREFIX, TOOLS, build, diffs, render_all, sections
 from company.subagents import main as sub_main
 
-N_AGENTS, N_GATES = 17, 4   # ADR-0037: GateKind bỏ `plan`; PR-5b gộp → ops (21→19), PR-5c gộp
-# test-author+reviewer+qa-debugger → qa (19→17)
+N_AGENTS, N_GATES = 12, 4   # ADR-0037: GateKind bỏ `plan`; PR-5b gộp → ops (21→19), PR-5c gộp
+# test-author+reviewer+qa-debugger → qa (19→17), PR-5d gộp sáu agent kỹ thuật → builder (17→12)
 
 
 def _agent_files() -> dict:

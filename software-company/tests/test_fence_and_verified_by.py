@@ -84,7 +84,7 @@ def test_supervisor_tinh_null_la_chua_xac_minh():
     bus = InMemoryBus(enforce_owners=False)
     sup = Supervisor(bus)
     bus.publish(_pr(None))
-    bus.publish(Envelope(topic="pull-requests", key="T2", actor="backend", payload={
+    bus.publish(Envelope(topic="pull-requests", key="T2", actor="builder", payload={
         "ticket_id": "T2", "branch": "b2", "pr_ref": "def5678", "summary": "s",
         "local_checks": {"lint": True, "tests": True, "verified_by": "workspace"}}))
     r = sup.sprint_report()

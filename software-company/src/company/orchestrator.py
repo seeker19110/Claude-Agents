@@ -65,7 +65,6 @@ from .orch.cli import main, source_fingerprint
 # Không dùng trong file này nhưng là hợp đồng công khai của module (gate_brief.py, test) — giữ re-export tường
 # minh bằng alias cùng tên để ruff không coi là import thừa.
 from .orch.routes import BLIND_STRIP as BLIND_STRIP
-from .orch.routes import ENGINEERING as ENGINEERING
 from .orch.routes import MAX_CONFLICT_RETRIES as MAX_CONFLICT_RETRIES
 from .orch.routes import PLAN_INPUTS as PLAN_INPUTS
 from .orch.routes import (
@@ -87,6 +86,7 @@ from .orch.routes import spec_runtime_gap as spec_runtime_gap
 from .orch.state import OrchState, install_aliases
 from .orch.ticket_fsm import _cycle as _cycle
 from .registry import AgentSpec, load_agents
+from .roles import ENGINEERING as ENGINEERING
 from .routing import retry_after_seconds
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError
 from .sandbox import Sandbox, SubprocessSandbox
@@ -265,8 +265,7 @@ class Orchestrator:
         if fsm.step(release_fsm.RELEASE_TRANSITIONS, self, env, res, phase="pre"): return res
         for r in ROUTES:
             if r.topic_in != env.topic or (r.when and not r.when(env, self)): continue
-            agent = env.payload["assignee"] if r.agent == "$assignee" else r.agent
-            self._call(agent, env, r, res)
+            self._call(r.agent, env, r, res)
         fsm.step(release_fsm.RELEASE_TRANSITIONS, self, env, res, phase="post")
         self._note_closed()
         if res.transient:  # một agent chưa chạy được vì transport: giữ event lại, nhịp sau thử tiếp (agent xong rồi không chạy lại)

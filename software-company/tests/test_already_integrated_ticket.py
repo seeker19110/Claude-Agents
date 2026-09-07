@@ -19,7 +19,7 @@ from test_orchestrator import handler
 
 
 def _blocked_ticket(orch, tid="T1", integrated=True):
-    orch.lead.tickets[tid] = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="backend",
+    orch.lead.tickets[tid] = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="builder",
                                   title=tid, acceptance=["a"])
     orch.lead.state[tid] = "blocked"
     if integrated:
@@ -40,7 +40,7 @@ def test_ticket_da_tich_hop_thi_duyet_escalation_danh_dau_xong_khong_giao_lai(tm
 
     assert orch.lead.state[tid] == "merged", "code đã ở nhánh tích hợp → đánh dấu xong, không quay lại vòng làm"
     assert any(a == f"already_integrated:{tid}" for r in res for a in r.actions), [r.actions for r in res]
-    assert not [c for c in client.calls if "backend" in c["system"][:40]], "KHÔNG được gọi agent làm lại việc đã merge"
+    assert not [c for c in client.calls if "builder" in c["system"][:40]], "KHÔNG được gọi agent làm lại việc đã merge"
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert "ticket.already_integrated" in acts and "invalid_output" not in acts
     assert not [e for e in bus.replay(topic="tasks") if e.key == tid], "không phát task mới cho ticket đã xong"

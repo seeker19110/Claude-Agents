@@ -12,13 +12,13 @@ from company.supervisor import Supervisor
 
 
 def _task(tid, project="P1", budget=100_000):
-    return Task(ticket_id=tid, project_id=project, requirement_id="R1", assignee="backend", title="x",
+    return Task(ticket_id=tid, project_id=project, requirement_id="R1", assignee="builder", title="x",
                 acceptance=["a"], estimate_tokens=10_000, budget_tokens=budget)
 
 
 def _audit(bus, ticket, tokens, project=None):
-    bus.publish(Envelope(topic="audit-log", key="backend", actor="backend",
-                         payload={"actor": "backend", "action": "produced", "ticket_id": ticket,
+    bus.publish(Envelope(topic="audit-log", key="builder", actor="builder",
+                         payload={"actor": "builder", "action": "produced", "ticket_id": ticket,
                                   "project_id": project, "tokens": tokens}))
 
 

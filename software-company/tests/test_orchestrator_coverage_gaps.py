@@ -35,7 +35,7 @@ def test_with_diff_bat_workspace_error(monkeypatch, tmp_path):
             return []
 
     monkeypatch.setattr(orch, "workspace", lambda tid: FakeWs())
-    env = Envelope(topic="pull-requests", key="T1", actor="backend", payload={"ticket_id": "T1"})
+    env = Envelope(topic="pull-requests", key="T1", actor="builder", payload={"ticket_id": "T1"})
     out = _with_diff(env, orch)
     assert "diff_error" in out and "git diff" in out["diff_error"]
 
@@ -45,7 +45,7 @@ def test_with_diff_bat_workspace_error(monkeypatch, tmp_path):
 def test_process_defer_khi_project_paused():
     orch = _orch()
     orch.paused.add("P1")
-    env = Envelope(topic="pull-requests", key="T1", actor="backend",
+    env = Envelope(topic="pull-requests", key="T1", actor="builder",
                     payload={"ticket_id": "TX", "project_id": "P1"})
     res = orch.process(env)
     assert res is not None and res.deferred == "paused:P1"
@@ -62,7 +62,7 @@ def test_rework_after_error_bat_value_error(monkeypatch):
         raise ValueError(f"{tid}: rework chỉ từ dispatched/in_progress (đang blocked)")
 
     monkeypatch.setattr(orch.lead, "rework", boom)
-    env = Envelope(topic="tasks", key="T1", actor="backend", payload={"ticket_id": "T1"})
+    env = Envelope(topic="tasks", key="T1", actor="builder", payload={"ticket_id": "T1"})
     route = Route("tasks", "$assignee", "pull-requests", tools="rw")
     orch._rework_after_error(env, route, RuntimeError("lỗi giả"))
     errs = [json.loads(e.payload["evidence"]) for e in orch.bus.replay(topic="audit-log") if e.payload["action"] == "handler_error"]

@@ -188,7 +188,7 @@ def test_audit_records_which_mode_ran_the_tool_loop(tmp_path):
 
     bus = InMemoryBus()
     client = ClaudeCodeClient(_cfg(mcp_tools=True), runner=cli_writes_then_answers)
-    AgentRunner(bus, client).generate("backend", _task_env(), "pull-requests", tools=WorkspaceTools(ws).toolbox())
+    AgentRunner(bus, client).generate("builder", _task_env(), "pull-requests", tools=WorkspaceTools(ws).toolbox())
     ev = json.loads(next(iter(bus.replay(topic="audit-log"))).payload["evidence"])
     assert ev["mode"] == "mcp" and ev["calls"] == {"write_file": 1}
 
@@ -202,6 +202,6 @@ def test_audit_mode_is_loop_for_api_providers(tmp_path):
         return [ToolCall(id="c1", name="read_file", args={"path": "mod.py"})] if first else []
     bus = InMemoryBus()
     AgentRunner(bus, FakeClient(handler=lambda s, u: _pr({"ticket_id": "T1"}), tool_handler=th)).generate(
-        "backend", _task_env(), "pull-requests", tools=WorkspaceTools(ws).toolbox())
+        "builder", _task_env(), "pull-requests", tools=WorkspaceTools(ws).toolbox())
     ev = json.loads(next(iter(bus.replay(topic="audit-log"))).payload["evidence"])
     assert ev["mode"] == "loop" and ev["turns"] == 2

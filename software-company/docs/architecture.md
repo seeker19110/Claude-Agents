@@ -31,9 +31,9 @@ phải có mặt; agent được liệt kê mà không có route phải ghi `(ch
 | clarification-questions | clarifier | human gate | project_id |
 | clarification-answers | human gate | clarifier (hỏi lại khi trả lời thiếu), spec-writer (khi đủ) | project_id |
 | approved-specs | spec-writer → human gate `spec` | không có route trong `ROUTES`: security (threat model, `THREAT_ROUTE`), delivery-lead (plan, `PLAN_INPUTS`), ops (chỉ đọc) | project_id |
-| tasks | delivery-lead | qa[author] (khi bật, ADR-0028), engineering (6 agent) | ticket_id |
-| test-suites | qa[author] | engineering (6 agent) | ticket_id |
-| pull-requests | engineering | qa[review], security (khi risk_tags), qa[author] (khi có `test_dispute`) | ticket_id |
+| tasks | delivery-lead | qa[author] (khi bật, ADR-0028), builder (pha = `stack`) | ticket_id |
+| test-suites | qa[author] | builder (pha = `stack`) | ticket_id |
+| pull-requests | builder | qa[review], security (khi risk_tags), qa[author] (khi có `test_dispute`) | ticket_id |
 | review-results | qa (`source` = reviewer ở PR, qa ở hồi quy staging), security | delivery-lead | ticket_id (hoặc release_id cho QA staging) |
 | release-candidates | delivery-lead | ops, security | release_id |
 | release-events | ops (pha `deploy`) | delivery-lead, qa[review] (staging), ops (pha `docs`, production), ops (pha `account`, chỉ đọc), human gate | release_id |
@@ -48,10 +48,10 @@ phải có mặt; agent được liệt kê mà không có route phải ghi `(ch
 ## Vòng đời một ticket
 
 ```
-delivery-lead:      tasks(ticket, assignee, estimate_tokens, risk_tags?)
+delivery-lead:      tasks(ticket, assignee=builder, stack, estimate_tokens, risk_tags?)
 qa[author]:         (ADR-0028, khi bật) lượt MÙ từ acceptance → chỉ ghi file test → test-suites(ticket)
                     test ĐỎ ngay sau lượt này là kết quả đúng; xanh ngay → audit tests_green_before_code
-engineering:        đọc shared-context → code trên branch cho tới khi test xanh (KHÔNG ghi được file test)
+builder[stack]:     đọc shared-context → code trên branch cho tới khi test xanh (KHÔNG ghi được file test)
                     → pull-requests(ticket, tests_authored_by, test_dispute?)
 qa[author]:         PR có test_dispute → xem diff, sửa test hoặc bác bỏ → test-suites(blind=false)
 qa[review]:         review-results(source=reviewer, verdict=pass|block, findings[], root_cause?) — MỌI ticket
@@ -91,7 +91,7 @@ Read/Grep/Glob) đọc hồ sơ và in bản tóm; người ký bằng `gate_cli
 
 - **Đo token**: mỗi agent phát `audit-log.tokens`; supervisor cộng dồn theo ticket
   (`Supervisor.budgets`). Không cần thư viện usage bên ngoài.
-- **Workspace**: mỗi engineering agent làm trên branch `ticket/<id>` trong worktree riêng
+- **Workspace**: mỗi lượt `builder` làm trên branch `ticket/<id>` trong worktree riêng
   (`<repo>/.worktrees/<id>`); qa/security đọc diff thật của branch đó, và có tool chỉ đọc để tự chạy test.
 - **Tool có ranh giới tin cậy** (ADR-0010, `tools.py`): bảng tool tên cố định (`read_file`, `write_file`,
   `list_files`, `search`, `run`), không có shell; `run` chỉ nhận tên trong allowlist (`lint`, `test`, `git_status`,

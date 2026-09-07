@@ -19,13 +19,14 @@ cases:
         ticket_id: TCK-1
         project_id: P1
         requirement_id: R1
-        assignee: backend
+        assignee: builder
+        stack: backend
         title: "GET /orders/{id}"
         acceptance:
           - "Given đơn hàng ORD-1 tồn tại, When GET /orders/ORD-1, Then trả 200 kèm id và total"
           - "Given đơn hàng ORD-9 không tồn tại, When GET /orders/ORD-9, Then trả 404 theo RFC 9457"
     expect:
-      equals: {ticket_id: TCK-1, assignee: backend}
+      equals: {ticket_id: TCK-1, assignee: builder}
       min_len: {acceptance_covered: 2, files: 1}
 
   - name: tranh-chap-test-phai-tra-loi-co-ly-do
@@ -34,11 +35,12 @@ cases:
     input:
       topic: pull-requests
       key: TCK-2
-      actor: backend
+      actor: builder
       payload:
         ticket_id: TCK-2
         project_id: P1
-        assignee: backend
+        assignee: builder
+        stack: backend
         branch: ticket/TCK-2
         pr_ref: "abc1234"
         local_checks: {lint: true, tests: false}
@@ -56,7 +58,7 @@ cases:
     input:
       topic: pull-requests
       key: TCK-1
-      actor: backend
+      actor: builder
       payload:
         ticket_id: TCK-1
         branch: ticket/TCK-1
@@ -73,7 +75,7 @@ cases:
     input:
       topic: pull-requests
       key: TCK-2
-      actor: backend
+      actor: builder
       payload:
         ticket_id: TCK-2
         branch: ticket/TCK-2
@@ -92,7 +94,7 @@ cases:
     input:
       topic: pull-requests
       key: TCK-3
-      actor: backend
+      actor: builder
       payload:
         ticket_id: TCK-3
         branch: ticket/TCK-3
@@ -114,7 +116,7 @@ cases:
     input:
       topic: pull-requests
       key: TCK-4
-      actor: backend
+      actor: builder
       payload:
         ticket_id: TCK-4
         branch: ticket/TCK-4
@@ -164,7 +166,8 @@ cases:
         ticket_id: TCK-9
         project_id: P1
         requirement_id: R9
-        assignee: backend
+        assignee: builder
+        stack: backend
         title: "POST /orders: tạo đơn hàng"
         acceptance:
           - "Given giỏ hàng hợp lệ, When POST /orders, Then trả 201 kèm id đơn"

@@ -197,7 +197,7 @@ def test_tool_loop_runs_tools_then_final_answer(tmp_path):
         return []
     client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=th)
     bus = InMemoryBus()
-    g = AgentRunner(bus, client).generate("backend", _task_env(), "pull-requests", tools=tb)
+    g = AgentRunner(bus, client).generate("builder", _task_env(), "pull-requests", tools=tb)
     assert (ws.path / "feature.py").read_text(encoding="utf-8") == "F = 1\n"
     assert g.turns == 2 and g.tool_calls == {"read_file": 1, "write_file": 1} and g.tokens == 2 * 1300
     assert [c["tools"] for c in client.calls] == [["read_file", "write_file", "delete_file", "list_files", "search", "run"]] * 2
@@ -216,7 +216,7 @@ def test_tool_loop_stops_when_budget_exhausted(tmp_path):
     client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=lambda m, t: [_tc("read_file", path="mod.py")])
     bus = InMemoryBus()
     with pytest.raises(RunnerError, match="vượt ngân sách"):
-        AgentRunner(bus, client).generate("backend", _task_env(), "pull-requests", tools=WorkspaceTools(ws).toolbox(), budget=3_000)
+        AgentRunner(bus, client).generate("builder", _task_env(), "pull-requests", tools=WorkspaceTools(ws).toolbox(), budget=3_000)
     a = [e.payload for e in bus.replay(topic="audit-log")][-1]
     assert a["action"] == "budget_exhausted" and len(client.calls) == 11    # 11 * 300 output > 3000
     assert a["tokens"] == 11 * 1300, "audit vẫn ghi TỔNG token để metrics/chi phí không bị hụt"
@@ -242,7 +242,7 @@ def test_van_xuoi_o_luot_cuoi_bi_ep_chot_lai_bang_json(tmp_path):
 
     client = FakeClient(handler=handler_van_xuoi, tool_handler=lambda m, t: [])
     bus = InMemoryBus()
-    g = AgentRunner(bus, client).generate("backend", _task_env(), "pull-requests",
+    g = AgentRunner(bus, client).generate("builder", _task_env(), "pull-requests",
                                           tools=WorkspaceTools(ws).toolbox())
     assert luot["n"] == 2, "phải xin model chốt lại thêm một lượt, không được nhận văn xuôi"
     assert g.payloads[0]["ticket_id"] == "T1"
@@ -251,7 +251,7 @@ def test_van_xuoi_o_luot_cuoi_bi_ep_chot_lai_bang_json(tmp_path):
 def test_tool_loop_max_turns_forces_final_json(tmp_path):
     ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
     client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=lambda m, t: [_tc("read_file", path="mod.py")])
-    g = AgentRunner(InMemoryBus(), client).generate("backend", _task_env(), "pull-requests",
+    g = AgentRunner(InMemoryBus(), client).generate("builder", _task_env(), "pull-requests",
                                                      tools=WorkspaceTools(ws).toolbox(), max_turns=2)
     assert g.turns == 3 and len(client.calls) == 3 and client.calls[-1]["tools"] == []
     last = client.calls[-1]["messages"]
@@ -266,7 +266,7 @@ def test_tool_error_is_returned_to_model_not_raised(tmp_path):
         if _first_turn(msgs): return [_tc("nope"), _tc("read_file", path="../x")]
         seen.extend(m["content"] for m in msgs if m["role"] == "tool"); return []
     client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=th)
-    AgentRunner(InMemoryBus(), client).generate("backend", _task_env(), "pull-requests", tools=WorkspaceTools(ws).toolbox())
+    AgentRunner(InMemoryBus(), client).generate("builder", _task_env(), "pull-requests", tools=WorkspaceTools(ws).toolbox())
     assert seen[0].startswith("lỗi: tool không tồn tại") and "thoát" in seen[1]
 
 
@@ -280,7 +280,7 @@ def test_generate_in_workspace_overrides_model_claims_with_git_evidence(tmp_path
             if _first_turn(msgs) else []
     client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=th)
     bus = InMemoryBus()
-    g = AgentRunner(bus, client).generate_in_workspace("backend", _task_env(title="thêm f"), ws, budget=50_000)
+    g = AgentRunner(bus, client).generate_in_workspace("builder", _task_env(title="thêm f"), ws, budget=50_000)
     p = g.payloads[0]
     assert p["branch"] == "ticket/T1" and p["pr_ref"] != "#999" and len(p["pr_ref"]) >= 7
     assert p["local_checks"] == {"lint": True, "tests": True, "verified_by": "workspace", "stack": "python",
@@ -298,7 +298,7 @@ def test_generate_in_workspace_reports_failing_tests_truthfully(tmp_path):
     ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main")
     th = lambda m, t: [_tc("write_file", path="mod.py", content="def add(a, b):\n    return a - b\n")] if _first_turn(m) else []  # noqa: E731
     client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=th)
-    p = AgentRunner(InMemoryBus(), client).generate_in_workspace("backend", _task_env(), ws).payloads[0]
+    p = AgentRunner(InMemoryBus(), client).generate_in_workspace("builder", _task_env(), ws).payloads[0]
     assert p["local_checks"]["tests"] is False and p["local_checks"]["lint"] is True, "model khai tests=true, máy nói false"
 
 
@@ -307,7 +307,7 @@ def test_generate_in_workspace_rejects_pr_without_changes(tmp_path):
     client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=lambda m, t: [_tc("read_file", path="mod.py")] if _first_turn(m) else [])
     bus = InMemoryBus()
     with pytest.raises(RunnerError, match="không sửa file"):
-        AgentRunner(bus, client).generate_in_workspace("backend", _task_env(), ws)
+        AgentRunner(bus, client).generate_in_workspace("builder", _task_env(), ws)
     assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["tools_used", "invalid_output"]
 
 
@@ -405,7 +405,7 @@ def test_lessons_calibrate_next_plan():
          {"release_id": "REL-001", "project_id": "P1", "verdict": "accepted", "signed_by": "customer:po"})
     orch.run()
     cal = orch.supervisor.calibration()
-    assert cal == {"backend": {"ratio_median": cal["backend"]["ratio_median"], "samples": 1}} and cal["backend"]["ratio_median"] > 0
+    assert cal == {"builder": {"ratio_median": cal["builder"]["ratio_median"], "samples": 1}} and cal["builder"]["ratio_median"] > 0
     # dự án tiếp theo: delivery-lead nhận bảng hiệu chỉnh trong đầu vào
     _pub(bus, "approved-specs", "P2", "spec-writer", {"project_id": "P2", "status": "pending_human", "kind": "library", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P2", "approve", by="human:po"); orch.run()
@@ -448,12 +448,12 @@ def test_eval_record_then_replay_without_model(tmp_path, monkeypatch, capsys):
     bad = run_eval("security", ReplayClient("security"))
     assert not bad[0].passed and "lệch prompt" in bad[0].failures[0]
     # CLI: --replay bỏ qua agent chưa ghi (exit 0); --strict chỉ đỏ với agent có tên trong REQUIRED.txt
-    assert evals_main(["backend", "--replay"]) == 0 and "SKIP backend" in capsys.readouterr().out
-    assert evals_main(["backend", "--replay", "--strict"]) == 0, "chưa bắt buộc thì vẫn chỉ là SKIP"
+    assert evals_main(["builder", "--replay"]) == 0 and "SKIP builder" in capsys.readouterr().out
+    assert evals_main(["builder", "--replay", "--strict"]) == 0, "chưa bắt buộc thì vẫn chỉ là SKIP"
     capsys.readouterr()
-    (tmp_path / "REQUIRED.txt").write_text("# bắt buộc\nbackend\n", encoding="utf-8")
-    assert evals_main(["backend", "--replay", "--strict"]) == 1
-    assert "FAIL backend" in capsys.readouterr().out
+    (tmp_path / "REQUIRED.txt").write_text("# bắt buộc\nbuilder\n", encoding="utf-8")
+    assert evals_main(["builder", "--replay", "--strict"]) == 1
+    assert "FAIL builder" in capsys.readouterr().out
     assert evals_main(["security", "--replay"]) == 1
 
 
@@ -784,7 +784,7 @@ def test_pr_with_failing_local_checks_goes_back_to_ticket_not_to_review(tmp_path
     tasks = [e.payload for e in bus.replay(topic="tasks") if e.key == "T1"]
     assert [t["retry"] for t in tasks] == [0, 1] and "tests local fail" in tasks[1]["hint"] and "assert" in tasks[1]["hint"]
     rej = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "pr.rejected_local_checks"]
-    assert rej == [{"ticket_id": "T1", "agent": "backend", "failed": ["tests"], "commit": rej[0]["commit"], "files": ["f_t1.py", "test_t1.py"]}]
+    assert rej == [{"ticket_id": "T1", "agent": "builder", "failed": ["tests"], "commit": rej[0]["commit"], "files": ["f_t1.py", "test_t1.py"]}]
     reviews_t1 = [e for e in bus.replay(topic="review-results") if e.key == "T1"]
     assert {e.payload["source"] for e in reviews_t1} == {"reviewer"} and len(reviews_t1) == 1, "chỉ review PR xanh; ADR-0021: không QA ở PR"
     assert orch.supervisor.sprint_report()["tickets"]["T1"]["retry"] == 1
@@ -797,9 +797,9 @@ def test_retry_that_rewrites_identical_files_is_no_change_not_commit_error(tmp_p
     same = [_tc("write_file", path="mod.py", content="def add(a, b):\n    return a - b\n")]
     client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=lambda m, t: same if _first_turn(m) else [])
     bus = InMemoryBus(); runner = AgentRunner(bus, client)
-    assert runner.generate_in_workspace("backend", _task_env(), ws).payloads[0]["local_checks"]["tests"] is False
+    assert runner.generate_in_workspace("builder", _task_env(), ws).payloads[0]["local_checks"]["tests"] is False
     with pytest.raises(RunnerError, match="không sửa file"):
-        runner.generate_in_workspace("backend", _task_env(retry=1, hint="test đỏ"), ws)
+        runner.generate_in_workspace("builder", _task_env(retry=1, hint="test đỏ"), ws)
     assert ws.has_changes() and not ws.dirty()
 
 
@@ -960,7 +960,7 @@ def test_chuoi_null_thanh_none_o_dung_truong_va_de_lai_vet() -> None:
            "root_cause": "  N/A ", "test_summary": "42 passed"}
     client = FakeClient(handler=lambda s, u: out)
     g = AgentRunner(bus, client).generate("qa", Envelope(
-        topic="pull-requests", key="T1", actor="backend",
+        topic="pull-requests", key="T1", actor="builder",
         payload={"ticket_id": "T1", "branch": "b", "pr_ref": "#1", "local_checks": {"lint": True, "tests": False}}),
         "review-results")
     p = g.payloads[0]
@@ -975,7 +975,7 @@ def test_chuoi_la_o_truong_nullable_van_hong_nhu_cu() -> None:
     client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "source": "qa", "verdict": "block", "mutation_score": "bảy mươi"})
     with pytest.raises(RunnerError, match="không hợp lệ"):
         AgentRunner(InMemoryBus(), client).generate("qa", Envelope(
-            topic="pull-requests", key="T1", actor="backend",
+            topic="pull-requests", key="T1", actor="builder",
             payload={"ticket_id": "T1", "branch": "b", "pr_ref": "#1", "local_checks": {"lint": True, "tests": False}}),
             "review-results")
 

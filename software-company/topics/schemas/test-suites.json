@@ -32,12 +32,7 @@
         },
         "assignee": {
           "enum": [
-            "backend",
-            "frontend",
-            "mobile",
-            "database",
-            "platform",
-            "data"
+            "builder"
           ],
           "description": "agent sẽ viết code cho tới khi bộ test này xanh"
         },

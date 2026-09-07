@@ -48,7 +48,7 @@ def test_supervisor_dem_lien_tiep_theo_nguon_va_reset_khi_nguon_bo_nhac():
     assert d["tickets"] == ["T1", "T2", "T4", "T5", "T6"]
     # nguồn KHÁC không nhắc thì không reset chuỗi của security; review thiếu project_id nhưng ticket đã biết vẫn đếm
     bus.publish(Envelope(topic="tasks", key="T7", actor="delivery-lead",
-                         payload=Task(ticket_id="T7", project_id="P1", requirement_id="R", assignee="backend", title="x",
+                         payload=Task(ticket_id="T7", project_id="P1", requirement_id="R", assignee="builder", title="x",
                                       acceptance=["a"]).model_dump()))
     _review(bus, "T7", "code ok", source="reviewer", actor="qa", pid=None)
     _review(bus, "T7", "DEF-01 vẫn treo", pid=None)

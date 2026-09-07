@@ -71,7 +71,7 @@ def test_action_dispatch_nam_ngay_sau_plan_trong_cung_mot_step():
 def _lead_thieu_acceptance(system, user):
     """delivery-lead trả ticket thiếu `acceptance` → `_check_plan` ra `problems`."""
     if _agent_of(system) == "delivery-lead" and "decision" not in _inp(user):
-        return {"items": [{"ticket_id": "TX", "project_id": "P1", "requirement_id": "REQ-1", "assignee": "backend",
+        return {"items": [{"ticket_id": "TX", "project_id": "P1", "requirement_id": "REQ-1", "assignee": "builder",
                            "title": "x", "acceptance": [], "estimate_tokens": 4_000, "budget_tokens": 6_000}],
                 "context_writes": [{"namespace": "architecture", "content_ref": "docs/c4.md", "summary": "L1-L2"},
                                    {"namespace": "api-contract", "content_ref": "openapi.yaml", "summary": "v1"}]}
@@ -96,7 +96,7 @@ def test_dispatch_tu_choi_plan_chua_qua_check_plan():
     """Đo hai chiều ngay trong một ca: `plans_ok` rỗng → `PermissionError`; ghi plan_id vào → giao được.
     Gate `plan` đã duyệt (thứ trước đây mở khoá) KHÔNG còn tác dụng gì ở đây."""
     bus = InMemoryBus(); gate = HumanGate(); lead = DeliveryLead(bus, gate)
-    task = Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="backend", title="x",
+    task = Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="builder", title="x",
                 acceptance=["a"], estimate_tokens=4_000, budget_tokens=6_000)
     with pytest.raises(PermissionError, match="plan chưa qua _check_plan"):
         lead.dispatch(task, "PLAN-X")
