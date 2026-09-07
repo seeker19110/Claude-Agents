@@ -9,12 +9,13 @@ Giao hàng (ADR-0027): `Integration.deliver` đặt tag `v<version>` tại sha t
 tới đó; `rollback_delivery` lùi con trỏ nhánh về lần giao trước (tag giữ nguyên). Tuỳ chọn push lên remote của khách."""
 from __future__ import annotations
 
-import os
-import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from xagents_core.sandbox import SECRET_ENV as SECRET_ENV  # re-export: `llm.py` và test nhập từ đây
+from xagents_core.sandbox import clean_env
 
 from .stacks import Stack, detect
 
@@ -22,20 +23,9 @@ from .stacks import Stack, detect
 class WorkspaceError(Exception): ...
 
 
-# Biến môi trường trông như khoá/bí mật: không bao giờ đưa vào lệnh con (lint/test của khách, tool của model, git hook).
-# Không chỉ tên có KEY/TOKEN: chuỗi kết nối (`DATABASE_URL`, `*_DSN`), khoá cloud (`AWS_*`, `AZURE_*`, `GOOGLE_*`),
-# socket ssh-agent, token CI (`GITHUB_*`, `GH_*`, `NPM_*`, `PYPI_*`) đều là bí mật dù tên không nói thế.
-SECRET_ENV = re.compile(
-    r"(API_?KEY|TOKEN|SECRET|PASSW(OR)?D|CREDENTIAL|ACCESS_KEY|PRIVATE_KEY|SESSION_KEY|SIGNING_KEY|AUTH(?!OR)"
-    r"|_URL$|_URI$|_DSN$|DATABASE|CONNECTION_STRING|SSH_AUTH_SOCK|^GITHUB_|^GH_|^NPM_|^PYPI_|^AWS_|^AZURE_|^GOOGLE_"
-    r"|^OPENAI_|^ANTHROPIC_|^COMPANY_LLM|^STUDIO_LLM|^CLAUDE_CONFIG_DIR$|^CODEX_HOME$)",
-    re.IGNORECASE)
-
-
-def clean_env() -> dict[str, str]:
-    """Env cho lệnh con: bỏ mọi biến trông như khoá; test/lint của khách (hay model qua tool) không in được secret.
-    Không ghi .pyc: tránh cache cũ che sửa đổi (Windows mtime thô) và rác trong branch."""
-    return {k: v for k, v in os.environ.items() if not SECRET_ENV.search(k)} | {"PYTHONDONTWRITEBYTECODE": "1"}
+# K3.2: `SECRET_ENV` và `clean_env` sống ở `xagents_core.sandbox` (sandbox là chỗ CUỐI CÙNG env đi qua, nên
+# danh sách chặn phải ở đó chứ không phải ở một trong các nơi gọi). Nhập lại tên cũ vì 5 module và test của
+# company vẫn `from .workspace import clean_env` — đổi chúng là sửa code cạnh bên, không thuộc PR này.
 
 
 # Hook của repo khách (`.git/hooks`, hay `core.hooksPath=.husky` — thư mục nằm TRONG worktree nên model ghi được)
@@ -100,8 +90,9 @@ class TicketWorkspace:
     # ADR-0035 (K2.4): sandbox chạy lint/test của repo KHÁCH. `None` = `SubprocessSandbox` (hành vi trước ADR)
     # — mặc định phải là hành vi cũ vì `TicketWorkspace` được dựng ở rất nhiều nơi, kể cả trong test; tiến trình
     # thật nhận sandbox theo cấu hình từ `Orchestrator.sandbox` (xem `orch/worktree_flow.workspace`).
-    # Kiểu để `Any` chứ không phải `Sandbox`: `sandbox.py` nhập `clean_env`/`SECRET_ENV` từ chính file này, nhập
-    # ngược ở đây (kể cả trong `TYPE_CHECKING`) là vòng lặp import lúc mypy dựng đồ thị.
+    # Kiểu để `Any` chứ không phải `Sandbox`: giữ nguyên từ trước K3.2. Vòng lặp import cũ (`sandbox.py` nhập
+    # `clean_env` từ file này) đã hết — cả hai nay nhập từ `xagents_core.sandbox` — nhưng đổi chú kiểu ở đây là
+    # sửa code cạnh bên, không thuộc PR chuyển mã.
     sandbox: Any = None
 
     @property
@@ -127,7 +118,8 @@ class TicketWorkspace:
             _git(self.repo, "branch", "-D", self.branch)
 
     def _sandbox(self) -> Any:
-        """Nhập lười: `sandbox.py` nhập `clean_env`/`SECRET_ENV` từ module này, nhập ở đỉnh file là vòng lặp."""
+        """Nhập lười: giữ từ trước K3.2, khi `sandbox.py` còn nhập `clean_env` từ module này. Vòng lặp đó đã hết
+        (cả hai nhập từ core) nên đây chỉ còn là hoãn import, không còn là bắt buộc."""
         if self.sandbox is None:
             from .sandbox import SubprocessSandbox
             self.sandbox = SubprocessSandbox()

@@ -11,16 +11,20 @@ from __future__ import annotations
 import fnmatch
 import json
 import re
-from collections.abc import Callable
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar
+
+# Re-export khung từ core (K3.2): 7 module của company nhập `ToolCall`/`ToolSpec`/`ToolBox` TỪ ĐÂY.
+from xagents_core.tools import MAX_OUTPUT as MAX_OUTPUT
+from xagents_core.tools import ToolBox as ToolBox
+from xagents_core.tools import ToolCall as ToolCall
+from xagents_core.tools import ToolError as ToolError
+from xagents_core.tools import ToolSpec as ToolSpec
 
 from .sandbox import RunSpec, Sandbox, SubprocessSandbox
 from .stacks import detect
 from .workspace import TicketWorkspace, clean_env
 
-MAX_OUTPUT = 6_000          # ký tự trả về cho model mỗi lần gọi tool
 MAX_WRITE = 200_000         # byte một lần ghi
 MAX_READ = 60_000           # ký tự một lần đọc
 MAX_SEARCH_HITS = 60
@@ -30,71 +34,6 @@ SECRET_FILES = ("*.pem", "*.key", ".env", ".env.*", "*secret*", "*credential*", 
 # `.docker/config.json` đều bị chặn, kể cả file khác trong đó (token cache, cert).
 SKIP_DIRS = {".git", ".worktrees", ".venv", "__pycache__", "node_modules"}
 BINARY_EXT = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".sqlite", ".pyc", ".so", ".dll", ".exe"}
-
-
-class ToolError(Exception): ...
-
-
-@dataclass(frozen=True)
-class ToolSpec:
-    """Mô tả tool trung lập provider; adapter đổi sang định dạng của Anthropic/OpenAI."""
-    name: str
-    description: str
-    parameters: dict[str, Any]  # JSON Schema của tham số
-
-
-@dataclass
-class ToolCall:
-    id: str
-    name: str
-    args: dict[str, Any]
-
-
-@dataclass
-class ToolBox:
-    """Bảng tool: tên → (spec, hàm). Không có tool = không có hành động; model chỉ chọn trong bảng."""
-    _tools: dict[str, tuple[ToolSpec, Callable[..., str]]] = field(default_factory=dict)
-    calls: list[dict[str, Any]] = field(default_factory=list)  # vết gọi để audit
-    root: str | None = None  # thư mục gốc của bảng tool; provider tự chạy tool (claude-code cli_tools) cần biết cwd
-    # K2.5: TÊN sandbox mà lệnh của bảng này chạy trong đó (`subprocess` | `container:<image>`), `None` khi bảng
-    # không có lệnh nào chạy được (`allow_run=False`). LỆCH ĐẶC TẢ có chủ ý: K2.5 viết `calls[].sandbox`, tức
-    # lặp cùng một chuỗi vào từng vết gọi — kể cả `read_file`/`search` không chạy lệnh gì, đọc lên tưởng như
-    # chúng cũng đi qua sandbox. Đặt ở BẢNG (như `root`) và in trong `dump_calls` nói đúng phạm vi hơn.
-    sandbox: str | None = None
-
-    def add(self, spec: ToolSpec, fn: Callable[..., str]) -> None:
-        self._tools[spec.name] = (spec, fn)
-
-    def specs(self) -> list[ToolSpec]:
-        return [s for s, _ in self._tools.values()]
-
-    def call(self, tc: ToolCall) -> str:
-        if tc.name not in self._tools:
-            raise ToolError(f"tool không tồn tại: {tc.name}")
-        spec, fn = self._tools[tc.name]
-        args = tc.args if isinstance(tc.args, dict) else {}
-        allowed = set(spec.parameters.get("properties", {}))
-        extra = set(args) - allowed
-        missing = set(spec.parameters.get("required", [])) - set(args)
-        if extra or missing:
-            out = f"lỗi tham số: thừa {sorted(extra)} thiếu {sorted(missing)}"
-        else:
-            try:
-                out = fn(**args)
-            except ToolError as e:
-                out = f"lỗi: {e}"
-            except (TypeError, ValueError) as e:
-                out = f"lỗi tham số: {e}"
-        out = str(out)
-        if len(out) > MAX_OUTPUT:
-            out = out[:MAX_OUTPUT] + f"\n… (cắt, còn {len(out) - MAX_OUTPUT} ký tự)"
-        self.calls.append({"name": tc.name, "args": args, "ok": not out.startswith("lỗi"), "chars": len(out)})
-        return out
-
-    def summary(self) -> dict[str, int]:
-        c: dict[str, int] = {}
-        for x in self.calls: c[x["name"]] = c.get(x["name"], 0) + 1
-        return c
 
 
 _clean_env = clean_env  # env cho lệnh con dùng chung với workspace (lint/test của PR): bỏ mọi biến trông như khoá

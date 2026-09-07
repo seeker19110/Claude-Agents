@@ -13,8 +13,14 @@ import pytest
 # (tên module company, tên module core)
 SHIM: list[tuple[str, str]] = [("company.context", "xagents_core.context")]
 
+# K3.2: shim CÓ một phần cấu hình. `company.sandbox` giữ `sandbox_from_config` vì đó là chỗ duy nhất biết mình
+# phục vụ công ty nào (biến `COMPANY_SANDBOX*`, `cfg.sandbox`, mặc định `auto`) — đưa vào core là đưa một câu
+# `if prefix == …` vào lõi, đúng thứ ADR gốc 0001 cấm. Chúng vẫn phải mang đủ tên core sang, và vẫn KHÔNG được
+# mọc lại khung: một `class`/`@dataclass` ở đây nghĩa là bản fork thứ hai đã quay lại.
+SHIM_CO_CAU_HINH: list[tuple[str, str]] = [("company.sandbox", "xagents_core.sandbox")]
 
-@pytest.mark.parametrize(("cong_ty", "core"), SHIM)
+
+@pytest.mark.parametrize(("cong_ty", "core"), SHIM + SHIM_CO_CAU_HINH)
 def test_shim_giu_du_ten_public(cong_ty: str, core: str):
     a, b = importlib.import_module(cong_ty), importlib.import_module(core)
     assert b.__all__, f"{core} phải khai `__all__` — nó là HỢP ĐỒNG của shim, `import *` chỉ mang tên trong đó"
@@ -35,3 +41,15 @@ def test_shim_mong_khong_co_logic(cong_ty: str, core: str):
     assert len(code) <= 6, f"{cong_ty} dày {len(code)} dòng — shim phải mỏng"
     assert all(ln.startswith(('"""', "from ", "import ")) or ln.endswith('"""') for ln in code), \
         f"{cong_ty} có dòng không phải docstring/import — shim không được mang logic"
+
+
+@pytest.mark.parametrize(("cong_ty", "core"), SHIM_CO_CAU_HINH)
+def test_shim_co_cau_hinh_khong_moc_lai_khung(cong_ty: str, core: str):
+    """Được phép có hàm đọc cấu hình; KHÔNG được phép có lại kiểu dữ liệu hay backend. Ranh giới đo bằng
+    `class`/`@dataclass`: đó là hình dạng mà bản sao cũ của `sandbox.py` từng có."""
+    from pathlib import Path
+
+    import company
+    src = (Path(company.__file__).parent / f"{cong_ty.split('.')[-1]}.py").read_text(encoding="utf-8")
+    cam = [ln for ln in src.splitlines() if ln.startswith(("class ", "@dataclass"))]
+    assert not cam, f"{cong_ty} định nghĩa lại {cam} — khung phải ở core"
