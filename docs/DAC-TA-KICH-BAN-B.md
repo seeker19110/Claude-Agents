@@ -323,8 +323,8 @@ Nếu chỉ làm được một nửa: **K0, K1, K2, K3.0–K3.5, K8.3, K9.1**. 
 | K2.4 | xong | #119, #129 | studio (`CommandTTS`, `FFmpegAssembler._run`, `qc._run`) ở #119; company ở #129 — `WorkspaceTools.run` (tool `run` của model), `TicketWorkspace._run` (lint/test của `run_checks`), `smoke.run_smoke` đều qua `Sandbox`. Sandbox đi THEO worktree (`TicketWorkspace.sandbox`) nên `runner.py` không phải đổi dòng nào. `git` và CLI model (`claude`/`codex`) là ngoại lệ có lý do; test quy ước grep `subprocess.run|Popen` toàn `src/company/` chặn PR sau lỡ thêm lệnh mới |
 | K2.5 | xong | #119, #129 | studio `render.*` ở #119; company ở #129 — `pull-requests.local_checks.sandbox` và `release-events.smoke.sandbox`, cả hai schema đã khai trường |
 | K2.6 | xong | #119 | `CommandTTS` qua `clean_env()`; `FFmpegAssembler._run` có `render.timeout_s` (mặc định 600s) |
-| K2.7 | chưa | | console tile cảnh báo "sandbox=none" — nay đọc được thẳng từ `local_checks.sandbox`/`smoke.sandbox` (#129), không cần thêm trường mới |
-| K2.8 | xong (phần company) | #129 | `SECURITY.md` mục **Sandbox tiến trình**: ba điểm gọi, ba chế độ, fail-closed, hai chỗ ghi bằng chứng, và ba giới hạn CÒN LẠI (git, CLI model, `subprocess` vẫn thấy `HOME`). Phần gateway của K8.1 vẫn chưa |
+| K2.7 | xong | #133 | `truth.sandbox()` đếm lượt chạy mã khách trong 24h theo tên sandbox, từ ba chỗ CODE điền bằng chứng (`local_checks.sandbox`, `smoke.sandbox`, audit `tools_used`) — không đọc cấu hình. Ô chỉ sáng khi `unsandboxed > 0` **và** `sources.<công ty>.sandbox_available` (máy có docker/podman): cảnh báo một việc người không làm được ngay là nhiễu |
+| K2.8 | xong | #129, #133 | `SECURITY.md` mục **Sandbox tiến trình** ở #129; `software-company/README.md` mục "Chưa có" + "Bước tiếp theo" cập nhật ở #133 (dòng cũ nói sandbox chỉ là allowlist + env — đã sai từ #129) |
 | K3.0–K3.7 | chưa | | ADR gốc 0001 trước; K3.6 đợi 5 ngày sau K3.5 |
 | K4.1–K4.5 | chưa | | ADR gốc 0002 |
 | K5.1–K5.5 | chưa | | sau K3.3 |

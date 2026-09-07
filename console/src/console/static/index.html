@@ -430,6 +430,10 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
         <div class="dead" id="silent"></div>
       </div>
 
+      <div class="sect" id="s-sandbox" hidden>
+        <div class="dead" id="sandbox"></div>
+      </div>
+
       <div class="sect" id="s-dead" hidden>
         <div class="dead" id="deadlocks"></div>
       </div>
@@ -824,7 +828,7 @@ async function api(path,init){
 const SC="software-company", ST="Studio-creators", GW="gateway";
 const BLANK={generated_at:null,sources:{},tiles:{},gates:[],tickets:[],prs:[],reviews:[],videos:[],perf:[],
   retention:null,cost_days:{days:[],series:[]},agents:[],backends:[],supervisor:[],log:[],
-  delivery:null,pending_decisions:[],running:null,deadlocks:[],product_funnel:[],silent_deadlocks:[]};
+  delivery:null,pending_decisions:[],running:null,deadlocks:[],product_funnel:[],silent_deadlocks:[],sandbox:null};
 let S=null;                    // dữ liệu tốt lần cuối đọc được — giữ nguyên khi lỗi
 let firstLoad=true, paused=false, drawerOpen=false, lastOk=null, timer=null;
 const st=()=>S||BLANK;
@@ -1562,6 +1566,23 @@ function renderSilent(){
       ${d.integrated?'<span class="tag ok">code đã ở integration</span>':""}</span></div>`).join("");
 }
 
+/* K2.7 — lệnh của khách chạy trong lớp bảo vệ nào (ADR-0035). Ô này CHỈ sáng khi máy có docker/podman mà lượt
+   gần đây vẫn chạy `subprocess`: đó là lúc người vận hành có sẵn hàng rào tốt hơn nhưng không bật. Máy không có
+   runtime thì im — nhắc một việc người không làm được ngay là nhiễu, không phải cảnh báo. */
+function renderSandbox(){
+  const sb=st().sandbox, host=$("#sandbox"), sect=$("#s-sandbox");
+  const co=(source(SC)||{}).sandbox_available===true;
+  if(!sb||!sb.runs||!sb.unsandboxed||!co){sect.hidden=true;host.innerHTML="";return;}
+  sect.hidden=false;
+  const names=Object.entries(sb.by_name||{}).map(([k,v])=>`${esc(k)} ×${num(v)}`).join(" · ");
+  host.innerHTML=`<h2>⚠ ${num(sb.unsandboxed)}/${num(sb.runs)} lượt chạy mã của khách trong ${num(sb.window_h)}h qua KHÔNG trong container</h2>
+    <div class="row"><code>sandbox=subprocess</code>
+    <span>Máy này có container runtime nhưng lint/test và lệnh khởi động của repo khách vẫn chạy bằng quyền người
+    vận hành và thấy <code>HOME</code> (<code>~/.ssh</code>, <code>~/.claude</code>). Việc của bạn: đặt
+    <code>COMPANY_SANDBOX=container</code> (hoặc <code>sandbox: container</code> trong <code>llm.yaml</code>) rồi
+    khởi động lại orchestrator. Đã dùng: ${names}.${sb.last_at?" Lượt gần nhất: "+esc(sb.last_at)+".":""}</span></div>`;
+}
+
 function renderDeadlocks(){
   const dl=listOf(SC,st().deadlocks), host=$("#deadlocks");
   $("#s-dead").hidden=!dl.length;
@@ -1777,7 +1798,7 @@ function render(){
   $("#brand-sub").textContent=`${okCount}/2 xưởng đọc được · ${st().backends.length} gói tài khoản`
     +(READONLY?" · chỉ đọc":" · duyệt được");
   $("#mode-pill").innerHTML=READONLY?'<span class="pill calm">chỉ đọc</span>':'<span class="pill accent">duyệt được</span>';
-  renderSilent(); renderDeadlocks(); renderDelivery(); renderRunning(); renderQueue(); renderTiles(); renderBackends(); renderBoards(); renderTables(); renderProductFunnel(); renderStreams();
+  renderSilent(); renderSandbox(); renderDeadlocks(); renderDelivery(); renderRunning(); renderQueue(); renderTiles(); renderBackends(); renderBoards(); renderTables(); renderProductFunnel(); renderStreams();
   costChart(); retChart(); agentChart();
   titles(); freshLabel();
 }

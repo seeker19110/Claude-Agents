@@ -162,3 +162,51 @@ def test_c5_liet_ke_dung_tung_nguon_bi_cat_va_so_ky_tu_mat() -> None:
     other = audit("reviewer", "context_trimmed", {"trimmed_context": {"prd": 1}}, ts=NOW - timedelta(seconds=10))
     assert Truth([rv, prod, other], lead, HumanGate(), NOW).review_trimmed_sources(rv) == [], \
         "bản ghi cắt của agent KHÁC không được gán cho verdict này"
+
+
+# ---- K2.7: lệnh của khách chạy trong lớp bảo vệ nào (ADR-0035) -------------
+
+def _pr(tid: str, sandbox: str | None, *, ts: datetime = NOW) -> Envelope:
+    lc: dict[str, Any] = {"lint": True, "tests": True, "verified_by": "workspace"}
+    if sandbox is not None: lc["sandbox"] = sandbox
+    return Envelope(topic="pull-requests", key=tid, actor="backend", ts=ts,
+                    payload={"ticket_id": tid, "branch": f"ticket/{tid}", "local_checks": lc})
+
+
+def test_k27_dem_theo_ten_sandbox_tu_ca_ba_nguon_bang_chung() -> None:
+    """Ba chỗ CODE điền bằng chứng, không đọc cấu hình: PR (lint/test), release-events (smoke), audit tools_used
+    (tool `run` của model). Đọc cấu hình thay vì bằng chứng là sai loại: cấu hình lúc người trực mở trang có thể
+    đã khác cấu hình lúc lượt đó chạy."""
+    env = [_pr("T1", "subprocess"),
+           rel_event("REL-1", "staging", "deployed", smoke={"ok": True, "sandbox": "container:python:3.12-slim"}),
+           audit("backend", "tools_used", {"run": 2, "sandbox": "subprocess"})]
+    sb = Truth(env, lead_stub(), HumanGate(), NOW).sandbox()
+    assert sb["runs"] == 3 and sb["unsandboxed"] == 2
+    assert sb["by_name"] == {"container:python:3.12-slim": 1, "subprocess": 2}
+    assert sb["last_at"] == NOW.isoformat(timespec="seconds")
+
+
+def test_k27_moi_luot_trong_container_thi_khong_con_gi_de_canh_bao() -> None:
+    env = [_pr("T1", "container:img"), _pr("T2", "container:img")]
+    sb = Truth(env, lead_stub(), HumanGate(), NOW).sandbox()
+    assert sb["runs"] == 2 and sb["unsandboxed"] == 0, "ô cảnh báo tắt khi `unsandouxed` = 0"
+
+
+def test_k27_luot_cu_hon_cua_so_khong_keo_canh_bao_sang_mai() -> None:
+    """Người vận hành bật container hôm nay thì ô phải TẮT hôm nay — một lượt subprocess tuần trước không nói gì
+    về hiện tại. Bỏ bộ lọc thời gian là cảnh báo không bao giờ tắt được, và cảnh báo không tắt được thì người
+    học cách bỏ qua nó."""
+    cu = _pr("T0", "subprocess", ts=NOW - timedelta(hours=30))
+    moi = _pr("T1", "container:img")
+    sb = Truth([cu, moi], lead_stub(), HumanGate(), NOW).sandbox()
+    assert sb["runs"] == 1 and sb["unsandboxed"] == 0
+    rong = Truth([cu], lead_stub(), HumanGate(), NOW).sandbox()
+    assert rong["runs"] == 0 and rong["last_at"] is None
+    assert Truth([cu], lead_stub(), HumanGate(), NOW).sandbox(hours=72)["unsandboxed"] == 1, "nới cửa sổ thì thấy lại"
+
+
+def test_k27_luot_khong_khai_sandbox_khong_bi_dem_nham() -> None:
+    """PR từ trước ADR-0035 (hoặc bảng tool `allow_run=False`) không có trường `sandbox`. Đếm nó là `subprocess`
+    thì log cũ làm cảnh báo sáng vĩnh viễn; đếm nó là `container` thì che mất lượt thật. Không đếm."""
+    sb = Truth([_pr("T1", None), _pr("T2", "")], lead_stub(), HumanGate(), NOW).sandbox()
+    assert sb == {"window_h": 24, "runs": 0, "unsandboxed": 0, "by_name": {}, "last_at": None}
