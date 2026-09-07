@@ -13,6 +13,10 @@ dependencies = [
 [dependency-groups]
 dev = [
     "mypy>=1.10",
+    # `types-PyYAML` chỉ cần ở core: bốn package kia chạy mypy với `--ignore-missing-imports` nên thư viện
+    # không có stub im lặng thành `Any`; core cố ý KHÔNG có cờ đó (ADR gốc 0001 §6 — lõi không được lỏng hơn
+    # nơi gọi nó), nên nó phải khai stub thật.
+    "types-PyYAML>=6",
     "pytest>=8",
     "pytest-cov>=5",
     "ruff>=0.5",

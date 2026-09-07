@@ -35,12 +35,12 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, ClassVar, Protocol
 
-import yaml
+from xagents_core.config import CoreConfig
 
 # K3.3a: nền chung ở `xagents_core.llm`. Re-export TỪNG tên vì 14 module và test của company nhập chúng từ
 # `company.llm` — đổi nơi nhập của người gọi là sửa code cạnh bên, không thuộc PR chuyển mã.
@@ -51,20 +51,24 @@ from xagents_core.llm import CLI_SUBTYPE_ERRORS as CLI_SUBTYPE_ERRORS
 from xagents_core.llm import CODEX_EFFORT as CODEX_EFFORT
 from xagents_core.llm import TIERS as TIERS
 from xagents_core.llm import TRANSIENT_HTTP as TRANSIENT_HTTP
+from xagents_core.llm import LLMConfig as CoreLLMConfig
 from xagents_core.llm import LLMError as LLMError
 from xagents_core.llm import Refused as Refused
 from xagents_core.llm import TransientError as TransientError
 from xagents_core.llm import cli_effort_args as cli_effort_args
 from xagents_core.llm import find_codex_binary as find_codex_binary
+from xagents_core.llm import load_config as core_load_config
 from xagents_core.llm import neutral_messages as neutral_messages
 from xagents_core.llm import reported_model as reported_model
 from xagents_core.llm import strict_schema as strict_schema
 from xagents_core.llm import system_prompt_args as system_prompt_args
 
+from .core import CORE
 from .tools import ToolCall, ToolSpec
 
-ROOT = Path(__file__).resolve().parents[2]
-CONFIG_FILE = ROOT / "llm.yaml"
+# Giữ tên cũ vì console (`collect.py`) và test đọc chúng từ module này; nguồn nay là `CORE`.
+ROOT = CORE.root
+CONFIG_FILE = CORE.config_file
 @dataclass
 class Completion:
     """`input_tokens` LUÔN là tổng input đã tính tiền, kể cả phần đọc từ cache và phần ghi cache — mỗi adapter
@@ -163,27 +167,24 @@ class ModelClient(Protocol):
 # ---------- cấu hình ----------
 
 @dataclass
-class LLMConfig:
-    provider: str = "anthropic"
-    models: dict[str, str] = field(default_factory=lambda: {"strong": "", "standard": "", "light": ""})
-    base_url: str | None = None
-    api_key: str | None = None
-    max_tokens: int = 16_000
-    effort: dict[str, str] = field(default_factory=lambda: {"strong": "high", "standard": "medium", "light": "low"})
-    config_dir: str | None = None    # claude-code: CLAUDE_CONFIG_DIR / codex: CODEX_HOME riêng → tài khoản khác trên cùng máy
-    binary: str | None = None        # đường dẫn CLI (claude / codex) khi không có trên PATH
+class LLMConfig(CoreLLMConfig):
+    """Cấu hình của company = khung chung (`xagents_core.llm.LLMConfig`) + phần chỉ company có.
+
+    K3.3b: khung, ba khoá chung của `llm.yaml` và bốn biến môi trường chung đã ở core. Ở lại đây đúng những gì
+    company có mà studio không: vòng tool trong CLI (ADR-0023/0024), retry (ADR-0012), giá và ngân sách,
+    nợ kiến trúc (ADR-0032), sandbox (ADR-0035). Chúng là DỮ LIỆU có kiểu, nên ở lại dạng trường thật chứ không
+    gói vào một `dict[str, Any]` để "trung lập" — trung lập kiểu `Any` thì mypy không bắt được chỗ gõ sai tên.
+    """
+    PREFIX: ClassVar[str] = CORE.prefix
+
+    provider: str = "anthropic"      # studio mặc định `fake`; company chạy thật nên mặc định là provider thật
     cli_tools: bool = False          # claude-code: cho CLI tự dùng tool của nó trong worktree (ADR-0023) thay vì báo không hỗ trợ
     cli_max_turns: int = 25          # trần lượt tool trong MỘT tiến trình `claude -p` (tương ứng max_turns của vòng tool công ty)
     cli_bash: list[str] = field(default_factory=list)  # mẫu Bash được phép khi CLI có tool `run`, vd ["pytest:*", "ruff:*"]
     mcp_tools: bool = False          # claude-code: đưa ĐÚNG tool của công ty vào CLI qua cầu MCP (ADR-0024); thắng `cli_tools`
     mcp_max_turns: int = 24          # trần lượt tool CLI tự chạy trong một lời gọi MCP
-    name: str = "default"            # tên backend (ADR-0019), hiện trong ghi chú audit khi xoay
-    backends: list[dict[str, Any]] = field(default_factory=list)   # ADR-0019: mỗi phần tử = một backend, cùng khoá như cấp trên
-    routing: dict[str, Any] = field(default_factory=dict)          # cooldown_s, transient_cooldown_s, prefer{tier: backend}
-    extra: dict[str, Any] = field(default_factory=dict)  # tham số provider-specific, truyền thẳng vào request
     retries: int = 3                 # số lần thử lại lỗi transport (0 = tắt)
     retry_base: float = 1.0          # giây; chờ = base × 2^i + jitter, trần 30s
-    max_input_chars: int = 120_000   # trần ký tự prompt (≈ 37k token); runner cắt payload/blackboard theo context.py
     prices: dict[str, dict[str, float]] = field(default_factory=dict)  # model (tiền tố) → {input, output, cached_input, cache_write} USD/1M
     budget_usd: float | None = None  # trần chi phí mỗi dự án; supervisor pause dự án khi chạm (None = không giới hạn)
     # ADR-0032: cùng một mã nợ kiến trúc (DEF-xx, SD-xx, `debt:`) nhắc ≥ n review liên tiếp → gate escalation cấp dự án
@@ -199,94 +200,44 @@ class LLMConfig:
     sandbox_image: str = "python:3.12-slim"
     sandbox_runtime: str = "docker"  # docker | podman | đường dẫn binary
 
-    def model_for(self, tier: str) -> str:
-        """light → standard → strong: backend không có model rẻ thì dùng model tầm trung, không bao giờ lùi lên tier cao
-        hơn yêu cầu trừ khi đó là model duy nhất."""
-        m = self.models.get(tier) or self.models.get("standard") or self.models.get("strong") or ""
-        if not m:
-            raise LLMError(f"chưa cấu hình model cho tier `{tier}` (COMPANY_MODEL_{tier.upper()} hoặc llm.yaml)")
-        return m
+    def apply_backend_yaml(self, data: Mapping[str, Any]) -> None:
+        """Khoá CLI/MCP đọc được ở cả hai cấp: một backend là một tài khoản CLI, và hai tài khoản có thể khác
+        nhau ở chỗ được bật vòng tool hay không."""
+        super().apply_backend_yaml(data)
+        self.cli_tools = bool(data.get("cli_tools", self.cli_tools))
+        self.cli_max_turns = int(data.get("cli_max_turns", self.cli_max_turns))
+        self.cli_bash = [str(x) for x in (data.get("cli_bash") or self.cli_bash)]
+        self.mcp_tools = bool(data.get("mcp_tools", self.mcp_tools))
+        self.mcp_max_turns = int(data.get("mcp_max_turns", self.mcp_max_turns))
+        if data.get("cli_max_budget_usd") is not None: self.cli_max_budget_usd = float(data["cli_max_budget_usd"])
 
-    def tiers_configured(self) -> frozenset[str]:
-        return frozenset(t for t in TIERS if self.models.get(t))
+    def apply_yaml(self, data: Mapping[str, Any]) -> None:
+        """Khoá chỉ ở gốc `llm.yaml`: retry, giá, ngân sách, sandbox — đều là thuộc tính của cả hệ, không của một
+        backend (mỗi backend một bảng giá thì cùng một lượt gọi được tính tiền khác nhau tuỳ tài khoản)."""
+        super().apply_yaml(data)
+        self.retries = int(data.get("retries", self.retries))
+        self.retry_base = float(data.get("retry_base", self.retry_base))
+        self.prices = {str(k): {kk: float(vv) for kk, vv in (v or {}).items()} for k, v in (data.get("prices") or {}).items()}
+        if data.get("budget_usd") is not None: self.budget_usd = float(data["budget_usd"])
+        self.debt_reviews = int(data.get("debt_reviews", self.debt_reviews))
+        self.sandbox = str(data.get("sandbox", self.sandbox))
+        self.sandbox_image = str(data.get("sandbox_image", self.sandbox_image))
+        self.sandbox_runtime = str(data.get("sandbox_runtime", self.sandbox_runtime))
 
-    def backend_config(self, data: dict[str, Any]) -> LLMConfig:
-        """Cấu hình cho một phần tử `backends:`: thừa kế mọi khoá dùng chung (retry, giá, trần ký tự) từ cấp trên,
-        ghi đè provider / models / base_url / api_key / effort / extra / max_tokens theo phần tử."""
-        cfg = LLMConfig(**{k: v for k, v in self.__dict__.items() if k not in {"backends", "routing"}})
-        cfg.models = dict(self.models) if data.get("inherit_models") else {t: "" for t in TIERS}
-        cfg.effort, cfg.extra = dict(self.effort), dict(self.extra)
-        _apply_yaml(cfg, data)
-        cfg.name = str(data.get("name") or cfg.provider)
-        cfg.config_dir = str(data["config_dir"]) if data.get("config_dir") else None
-        cfg.binary = str(data["binary"]) if data.get("binary") else None
-        cfg.cli_tools = bool(data.get("cli_tools", cfg.cli_tools))
-        cfg.cli_max_turns = int(data.get("cli_max_turns", cfg.cli_max_turns))
-        cfg.cli_bash = [str(x) for x in (data.get("cli_bash") or cfg.cli_bash)]
-        cfg.mcp_tools = bool(data.get("mcp_tools", cfg.mcp_tools))
-        cfg.mcp_max_turns = int(data.get("mcp_max_turns", cfg.mcp_max_turns))
-        if data.get("cli_max_budget_usd") is not None: cfg.cli_max_budget_usd = float(data["cli_max_budget_usd"])
-        if data.get("api_key"): cfg.api_key = str(data["api_key"])
-        if data.get("api_key_env"): cfg.api_key = os.environ.get(str(data["api_key_env"]), cfg.api_key)
-        return cfg
-
-
-def _apply_yaml(cfg: LLMConfig, data: dict[str, Any]) -> None:
-    cfg.provider = data.get("provider", cfg.provider)
-    cfg.models.update({k: str(v) for k, v in (data.get("models") or {}).items()})
-    cfg.effort.update(data.get("effort") or {})
-    cfg.base_url = data.get("base_url", cfg.base_url)
-    cfg.max_tokens = int(data.get("max_tokens", cfg.max_tokens))
-    if "extra" in data: cfg.extra = dict(data.get("extra") or {})
+    def apply_env(self, env: Mapping[str, str], core: CoreConfig) -> None:
+        super().apply_env(env, core)
+        if env.get("COMPANY_CLAUDE_MCP"): self.mcp_tools = env["COMPANY_CLAUDE_MCP"] not in {"0", "false", "no"}
+        if env.get("COMPANY_LLM_RETRIES"): self.retries = int(env["COMPANY_LLM_RETRIES"])
+        if env.get("COMPANY_BUDGET_USD"): self.budget_usd = float(env["COMPANY_BUDGET_USD"])
+        if env.get("COMPANY_DEBT_REVIEWS"): self.debt_reviews = int(env["COMPANY_DEBT_REVIEWS"])
+        self.sandbox = env.get("COMPANY_SANDBOX", self.sandbox)                  # ADR-0035
+        self.sandbox_image = env.get("COMPANY_SANDBOX_IMAGE", self.sandbox_image)
+        self.sandbox_runtime = env.get("COMPANY_SANDBOX_RUNTIME", self.sandbox_runtime)
 
 
 def load_config(path: Path | None = None) -> LLMConfig:
-    cfg = LLMConfig()
-    p = path or CONFIG_FILE
-    if p.exists():
-        data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        _apply_yaml(cfg, data)
-        cfg.retries = int(data.get("retries", cfg.retries))
-        cfg.retry_base = float(data.get("retry_base", cfg.retry_base))
-        cfg.max_input_chars = int(data.get("max_input_chars", cfg.max_input_chars))
-        cfg.prices = {str(k): {kk: float(vv) for kk, vv in (v or {}).items()} for k, v in (data.get("prices") or {}).items()}
-        if data.get("budget_usd") is not None: cfg.budget_usd = float(data["budget_usd"])
-        cfg.debt_reviews = int(data.get("debt_reviews", cfg.debt_reviews))
-        cfg.cli_tools = bool(data.get("cli_tools", cfg.cli_tools))
-        cfg.cli_max_turns = int(data.get("cli_max_turns", cfg.cli_max_turns))
-        cfg.cli_bash = [str(x) for x in (data.get("cli_bash") or cfg.cli_bash)]
-        cfg.mcp_tools = bool(data.get("mcp_tools", cfg.mcp_tools))
-        cfg.mcp_max_turns = int(data.get("mcp_max_turns", cfg.mcp_max_turns))
-        if data.get("cli_max_budget_usd") is not None: cfg.cli_max_budget_usd = float(data["cli_max_budget_usd"])
-        cfg.sandbox = str(data.get("sandbox", cfg.sandbox))
-        cfg.sandbox_image = str(data.get("sandbox_image", cfg.sandbox_image))
-        cfg.sandbox_runtime = str(data.get("sandbox_runtime", cfg.sandbox_runtime))
-        cfg.backends = [dict(b) for b in (data.get("backends") or []) if isinstance(b, dict)]
-        cfg.routing = dict(data.get("routing") or {})
-    env = os.environ
-    if env.get("COMPANY_LLM_PROVIDER"):   # biến môi trường thắng file: một provider được chỉ đích danh → bỏ `backends:`
-        cfg.provider, cfg.backends = env["COMPANY_LLM_PROVIDER"], []
-    for t in TIERS:
-        if env.get(f"COMPANY_MODEL_{t.upper()}"): cfg.models[t] = env[f"COMPANY_MODEL_{t.upper()}"]
-    cfg.base_url = env.get("COMPANY_LLM_BASE_URL", cfg.base_url)
-    cfg.api_key = env.get("COMPANY_LLM_API_KEY", cfg.api_key)
-    if env.get("COMPANY_CLAUDE_MCP"): cfg.mcp_tools = env["COMPANY_CLAUDE_MCP"] not in {"0", "false", "no"}
-    if env.get("COMPANY_LLM_RETRIES"): cfg.retries = int(env["COMPANY_LLM_RETRIES"])
-    if env.get("COMPANY_MAX_INPUT_CHARS"): cfg.max_input_chars = int(env["COMPANY_MAX_INPUT_CHARS"])
-    if env.get("COMPANY_BUDGET_USD"): cfg.budget_usd = float(env["COMPANY_BUDGET_USD"])
-    if env.get("COMPANY_DEBT_REVIEWS"): cfg.debt_reviews = int(env["COMPANY_DEBT_REVIEWS"])
-    cfg.sandbox = env.get("COMPANY_SANDBOX", cfg.sandbox)                  # ADR-0035
-    cfg.sandbox_image = env.get("COMPANY_SANDBOX_IMAGE", cfg.sandbox_image)
-    cfg.sandbox_runtime = env.get("COMPANY_SANDBOX_RUNTIME", cfg.sandbox_runtime)
-    if env.get("COMPANY_LLM_BACKENDS"):
-        wanted = [s.strip() for s in env["COMPANY_LLM_BACKENDS"].split(",") if s.strip()]
-        by_name = {str(b.get("name") or b.get("provider")): b for b in cfg.backends}
-        missing = [w for w in wanted if w not in by_name]
-        if missing: raise LLMError(f"COMPANY_LLM_BACKENDS nhắc backend không có trong llm.yaml: {missing}")
-        cfg.backends = [by_name[w] for w in wanted]
-        if cfg.routing.get("prefer"):   # prefer trỏ backend đã bị lọc bỏ thì bỏ mục đó, không phải lỗi cấu hình
-            cfg.routing["prefer"] = {t: n for t, n in cfg.routing["prefer"].items() if n in wanted}
-    return cfg
+    """`llm.yaml` của company + biến `COMPANY_*`. Chữ ký giữ nguyên (`path` vị trí) vì 14 nơi gọi đang dùng."""
+    return core_load_config(CORE, path, cls=LLMConfig)
 
 
 # ---------- giá tiền ----------
