@@ -8,6 +8,26 @@ Số liệu nền (đo trên `main` 2026-09-07): 21 agent, 45 skill, 19 topic, 5
 file `src/` + `console/src/console/truth.py` (179 chỗ; nhiều nhất `delivery-lead` 30, `release-engineer` 15,
 `security-engineer` 13, `supervisor` 13, `account-manager` 11, `spec-writer` 11).
 
+## Cách dùng tài liệu này khi giao cho agent thực thi
+
+Mỗi phiên agent nhận **đúng một PR** trong bảng §0, với câu lệnh dạng:
+`Triển khai PR-<n> theo docs/DAC-TA-TRIEN-KHAI-ADR-0037.md §<mục>. Đọc AGENTS.md, CLAUDE.md, TRAPS.md trước.`
+
+Luật cho phiên đó:
+1. Không làm PR khác trong cùng phiên, kể cả khi "tiện tay". Không làm trước PR có phụ thuộc chưa merge.
+2. Mọi mục "Test hai chiều" phải có bằng chứng trong commit message: dán output `pytest` **đỏ** khi tắt bản sửa và
+   **xanh** khi bật (AGENTS.md bắt buộc §4).
+3. "Xong" = output của đúng ba lệnh CI trong phiên: `uv run ruff check src tests` · `uv run mypy src/company
+   --ignore-missing-imports` · `uv run pytest -q -n auto --cov` (coverage 100). PR-5x thêm `make golden`,
+   `make assetscan`, `make assetbudget`, `make subagents-check`, `make eval-replay`.
+4. PR-5x cần bản ghi eval bằng model thật (`make eval-record AGENT=<id>` hoặc workflow Actions `eval-record`).
+   Không có key → dừng và nói rõ, **không** ghi tay recording, không xoá agent khỏi `REQUIRED.txt`.
+5. Gặp điều đặc tả không nói: nêu giả định thành lời trong PR body và đi tiếp; chỉ hỏi khi sai giả định làm việc
+   vô dụng (AGENTS.md "Khi bối rối").
+6. Tiêu đề PR đúng regex `AGENTS.md` §7; scope một từ `company` (`console` cho phần console của PR-2/PR-6);
+   bật auto-merge squash; `gh pr list --state open` trước — chỉ một PR mở tại một thời điểm.
+7. Không sửa `.claude/agents/sc-*`, `tests/golden/`, `evals/recordings/` bằng tay — chỉ qua `make`.
+
 ## 0. Thứ tự PR và phụ thuộc
 
 ```
@@ -421,3 +441,109 @@ không đếm". Test khoá `len == 6` với comment nêu rõ; README ghi "5 agen
 - `uv run python -m company.orchestrator status` trên dự án demo: một `research-requests` đi tới `UAT-*` với đúng
   số lượt gọi ADR §Hệ quả (3/4/5), đọc từ `metrics`.
 - Không còn chuỗi id agent cũ trong `src/`, `console/`, `docs/` (trừ ADR lịch sử và `CHANGELOG.md`).
+
+## 10. Thân bài (prompt) của năm agent
+
+Khuôn mục giữ nguyên như mọi agent hiện có — `# <id>` · `## Vai trò` · `## Bạn PHẢI` · `## Bạn KHÔNG ĐƯỢC` ·
+`## Đầu vào` · `## Đầu ra (schema trong topics/schemas/)` · `## Definition of done` · `## Quy tắc chung` —
+vì `subagents.sections()` cắt theo các H2 này và `test_than_bai_co_du_bon_khoi` đếm chúng. Với agent nhiều pha, mỗi
+mục có **tiểu mục H3 theo pha** (`### Pha intake`, …); phần trước H3 đầu tiên là phần chung cho mọi pha.
+
+Nguyên tắc ghép: **chép nguyên văn** các dòng "PHẢI/KHÔNG ĐƯỢC" của agent cũ vào H3 pha tương ứng, không viết lại
+bằng lời khác — mỗi dòng ấy là một bài học đã trả giá (ADR-0004, `docs/reports/`). Chỉ xoá dòng nói về *một agent khác
+mà nay cùng là mình* (vd. intake "gửi cho researcher" → "sang pha research").
+
+### 10.1 `product`
+
+- Chung: "Model quyết định, code hành động" — bạn không tạo ticket, không xin gate; orchestrator làm. Đọc `_phase`
+  của lượt để biết mình đang ở pha nào; **không tự nhảy pha**.
+- `### Pha intake` ← intake.md + clarifier.md: tách yêu cầu thành mục tiêu/ràng buộc/giả định; câu hỏi có lựa chọn
+  sẵn, tối đa 2 vòng (`MAX_CLARIFY_ROUNDS`), gom một lần.
+- `### Pha research` ← researcher.md: báo cáo 4 mục domain/ux/codebase/tech (ADR-0006); sở hữu `glossary`, `design`.
+- `### Pha spec` ← synthesizer.md + spec-writer.md + risk.md: draft thống nhất, khử trùng lặp, **mục `risks` nằm
+  ngay trong draft** (thay lượt risk); PRD theo `templates/prd.md`, Gherkin 100% Must, `kind` + `runtime` bắt buộc
+  (ADR-0031).
+- `### Pha plan` ← delivery-lead.md: C4 L1–L2 + ADR lên `architecture`, contract lên `api-contract` **trước** khi trả
+  ticket; ticket ≤ 1 ngày/200k token, `estimate_tokens`, `budget_tokens ≥ ×1.5`, `risk_tags`, `depends_on`, **`stack`**
+  (mới, §4.2); nhận `estimate_calibration` từ supervisor.
+- DoD: mỗi pha một dòng DoD riêng, giữ nguyên chữ "Definition of done" ở H2.
+
+### 10.2 `builder`
+
+- Chung ← engineering-common + phần chung của backend/frontend/mobile: nhận `test_suite` của qa, **không sửa được
+  test** (tool chặn) — bất đồng thì ghi `test_dispute`; `local_checks` do code điền (ADR-0010); rulings (ADR-0030).
+- `### Stack backend|frontend|mobile|database|platform|data` ← file tương ứng. Pha chọn theo `payload.stack`,
+  không theo route; ticket không có `stack` không tới được đây (`_check_plan` chặn).
+- KHÔNG ĐƯỢC: tự đổi `stack`; ghi vào `architecture` (chỉ product).
+
+### 10.3 `qa`
+
+- `### Pha author` ← test-author.md **nguyên văn** (khối trích ở trên là chuẩn): viết MÙ, chỉ ghi `tests/`, test đỏ vì
+  chưa có code là ĐÚNG; lượt `test_dispute` mới được xem diff.
+- `### Pha review` ← reviewer.md + qa-debugger.md: đọc diff bằng tool, không tin `summary`; chấm test có phủ
+  Gherkin không; `chan_doan` (lịch sử hỏng của ticket) để không chẩn đoán lại từ đầu; trên `release-events`
+  staging: hồi quy + perf + a11y, `source: qa`, `ticket_id = release_id`, verdict bị `_verdict_with_run` đối chiếu
+  với smoke (ADR-0029/0036).
+- Chung KHÔNG ĐƯỢC: ở pha review nới assert của test mình viết ở pha author để PR xanh — nếu test sai đặc tả thì
+  ghi `finding` cho builder mở `test_dispute`, không tự sửa.
+
+### 10.4 `security` — thân bài security-engineer.md không đổi; đổi tên trong `# security` và các câu tự xưng.
+
+### 10.5 `ops`
+
+- `### Pha deploy` ← release-engineer.md: staging trước, production chỉ sau gate `release` (`PROD_ROUTE`), `env` và
+  `release_id` là của route không phải lời khai; rollback theo SLO.
+- `### Pha docs` ← support-docs.md: Diátaxis, Keep a Changelog, incident → `root_cause_class`.
+- `### Pha account` ← account-manager.md: SOW/UAT trong `contract`, change request có impact, **không ký thay khách**
+  (gate `acceptance` do bạn tạo nên bạn không thể là người quyết — code cưỡng chế, prompt nhắc).
+
+## 11. Eval theo pha (`evals/<id>.yaml`, `src/company/evals.py`)
+
+- Ca eval thêm trường `phase:` (bắt buộc với agent có `phases`; `evals.py` báo lỗi nếu thiếu, và nếu `phase` không
+  có trong front matter). `load_cases` truyền `phase` vào `runner.generate`. Bản ghi `evals/recordings/<id>.json`
+  khoá theo `(agent, version, case, phase)`.
+- Gộp ca: `product.yaml` = intake.yaml + clarifier.yaml + researcher.yaml + synthesizer.yaml + spec-writer.yaml +
+  risk.yaml + delivery-lead.yaml, mỗi ca gắn `phase` tương ứng; ca của risk chuyển thành `expect.min_len:
+  {risks: 1}` trên `requirements-draft` của pha `spec`. Tương tự `builder.yaml` (6 file, `phase` = stack),
+  `qa.yaml` (3 file), `ops.yaml` (3 file). `security.yaml` đổi tên.
+- Ca mới bắt buộc, mỗi agent ≥ 1: **"nhầm pha"** — input của pha A gửi với `phase: B` → `expect.refuses` (agent
+  ghi `notes`/`findings` nói sai pha thay vì làm bừa). Đây là ca đo được nhất cho rủi ro "prompt loãng".
+- `REQUIRED.txt`: 6 dòng (5 + supervisor). README dòng 56: "đủ 5 agent + supervisor, mỗi agent ≥ 2 ca/pha".
+
+## 12. `gates/checklists.md` đích (PR-2)
+
+Giữ đúng cú pháp parser (`## Gate … (kind \`x\`, subject …)`, hai dòng đầu mục `Code gửi kèm:` / `Người tự kiểm thêm:`).
+
+```
+## Gate 1 — Duyệt spec (kind `spec`, subject `SPEC-<project>`)           ← nguyên văn hiện tại
+## Gate 2 — Duyệt release production (kind `release`, subject `<release_id>`)
+Điều kiện mở: qa `pass` trên staging (+ security `pass` nếu release chứa ticket có `risk_tags`); threat model
+`review-results` key `SPEC-<project>` tồn tại và không `block`; blackboard có `architecture` (dời từ gate plan cũ).
+Code gửi kèm: tests, scan, regression-staging, smoke, perf, a11y, runbook, rollback, threat-model, architecture
+- [ ] … 8 mục cũ giữ nguyên
+- [ ] `threat-model` — threat model v1 có; High/Critical có mitigation hoặc ADR có người ký
+- [ ] `architecture` — C4 L1–L2 và ADR trên blackboard
+Người tự kiểm thêm:
+- [ ] … 4 mục cũ
+- [ ] Ước lượng có cơ sở (tham chiếu `knowledge` hoặc PERT)            ← dời từ plan
+- [ ] Ngân sách token cho dự án được đặt; tổng estimate ≤ ngân sách     ← dời từ plan
+## Gate nghiệm thu của khách (kind `acceptance`, subject = `UAT-<release_id>`)   ← nội dung Gate 4 cũ, bỏ số
+## Gate bất thường (kind `escalation`, subject = ticket_id)                       ← nguyên văn; đoạn "Escalation cấp dự án"
+   đổi danh sách agent thành "product (mọi pha nghiên cứu)"
+```
+
+`SELF_CHECK_SOURCES["release"]` thêm hai khoá dời từ `["plan"]` (giữ nguyên `id` cũ `plan.uoc-luong-co-co-so`… để hồ sơ
+gate_brief cũ còn đọc được); `_maybe_open_release_gate` (delivery.py:323) thêm `threat-model`, `architecture` vào
+`checklist=[…]`; `gate_brief._brief_release` đọc thêm hai nguồn đó.
+
+## 13. Schema và topic (không thêm topic mới)
+
+| File | Đổi | PR |
+|---|---|---|
+| `topics/schemas/tasks.json` | `assignee.enum` → `["builder"]`; thêm `stack` enum 6 giá trị (required) | 4.2 / 5d |
+| mọi `topics/schemas/*.json` | thêm `_phase: {type: string}` optional | 3 |
+| `topics/schemas/requirements-draft.json` | `risks` required (đã có trường; nâng lên required) | 5e |
+| `topics/schemas/review-results.json` | `source` enum giữ `reviewer|qa|security` | — |
+| `src/company/events.py` | `Assignee`, `Task.stack`, `MAX_TICKET_TOKENS`, `RISK_HINTS`, `NAMESPACE_OWNERS` | 1, 3, 5x |
+
+`tests/test_schema_consistency.py` đối chiếu Pydantic ↔ JSON schema: đổi hai chỗ cùng PR.
