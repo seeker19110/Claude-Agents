@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 from ..events import AuditLog, Envelope
 from ..gate_cli import trusted_decision
 from .cli import _fmt, source_fingerprint
-from .routes import ACTIVE_STATES, ACTOR, CONTROL_TOPICS, PAUSING, PLAN_INPUTS, REVIEW_AGENT, Route
+from .routes import ACTIVE_STATES, ACTOR, CONTROL_TOPICS, PAUSING, PLAN_INPUTS, REVIEW_AGENT, review_route
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
@@ -136,7 +136,7 @@ def tick(o: Orchestrator, now: datetime | None = None) -> list[StepResult]:
             if pr is None or key in o.once: continue
             o._remember(key); o._audit("review.reassign", {"ticket_id": tid, "source": src}, ticket_id=tid)
             res = StepResult(pr.event_id, pr.topic, pr.key)
-            o._call(REVIEW_AGENT[src], pr, Route("pull-requests", REVIEW_AGENT[src], "review-results"), res)
+            o._call(REVIEW_AGENT[src], pr, review_route(REVIEW_AGENT[src]), res)
             results.append(res)
             # Giao lại chỉ một lần (`once`): lượt thứ hai cũng lỗi/quá hạn thì không ai giao nữa và ticket nằm
             # `in_review` mãi. Đưa cho người: supervisor escalate → ticket hoãn, gate `escalation` mở.

@@ -61,12 +61,12 @@ def run() -> None:
     bus.publish(Envelope(topic="audit-log", key=ROLE.BACKEND, actor=ROLE.BACKEND,
                          payload=AuditLog(actor=ROLE.BACKEND, action="code", ticket_id="TCK-1", tokens=8_500).model_dump()))
     _pr(bus, "TCK-1", ROLE.BACKEND)
-    _review(bus, "TCK-1", SOURCE.REVIEWER, ROLE.REVIEWER)
+    _review(bus, "TCK-1", SOURCE.REVIEWER, ROLE.QA)
     _review(bus, "TCK-1", SOURCE.QA, ROLE.QA, metrics={"mutation": 0.74})
     print("TCK-1 approved → TCK-2 tự dispatch:", lead.state["TCK-1"], "/", lead.state["TCK-2"])
 
     _pr(bus, "TCK-2", ROLE.BACKEND)
-    _review(bus, "TCK-2", SOURCE.REVIEWER, ROLE.REVIEWER)
+    _review(bus, "TCK-2", SOURCE.REVIEWER, ROLE.QA)
     _review(bus, "TCK-2", SOURCE.QA, ROLE.QA)
     state_before_security = lead.state["TCK-2"]
     _review(bus, "TCK-2", SOURCE.SECURITY, ROLE.SECURITY, metrics={"dast_high": 0, "license_violations": 0})

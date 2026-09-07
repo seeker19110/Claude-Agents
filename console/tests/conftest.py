@@ -57,10 +57,10 @@ def build_company_db(path: Path) -> Path:
     bus.publish(CompanyEnvelope(topic="pull-requests", key="TCK-112", actor="backend", payload=pr.model_dump()))
     review = ReviewResult(ticket_id="TCK-112", source="reviewer", verdict="block",
                           findings=[{"level": "block", "text": "thiếu kiểm tra quyền"}], root_cause="thiếu authz")
-    bus.publish(CompanyEnvelope(topic="review-results", key="TCK-112", actor="reviewer", payload=review.model_dump()))
+    bus.publish(CompanyEnvelope(topic="review-results", key="TCK-112", actor="qa", payload=review.model_dump()))
     _produced(bus, CompanyEnvelope, CompanyAudit, actor="backend", topic_out="pull-requests", tokens=8_420, cost=0.21,
               ticket_id="TCK-112", project_id="P1")
-    _produced(bus, CompanyEnvelope, CompanyAudit, actor="reviewer", topic_out="review-results", tokens=2_100, cost=0.05,
+    _produced(bus, CompanyEnvelope, CompanyAudit, actor="qa", topic_out="review-results", tokens=2_100, cost=0.05,
               age_days=3, ticket_id="TCK-112", project_id="P1")
     # ADR-0037: software-company không còn `GateKind` `plan` — gate công đoạn quá hạn ở đây là `release`.
     gate_request(bus, CompanyEnvelope, CompanyAudit, kind="release", subject_id="REL-001",

@@ -36,10 +36,11 @@ class ROLE:
     DATABASE: Final = "database"
     PLATFORM: Final = "platform"
     DATA: Final = "data"
-    # → `qa` (PR-5c): test-author (pha `author`) + reviewer + qa-debugger (pha `review`)
-    QA: Final = "qa-debugger"
-    TEST_AUTHOR: Final = "test-author"
-    REVIEWER: Final = "reviewer"
+    # → `qa` (PR-5c: xong) — test-author (pha `author`) + reviewer + qa-debugger (pha `review`) GỘP thành một
+    # hằng, như `ops` ở PR-5b: `test_hang_role_khop_front_matter_hai_chieu` cấm hai hằng cùng giá trị nên
+    # `TEST_AUTHOR` và `REVIEWER` không còn; ba id cũ vào `MIGRATED` trỏ về `"qa"`. Nhãn `source` của
+    # `review-results` vẫn là `SOURCE.REVIEWER`/`SOURCE.QA` — hai GÓC NHÌN chấm, không phải hai agent.
+    QA: Final = "qa"
     # → `security` (PR-5a: xong, đổi tên 1:1)
     SECURITY: Final = "security"
     # → `ops` (PR-5b: xong) — release-engineer (pha `deploy`) + support-docs (pha `docs`) + account-manager

@@ -50,7 +50,7 @@ def test_supervisor_dem_lien_tiep_theo_nguon_va_reset_khi_nguon_bo_nhac():
     bus.publish(Envelope(topic="tasks", key="T7", actor="delivery-lead",
                          payload=Task(ticket_id="T7", project_id="P1", requirement_id="R", assignee="backend", title="x",
                                       acceptance=["a"]).model_dump()))
-    _review(bus, "T7", "code ok", source="reviewer", actor="reviewer", pid=None)
+    _review(bus, "T7", "code ok", source="reviewer", actor="qa", pid=None)
     _review(bus, "T7", "DEF-01 vẫn treo", pid=None)
     assert sup.debt["P1"]["DEF-01"]["streak"]["security"] == 4
     # review không có project_id và ticket lạ: bỏ qua, không sập
@@ -67,7 +67,7 @@ def test_supervisor_no_tang_tiep_thi_chom_nguong_lan_hai():
     for i in range(6): _review(bus, f"T{i}", "SD-2 treo")
     assert [(d["debt_id"], d["times"]) for d in sup.debt_due] == [("SD-2", 1), ("SD-2", 2)]
     r = ReviewResult(ticket_id="T9", source="qa", verdict="fail", root_cause="debt: cache-layer", project_id="P1")
-    bus.publish(Envelope(topic="review-results", key="T9", actor="qa-debugger", payload=r.model_dump()))
+    bus.publish(Envelope(topic="review-results", key="T9", actor="qa", payload=r.model_dump()))
     assert sup.debt["P1"]["CACHE-LAYER"]["sources"] == ["qa"]
 
 

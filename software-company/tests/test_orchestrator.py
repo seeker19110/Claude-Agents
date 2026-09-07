@@ -35,12 +35,22 @@ def _agent_of(system: str) -> str:
     return system.split("\n", 1)[0].lstrip("# ").strip()
 
 
-def _ops_phase(system: str) -> str:
-    """ADR-0037 PR-5b: `ops` gộp ba vai cũ theo pha; hệ thống nối `# Skills của pha <tên>` vào cuối prompt
-    (`AgentSpec.system_prompt`), nên đó là chỗ DUY NHẤT `handler()` biết đang mô phỏng vai nào."""
-    for ph in ("deploy", "docs", "account"):
+def _phase_of(system: str, agent: str, *phases: str) -> str:
+    """ADR-0037: agent gộp (`ops`, `qa`) mang nhiều vai cũ theo pha; hệ thống nối `# Skills của pha <tên>` vào
+    cuối prompt (`AgentSpec.system_prompt`), nên đó là chỗ DUY NHẤT `handler()` biết đang mô phỏng vai nào.
+    Pha rỗng skill (`qa[author]`) không nối tiêu đề nào — nó là pha còn lại khi không thấy pha nào khác."""
+    for ph in phases:
         if f"# Skills của pha {ph}" in system: return ph
-    raise AssertionError("ops: không xác định được pha từ system prompt")
+    raise AssertionError(f"{agent}: không xác định được pha từ system prompt")
+
+
+def _ops_phase(system: str) -> str:
+    return _phase_of(system, "ops", "deploy", "docs", "account")
+
+
+def _qa_phase(system: str) -> str:
+    """`qa[author]` khai `skills: []` nên không có tiêu đề pha nào để nhận ra — mặc định về `author`."""
+    return "review" if "# Skills của pha review" in system else "author"
 
 
 def _inp(user: str) -> dict:
@@ -66,8 +76,14 @@ def handler(system: str, user: str) -> dict:
                                                        {"namespace": "api-contract", "content_ref": "openapi.yaml", "summary": "v1"}]}
     if a in ENGINEERING:
         return {"ticket_id": p["ticket_id"], "branch": f"ticket/{p['ticket_id']}", "pr_ref": "#1", "local_checks": {"lint": True, "tests": True}}
-    if a in {"reviewer", "qa-debugger", "security"}:
-        src = {"reviewer": "reviewer", "qa-debugger": "qa", "security": "security"}[a]
+    if a == "qa" and _qa_phase(system) == "author":
+        # ADR-0028 + ADR-0037: pha `author` viết bộ test, đầu ra là `test-suites` chứ không phải review
+        return {"ticket_id": p["ticket_id"], "assignee": p.get("assignee", "backend"), "files": ["tests/test_t.py"],
+                "acceptance_covered": [{"acceptance": "A1", "tests": ["tests/test_t.py::t"]}], "blind": True}
+    if a in {"qa", "security"}:
+        # ADR-0037: `source` là NHÃN chấm, không phải id agent — lượt PR của `qa` chấm dưới nhãn `reviewer`,
+        # lượt hồi quy staging (`release-events`) dưới nhãn `qa`.
+        src = "security" if a == "security" else ("qa" if p.get("release_id") and "ticket_id" not in p else "reviewer")
         tid = p.get("ticket_id") or p.get("release_id") or f"SPEC-{pid}"
         out = {"ticket_id": tid, "source": src, "verdict": "pass"}
         if a == "security" and "artifacts" in p:  # threat model từ spec: ghi blackboard
@@ -134,11 +150,11 @@ def test_check_routes_bat_route_khai_pha_agent_khong_co(monkeypatch):
     """ADR-0037: `Route(phase=...)` phải khớp `phases` trong front matter. Lệch thì lượt chạy bằng bộ skill của
     vai khác — `check_routes` chạy lúc khởi động nên nó vỡ ngay, không phải giữa một ticket."""
     agents = load_agents()
-    lac = Route("pull-requests", "reviewer", "review-results", phase="khong-co")
+    lac = Route("pull-requests", "qa", "review-results", phase="khong-co")
     monkeypatch.setattr(routes_mod, "ROUTES", (*ROUTES, lac))
     bad = check_routes(agents)
-    assert bad == ["reviewer không có pha khong-co (front matter khai: không pha nào)"]
-    assert routes_mod.phase_for(lac, agents["reviewer"], _pub_env()) == "khong-co", "route khai pha thì dùng pha đó"
+    assert bad == ["qa không có pha khong-co (front matter khai: ['author', 'review'])"]
+    assert routes_mod.phase_for(lac, agents["qa"], _pub_env()) == "khong-co", "route khai pha thì dùng pha đó"
 
 
 def test_phase_for_lay_stack_cua_ticket_cho_route_sua_code():
@@ -216,9 +232,9 @@ def test_resume_from_sqlite_does_not_redo_work(tmp_path):
     assert [e.event_id for e in o2.queue] == [e.event_id for e in o1.queue]
     o2.run()
     assert o2.lead.state["T1"] == "merged" and o2.lead.state["T2"] == "merged" and o2.stats["errors"] == 0
-    # 8 (nghiên cứu + threat model + plan) + T1: 2 (ADR-0021: không QA ở PR) + REL-001: 2 + T2: 4 (qa + security)
-    # + REL-002: 3 (security DAST) = 19
-    assert n_calls + len(c2.calls) == 19
+    # 8 (nghiên cứu + threat model + plan) + T1: 2 (builder + qa[review]) + REL-001: 2 + T2: 3 (builder +
+    # qa[review] + security; ADR-0037 gộp reviewer và qa-debugger thành MỘT lượt) + REL-002: 3 = 18
+    assert n_calls + len(c2.calls) == 18
 
 
 def test_poll_picks_up_gate_decision_from_other_process(tmp_path):
@@ -291,7 +307,7 @@ def test_loi_agent_khong_nhanh_nao_nhan_thi_mo_gate_chu_khong_im_lang():
         # Không hỏng lượt threat-model của security (nhận diện qua `artifacts` trong payload
         # `approved-specs`) — nếu không plan bị `_check_plan` từ chối vì thiếu threat model (ADR-0037 PR-1),
         # còn test này muốn phủ nhánh reviewer hỏng ở bước review PR.
-        if _agent_of(system) in {"reviewer", "qa-debugger", "security"} and "artifacts" not in _inp(user):
+        if _agent_of(system) in {"qa", "security"} and "artifacts" not in _inp(user):
             raise LLMError("model không trả về nội dung nào")
         return handler(system, user)
 
@@ -458,12 +474,12 @@ def test_duyet_escalation_do_reviewer_loi_thi_review_con_thieu_duoc_chay_lai(tmp
     `in_review` nhưng event PR đã bị đánh dấu xử lý: không gì chạy lại review còn thiếu, ticket nằm im tới
     `review_timeout` 2 giờ. Đo được 2026-09-05: QLKH-005/013 duyệt xong đứng im, người phải `takeover` nộp lại PR
     nguyên trạng. Duyệt gate phải gọi lại đúng nguồn review còn thiếu trên PR mới nhất."""
-    calls = {"reviewer": 0}
+    calls = {"qa": 0}
 
     def reviewer_hong_lan_dau(system, user):
-        if _agent_of(system) == "reviewer":
-            calls["reviewer"] += 1
-            if calls["reviewer"] == 1: raise LLMError("reviewer hỏng một lần")
+        if _agent_of(system) == "qa":
+            calls["qa"] += 1
+            if calls["qa"] == 1: raise LLMError("reviewer hỏng một lần")
         return handler(system, user)
 
     bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient(handler=reviewer_hong_lan_dau))
@@ -474,7 +490,7 @@ def test_duyet_escalation_do_reviewer_loi_thi_review_con_thieu_duoc_chay_lai(tmp
     orch.gate.decide("T1", "approve", by="human:lead", reason="CLI lỗi tạm, chấm lại"); orch.run()
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert "review.rerun" in acts, "duyệt gate phải giao lại review còn thiếu, không chờ review_timeout"
-    assert calls["reviewer"] >= 2 and orch.lead.state["T1"] in {"approved", "merged", "released"},         f"reviewer phải được gọi lại và ticket đi tiếp; state={orch.lead.state['T1']}"  # ≥2: T2 sau đó cũng được review
+    assert calls["qa"] >= 2 and orch.lead.state["T1"] in {"approved", "merged", "released"},         f"reviewer phải được gọi lại và ticket đi tiếp; state={orch.lead.state['T1']}"  # ≥2: T2 sau đó cũng được review
 
 def test_mo_lai_bus_khi_gate_decide_chua_duoc_xu_ly_khong_mo_gate_trung(tmp_path):
     """Người duyệt escalation rồi orchestrator mở lại bus TRƯỚC khi event `gate.decide` được xử lý (nó nằm sau một event
@@ -690,7 +706,7 @@ def test_state_song_sot_qua_restart_ca_khi_co_escalation(tmp_path):
         # sinh action "escalate"; nhánh ticket blocked gọi thẳng `gate.request`, không qua supervisor). Loại trừ
         # lượt threat-model (payload có `artifacts`) — hỏng nó thì `_check_plan` từ chối plan (ADR-0037 PR-1),
         # không tới được nhánh review PR mà test này muốn phủ.
-        if _agent_of(system) in {"reviewer", "qa-debugger", "security"} and "artifacts" not in _inp(user):
+        if _agent_of(system) in {"qa", "security"} and "artifacts" not in _inp(user):
             raise LLMError("reviewer hỏng")
         return handler(system, user)
 
@@ -952,7 +968,7 @@ def test_conditional_acceptance_opens_change_request_and_lessons_recorded():
 
 def test_blocked_ticket_opens_escalation_gate_and_reopens_on_approve():
     def failing(system, user):
-        if _agent_of(system) == "reviewer":
+        if _agent_of(system) == "qa":
             return {"ticket_id": _inp(user)["ticket_id"], "source": "reviewer", "verdict": "block", "findings": [{"level": "block", "text": "sai contract"}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=failing))
@@ -974,13 +990,14 @@ def test_overdue_review_is_reassigned_once():
     calls = []
     def lazy(system, user):
         a = _agent_of(system); calls.append(a)
-        if a == "qa-debugger" and "`pull-requests`" in user and calls.count("qa-debugger:pr") == 0:  # lượt QA ở PR (T2)
-            calls.append("qa-debugger:pr"); raise LLMError("timeout")
+        # ADR-0037: `qa` chấm mọi PR → chỉ cho nó hỏng đúng một lần ở T2 (hỏng T1 thì T2 không tới lượt)
+        if a == "qa" and '"ticket_id": "T2"' in user and "`pull-requests`" in user and calls.count("qa:pr-T2") == 0:
+            calls.append("qa:pr-T2"); raise LLMError("timeout")
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=lazy))
     _drive_to_plan(bus, orch); orch.run()
     later = datetime.now(UTC) + timedelta(hours=3)
-    assert orch.lead.state["T2"] == "in_review" and orch.lead.overdue_reviews(later) == {"T2": {"qa"}}
+    assert orch.lead.state["T2"] == "in_review" and orch.lead.overdue_reviews(later) == {"T2": {"reviewer"}}
     orch.tick(now=later)
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert orch.lead.state["T2"] == "merged" and acts.count("review.reassign") == 1 and acts.count("llm_error") == 1

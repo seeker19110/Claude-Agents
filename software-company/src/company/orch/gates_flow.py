@@ -19,7 +19,7 @@ from ..delivery import DONE_STATES
 from ..events import Envelope
 from ..gates import Decision, GateRequest
 from ..roles import LEAD_ACTOR, ROLE
-from .routes import ACTOR, PROD_ROUTE, RESEARCH_TOPICS, REVIEW_AGENT, Route
+from .routes import ACTOR, PROD_ROUTE, RESEARCH_TOPICS, REVIEW_AGENT, Route, review_route
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
@@ -187,7 +187,7 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
             for src in sorted(o.lead.required_reviews(tid) - set(o.lead.reviews.get(tid, {}))):
                 o._audit("review.rerun", {"ticket_id": tid, "source": src, "by": by}, ticket_id=tid,
                             project_id=o.project_for(pr))
-                o._call(REVIEW_AGENT[src], pr, Route("pull-requests", REVIEW_AGENT[src], "review-results"), res)
+                o._call(REVIEW_AGENT[src], pr, review_route(REVIEW_AGENT[src]), res)
     elif decision in {"reject", "rollback"} and tid in o.lead.tickets:
         blocked = o.lead.close_escalated(tid); res.actions.append(f"closed:{tid}")
         o._audit("ticket.abandoned", {"ticket_id": tid, "by": by, "dependents_blocked": blocked}, ticket_id=tid,

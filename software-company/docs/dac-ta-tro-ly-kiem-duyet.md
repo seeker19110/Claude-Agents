@@ -63,7 +63,7 @@ không cần Claude Code; subagent chạy được cả khi hồ sơ chưa sinh 
 ### 4.1 CLI
 
 ```
-python -m company.subagents build [--out ../.claude/agents] [--only sc-qa-debugger]
+python -m company.subagents build [--out ../.claude/agents] [--only sc-qa]
 python -m company.subagents check [--out ../.claude/agents]     # exit 1 nếu lệch, in diff thống nhất
 python -m company.subagents list                                # id nguồn -> file đích, version
 ```
@@ -74,7 +74,7 @@ python -m company.subagents list                                # id nguồn -> 
 
 | Nguồn | Đích | Ghi chú |
 |---|---|---|
-| `agents/<block>/<id>.md` | `.claude/agents/sc-<id>.md` | 19 agent hiện có, dẫn xuất máy móc |
+| `agents/<block>/<id>.md` | `.claude/agents/sc-<id>.md` | 17 agent hiện có, dẫn xuất máy móc |
 | `gates/checklists.md` mục Gate | `.claude/agents/sc-gate-<kind>.md` | 5 kind: spec, plan, release, acceptance, escalation |
 
 Tiền tố `sc-` (software-company) để không đụng subagent khác của người dùng.
@@ -85,9 +85,9 @@ Front matter Claude Code sinh từ `AgentSpec`:
 
 ```yaml
 ---
-name: sc-qa-debugger
+name: sc-qa
 description: >-
-  Trợ lý kiểm duyệt — chuẩn bị bằng chứng theo góc nhìn qa-debugger. Chỉ đọc, không quyết định.
+  Trợ lý kiểm duyệt — chuẩn bị bằng chứng theo góc nhìn qa. Chỉ đọc, không quyết định.
   <câu đầu mục "## Vai trò" của agent gốc>
 tools: Read, Grep, Glob
 model: sonnet          # model_tier: standard->sonnet, strong->opus, light->haiku
@@ -221,7 +221,7 @@ Mục tự kiểm duy nhất là "Ngân sách còn", nhưng thứ người duy�
 | Ngân sách | `orchestrator metrics` cho ticket: token đã tiêu / `budget_tokens` |
 | Worktree | Đường dẫn worktree của ticket + diff cuối cùng |
 
-Sau đó `/gate-brief <ticket>` gọi `sc-qa-debugger` với hồ sơ này. Mục tiêu đo được: hint là
+Sau đó `/gate-brief <ticket>` gọi `sc-qa` với hồ sơ này. Mục tiêu đo được: hint là
 **"mock thiếu header X-Idempotency-Key"** thay vì **"thử lại"**.
 
 Ánh xạ kind → trợ lý chuyên môn gợi ý:
@@ -230,9 +230,9 @@ Sau đó `/gate-brief <ticket>` gọi `sc-qa-debugger` với hồ sơ này. Mụ
 |---|---|
 | spec | `sc-spec-writer`, `sc-risk` |
 | plan | `sc-delivery-lead`, `sc-security` (khi có `risk_tags`), `sc-platform` |
-| release | `sc-qa-debugger`, `sc-security`, `sc-ops` |
+| release | `sc-qa`, `sc-security`, `sc-ops` |
 | acceptance | `sc-ops` |
-| escalation | `sc-qa-debugger` + agent chủ quản ticket (`assignee`) |
+| escalation | `sc-qa` + agent chủ quản ticket (`assignee`) |
 
 ## 6. Phần C — phiên duyệt
 
@@ -316,7 +316,7 @@ Ba ca cho mỗi kind, chấm bằng assert văn bản chứ không bằng model:
 
 ### 8.4 Hồi quy bất biến cũ
 `tests/test_gate_trust.py`: thêm `test_subagent_actor_khong_dong_duoc_gate` — envelope `gate.decide` với
-`actor="sc-qa-debugger"` bị `trusted_decision` trả `None`, gate vẫn `pending`. (I2)
+`actor="sc-qa"` bị `trusted_decision` trả `None`, gate vẫn `pending`. (I2)
 
 ## 9. Kế hoạch triển khai (mỗi mục một PR)
 
@@ -351,4 +351,4 @@ Kết quả: cả sáu PR gộp trong một đợt (nhánh `claude/software-comp
 - Không tự sinh hồ sơ khi gate mở (orchestrator không gọi `gate_brief`): hồ sơ do người yêu cầu, lúc người ngồi
   xuống duyệt. Tự sinh chỉ tạo thêm một dòng chảy không ai đọc.
 - Không cho trợ lý ghi `audit-log` "đã kiểm": dấu vết kiểm là chữ ký của người, không phải của máy.
-- Không gộp trợ lý vào 19 agent của công ty: khác phía gate, khác quyền, khác vòng đời.
+- Không gộp trợ lý vào 17 agent của công ty: khác phía gate, khác quyền, khác vòng đời.

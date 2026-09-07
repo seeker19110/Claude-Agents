@@ -79,10 +79,10 @@
         },
         "tests_authored_by": {
           "enum": [
-            "test-author",
+            "qa",
             "assignee"
           ],
-          "description": "ADR-0028: ai viết bộ test của ticket. `assignee` = KHÔNG độc lập (không phân vùng được vùng test, hoặc chạy không bật test-author) — reviewer phải tự chấm test kỹ hơn."
+          "description": "ADR-0028: ai viết bộ test của ticket. `qa` = pha `author` của agent `qa` viết MÙ từ đặc tả (ADR-0037; trước là agent riêng `test-author`). `assignee` = KHÔNG độc lập (không phân vùng được vùng test, hoặc chạy không bật test-author) — lượt review phải tự chấm test kỹ hơn."
         },
         "test_dispute": {
           "type": [

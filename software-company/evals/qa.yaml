@@ -1,0 +1,179 @@
+# Eval cho qa (ADR-0037 PR-5c: gộp test-author + reviewer + qa-debugger theo pha `author|review`).
+# Chạy: python -m company.evals qa
+#
+# Nhãn `source` của `review-results` KHÔNG còn trùng tên agent (ADR-0037): lượt `pull-requests` phát
+# `source: reviewer` (chấm code một ticket), lượt `release-events` env=staging phát `source: qa` (hồi quy cả
+# release) — hai GÓC NHÌN của cùng một agent. Vì thế hai ca cũ của qa-debugger (đầu vào `pull-requests`) nay
+# kỳ vọng `source: reviewer`; ca hồi quy staging bên dưới là chỗ duy nhất kỳ vọng `source: qa`.
+cases:
+  - name: moi-acceptance-phai-co-test
+    phase: author
+    topic_out: test-suites
+    context:
+      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "GET /orders/{id} trả 200 với đơn hàng, 404 Problem Details khi không có"}
+    input:
+      topic: tasks
+      key: TCK-1
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-1
+        project_id: P1
+        requirement_id: R1
+        assignee: backend
+        title: "GET /orders/{id}"
+        acceptance:
+          - "Given đơn hàng ORD-1 tồn tại, When GET /orders/ORD-1, Then trả 200 kèm id và total"
+          - "Given đơn hàng ORD-9 không tồn tại, When GET /orders/ORD-9, Then trả 404 theo RFC 9457"
+    expect:
+      equals: {ticket_id: TCK-1, assignee: backend}
+      min_len: {acceptance_covered: 2, files: 1}
+
+  - name: tranh-chap-test-phai-tra-loi-co-ly-do
+    phase: author
+    topic_out: test-suites
+    input:
+      topic: pull-requests
+      key: TCK-2
+      actor: backend
+      payload:
+        ticket_id: TCK-2
+        project_id: P1
+        assignee: backend
+        branch: ticket/TCK-2
+        pr_ref: "abc1234"
+        local_checks: {lint: true, tests: false}
+        test_dispute: "test khẳng định 404 trả body rỗng, nhưng acceptance nói phải theo RFC 9457 — test sai đặc tả"
+        summary: "handler GET /orders/{id}; test 404 không khớp acceptance"
+    expect:
+      equals: {ticket_id: TCK-2}
+      min_len: {notes: 1}
+
+  - name: pr-sach-phai-pass
+    phase: review
+    topic_out: review-results
+    context:
+      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "GET /orders/{id} trả 200/404 theo RFC 9457"}
+    input:
+      topic: pull-requests
+      key: TCK-1
+      actor: backend
+      payload:
+        ticket_id: TCK-1
+        branch: ticket/TCK-1
+        pr_ref: "#12"
+        summary: "GET /orders/{id}: handler + test 200/404, Problem Details cho 404, log có correlation id"
+        impact: {files: ["src/orders/api.py", "tests/test_orders.py"]}
+        local_checks: {lint: true, tests: true, coverage: 0.91}
+    expect:
+      equals: {ticket_id: TCK-1, source: reviewer, verdict: pass}
+
+  - name: pr-hardcode-secret-phai-block
+    phase: review
+    topic_out: review-results
+    input:
+      topic: pull-requests
+      key: TCK-2
+      actor: backend
+      payload:
+        ticket_id: TCK-2
+        branch: ticket/TCK-2
+        pr_ref: "#13"
+        summary: "POST /payments: gọi cổng thanh toán, API key đặt trực tiếp trong code STRIPE_KEY='sk_live_abc' để chạy nhanh; chưa có test"
+        impact: {files: ["src/payments/api.py"]}
+        local_checks: {lint: true, tests: false}
+    expect:
+      equals: {ticket_id: TCK-2, source: reviewer, verdict: block}
+      min_len: {findings: 1}
+      one_of: {findings.0.level: [block]}
+
+  - name: test-local-fail-khong-cho-di-tiep-va-co-root-cause
+    phase: review
+    topic_out: review-results
+    input:
+      topic: pull-requests
+      key: TCK-3
+      actor: backend
+      payload:
+        ticket_id: TCK-3
+        branch: ticket/TCK-3
+        pr_ref: "#14"
+        summary: "Cache kết quả GET /orders bằng dict toàn cục; test_concurrent_reads fail ngẫu nhiên: KeyError khi 2 request cùng ghi/xóa key"
+        local_checks: {lint: true, tests: false, test_output: "FAILED tests/test_orders.py::test_concurrent_reads - KeyError: 'ORD-9'"}
+    expect:
+      # `fail` hay `block` đều đúng: không có chỗ nào trong hệ phân biệt hai giá trị này — `delivery.py` chỉ hỏi
+      # `verdict == "pass"` hay không, và prompt pha `review` cũng chỉ nói "verdict=block/fail CHỈ khi có bằng
+      # chứng hỏng". Ép đúng một trong hai là chấm một khác biệt hệ thống không định nghĩa; điều PHẢI đúng là:
+      # không cho PR đi tiếp, và nói được nguyên nhân gốc chứ không chỉ mô tả triệu chứng.
+      equals: {ticket_id: TCK-3, source: reviewer}
+      one_of: {verdict: [fail, block]}
+      min_len: {root_cause: 10}
+
+  - name: test-xanh-va-phu-ca-bien-thi-phai-pass
+    phase: review
+    topic_out: review-results
+    input:
+      topic: pull-requests
+      key: TCK-4
+      actor: backend
+      payload:
+        ticket_id: TCK-4
+        branch: ticket/TCK-4
+        pr_ref: "#15"
+        summary: "Tính phí huỷ đơn: unit test cho 0 giờ / 23 giờ / 24 giờ / 25 giờ trước giờ khám, property test cho tính idempotent, đồng hồ tiêm qua clock"
+        impact: {files: ["src/orders/cancel.py", "tests/test_cancel.py"]}
+        local_checks: {lint: true, tests: true, coverage: 0.93, test_output: "42 passed in 3.1s"}
+    expect:
+      # QA fail mọi thứ cũng vô dụng như QA pass mọi thứ: PR đã phủ ca biên thì phải được đi tiếp
+      equals: {ticket_id: TCK-4, source: reviewer, verdict: pass}
+
+  - name: hoi-quy-staging-phai-dan-bang-chung-may-chay-va-khai-source-qa
+    phase: review
+    topic_out: review-results
+    input:
+      topic: release-events
+      key: REL-1
+      actor: ops
+      payload:
+        release_id: REL-1
+        project_id: P1
+        version: "1.2.0"
+        env: staging
+        status: deployed
+        tickets: [TCK-1, TCK-4]
+        # ADR-0029/0036: bằng chứng chạy do orchestrator điền TRƯỚC lượt này; agent phải dẫn nó, không tự khai
+        evidence:
+          run: {command: "uv run python -m app --port 8080", exit_code: 1, http_status: null, ok: false,
+                verified_by: orchestrator, stderr_tail: "ModuleNotFoundError: No module named 'app.config'"}
+    expect:
+      # `ticket_id = release_id` ở lượt hồi quy; `ok=false` là bằng chứng hỏng do MÁY sinh nên không được pass
+      equals: {ticket_id: REL-1, source: qa}
+      one_of: {verdict: [fail, block]}
+      min_len: {findings: 1}
+
+  - name: nham-pha-author-gui-voi-phase-review-phai-tu-nhan-sai-pha
+    # ADR-0037 §11: đầu vào thật của pha `author` (ticket mới, chưa có code) nhưng ca CỐ Ý khai `phase: review` —
+    # đo rủi ro "prompt loãng": agent đang mang prompt pha review (code-review/debugging) mà đầu vào lại là
+    # `tasks`. Nó phải nhận ra mình không ở pha viết test và ghi điều đó trong `rulings` thay vì chấm bừa.
+    phase: review
+    topic_out: review-results
+    input:
+      topic: tasks
+      key: TCK-9
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-9
+        project_id: P1
+        requirement_id: R9
+        assignee: backend
+        title: "POST /orders: tạo đơn hàng"
+        acceptance:
+          - "Given giỏ hàng hợp lệ, When POST /orders, Then trả 201 kèm id đơn"
+    expect:
+      # §11 nói rõ: agent ghi `notes`/`findings` nói sai pha thay vì làm bừa — chấm đúng chỗ đó, không ép nó
+      # phải nói ở `rulings` (nơi ADR-0030 dành cho quyết định TỰ đưa ra, không phải cho việc từ chối làm bừa).
+      # Chấm bằng TÊN TOPIC chứ không bằng chữ "pha": điều phải đúng là agent NÓI RA được đầu vào này không
+      # thuộc lượt nó đang mang (`tasks` chứ không phải `pull-requests`/`release-events`); ép đúng một từ là
+      # chấm cách diễn đạt, và đo được: hai lần ghi bằng model thật nói cùng một ý bằng hai cách khác nhau.
+      equals: {ticket_id: TCK-9}
+      min_len: {findings: 1}
+      contains: {findings.0.text: "tasks"}

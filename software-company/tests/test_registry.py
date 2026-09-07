@@ -1,8 +1,10 @@
 import pytest
 
 from company import registry as R
+from company.delivery import DeliveryLead
 from company.events import NAMESPACE_OWNERS
 from company.registry import SKILLS_DIR, _split, load_agents, load_skill
+from company.roles import SOURCE
 
 EXPECTED = {
     # research (6) — ADR-0006 gộp domain/ux-designer/codebase/tech-scout thành researcher
@@ -11,18 +13,18 @@ EXPECTED = {
     "delivery-lead",
     # engineering (6)
     "backend", "frontend", "mobile", "database", "platform", "data",
-    # quality (4) — ADR-0028 tách vai viết test khỏi vai viết code
-    "reviewer", "qa-debugger", "security", "test-author",
+    # quality (2) — ADR-0037 PR-5c: test-author + reviewer + qa-debugger gộp thành `qa` (pha `author`/`review`)
+    "qa", "security",
     # operations (1) — ADR-0037 PR-5b: release-engineer + support-docs + account-manager gộp thành `ops`
     "ops",
     # supervision (1)
     "supervisor",
 }
 
-def test_all_19_agents_load():
+def test_all_17_agents_load():
     agents = load_agents()
     assert set(agents) == EXPECTED
-    assert len(agents) == 19
+    assert len(agents) == 17
 
 def test_prompts_have_skills_and_dod():
     for a in load_agents().values():
@@ -119,14 +121,17 @@ def test_context_namespace_read_names_real_namespaces():
     for spec in agents.values():
         assert spec.context_namespace_read is not None, f"{spec.id}: thiếu context_namespace_read"
         assert set(spec.context_namespace_read) <= set(NAMESPACE_OWNERS), spec.id
-    for aid in ("reviewer", "qa-debugger", "security", "ops", "supervisor"):
+    for aid in ("qa", "security", "ops", "supervisor"):
         assert agents[aid].max_input_chars and agents[aid].max_input_chars <= 70_000, aid
 
 
 def test_review_tiers_per_adr0021():
     agents = load_agents()
-    assert agents["reviewer"].model_tier == "standard" and agents["qa-debugger"].model_tier == "standard"
+    assert agents["qa"].model_tier == "standard", "ADR-0021: chấm code/test dùng tier standard"
     assert agents["security"].model_tier == "strong", "separation of duties: security giữ tier mạnh"
+    # ADR-0037: `qa` chấm MỌI PR (route pha `review` không còn guard risk_tags) nên nó là review NỀN, không
+    # phải review "thêm" của ticket rủi ro — chỉ `security` mới là.
+    assert DeliveryLead.RISK_REVIEWS == {SOURCE.SECURITY} and DeliveryLead.BASE_REVIEWS == {SOURCE.REVIEWER}
 
 
 # ---------- ADR-0037: skill theo pha ----------

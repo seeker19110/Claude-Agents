@@ -6,6 +6,7 @@ from company.bus import InMemoryBus
 from company.delivery import DeliveryLead
 from company.events import Envelope, PullRequest, ReviewResult, Task
 from company.gates import GateRequest, HumanGate
+from company.orch.routes import REVIEW_AGENT
 
 
 def _setup():
@@ -14,7 +15,8 @@ def _setup():
 
 def _task(**kw): return Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="backend", title="x", acceptance=["a"], **kw)
 def _pr(bus): bus.publish(Envelope(topic="pull-requests", key="T1", actor="backend", payload=PullRequest(ticket_id="T1", branch="b", pr_ref="#1", local_checks={"lint": True}).model_dump()))
-def _rev(bus, src, verdict, rc=None): bus.publish(Envelope(topic="review-results", key="T1", actor=src, payload=ReviewResult(ticket_id="T1", source=src, verdict=verdict, root_cause=rc).model_dump()))
+# `source` là NHÃN chấm, `actor` là AGENT phát (ADR-0037: `reviewer` và `qa` cùng là agent `qa`) — bus kiểm actor.
+def _rev(bus, src, verdict, rc=None): bus.publish(Envelope(topic="review-results", key="T1", actor=REVIEW_AGENT[src], payload=ReviewResult(ticket_id="T1", source=src, verdict=verdict, root_cause=rc).model_dump()))
 
 def test_dispatch_tu_choi_plan_chua_check():
     """ADR-0037: gate `plan` biến mất nhưng guard KHÔNG biến mất — chỉ đổi nguồn sự thật. Plan chưa qua
@@ -70,7 +72,8 @@ def test_security_not_required_without_risk_tags():
     lead.tickets["T1"] = _task()
     assert lead.required_reviews("T1") == {"reviewer"}, "ADR-0021: ticket thường chỉ reviewer ở lượt PR"
     lead.tickets["T1"] = _task(risk_tags=["pii"])
-    assert lead.required_reviews("T1") == {"reviewer", "qa", "security"}
+    # ADR-0037: `qa` không còn là nguồn review "thêm" — lượt `qa[review]` chạy cho MỌI PR dưới nhãn `reviewer`
+    assert lead.required_reviews("T1") == {"reviewer", "security"}
 
 def test_budget_must_cover_estimate_times_factor():
     """skill cost-estimation: budget_tokens ≥ estimate_tokens × 1.5."""

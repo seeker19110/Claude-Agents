@@ -29,7 +29,8 @@ MAX_CONFLICT_RETRIES = 6  # xung đột merge thứ 7 liên tiếp cho một tic
 # thấy. Lỗi ở các topic này mở gate `escalation` cấp dự án (approve = chạy lại event, reject = đóng dự án).
 RESEARCH_TOPICS = frozenset({"research-requests", "research-findings", "requirements-draft", "clarification-answers"})
 CONTROL_TOPICS = frozenset({"audit-log", "shared-context", "supervisor-actions"})
-REVIEW_AGENT = {SOURCE.REVIEWER: ROLE.REVIEWER, SOURCE.QA: ROLE.QA, SOURCE.SECURITY: ROLE.SECURITY}
+# Nhãn `source` của review-results → agent chấm. ADR-0037: `reviewer` và `qa` là hai GÓC NHÌN của cùng agent `qa`.
+REVIEW_AGENT = {SOURCE.REVIEWER: ROLE.QA, SOURCE.QA: ROLE.QA, SOURCE.SECURITY: ROLE.SECURITY}
 KEY_FIELD = {"tasks": "ticket_id", "pull-requests": "ticket_id", "test-suites": "ticket_id", "review-results": "ticket_id", "incidents": "incident_id",
              "change-requests": "change_id", "release-candidates": "release_id", "release-events": "release_id",
              "acceptance-results": "release_id"}  # topic khác (project_id) giữ key của event nguồn
@@ -89,12 +90,6 @@ def _field(name: str, *values: Any) -> When:
 def _needs_security(e: Envelope, o: Orchestrator) -> bool:
     tid = e.payload.get("ticket_id") or e.key
     return tid in o.lead.tickets and SOURCE.SECURITY in o.lead.required_reviews(tid)
-
-
-def _needs_qa(e: Envelope, o: Orchestrator) -> bool:
-    """ADR-0021: QA ở lượt PR chỉ cho ticket có risk_tags; ticket thường reviewer kiêm chấm test."""
-    tid = e.payload.get("ticket_id") or e.key
-    return tid in o.lead.tickets and "qa" in o.lead.required_reviews(tid)
 
 
 def _release_needs_security(e: Envelope, o: Orchestrator) -> bool:
@@ -259,7 +254,7 @@ def _with_task(e: Envelope, o: Orchestrator) -> dict[str, Any]:
     t = o.latest("tasks", str(e.payload.get("ticket_id") or e.key))
     base = dict(t.payload) if t is not None else {}
     return {**base, "test_suite": {k: e.payload.get(k) for k in ("files", "acceptance_covered", "tests_status", "commit", "notes")},
-            "tests_authored_by": ROLE.TEST_AUTHOR}
+            "tests_authored_by": ROLE.QA}
 
 
 STAGING_ROUTE = Route("release-candidates", ROLE.OPS, "release-events", target_env="staging", phase="deploy")
@@ -276,24 +271,25 @@ ROUTES: tuple[Route, ...] = (
     # ADR-0028: có repo và phân vùng được vùng test → test-author viết test MÙ trước, rồi assignee viết code cho
     # tới khi xanh mà KHÔNG ghi được file test. Không phân vùng được (stack lạ, không repo) → đường cũ, và PR mang
     # `tests_authored_by: "assignee"` để reviewer biết bộ test này không độc lập.
-    Route("tasks", ROLE.TEST_AUTHOR, "test-suites", _can_author_tests, tools="tests"),
+    Route("tasks", ROLE.QA, "test-suites", _can_author_tests, tools="tests", phase="author"),
     Route("tasks", "$assignee", "pull-requests", _no_test_author, tools="rw"),
     Route("test-suites", "$assignee", "pull-requests", enrich=_with_task, tools="rw"),
-    # Assignee không sửa được test (tool chặn): nó ghi `test_dispute` và việc quay về test-author — lượt DUY NHẤT
-    # bộ test được đổi sau khi đã viết, và lượt duy nhất test-author được xem diff.
-    Route("pull-requests", ROLE.TEST_AUTHOR, "test-suites", _has_dispute, enrich=_with_diff, tools="tests"),
-    # Reviewer và security cũng có tool CHỈ ĐỌC trên worktree như QA: diff dài hơn `max_input_chars` bị cắt giữa,
+    # Assignee không sửa được test (tool chặn): nó ghi `test_dispute` và việc quay về pha `author` — lượt DUY NHẤT
+    # bộ test được đổi sau khi đã viết, và lượt duy nhất pha `author` được xem diff.
+    Route("pull-requests", ROLE.QA, "test-suites", _has_dispute, enrich=_with_diff, tools="tests", phase="author"),
+    # ADR-0037: reviewer + qa-debugger thành MỘT lượt pha `review` cho MỌI ticket (không còn guard `_needs_qa`
+    # theo `risk_tags`: `RISK_REVIEWS` chỉ còn `security`), nên enrich gộp cả diff lẫn `chan_doan`.
+    # Pha `review` và security cũng có tool CHỈ ĐỌC trên worktree: diff dài hơn `max_input_chars` bị cắt giữa,
     # agent "không được suy diễn" nên BLOCK vì "diff không có trong đầu vào" — không phải lỗi code. Đo được
     # 2026-09-06 (TCK-CR-DEV-001-02, PR 877 dòng): security chặn vì thiếu diff `http_adapter.py`, ticket bị trả
     # về làm lại dù reviewer + QA pass. Có tool thì nó đọc đúng file bị cắt rồi mới chấm.
-    Route("pull-requests", ROLE.REVIEWER, "review-results", enrich=_with_diff, tools="ro"),
-    Route("pull-requests", ROLE.QA, "review-results", _needs_qa,
-          enrich=lambda e, o: {**_with_diff(e, o), **_with_chan_doan(e, o)}, tools="ro"),
+    Route("pull-requests", ROLE.QA, "review-results",
+          enrich=lambda e, o: {**_with_diff(e, o), **_with_chan_doan(e, o)}, tools="ro", phase="review"),
     Route("pull-requests", ROLE.SECURITY, "review-results", _needs_security, enrich=_with_diff, tools="ro"),
     # vận hành: RC → staging (+ security DAST/license khi có risk) → QA hồi quy; production đi qua gate 3 (PROD_ROUTE)
     STAGING_ROUTE,
     Route("release-candidates", ROLE.SECURITY, "review-results", _release_needs_security),
-    Route("release-events", ROLE.QA, "review-results", _deployed("staging"), tools="ro"),  # tool trên worktree tích hợp
+    Route("release-events", ROLE.QA, "review-results", _deployed("staging"), tools="ro", phase="review"),  # tool trên worktree tích hợp
     Route("release-events", ROLE.OPS, CONTEXT_ONLY, _deployed("production"), phase="docs"),  # docs, release notes, runbook
     # khách và hậu release
     Route("external-feedback", ROLE.OPS, "change-requests", phase="account"),
@@ -304,6 +300,19 @@ ROUTES: tuple[Route, ...] = (
     Route("change-requests", ROLE.INTAKE, "research-findings", _cr_accepted_needs_research),
 )
 PROD_ROUTE = Route("release-candidates", ROLE.OPS, "release-events", target_env="production", phase="deploy")
+
+
+def review_route(agent: str) -> Route:
+    """Route chấm PR THẬT của một agent chấm, để chỗ giao lại review (`gates_flow`, `scheduler`) không dựng tay.
+
+    Dựng tay `Route("pull-requests", agent, "review-results")` chạy đúng khi mỗi vai chấm là một agent không
+    pha — nhưng ADR-0037 gộp reviewer + qa-debugger vào `qa[review]`, và một Route dựng tay không mang `phase`,
+    `enrich`, `tools`: lượt giao lại sẽ chạy bằng prompt pha `author` (không skill code-review, không diff,
+    không tool đọc worktree) rồi trả ra `test-suites`. Lấy đúng dòng trong `ROUTES` thì không thể lệch."""
+    for r in ROUTES:
+        if r.topic_in == "pull-requests" and r.topic_out == "review-results" and r.agent == agent:
+            return r
+    raise KeyError(f"không có route chấm pull-requests cho {agent}")
 THREAT_ROUTE = Route("approved-specs", ROLE.SECURITY, "review-results")  # threat model trước ticket đầu (ADR-0003)
 
 # Đầu vào khiến delivery-lead lập kế hoạch (sinh nhiều ticket một lượt) → `_check_plan` → dispatch (ADR-0037).

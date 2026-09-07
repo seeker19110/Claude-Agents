@@ -16,12 +16,10 @@ intake
 mobile
 ops
 platform
-qa-debugger
+qa
 researcher
-reviewer
 risk
 security
 spec-writer
 supervisor
 synthesizer
-test-author

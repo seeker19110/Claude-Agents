@@ -349,9 +349,9 @@ def test_qa_thay_evidence_run_trong_input_va_loi_khai_cua_no_bi_bo(tmp_path, mon
     seen: list[dict] = []
     def h(system, user):
         out = handler(system, user)
-        if _agent_of(system) == "qa-debugger":
+        if _agent_of(system) == "qa":
             seen.append(_inp(user))
-            out = {**out, "evidence": {"run": {"ok": True, "http_status": 200, "verified_by": "qa-debugger"}, "note": "giữ"}}
+            out = {**out, "evidence": {"run": {"ok": True, "http_status": 200, "verified_by": "qa"}, "note": "giữ"}}
         return out
     repo = _repo(tmp_path, SERVER_DIE)
     _fake_smoke(monkeypatch, [OK, BAD])
@@ -389,7 +389,7 @@ def test_verdict_with_run_giu_fail_cua_model_va_khong_nhan_doi_finding(tmp_path)
     bus, orch = _orch(tmp_path, None, None)
     env = Envelope(topic="release-events", key="REL-001", actor="ops",
                    payload={"release_id": "REL-001", "env": "staging", "status": "deployed"})
-    p = orch._verdict_with_run("qa-debugger", env, {"ticket_id": "REL-001", "source": "qa", "verdict": "fail",
+    p = orch._verdict_with_run("qa", env, {"ticket_id": "REL-001", "source": "qa", "verdict": "fail",
                                                     "root_cause": "của model", "findings": []}, BAD)
     assert p["verdict"] == "fail" and p["root_cause"] == "của model" and p["findings"] == []
     assert p["evidence"]["run"] == BAD

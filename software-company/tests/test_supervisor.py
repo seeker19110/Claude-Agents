@@ -25,7 +25,7 @@ def test_retry_escalates():
 def test_repeated_error_escalates():
     bus = InMemoryBus(); sup = Supervisor(bus)
     for _ in range(2):
-        bus.publish(Envelope(topic="review-results", key="T1", actor="qa-debugger",
+        bus.publish(Envelope(topic="review-results", key="T1", actor="qa",
                              payload=ReviewResult(ticket_id="T1", source="qa", verdict="fail", root_cause="race").model_dump()))
     assert any(a.action == "escalate" and a.evidence == "race" for a in sup.actions)
 
@@ -88,7 +88,7 @@ def test_review_tokens_do_not_count_against_ticket_budget():
     bus = InMemoryBus(); sup = Supervisor(bus)
     bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=_task(budget=1000).model_dump()))
     _audit(bus, "backend", 400)
-    for reviewer in ("reviewer", "qa-debugger", "security"): _audit(bus, reviewer, 500)
+    for reviewer in ("qa", "qa", "security"): _audit(bus, reviewer, 500)
     assert not sup.actions, "review không được kích hoạt warn/budget_cut"
     b = sup.budgets["T1"]
     assert (b.used, b.review_used) == (400, 1500)

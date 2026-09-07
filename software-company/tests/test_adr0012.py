@@ -94,7 +94,7 @@ def test_runner_still_refuses_internal_injection():
 # về company nên ở lại.
 def test_runner_audits_context_trimmed_and_passes_truncated_diff():
     bus = InMemoryBus(); client = FakeClient(responses=[REVIEW])
-    AgentRunner(bus, client, max_input_chars=30_000).run("reviewer", _pr_env(diff="+" * 100_000), "review-results")
+    AgentRunner(bus, client, max_input_chars=30_000).run("qa", _pr_env(diff="+" * 100_000), "review-results")
     assert "context_trimmed" in _acts(bus)
     rep = json.loads(next(e.payload["evidence"] for e in bus.replay(topic="audit-log") if e.payload["action"] == "context_trimmed"))
     assert rep["trimmed_payload"] > 50_000 and len(client.calls[0]["user"]) < 40_000
@@ -111,7 +111,7 @@ def test_blackboard_content_mirrors_to_store_and_reaches_prompt(tmp_path):
     bb.write("delivery-lead", "api-contract", "openapi.yaml", "v1", content="openapi: 3.1.0\n")
     assert bb.path("api-contract").name == "latest.yaml"
     client = FakeClient(responses=[REVIEW])
-    AgentRunner(bus, client, blackboard=bb).run("reviewer", _pr_env(), "review-results")
+    AgentRunner(bus, client, blackboard=bb).run("qa", _pr_env(), "review-results")
     user = client.calls[0]["user"]
     assert "# PRD v2" in user and "REQ-1" not in user and "openapi: 3.1.0" in user, "agent hạ nguồn đọc toàn văn bản mới nhất"
     bb2 = Blackboard(bus, store=tmp_path / "art2"); bb2.rehydrate()
@@ -150,18 +150,18 @@ class _Flaky:
 def test_retrying_client_retries_transient_only_and_runner_audits():
     waits: list[float] = []
     rc = RetryingClient(_Flaky(2), retries=3, base=1.0, sleep=waits.append)
-    bus = InMemoryBus(); r = AgentRunner(bus, rc).run("reviewer", _pr_env(), "review-results")
+    bus = InMemoryBus(); r = AgentRunner(bus, rc).run("qa", _pr_env(), "review-results")
     assert r.tokens == 15 and len(waits) == 2 and 1.0 <= waits[0] < waits[1] <= 2.5, "backoff mũ"
     assert _acts(bus) == ["llm_retry", "produced:review-results"]
     ev = json.loads(next(e.payload["evidence"] for e in bus.replay(topic="audit-log") if e.payload["action"] == "llm_retry"))
     assert ev["attempts"] == 2 and "503" in ev["notes"][0]
     bus2 = InMemoryBus()
     with pytest.raises(TransientError, match="hết 2 lần"):
-        AgentRunner(bus2, RetryingClient(_Flaky(10), retries=2, sleep=lambda _s: None)).run("reviewer", _pr_env(), "review-results")
+        AgentRunner(bus2, RetryingClient(_Flaky(10), retries=2, sleep=lambda _s: None)).run("qa", _pr_env(), "review-results")
     assert _acts(bus2) == ["llm_retry", "llm_error"]
     f = _Flaky(10, exc=LLMError); bus3 = InMemoryBus()
     with pytest.raises(LLMError):
-        AgentRunner(bus3, RetryingClient(f, retries=3, sleep=lambda _s: None)).run("reviewer", _pr_env(), "review-results")
+        AgentRunner(bus3, RetryingClient(f, retries=3, sleep=lambda _s: None)).run("qa", _pr_env(), "review-results")
     assert f.n == 1 and _acts(bus3) == ["llm_error"], "lỗi nội dung không retry"
 
 
@@ -224,7 +224,7 @@ def test_cost_usd_flows_to_audit_supervisor_ticket_and_project_budgets():
 
 def test_unpriced_calls_are_counted_not_hidden():
     bus = InMemoryBus(); sup = Supervisor(bus)
-    AgentRunner(bus, FakeClient(responses=[REVIEW])).run("reviewer", _pr_env(), "review-results")
+    AgentRunner(bus, FakeClient(responses=[REVIEW])).run("qa", _pr_env(), "review-results")
     a = [e.payload for e in bus.replay(topic="audit-log")][-1]
     assert a["cost_usd"] == 0.0 and json.loads(a["evidence"])["unpriced"] is True and sup.unpriced == 1
 
@@ -374,7 +374,10 @@ class _Blip:
         self.inner = FakeClient(handler=handler); self.calls = self.inner.calls; self.failed = False
 
     def complete(self, **kw):
-        if _agent_of(kw["system"]) == "qa-debugger" and "`pull-requests`" in kw["user"] and not self.failed:  # lượt QA ở PR (T2), không phải hồi quy REL
+        # ADR-0037: `qa` chấm MỌI PR, nên phải chỉ đích danh T2 — hỏng ở T1 thì T1 không approved và T2 nằm
+        # ở `waiting`, kịch bản "hoãn rồi chạy tiếp" không còn xảy ra.
+        if (_agent_of(kw["system"]) == "qa" and "`pull-requests`" in kw["user"]
+                and '"ticket_id": "T2"' in kw["user"] and not self.failed):
             self.failed = True; raise TransientError("hết 3 lần thử lại: HTTP 529")
         return self.inner.complete(**kw)
 
@@ -382,14 +385,15 @@ class _Blip:
 def test_transient_error_defers_event_and_next_tick_skips_agents_already_done():
     bus = InMemoryBus(); client = _Blip(); orch = Orchestrator(bus, client)
     _drive_to_plan(bus, orch); orch.run()
-    # ADR-0021: qa-debugger ở lượt PR chỉ chạy cho ticket có risk_tags (T2)
     assert orch.lead.state["T2"] == "in_review" and orch.stats["transient"] == 1 and orch.stats["errors"] == 0
-    assert [v for _, v in orch.deferred.values()] == ["transient:qa-debugger"]
-    n_rev = sum(1 for c in client.calls if _agent_of(c["system"]) == "reviewer" and _inp(c["user"]).get("ticket_id") == "T2")
+    assert [v for _, v in orch.deferred.values()] == ["transient:qa"]
+    # lượt review của T2 CHƯA chạy xong (chính nó vừa bị hoãn), nên đếm nó là đếm một lượt hỏng. Cái phải
+    # KHÔNG đổi sau `tick()` là lượt của T1: agent đã xong không được gọi lại khi event được thử lại.
+    n_rev = sum(1 for c in client.calls if _agent_of(c["system"]) == "qa" and _inp(c["user"]).get("ticket_id") == "T1")
     orch.tick()
     assert not orch.deferred and orch.lead.state["T1"] == "merged" and orch.lead.state["T2"] == "merged"
-    assert sum(1 for c in client.calls if _agent_of(c["system"]) == "reviewer" and _inp(c["user"]).get("ticket_id") == "T2") == n_rev, \
-        "reviewer đã xong không chạy lại khi event được thử lại"
+    assert sum(1 for c in client.calls if _agent_of(c["system"]) == "qa" and _inp(c["user"]).get("ticket_id") == "T1") == n_rev, \
+        "agent đã xong không chạy lại khi event được thử lại"
     acts = _acts(bus)
     assert "llm_error" in acts and acts.count("orchestrated") == len(orch.processed)
 
@@ -518,12 +522,13 @@ def test_metrics_collect_and_prometheus(tmp_path, capsys):
     produced = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"].startswith("produced:")]
     assert m["total"]["calls"] == len(produced) and m["total"]["tokens"] == sum(a["tokens"] for a in produced)
     assert m["total"]["cost_usd"] == pytest.approx(sum(a["cost_usd"] for a in produced)) and m["total"]["unpriced"] == 0
-    assert m["agents"]["reviewer"]["calls"] == 2 and m["models"]["fake-strong"]["calls"] > 0 and m["tickets"]["T1"]["calls"] >= 2
+    # ADR-0037: `qa` gộp reviewer + qa-debugger nên nó chạy ở CẢ hai PR lẫn hồi quy staging của hai release
+    assert m["agents"]["qa"]["calls"] == 4 and m["models"]["fake-strong"]["calls"] > 0 and m["tickets"]["T1"]["calls"] >= 2
     # ADR-0037: chỉ còn gate spec được quyết trên đường này (gate plan biến mất); hai gate release còn chờ.
     assert m["gates"]["decided"] == 1 and m["gates"]["pending"] == 2 and m["gates"]["wait_seconds_avg"] is not None
     assert m["topics"]["pull-requests"] == 2 and m["health"] == {"local_checks.unverified": 2}
     text = prometheus(m)
-    assert 'company_agent_calls{agent="reviewer"} 2' in text and "# TYPE company_total_tokens counter" in text
+    assert 'company_agent_calls{agent="qa"} 4' in text and "# TYPE company_total_tokens counter" in text
     assert "company_gates_pending 2" in text and 'company_topic_events{topic="tasks"}' in text
     bus.close()
     assert orch_main(["--db", str(db), "metrics"]) == 0 and json.loads(capsys.readouterr().out)["total"]["calls"] == len(produced)
@@ -541,13 +546,13 @@ def test_metrics_health_events_ghi_loi_theo_ticket_va_dem_retry():
     audit("backend", "llm_error", ticket_id="T1")
     audit("backend", "invalid_output", ticket_id="T1")
     audit("backend", "llm_retry", ticket_id="T1", evidence=json.dumps({"attempts": 3}))
-    audit("reviewer", "llm_retry")  # không có evidence.attempts → mặc định 1
+    audit("qa", "llm_retry")  # không có evidence.attempts → mặc định 1
 
     m = collect(bus)
     assert m["tickets"]["T1"]["errors"] == 2
     assert m["agents"]["backend"]["errors"] == 2
     assert m["agents"]["backend"]["retries"] == 3
-    assert m["agents"]["reviewer"]["retries"] == 1
+    assert m["agents"]["qa"]["retries"] == 1
 
 
 def test_prometheus_xuat_lead_time_ticket_da_dong():
@@ -646,7 +651,7 @@ def test_pr_cu_trong_hang_doi_bi_vuot_khi_co_pr_moi_hon(tmp_path, monkeypatch):
     new = orch.takeover("T1", "human:lead")
     assert old.payload["pr_ref"] != new.payload["pr_ref"] and orch.lead.state["T1"] == "in_review"
     results = orch.run()
-    reviewed = [_inp(c["user"])["pr_ref"] for c in client.calls if _agent_of(c["system"]) == "reviewer"
+    reviewed = [_inp(c["user"])["pr_ref"] for c in client.calls if _agent_of(c["system"]) == "qa"
                 and _inp(c["user"]).get("ticket_id") == "T1"]
     assert reviewed == [new.payload["pr_ref"]], "reviewer chỉ chấm PR mới nhất, đúng một lần"
     assert any(a == "superseded:T1:pull-requests" for r in results for a in r.actions)
@@ -720,10 +725,10 @@ def test_context_scoped_by_role_and_per_agent_max_input(tmp_path):
     bb.write("security", "threat-model", "docs/threat.md", "16 mối đe doạ", content="# Threat model\n\nT-01 XSS")
     client = FakeClient(responses=[REVIEW])
     runner = AgentRunner(bus, client, blackboard=bb)
-    spec = runner.agents["reviewer"]
+    spec = runner.agents["qa"]
     assert spec.context_namespace_read and "prd" in spec.context_namespace_read and "threat-model" not in spec.context_namespace_read
     assert spec.max_input_chars and spec.max_input_chars < runner.max_input_chars
-    runner.run("reviewer", _pr_env(), "review-results")
+    runner.run("qa", _pr_env(), "review-results")
     user = client.calls[0]["user"]
     assert "REQ-1" in user, "namespace trong context_namespace_read: toàn văn"
     assert "T-01 XSS" not in user and "16 mối đe doạ" in user and "content_omitted" in user, "namespace ngoài: chỉ tóm tắt"
@@ -738,8 +743,8 @@ def test_context_scoped_by_role_and_per_agent_max_input(tmp_path):
 def test_per_agent_max_input_chars_trims_more():
     bus = InMemoryBus(); client = FakeClient(responses=[REVIEW])
     runner = AgentRunner(bus, client, max_input_chars=200_000)
-    runner.agents["reviewer"].max_input_chars = 30_000
-    runner.run("reviewer", _pr_env(diff="+" * 100_000), "review-results")
+    runner.agents["qa"].max_input_chars = 30_000
+    runner.run("qa", _pr_env(diff="+" * 100_000), "review-results")
     assert "context_trimmed" in _acts(bus) and len(client.calls[0]["user"]) < 40_000
 
 
@@ -758,8 +763,8 @@ def test_diagnose_gom_loi_tho_thanh_khuon_va_chi_ra_ticket_quay_vong():
         bus.publish(Envelope(topic="audit-log", key="a", actor="spec-writer",
                              payload={"actor": "spec-writer", "action": "llm_error", "ticket_id": "T1",
                                       "evidence": json.dumps({"error": f"TransientError: thử lại sau {n}s"})}))
-    bus.publish(Envelope(topic="audit-log", key="a", actor="reviewer",
-                         payload={"actor": "reviewer", "action": "invalid_output", "ticket_id": "T1",
+    bus.publish(Envelope(topic="audit-log", key="a", actor="qa",
+                         payload={"actor": "qa", "action": "invalid_output", "ticket_id": "T1",
                                   "evidence": json.dumps({"error": "đầu ra không phải JSON: line 1 column 1"})}))
     bus.publish(Envelope(topic="audit-log", key="d", actor="delivery-lead",
                          payload={"actor": "delivery-lead", "action": "ticket.blocked",

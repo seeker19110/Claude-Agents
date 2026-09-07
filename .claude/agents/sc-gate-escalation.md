@@ -54,7 +54,7 @@ Subject là `ticket_id` (ticket blocked hoặc bị supervisor escalate) hoặc 
 
 ## Trợ lý chuyên môn nên gọi cùng hồ sơ
 
-- sc-qa-debugger
+- sc-qa
 - sc-<assignee> — trợ lý theo góc nhìn agent chủ quản ticket
 
 ## Đầu ra

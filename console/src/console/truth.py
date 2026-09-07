@@ -25,7 +25,7 @@ from company.roles import ROLE, SOURCE
 
 ORCHESTRATOR = "orchestrator"
 CONTROL_TOPICS = frozenset({"audit-log", "shared-context", "supervisor-actions"})
-REVIEW_AGENT = {SOURCE.REVIEWER: ROLE.REVIEWER, SOURCE.QA: ROLE.QA, SOURCE.SECURITY: ROLE.SECURITY}
+REVIEW_AGENT = {SOURCE.REVIEWER: ROLE.QA, SOURCE.QA: ROLE.QA, SOURCE.SECURITY: ROLE.SECURITY}
 STUCK_STATES = frozenset({"blocked", "escalated"})
 # K2.7: cửa sổ nhìn lại của ô "lệnh khách chạy ở đâu". 24h = một ca trực; dài hơn thì một lượt cũ
 # kéo cảnh báo sáng mãi sau khi người vận hành đã bật container.
@@ -182,8 +182,8 @@ class Truth:
         if status != "deployed": return "staging_pending_human", info
         # staging deployed: QA hồi quy / Gate 3 quyết bậc tiếp
         reviews = self.lead.release_reviews.get(rid, {})
-        qa = reviews.get("qa")
-        if qa is not None and qa.verdict != "pass" and "qa" not in self.lead.release_waived.get(rid, set()):
+        qa = reviews.get(SOURCE.QA)
+        if qa is not None and qa.verdict != "pass" and SOURCE.QA not in self.lead.release_waived.get(rid, set()):
             return "qa_failed", info
         if any(g.subject_id == rid and g.kind == "release" and g.decision == "approve" for g in self.gate.history):
             return "gate3_approved", info
