@@ -12,7 +12,6 @@ import pytest
 import company.web as web_mod
 from company.blackboard import Blackboard
 from company.bus import InMemoryBus
-from company.context import cut_middle, fit, trim_payload
 from company.events import Envelope, PullRequest, Task
 from company.guard import guard_payload, sanitize_text, scan
 from company.llm import (
@@ -90,29 +89,9 @@ def test_runner_still_refuses_internal_injection():
 
 # ---------- ngữ cảnh có hạn mức ----------
 
-def test_fit_trims_payload_then_context_with_labels():
-    system = "x" * 1_000
-    payload = {"ticket_id": "T1", "diff": "a" * 50_000, "summary": "s"}
-    ctx = {"prd": {"version": 1, "content_ref": "docs/prd.md", "summary": "PRD", "content": "p" * 30_000},
-           "glossary": {"version": 1, "content_ref": "g.md", "summary": "g", "content": "g" * 500}}
-    p, c, b = fit(system, payload, ctx, max_input_chars=20_000, paths={"prd": "store/prd/latest.md"})
-    assert b.trimmed_payload > 0 and "cắt" in p["diff"] and p["summary"] == "s" and p["diff"].startswith("aaa")
-    assert c["glossary"]["content"] == "g" * 500, "namespace ngắn giữ nguyên, phần thừa nhường cho namespace dài"
-    assert "store/prd/latest.md" in c["prd"]["content"] and b.trimmed_context["prd"] > 0
-    assert b.system_chars + b.payload_chars + b.context_chars <= 20_000 and b.est_tokens > 0
-    _, c2, b2 = fit(system, {"a": "b"}, ctx, max_input_chars=200_000)
-    assert not b2.trimmed and c2["prd"]["content"] == "p" * 30_000, "đủ chỗ thì không cắt gì"
-    assert cut_middle("abcdef", 100) == "abcdef" and trim_payload({"x": "y"}, 5)[1] == 0
-
-
-def test_trim_payload_di_sau_vao_list():
-    """`_strings` phải đệ quy cả vào phần tử của list, không chỉ dict — payload có list chuỗi dài."""
-    payload = {"logs": ["a" * 1000, "b" * 1000]}
-    trimmed, cut = trim_payload(payload, 500)
-    assert cut > 0
-    assert any("cắt" in s for s in trimmed["logs"]), trimmed["logs"]
-
-
+# `fit`/`trim_payload`/`cut_middle` chuyển sang `xagents-core` ở K3.1 — test đơn vị của chúng nay ở
+# `xagents-core/tests/test_context.py`. Phần dưới đây đo TÍCH HỢP (runner ghi audit, scope theo vai), thuộc
+# về company nên ở lại.
 def test_runner_audits_context_trimmed_and_passes_truncated_diff():
     bus = InMemoryBus(); client = FakeClient(responses=[REVIEW])
     AgentRunner(bus, client, max_input_chars=30_000).run("reviewer", _pr_env(diff="+" * 100_000), "review-results")

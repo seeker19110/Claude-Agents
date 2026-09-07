@@ -24,6 +24,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/xagents_core"]
+# PEP 561: không có marker này thì mypy coi CẢ package là untyped — mọi shim `from xagents_core.X import *`
+# ở company/studio mang sang 0 tên, và caller nhận "has no attribute" hoặc tệ hơn là `Any` im lặng.
+# Tức là `strict = true` ở trên chỉ bảo vệ được chính core, không bảo vệ được ai gọi nó.
+[tool.hatch.build.targets.wheel.force-include]
+"src/xagents_core/py.typed" = "xagents_core/py.typed"
 
 [tool.ruff]
 line-length = 120

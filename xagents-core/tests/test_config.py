@@ -68,3 +68,20 @@ def test_moi_cau_hinh_co_topic_acl_rieng():
     """`field(default_factory=...)` chứ không phải một `TopicACL()` dùng chung: hai công ty chạy trong cùng một
     tiến trình (console nhập cả hai) không được chia nhau một đối tượng cấu hình."""
     assert _cfg().topic_acl is not _cfg().topic_acl
+
+
+def test_py_typed_ton_tai_va_duoc_dong_goi():
+    """PEP 561. Thiếu marker này thì mypy coi CẢ `xagents_core` là untyped: shim
+    `from xagents_core.X import *` ở company/studio mang sang **0 tên**, caller nhận `has no attribute` —
+    hoặc tệ hơn, `Any` im lặng ở chỗ có `--ignore-missing-imports`. Đo được thật ở K3.1: `company/runner.py`
+    gọi `fit` bị mypy báo `Module "company.context" has no attribute "fit"` cho tới khi thêm file này.
+
+    Nói cách khác: không có nó thì `strict = true` của core chỉ bảo vệ chính core, không bảo vệ ai gọi nó —
+    mà cả bảy bước K3 đều là "chuyển module sang core rồi để người khác gọi qua shim"."""
+    import tomllib
+
+    marker = Path(xagents_core.__file__).parent / "py.typed"
+    assert marker.exists(), "thiếu src/xagents_core/py.typed"
+    cfg = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8"))
+    inc = cfg["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
+    assert "src/xagents_core/py.typed" in inc, "py.typed phải nằm trong wheel, không chỉ trên đĩa lúc dev"
