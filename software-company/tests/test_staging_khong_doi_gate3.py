@@ -53,6 +53,12 @@ def _orch(tmp_path):
     orch.lead.tickets["T1"] = Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="backend",
                                    title="T1", acceptance=["a"])
     orch.lead.state["T1"] = "approved"
+    # K1.5 (ADR-0036): các ca dưới đây đo GATE, chạy không repo nên không bao giờ smoke được. Spec nền khai
+    # `kind: library` để RC đi tiếp đúng như trước — thiếu spec thì mặc định là `application` và RC thành
+    # `failed` ngay ở staging, đúng ý đồ nhưng che mất thứ file này đo. Ca smoke ở `test_smoke_evidence.py`.
+    bus.publish(Envelope(topic="approved-specs", key="P", actor="spec-writer",
+                         payload={"project_id": "P", "status": "approved", "kind": "library",
+                                  "artifacts": {"prd": "prd", "requirements": "req"}}))
     return bus, client, orch
 
 

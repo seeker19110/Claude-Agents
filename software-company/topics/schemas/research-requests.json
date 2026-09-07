@@ -44,6 +44,10 @@
           "type": "string",
           "description": "nhánh/commit nền để rẽ nhánh tích hợp của dự án (mặc định = --base của tiến trình)"
         },
+        "legacy": {
+          "type": "boolean",
+          "description": "K1.5: dự án có TRƯỚC ADR-0031, không đòi được `runtime` trong spec. `true` = chấp nhận release `smoke.unverified` mà vẫn đi tiếp (bằng chứng vẫn ghi rõ là chưa kiểm); thiếu hoặc `false` = spec `kind=application` mà không smoke được thì RC thành `failed` + mở gate escalation. Cờ của NGƯỜI mở dự án, khai một lần ở đây — cố ý không đặt trong spec vì spec do model viết."
+        },
         "rulings": {
           "type": "array",
           "description": "ADR-0030 sổ Ruling: quyết định bạn TỰ đưa ra thay vì dừng chờ người. Chỉ dừng chờ người ở bốn việc: không đảo ngược được; nhạy cảm bảo mật; tác động ra ngoài worktree (merge/push/publish); kế hoạch hỏng tới mức mọi hướng đều là đoán. Mọi chỗ bí khác: tự quyết theo spec/shared-context, ghi một mục ở đây rồi đi tiếp. Rỗng khi không có gì phải quyết.",

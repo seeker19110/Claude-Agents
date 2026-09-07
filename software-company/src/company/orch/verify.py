@@ -31,26 +31,46 @@ def release_evidence(o: Orchestrator, rid: str) -> dict[str, Any]:
             "delivered_sha": o.release_sha.get(rid)}
 
 
+def _du_an_legacy(o: Orchestrator, pid: str | None) -> bool:
+    """Cờ `legacy: true` trong `research-requests.payload` — người mở dự án tự khai "dự án này có TRƯỚC ADR-0031,
+    đừng đòi nó khai `runtime`". Khai một lần lúc mở dự án, không phải cờ mà agent tự bật giữa chừng: nó nằm ở
+    topic của con người (`research-requests`), không nằm ở spec do model viết."""
+    if pid is None: return False
+    rr = o.latest("research-requests", pid)
+    return rr is not None and rr.payload.get("legacy") is True
+
+
 def smoke(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[str, Any], integ: Integration | None) -> dict[str, Any]:
     """`status=deployed` ở staging là LỜI KHAI của release-engineer (nó không có tool deploy). ADR-0029: orchestrator
     tự khởi động sản phẩm theo `runtime` của spec trong worktree tích hợp và gọi một request thật; kết quả vào
-    `payload.smoke` (`verified_by=orchestrator`). Không có `runtime` hay không có worktree → `smoke.unverified`
-    kèm lý do, status giữ nguyên (không chặn dự án chưa khai, nhưng bằng chứng nói rõ là chưa kiểm). Có `runtime`
-    mà khởi động không được / không trả lời đúng → status thành `failed`: bốn gate xanh không được phép che một
-    sản phẩm không chạy (đo được 2026-09-06 QLKH: 25 release, 0 điểm vào)."""
+    `payload.smoke` (`verified_by=orchestrator`). Có `runtime` mà khởi động không được / không trả lời đúng →
+    status thành `failed`: bốn gate xanh không được phép che một sản phẩm không chạy (đo được 2026-09-06 QLKH:
+    25 release, 0 điểm vào).
+
+    Không smoke được (thiếu `runtime`, thiếu worktree) thì tuỳ LOẠI sản phẩm (K1.5 kịch bản B):
+    `library`/`docs` — hoặc dự án khai `legacy: true` — vẫn đi tiếp, bằng chứng nói rõ là chưa kiểm; còn
+    `kind=application` (mặc định khi spec thiếu `kind`) thì `unverified` là **failed**, đi đúng đường của smoke
+    fail. ADR-0031 đã chặn ở gate spec: spec ứng dụng thiếu `runtime` không được mở Gate 1. Đây là lớp SAU —
+    dự án được duyệt trước ADR-0031, hay `integ` biến mất giữa chừng, vẫn tới được đây; và "không kiểm được"
+    của một sản phẩm-phải-chạy-được không phải là một trạng thái trung lập để đi tiếp."""
     pid = o.project_for(rc)
     spec = o.latest("approved-specs", pid) if pid else None
+    kind = (spec.payload.get("kind") if spec is not None else None) or "application"
     rt = parse_runtime(spec.payload if spec is not None else None)
-    if rt is None:
-        smoke = unverified("spec không khai `runtime` (lệnh khởi động, cổng, đường health)")
-        o._audit("release.smoke_unverified", {"release_id": rid, "reason": smoke["reason"]}, project_id=pid,
-                    once=f"smoke.unverified:{rid}:{rc.event_id}")
-        return {**p, "smoke": smoke}
-    if integ is None or not integ.path.exists():
-        smoke = unverified("không có worktree tích hợp (dự án chạy không repo)")
-        o._audit("release.smoke_unverified", {"release_id": rid, "reason": smoke["reason"]}, project_id=pid,
-                    once=f"smoke.unverified:{rid}:{rc.event_id}")
-        return {**p, "smoke": smoke}
+    if rt is None or integ is None or not integ.path.exists():
+        # Hai nguyên nhân, MỘT chỗ quyết: tách ra hai nhánh song song thì sớm muộn chúng xử lý khác nhau.
+        smoke = unverified("spec không khai `runtime` (lệnh khởi động, cổng, đường health)" if rt is None
+                           else "không có worktree tích hợp (dự án chạy không repo)")
+        o._audit("release.smoke_unverified", {"release_id": rid, "reason": smoke["reason"], "spec_kind": kind},
+                    project_id=pid, once=f"smoke.unverified:{rid}:{rc.event_id}")
+        if kind != "application" or _du_an_legacy(o, pid):
+            return {**p, "smoke": smoke}
+        o._audit("release.smoke_blocked", {"release_id": rid, "claimed_status": p.get("status"),
+                                              "spec_kind": kind, "reason": smoke["reason"]}, project_id=pid)
+        if rid not in o.gate.pending:   # cùng đường với smoke fail bên dưới: RC failed không có route nào tiếp
+            o.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="release-engineer",
+                                          checklist=["root_cause", "decision:redeploy|close", "hint"]))
+        return {**p, "status": "failed", "smoke": smoke}
     smoke = run_smoke(integ.path, rt, sandbox=o.sandbox)
     o._audit("release.smoke", {"release_id": rid, **smoke}, actor=agent, project_id=pid)
     if smoke.get("ok"):
