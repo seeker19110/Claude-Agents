@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import fields, is_dataclass
+from dataclasses import fields, is_dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -11,9 +11,18 @@ import pytest
 from company.bus import InMemoryBus
 from company.events import Envelope, ReviewResult, SupervisorAction
 from company.llm import FakeClient, LLMError
-from company.orchestrator import ENGINEERING, PLAN_INPUTS, ROUTES, Orchestrator, StepResult, check_routes
+from company.orch import routes as routes_mod
+from company.orchestrator import (
+    ENGINEERING,
+    PLAN_INPUTS,
+    ROUTES,
+    Orchestrator,
+    Route,
+    StepResult,
+    check_routes,
+)
 from company.orchestrator import main as orch_main
-from company.registry import load_agents
+from company.registry import Phase, load_agents
 from company.sqlite_bus import SQLiteBus
 
 T1 = {"ticket_id": "T1", "project_id": "P1", "requirement_id": "REQ-1", "assignee": "backend", "title": "GET /orders",
@@ -97,6 +106,35 @@ def test_routes_match_front_matter():
     agents = load_agents()
     assert check_routes(agents) == []
     assert {r.topic_in for r in ROUTES} | set(PLAN_INPUTS) <= {t for a in agents.values() for t in a.reads}
+
+
+def test_check_routes_bat_route_khai_pha_agent_khong_co(monkeypatch):
+    """ADR-0037: `Route(phase=...)` phải khớp `phases` trong front matter. Lệch thì lượt chạy bằng bộ skill của
+    vai khác — `check_routes` chạy lúc khởi động nên nó vỡ ngay, không phải giữa một ticket."""
+    agents = load_agents()
+    lac = Route("pull-requests", "reviewer", "review-results", phase="khong-co")
+    monkeypatch.setattr(routes_mod, "ROUTES", (*ROUTES, lac))
+    bad = check_routes(agents)
+    assert bad == ["reviewer không có pha khong-co (front matter khai: không pha nào)"]
+    assert routes_mod.phase_for(lac, agents["reviewer"], _pub_env()) == "khong-co", "route khai pha thì dùng pha đó"
+
+
+def test_phase_for_lay_stack_cua_ticket_cho_route_sua_code():
+    """Route `tools="rw"` không khai pha: pha lấy theo `stack` của ticket (ADR-0013 + ADR-0037), và chỉ khi agent
+    thật sự khai pha ấy — agent kỹ thuật cũ (không pha nào) phải chạy y như trước."""
+    agents = load_agents()
+    rw = next(r for r in ROUTES if r.tools == "rw")
+    env = Envelope(topic="tasks", key="T1", actor="delivery-lead",
+                   payload={"ticket_id": "T1", "stack": "backend", "assignee": "backend"})
+    assert routes_mod.phase_for(rw, agents["backend"], env) is None, "agent chưa chia pha: không pha"
+    co_pha = replace(agents["backend"], phases={"backend": Phase()})
+    assert routes_mod.phase_for(rw, co_pha, env) == "backend"
+    khong_rw = next(r for r in ROUTES if r.tools is None and r.phase is None)
+    assert routes_mod.phase_for(khong_rw, co_pha, env) is None, "route không sửa code: stack không phải pha"
+
+
+def _pub_env() -> Envelope:
+    return Envelope(topic="pull-requests", key="T1", actor="backend", payload={"ticket_id": "T1"})
 
 
 # ---------- vòng đời đầy đủ trong bộ nhớ ----------

@@ -43,6 +43,18 @@
             "data"
           ]
         },
+        "stack": {
+          "description": "ADR-0037: mảng kỹ thuật của ticket = pha của agent làm ticket; chưa khai thì lấy theo `assignee`",
+          "enum": [
+            "backend",
+            "frontend",
+            "mobile",
+            "database",
+            "platform",
+            "data",
+            null
+          ]
+        },
         "risk_tags": {
           "type": "array",
           "description": "auth|payment|pii|crypto|upload|admin|external-api — có tag thì bắt buộc review security",

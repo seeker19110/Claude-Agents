@@ -147,6 +147,22 @@ def test_budget_cong_ca_skill_va_bat_skill_thieu(tmp_path: Path):
     assert w.share == 0.2 and w.missing_skills == ["khong-co"]
 
 
+def test_budget_do_theo_tung_pha(tmp_path: Path):
+    """ADR-0037: agent chia pha thì prompt tĩnh khác nhau theo lượt — một dòng cho MỖI pha, tokens = thân +
+    skill cấp agent + skill của pha. Gộp mọi pha vào một dòng sẽ báo động giả (không lượt nào nạp bằng ấy)."""
+    root = _tree(tmp_path, {
+        "agents/eng/a.md": "---\nid: a\nskills: [chung]\nbudget_tokens_per_task: 1000\n"
+                           "phases:\n  intake: {skills: [s-intake]}\n  spec: {skills_core: [khong-co]}\n---\n" + "x" * 400,
+        "skills/chung.md": "y" * 400,
+        "skills/s-intake.md": "z" * 800,
+    })
+    ws = {w.agent: w for w in A.agent_weights(root)}
+    assert set(ws) == {"a[intake]", "a[spec]"}, "không còn dòng gộp cho cả agent"
+    assert ws["a[intake]"].static_chars == 1600 and ws["a[intake]"].static_tokens == 400
+    assert ws["a[spec]"].static_chars == 800 and ws["a[spec]"].share == 0.2
+    assert ws["a[spec]"].missing_skills == ["khong-co"] and ws["a[intake]"].missing_skills == []
+
+
 def test_budget_khong_co_ngan_sach_thi_share_bang_khong(tmp_path: Path):
     root = _tree(tmp_path, {"agents/a.md": "---\nid: a\n---\nnội dung"})
     assert A.agent_weights(root)[0].share == 0.0

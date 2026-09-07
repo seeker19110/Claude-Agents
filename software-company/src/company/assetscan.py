@@ -211,7 +211,7 @@ CHARS_PER_TOKEN = 4  # ước lượng thô, đủ để so sánh tương đối
 
 @dataclass(frozen=True)
 class Weight:
-    agent: str
+    agent: str               # id agent, hoặc `id[pha]` khi agent chia pha (ADR-0037) — mỗi pha một dòng
     static_chars: int
     static_tokens: int
     budget_tokens: int
@@ -219,11 +219,25 @@ class Weight:
     missing_skills: list[str]
 
 
+def _skill_chars(root: Path, names: list[Any]) -> tuple[int, list[str]]:
+    """Tổng số ký tự của một danh sách skill, và tên các skill không có trên đĩa."""
+    chars, missing = 0, []
+    for name in names:
+        sp = root / "skills" / f"{name}.md"
+        if sp.is_file(): chars += len(sp.read_text(encoding="utf-8"))
+        else: missing.append(str(name))
+    return chars, missing
+
+
 def agent_weights(root: Path) -> list[Weight]:
     """Prompt tĩnh (thân agent + toàn văn skill) so với `budget_tokens_per_task` của chính agent đó.
 
     Ý tưởng lấy từ `context-budget` của ECC, nhưng đo thứ repo này có mà harness không có: ngân sách khai trong
     front matter. Agent nào để prompt tĩnh ăn quá nửa ngân sách thì phần còn lại cho dữ liệu thật quá mỏng.
+
+    ADR-0037: agent chia pha thì prompt tĩnh KHÁC NHAU theo từng lượt, nên đo theo pha — một dòng `id[pha]` cho
+    mỗi pha, tokens = thân + skill cấp agent + skill của pha. Đo gộp cả mọi pha vào một dòng sẽ báo động giả
+    (không lượt nào nạp bằng ấy skill); đo mỗi thân agent thì bỏ sót đúng thứ ADR-0037 đánh đổi.
     """
     out: list[Weight] = []
     if not (root / "agents").is_dir(): return out
@@ -232,15 +246,20 @@ def agent_weights(root: Path) -> list[Weight]:
         m = _FM.match(text)
         if not m: continue
         fm = yaml.safe_load(m.group(1)) or {}
-        chars, missing = len(text) - m.end(), []
-        for name in [*(fm.get("skills") or []), *(fm.get("skills_core") or [])]:
-            sp = root / "skills" / f"{name}.md"
-            if sp.is_file(): chars += len(sp.read_text(encoding="utf-8"))
-            else: missing.append(str(name))
+        base_chars, missing = _skill_chars(root, [*(fm.get("skills") or []), *(fm.get("skills_core") or [])])
+        base_chars += len(text) - m.end()
         budget = int(fm.get("budget_tokens_per_task") or 0)
-        tokens = chars // CHARS_PER_TOKEN
-        out.append(Weight(str(fm.get("id") or p.stem), chars, tokens, budget,
-                          round(tokens / budget, 3) if budget else 0.0, missing))
+        aid = str(fm.get("id") or p.stem)
+        rows: list[tuple[str, int, list[str]]] = [(aid, base_chars, missing)]
+        if phases := (fm.get("phases") or {}):
+            rows = []
+            for name, cfg in phases.items():
+                cfg = cfg or {}
+                extra, miss = _skill_chars(root, [*(cfg.get("skills") or []), *(cfg.get("skills_core") or [])])
+                rows.append((f"{aid}[{name}]", base_chars + extra, missing + miss))
+        for label, chars, miss in rows:
+            tokens = chars // CHARS_PER_TOKEN
+            out.append(Weight(label, chars, tokens, budget, round(tokens / budget, 3) if budget else 0.0, miss))
     return sorted(out, key=lambda w: w.share, reverse=True)
 
 

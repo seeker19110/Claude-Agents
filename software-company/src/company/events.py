@@ -80,6 +80,10 @@ class Task(BaseModel):
     project_id: str
     requirement_id: str
     assignee: Assignee
+    # ADR-0037: mảng kỹ thuật của ticket = PHA của agent làm ticket (`AgentSpec.phases`), thay cho việc chọn một
+    # agent riêng cho mỗi stack. Chưa khai thì `routes.phase_for` lấy tạm `assignee` — hai trường trùng nghĩa
+    # trong lúc chuyển đổi, `assignee` bỏ khi bảng route đã chuyển hẳn sang một agent kỹ thuật.
+    stack: Assignee | None = None
     title: str
     acceptance: list[str]
     scope: list[str] = []
@@ -160,6 +164,7 @@ class AuditLog(BaseModel):
     output_tokens: int = 0
     cost_usd: float = 0.0  # từ bảng giá `prices` trong llm.yaml; 0 khi model không có giá (supervisor đếm `unpriced`)
     rulings: list[Ruling] = []  # ADR-0030
+    phase: str | None = None  # ADR-0037: pha của lượt (`AgentSpec.phases`) — hai lượt cùng actor khác pha phân biệt được ở sổ
 
 class ChangeRequest(BaseModel):
     """Khách yêu cầu đổi phạm vi sau khi spec đã duyệt (account-manager tạo). Không sửa spec trực tiếp."""

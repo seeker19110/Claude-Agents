@@ -65,7 +65,7 @@ def _release(o: Orchestrator, agent: str, rc: Envelope, r: Route) -> Envelope:
         # Sha mà QA sẽ hồi quy — và sha sẽ được giao khi production duyệt (ADR-0027). Ghi audit để bền qua restart.
         with o._lock: o.release_sha[rid] = full
         o._audit("release.staged", {"release_id": rid, "sha": full, "branch": integ.branch}, project_id=o.project_for(rc))
-    g = o.runner.generate(agent, inp, r.topic_out)
+    g = o.runner.generate(agent, inp, r.topic_out, phase=r.phase)
     p = g.payloads[0]
     if p.get("env") != r.target_env or p.get("release_id") != rid:
         # `env` và `release_id` là của ROUTE và của RC, KHÔNG phải lời khai của model — cùng nguyên tắc với
