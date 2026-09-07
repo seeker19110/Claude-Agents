@@ -57,6 +57,10 @@ console/.console-token
 # Claude Code: quyền và cấu hình riêng của từng máy (settings.json dùng chung thì vẫn commit)
 .claude/settings.local.json
 
+# Claude Code: git worktree tạm của agent chạy nền (harness tạo, tự xoá khi agent xong).
+# Commit nhầm nó là commit một bản sao cả repo vào chính repo.
+.claude/worktrees/
+
 # log tiến trình orchestrator (sinh lúc chạy)
 software-company/var/
 Studio-creators/var/
