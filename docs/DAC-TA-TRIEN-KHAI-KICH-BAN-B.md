@@ -36,14 +36,19 @@ README package — đừng làm trùng, chỉ canh README gốc.
 
 ## K1 — Tách máy trạng thái · ADR-0037 + 7 PR
 
-**Trạng thái (2026-09-06)**: một phần đã làm, gộp trong một PR thay vì 7 (ADR thực tế đánh số 0034, không phải
-0037 — số 0035–0036 chưa dùng ở nhánh này). Đã tách `orch/routes.py` (K1.2), `orch/verify.py` +
-`orch/cli.py` (K1.1), `orch/rehydrate.py` (một phần của K1.3) — code THUẦN, không chia sẻ lock/thứ tự gọi.
-`orchestrator.py` 2269 → 1600 dòng. **Chưa làm**: `OrchState` dataclass + property alias (phần còn lại của
-K1.3), `worktree_flow.py` (K1.4), `scheduler.py` (K1.5), `gates_flow.py` (K1.6), `ticket_fsm.py`/
-`release_fsm.py` + bảng chuyển trạng thái (K1.7) — chạm vòng lặp chính (`process`/`run`/`tick`/`watch`/`_call`,
-khoá merge, FSM ticket/release), rủi ro cao hơn nhiều bậc; để phiên sau làm riêng, có thời gian viết test
-rehydrate tham số hoá theo từng trường trước khi đổi cấu trúc trạng thái.
+**Trạng thái (2026-09-07)**: **đóng K1** ở mức chức năng (7 PR thật thay vì gộp 1, ADR thực tế đánh số 0034,
+không phải 0037 — số 0035–0036 chưa dùng ở nhánh này). Đã tách `orch/routes.py` (K1.2), `orch/verify.py` +
+`orch/cli.py` (K1.1) (#115); `OrchState` dataclass + 24 property alias (K1.3 phần state, #117);
+`worktree_flow.py` (K1.4, #120); `scheduler.py` — vòng lặp chính (K1.5, #122); `gates_flow.py` (K1.6, #123);
+`ticket_fsm.py`/`release_fsm.py` di chuyển thuần (#124) rồi `orch/fsm.py` (`Transition`/`step()`) +
+`TICKET_TRANSITIONS`/`RELEASE_TRANSITIONS` làm bảng dữ liệu thật, `process()` thành dispatcher thuần, cộng
+`tests/test_orch_bang_chuyen.py` + `tests/test_orch_khuon_loi.py` (K1.7, #125) — sửa luôn bug `once=
+"no-test-author:{tid}"` thiếu thế hệ, phát hiện khi viết test khuôn 3.
+`orchestrator.py` 2269 → 491 dòng. **Còn dở, cố ý để phiên sau quyết định**: K1.8 (đích ≤ 300 dòng) CHƯA đạt —
+phần còn lại (`_call`/`__init__`/`status`) ngoài phạm vi mọi PR K1.x đã duyệt; ba khoá `once` khác
+(`gate.escalate:{sid}`, `smoke.unverified:{rid}`, `delivery.skipped:{rid}`) chưa được kiểm có thiếu thế hệ như
+`no-test-author` hay không (K1.4 gốc đặc tả); K1.5 (guard `smoke.unverified` theo `kind=application`+`legacy`)
+chưa làm. Không có PR nào chạm `orchestrator.py`/`orch/` cùng lúc — mỗi PR một phiên, đo hai chiều đủ.
 
 ### ADR-0037 (viết trước, PR `docs(company): ADR-0037 tách máy trạng thái`)
 

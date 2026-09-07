@@ -308,9 +308,23 @@ Nếu chỉ làm được một nửa: **K0, K1, K2, K3.0–K3.5, K8.3, K9.1**. 
 
 | Mã | Trạng thái | PR | Ghi chú |
 |---|---|---|---|
-| K0 | chưa | | |
-| K1.1–K1.8 | chưa | | ADR-0037 trước |
-| K2.1–K2.8 | chưa | | ADR-0035 trước |
+| K0 | xong | #114 | vệ sinh số liệu trôi |
+| K1.1 | xong | #115, #117, #120, #122–124 | mọi tên public cũ vẫn import được qua `company.orchestrator` — không PR K1.x nào đổi dòng import của 28 file test |
+| K1.2 | xong | #117 | `OrchState` dataclass, 24 trường (không phải 30 như báo cáo bản đồ gốc — một số đã gộp/bỏ dọc đường), mỗi trường có metadata `rehydrate` |
+| K1.3 | xong | #125 | `orch/fsm.py` (`Transition`/`step()`) + `TICKET_TRANSITIONS`/`RELEASE_TRANSITIONS` tra bảng; #124 trước đó chỉ di chuyển thuần (chưa dựng bảng) |
+| K1.4 | **một phần** | #125 | chỉ `no-test-author:{tid}` được thêm thế hệ (`:{retry}`, bug phát hiện khi viết test khuôn 3); ba khoá còn lại — `gate.escalate:{sid}` (`orch/scheduler.py:119`), `smoke.unverified:{rid}` (`orch/verify.py:47,52`), `delivery.skipped:{rid}` (`orch/release_fsm.py:97`) — VẪN CHƯA có thế hệ |
+| K1.5 | xong (từ trước) | | `orch/verify.py:109-111` đã guard `spec_kind=application` không có `runtime` → `fail`; không rõ PR nào đưa vào, có trước chuỗi PR K1 hiện tại, không tính công cho K1 |
+| K1.6 | xong | #125 | `tests/test_orch_khuon_loi.py` — 7 test (5 khuôn TRAPS.md §1 + 2 test chốt thêm) |
+| K1.7 | xong | #125 | xác nhận: không `orch/*.py` nào `from .ticket_fsm`/`from .release_fsm`; `_call`/`process` vẫn ở `orchestrator.py` |
+| K1.8 | **chưa đạt** | | `wc -l orchestrator.py` = 491 (đích ≤ 300); mọi module `orch/` ≤ 400 dòng đã đạt — phần còn lại (`_call`/`__init__`/`status`) ngoài phạm vi mọi PR K1.x đã duyệt, để phiên sau quyết tách tiếp hay hạ đích |
+| K2.1 | xong | #116 | `company/sandbox.py` — interface `Sandbox`/`RunSpec`/`Result`/`Handle`, `SubprocessSandbox`, `ContainerSandbox` |
+| K2.2 | xong | #116 | argv `ContainerSandbox` chuẩn (`--network none`, `--cpus`/`--memory`/`--pids-limit`, `-u uid:gid`, `--env-file -`) đã trong `sandbox.py` cùng PR K2.1 |
+| K2.3 | xong | #116 | `sandbox_from_config` — `auto`/`subprocess`/`container` qua `COMPANY_SANDBOX*` + `llm.yaml`, fail-closed `SandboxError` khi thiếu binary |
+| K2.4 | **một phần** | #119 | studio (`CommandTTS`, `FFmpegAssembler._run`, `qc._run`) đã qua `Sandbox` (#119); company (`tools.run`, `TicketWorkspace._run`, `run_smoke`) **CHƯA** — vẫn gọi `subprocess.*` thẳng |
+| K2.5 | **một phần** | #119 | studio `render.*` audit đã ghi `sandbox`; company `local_checks.sandbox`/`smoke.sandbox` (schema `pull-requests`/`release-events`) CHƯA thêm |
+| K2.6 | xong | #119 | `CommandTTS` qua `clean_env()`; `FFmpegAssembler._run` có `render.timeout_s` (mặc định 600s) |
+| K2.7 | chưa | | console tile cảnh báo "sandbox=none" |
+| K2.8 | chưa | | `SECURITY.md`/`README.md` company vẫn nói sandbox = đường dẫn + env — ĐÚNG cho tới khi K2.4 (phần company) xong, đừng sửa sớm |
 | K3.0–K3.7 | chưa | | ADR gốc 0001 trước; K3.6 đợi 5 ngày sau K3.5 |
 | K4.1–K4.5 | chưa | | ADR gốc 0002 |
 | K5.1–K5.5 | chưa | | sau K3.3 |
