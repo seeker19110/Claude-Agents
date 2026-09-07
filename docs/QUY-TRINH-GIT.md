@@ -66,6 +66,25 @@ tạo, hoặc `git reflog` có `checkout` mình không gọi. Gặp thì dừng,
 Điều này áp cho **phiên người lái**. Orchestrator đã cô lập sẵn: mỗi ticket một worktree dưới `.worktrees/`
 (`software-company/src/company/workspace.py`), và nó chạy trên repo của khách (`--repo`), không phải repo này.
 
+## 2c. Nhiều phiên cùng lúc: chỉ một PR mở tại một thời điểm (áp toàn cục)
+
+Nhiều phiên có thể **code song song** trên worktree riêng (§2b) như bình thường — quy tắc này chỉ khoá ở
+bước **mở/merge PR**, để loại hoàn toàn xung đột nền do hai nhánh cùng lệch khỏi `main` một lúc.
+
+- **Trước khi mở PR**: kiểm `gh pr list --state open`. Có PR khác đang mở (của phiên khác) → **không mở
+  PR mới**. Tiếp tục code trên worktree của mình, chờ đến khi PR kia merge xong rồi mới mở.
+- **Ngay khi PR trước merge xong, trước khi mở PR của mình**: `git fetch origin` rồi
+  `git rebase origin/main` trên nhánh của mình (không merge `main` vào — rebase, giữ lịch sử thẳng).
+  Giải conflict lúc rebase nếu có, chạy lại `make lint` + `make test` sau rebase (§4/§7 vẫn áp).
+- Rồi mới `gh pr create` + bật auto-merge như thường (§5).
+- Nếu rebase xung đột nhiều/phức tạp → dừng, báo người dùng, đừng tự ý bỏ qua bằng merge thường hay
+  `--no-verify`.
+
+Vì mỗi PR luôn được rebase lên `main` mới nhất *ngay trước khi mở*, và không có PR thứ hai nào mở song
+song để đá vào cùng nền — nhánh không bao giờ diverge lâu, nên xung đột merge gần như bị loại bỏ. Cái giá
+đánh đổi: bước mở PR trở thành hàng đợi tuần tự giữa các phiên — phiên nào xong sau phải đợi phiên xong
+trước merge trước.
+
 ## 3. Commit
 
 - Conventional Commits: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `style`, `perf`,
