@@ -18,6 +18,159 @@ Mục lục
 
 ---
 
+## 0. Ngày đầu của người thứ hai — 30 phút, không tốn một đồng nào
+
+Mục này dành cho người **chưa từng mở repo này**. Nó không giải thích kiến trúc; nó chỉ đưa bạn đi hết một vòng
+thật — cài, chạy, thấy công ty làm việc, rồi **tự tay ký một quyết định** — bằng provider giả, không API key,
+không tốn hạn mức. Mọi lệnh dưới đây đã được chạy thật trên Windows 11 + PowerShell trước khi viết vào đây; nếu
+một lệnh không ra như mô tả thì đó là lỗi của tài liệu, hãy ghi lại chỗ vấp (xem cuối mục).
+
+Cần trước: `git`, [`uv`](https://docs.astral.sh/uv/), và một terminal. Không cần Docker, không cần API key.
+
+### Bước 1 — cài (≈ 2 phút)
+
+```bash
+git clone <URL repo> x-agents && cd x-agents
+uv sync
+```
+
+Cả repo là **một** uv workspace: một lệnh cài cả bốn package vào một `.venv` ở gốc. Không cần `PYTHONPATH`.
+
+### Bước 2 — xem cả công ty chạy một vòng (≈ 1 phút)
+
+```bash
+cd software-company
+uv run python -m company.demo
+```
+
+Đây là toàn bộ vòng đời với client giả: yêu cầu → kế hoạch → ticket → PR → review → release → khách nghiệm thu.
+Dòng cuối in ra `sprint report` và `events: 20`. Đọc từ dưới lên, ba dòng đáng chú ý:
+
+```
+REL-001: staging deployed, QA pass → gate 3 pending: True | TCK-1: merged
+REL-001: production + khách nghiệm thu → TCK-1: closed
+releases: ['REL-001', 'REL-002'] | gate pending: []
+```
+
+Điều cần rút ra: **công ty tự đi tới khi gặp một human gate, rồi dừng**. Demo tự duyệt hộ để chạy tiếp; ở đời
+thật, chỗ đó là bạn.
+
+### Bước 3 — tự tay đưa một yêu cầu vào (≈ 3 phút)
+
+```bash
+cd software-company
+```
+
+Tạo `req.json` (dùng file tạm, đừng commit):
+
+```json
+{"project_id": "THU-1", "description": "Trang ghi chú một người dùng: thêm, sửa, xoá ghi chú; lưu cục bộ."}
+```
+
+```bash
+uv run python -m company.orchestrator --db thu.sqlite publish research-requests req.json --actor human:po --key THU-1
+```
+
+Ra:
+
+```
+published research-requests key=THU-1 event=245ecda8...
+```
+
+`--actor` **phải** là `human:<tên>`: CLI là cửa của người, giả danh agent từ đây là vượt quyền (và bị chặn).
+
+### Bước 4 — chạy orchestrator offline và gặp một bế tắc thật (≈ 2 phút)
+
+```bash
+COMPANY_LLM_PROVIDER=fake uv run python -m company.orchestrator --db thu.sqlite run --max-steps 40
+```
+
+PowerShell: `$env:COMPANY_LLM_PROVIDER="fake"` trên một dòng riêng trước lệnh.
+
+Ra:
+
+```
+research-requests   THU-1   error:intake:FakeClient hết câu trả lời; stalled:THU-1:intake
+{... "paused": ["THU-1"], "gates_pending": {"THU-1": "escalation"}, "stats": {"errors": 1} ...}
+```
+
+**Đây là kết quả ĐÚNG, không phải bạn làm sai.** Provider `fake` chỉ có sẵn kịch bản cho demo, không có cho một
+yêu cầu bất kỳ. Cái đáng học nằm ở chỗ hệ **phản ứng** thế nào: nó không im lặng bỏ qua, không tự đoán tiếp —
+nó dừng dự án (`paused`) và **mở một gate `escalation` để hỏi người**. Toàn bộ triết lý vận hành nằm trong một
+dòng đó: máy làm được thì làm, không làm được thì hỏi, không bao giờ đoán.
+
+### Bước 5 — ký quyết định đầu tiên của bạn (≈ 5 phút)
+
+```bash
+uv run python -m company.gate_cli --db thu.sqlite list
+```
+
+```
+THU-1        escalation by=supervisor       checklist=agent_error,decision:retry|close
+```
+
+`checklist` là thứ bạn phải trả lời. Duyệt:
+
+```bash
+uv run python -m company.gate_cli --db thu.sqlite approve THU-1 --by human:<tên bạn> \
+  --reason "agent_error: FakeClient hết câu trả lời vì demo không có kịch bản cho intake; decision: close; hint: chạy lại bằng model thật sau khi make llm"
+```
+
+```
+THU-1: approve by human:<tên bạn>
+```
+
+`--reason` **bắt buộc ≥ 20 ký tự** và nên có ba phần: `root_cause` (vì sao kẹt) + `decision` (chọn gì) +
+`hint` (agent làm gì tiếp). Không phải thủ tục: `hint` đi thẳng vào lượt sau của agent, nên `--reason "ok"` là
+bạn gửi cho nó một chỉ dẫn rỗng. Kiểm lại:
+
+```bash
+uv run python -m company.gate_cli --db thu.sqlite list
+```
+
+```
+(không có gate chờ)
+```
+
+Xong. Bạn vừa đi hết vòng mà một người trực làm mỗi ngày.
+
+### Bước 6 — nhìn cả hai công ty trên một màn hình (≈ 2 phút)
+
+```bash
+cd ../console
+uv run python -m console
+```
+
+Terminal in địa chỉ kèm token phiên; mở nó. Mặc định **chỉ đọc** — mọi nút quyết định bị khoá cho tới khi bạn
+chạy lại với `--allow-decide`. Đóng bằng Ctrl-C.
+
+### Dọn
+
+```bash
+cd ../software-company && rm thu.sqlite req.json     # PowerShell: Remove-Item thu.sqlite, req.json
+```
+
+Không commit `*.sqlite`, `llm.yaml`, `output/` — `.gitignore` đã chặn, nhưng biết vì sao thì hơn.
+
+### Bốn điều cần nhớ sau 30 phút này
+
+1. **Máy làm được thì làm, không làm được thì hỏi.** Mọi bế tắc đều thành một gate, không thành sự im lặng.
+2. **Lý do duyệt gate là dữ liệu, không phải thủ tục** — nó đi vào lượt tiếp theo của agent.
+3. **Không tin lời khai.** "Đã deploy" phải có bằng chứng máy sinh (`verified_by`), không phải model tự nói.
+4. **Chưa chạy thì chưa được nói là xong.** Áp dụng cho agent, và cho cả bạn.
+
+### Bạn vấp ở đâu?
+
+Chỗ nào trong mục này khiến bạn phải đoán, phải mở file khác, hay ra kết quả khác mô tả — **ghi lại ngay lúc
+vấp**, đừng để tới cuối. Mỗi chỗ vấp phải thành một mục trong `TRAPS.md` hoặc một sửa đổi ở đây **trong cùng
+tuần** (đó là nghiệm thu K9.3 của `docs/DAC-TA-KICH-BAN-B.md`). Người thứ ba không nên vấp lại chỗ bạn đã vấp.
+
+### Đi tiếp
+
+- Muốn chạy bằng model thật: §3 (cấu hình theo gói tài khoản) rồi §5.
+- Muốn hiểu vì sao hệ được dựng như vậy: `ARCHITECTURE.md` ở gốc, rồi `docs/adr/` của từng công ty.
+- Luật bắt buộc khi sửa code: `AGENTS.md` ở gốc — đọc trước khi chạm file đầu tiên.
+
 ## 1. Yêu cầu hệ thống
 
 | Thành phần | Bắt buộc? | Ghi chú |
