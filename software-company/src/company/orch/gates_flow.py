@@ -21,10 +21,10 @@ from ..gates import Decision, GateRequest
 from .routes import ACTOR, PROD_ROUTE, RESEARCH_TOPICS, REVIEW_AGENT, Route
 
 if TYPE_CHECKING:
-    from ..orchestrator import StepResult
+    from ..orchestrator import Orchestrator, StepResult
 
 
-def _on_gate_decide(o, env: Envelope, res: StepResult) -> StepResult:
+def _on_gate_decide(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     from ..orchestrator import _evidence  # nhập lười: orchestrator.py nhập module này trước khi định nghĩa _evidence
     d = _evidence(env.payload); sid, decision, by = d["subject_id"], d["decision"], d.get("by", "human")
     kind = next((g.kind for g in reversed(o.gate.history) if g.subject_id == sid), None)
@@ -51,7 +51,7 @@ def _on_gate_decide(o, env: Envelope, res: StepResult) -> StepResult:
     o._retry_deferred()
     return res
 
-def _check_escalations(o) -> None:
+def _check_escalations(o: Orchestrator) -> None:
     """Ticket blocked (retry hết) hoặc bị supervisor escalate → gate `escalation` cho người quyết (checklist gate 'bất thường')."""
     # `o.paused` chứa cả ID DỰ ÁN (supervisor pause khi dự án chạm trần ngân sách), không chỉ ticket. Lọc
     # `t in o.lead.tickets` bỏ sót đúng nhóm đó: dự án bị pause thì mọi event của nó bị hoãn, không cổng
@@ -87,7 +87,7 @@ def _check_escalations(o) -> None:
                                           checklist=["root_cause", "decision:reopen|close", "hint"]))
     o._check_debt()
 
-def _check_debt(o) -> None:
+def _check_debt(o: Orchestrator) -> None:
     """ADR-0032: mã nợ kiến trúc chạm ngưỡng (supervisor đếm từ bus, xác định) → gate `escalation` cấp DỰ ÁN với
     danh sách nợ, số lần, ticket nào nhắc, và hint "cần ticket ADR + người ký". Không pause dự án: nợ treo là
     quyết định bị né, không phải sự cố — việc khác vẫn chạy trong lúc người quyết.
@@ -109,7 +109,7 @@ def _check_debt(o) -> None:
                      "decision:adr|waive", f"hint:{due['hint']}"]
         o.gate.request(GateRequest(kind="escalation", subject_id=pid, created_by="supervisor", checklist=checklist))
 
-def _on_escalation_decided(o, tid: str, decision: str, by: str, reason: str, res: StepResult) -> None:
+def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, reason: str, res: StepResult) -> None:
     if tid in o.debt_gate:  # ADR-0032: nợ kiến trúc cấp dự án — người ghi nhận (ADR + người ký) hay chấp nhận treo
         rec = o.debt_gate.pop(tid)
         o._audit("debt.decided", {"project_id": tid, "debt_id": rec.get("debt_id"), "times": rec.get("times"),
@@ -198,7 +198,7 @@ def _on_escalation_decided(o, tid: str, decision: str, by: str, reason: str, res
         if o.lead.batch_releases:  # ticket đóng không còn giữ release của các ticket đã approved
             o.lead.flush_releases(o.lead.tickets[tid].project_id)
 
-def _open_acceptance_gate(o, rid: str, res: StepResult) -> None:
+def _open_acceptance_gate(o: Orchestrator, rid: str, res: StepResult) -> None:
     """Sau production: mở gate `acceptance` cho khách ký (ADR-0017). Là gate thật nên có hạn 24h, có nhắc ở 12h
     và được escalate khi quá hạn — trước đây chỉ là một dòng audit `uat.pending` không ai theo dõi."""
     sid = f"UAT-{rid}"
@@ -208,7 +208,7 @@ def _open_acceptance_gate(o, rid: str, res: StepResult) -> None:
                                   checklist=["uat-script", "acceptance-criteria", "known-issues", "signed_by"]))
     res.actions.append(f"gate:acceptance:{sid}")
 
-def _close_acceptance_gate(o, env: Envelope, res: StepResult) -> None:
+def _close_acceptance_gate(o: Orchestrator, env: Envelope, res: StepResult) -> None:
     """Khách ký `acceptance-results` → đóng gate nghiệm thu bằng chính chữ ký đó. Four-eyes bảo đảm người ký của
     khách khác account-manager. Conditional đóng ở dạng request_changes; phần còn lại đi qua change request."""
     rid = env.payload.get("release_id"); sid = f"UAT-{rid}"
@@ -222,7 +222,7 @@ def _close_acceptance_gate(o, env: Envelope, res: StepResult) -> None:
     except (KeyError, PermissionError) as e:
         o._audit("handler_error", {"agent": "account-manager", "error": str(e)[:300]})
 
-def _stall(o, env: Envelope, agent: str, error: Exception, res: StepResult) -> bool:
+def _stall(o: Orchestrator, env: Envelope, agent: str, error: Exception, res: StepResult) -> bool:
     """Agent của chuỗi nghiên cứu lỗi → dự án không có bước kế tiếp. Ghi `project.stalled`, supervisor escalate
     (dự án bị hoãn mọi event), mở gate `escalation` subject=project_id. Ticket có cơ chế retry/blocked riêng.
     Trả True nếu nhánh này đã nhận trách nhiệm xử lý lỗi."""
@@ -241,7 +241,7 @@ def _stall(o, env: Envelope, agent: str, error: Exception, res: StepResult) -> b
     res.actions.append(f"stalled:{pid}:{agent}")
     return True
 
-def _after_error(o, env: Envelope, agent: str, error: Exception, r: Route, res: StepResult) -> None:
+def _after_error(o: Orchestrator, env: Envelope, agent: str, error: Exception, r: Route, res: StepResult) -> None:
     """Mọi lỗi agent phải có người nhận: `_stall` lo chuỗi nghiên cứu, `_rework_after_error` lo agent sửa code.
     KHÔNG đường nào nhận thì đây là đường cuối — trước đây lỗi rơi vào im lặng: event vẫn bị `_mark` là đã xử
     lý, ticket treo nguyên trạng thái cũ, không gate nào mở, và `status` báo mọi chỉ số XANH trong khi dự án
@@ -259,7 +259,7 @@ def _after_error(o, env: Envelope, agent: str, error: Exception, r: Route, res: 
                                   once_key=f"unhandled:{env.event_id}:{agent}")
     res.actions.append(f"unhandled:{subject}:{agent}")
 
-def _rework_after_error(o, env: Envelope, r: Route, error: Exception) -> bool:
+def _rework_after_error(o: Orchestrator, env: Envelope, r: Route, error: Exception) -> bool:
     """Agent kỹ thuật lỗi (không sửa file, JSON hỏng, hết ngân sách lượt...) → ticket không được treo `dispatched`
     mãi: delivery-lead phát lại task retry+1 với hint là lỗi, hết retry → blocked → gate escalation.
     Trả True nếu nhánh này đã nhận trách nhiệm xử lý lỗi."""
@@ -272,7 +272,7 @@ def _rework_after_error(o, env: Envelope, r: Route, error: Exception) -> bool:
         o._audit("handler_error", {"agent": "delivery-lead", "error": str(ex)[:300]}, ticket_id=tid)
     return True
 
-def _retry_stalled(o, pid: str, by: str, reason: str) -> bool:
+def _retry_stalled(o: Orchestrator, pid: str, by: str, reason: str) -> bool:
     """Người duyệt gate escalation của dự án: chạy lại event đã lỗi (bỏ dấu đã xử lý, đưa về đầu hàng đợi)."""
     st = o.stalled.get(pid)
     if st is None: return False
@@ -284,7 +284,7 @@ def _retry_stalled(o, pid: str, by: str, reason: str) -> bool:
     with o._qlock: o.queue.insert(0, env)
     return True
 
-def _retry_unhandled(o, subject: str, by: str, reason: str) -> bool:
+def _retry_unhandled(o: Orchestrator, subject: str, by: str, reason: str) -> bool:
     """Như `_retry_stalled` nhưng cho event bất kỳ mà agent lỗi không nhánh nào nhận (`unhandled`)."""
     rec = o.unhandled.get(subject)
     if rec is None: return False
@@ -297,7 +297,7 @@ def _retry_unhandled(o, subject: str, by: str, reason: str) -> bool:
     with o._qlock: o.queue.insert(0, env)
     return True
 
-def _record_lessons(o, rid: str) -> None:
+def _record_lessons(o: Orchestrator, rid: str) -> None:
     """Sau nghiệm thu: estimate vs actual mỗi ticket đã closed → supervisor.knowledge + blackboard `knowledge`."""
     for tid in o.lead.release_tickets.get(rid, []):
         if o.lead.state.get(tid) != "closed" or f"lesson:{tid}" in o.once: continue
