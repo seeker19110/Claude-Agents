@@ -4,6 +4,7 @@ module đã viết tại thời điểm này. Đỏ ở đây nghĩa là một P
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from company.bus import InMemoryBus
@@ -51,26 +52,34 @@ def test_khuon2_bang_chuyen_giao_la_du_lieu_tinh_khong_phai_state():
 # Miễn vì lý do RÕ, không phải vì "chưa ai kêu ca":
 # - uat:{rid} / lesson:{tid} / closed:{tid}: đích của chúng (gate nghiệm thu, gói bài học, trạng thái cuối) tự nó
 #   chỉ xảy ra MỘT LẦN trong đời chủ thể — không có "lần thứ hai hợp lệ" để bị nuốt oan.
-# - no_draft:{e.event_id}: khoá đã mang thế hệ THẬT SỰ — `event_id` đổi mỗi lần một `clarification-answers` MỚI
-#   tới, nên một lượt "hợp lệ lặp lại" tự nhiên có key khác, không đụng khoá cũ.
-# - delivery.skipped / smoke.unverified: audit phụ (đường ống đã có audit chính mang bằng chứng thật cho MỖI lần
-#   thử — `release.smoke`/`release-events` mang payload smoke riêng từng lượt); khoá once ở đây chỉ chặn TIẾNG ỒN
-#   audit-log cho một NGUYÊN NHÂN đã biết (thiếu runtime/thiếu repo), không che mất bằng chứng. Nếu sau này audit
-#   phụ này trở thành nguồn DUY NHẤT người đọc để biết lượt có unverified hay không, phải bỏ khỏi danh sách này.
-KHOA_MIEN: frozenset[str] = frozenset({"uat", "lesson", "closed", "no_draft", "delivery.skipped", "smoke.unverified"})
+# - review.escalate:{key}: một thành phần nhưng `key` là biến ĐÃ ghép sẵn `review:{tid}:{src}:{since}` ngay
+#   trên đó — thế hệ (`since`) nằm trong biến, mẫu regex không nhìn xuyên biến được.
+# - delivery.skipped / smoke.unverified TỪNG được miễn với lý do "audit phụ, đường ống đã có audit chính".
+#   K1.4 bỏ miễn: lý do đó chỉ đúng cho nhánh CÓ chạy được smoke (`release.smoke` mang payload từng lượt) —
+#   đúng hai nhánh dùng khoá này là nhánh KHÔNG chạy được (thiếu `runtime`, thiếu worktree) và ở đó audit phụ
+#   là bản ghi DUY NHẤT nói lượt ấy chưa kiểm. Cả hai nay mang `event_id` của lượt.
+KHOA_MIEN: frozenset[str] = frozenset({"uat", "lesson", "closed", "review.escalate"})
+
+
+def _co_the_he(key_tmpl: str) -> bool:
+    """Khoá mang thế hệ khi có ≥ 2 thành phần, HOẶC khi thành phần duy nhất là `event_id` — `event_id` đổi mỗi
+    lần một event mới tới, nên một lượt "hợp lệ lặp lại" tự nhiên có khoá khác và không đụng khoá cũ."""
+    phan = re.findall(r"\{([^}]+)\}", key_tmpl)
+    return len(phan) >= 2 or any(x.strip().endswith("event_id") for x in phan)
 
 
 def test_khuon3_khoa_once_mang_the_he_hoac_nam_trong_danh_sach_mien():
-    """`re.findall` theo đúng khuôn đặc tả K1.6: mọi `_remember(f"...")`/`once=f"...")` viết trực tiếp bằng
-    f-string literal (không qua biến trung gian) phải có ≥ 2 thành phần `{}` hoặc tiền tố nằm trong `KHOA_MIEN`."""
-    pattern = re.compile(r'(?:_remember|once=)\(?f"([^"]+)"')
+    """`re.findall` theo đúng khuôn đặc tả K1.6: mọi `_remember(f"...")`/`once=f"..."`/`once_key=f"..."` viết
+    trực tiếp bằng f-string literal (không qua biến trung gian) phải mang thế hệ (`_co_the_he`) hoặc có tiền tố
+    nằm trong `KHOA_MIEN`. `once_key=` (đường của `supervisor.escalate_gate`) từng lọt lưới vì mẫu cũ chỉ bắt
+    `once=`, mà `"once_key="` không chứa chuỗi con `"once="` — `gate.escalate:{sid}` sống sót nhờ lỗ đó."""
+    pattern = re.compile(r'(?:_remember|once(?:_key)?=)\(?f"([^"]+)"')
     vi_pham: list[str] = []
     for name, src in ORCH_SRC.items():
         for key_tmpl in pattern.findall(src):
-            n_placeholder = key_tmpl.count("{")
             prefix = key_tmpl.split(":", 1)[0].split("{", 1)[0]
-            if n_placeholder >= 2 or prefix in KHOA_MIEN: continue
-            vi_pham.append(f"{name}: {key_tmpl!r} (chỉ {n_placeholder} thành phần, không nằm trong KHOA_MIEN)")
+            if _co_the_he(key_tmpl) or prefix in KHOA_MIEN: continue
+            vi_pham.append(f"{name}: {key_tmpl!r} (không mang thế hệ, không nằm trong KHOA_MIEN)")
     assert not vi_pham, "khoá không thế hệ, không miễn — event lặp lại hợp lệ sẽ bị once nuốt:\n" + "\n".join(vi_pham)
 
 
@@ -91,6 +100,59 @@ def test_khuon3_no_test_author_ghi_lai_o_moi_lan_rework(tmp_path):
         assert _can_author_tests(env, orch) is False
     acts = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "tests_authored_by_assignee"]
     assert len(acts) == 2, "hai lần rework (retry khác nhau) phải ghi hai audit riêng, không bị once nuốt"
+
+
+def test_khuon3_gate_the_he_hai_van_duoc_escalate(tmp_path):
+    """K1.4: `gate.escalate:{sid}` (một thành phần) nuốt gate THỨ HAI của cùng subject. Cùng một `subject_id`
+    mở gate nhiều lần trong đời là chuyện thường (`escalation` sau `release`, gate mở lại sau khi hỏng), và
+    `HumanGate.pending` khoá theo `subject_id` nên gate mới ghi đè gate cũ dưới đúng cái tên đó — không có gì
+    trong khoá cũ phân biệt được hai thế hệ. Đo hai chiều: bỏ `:{_the_he(...)}` khỏi hai khoá trong
+    `scheduler.py` thì cả hai assert của thế hệ hai đỏ."""
+    from company.gates import GateRequest
+
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    def _mo_va_qua_han():
+        orch.gate.request(GateRequest(kind="escalation", subject_id="G1", created_by="supervisor",
+                                      checklist=["root_cause", "decision:reopen|close", "hint"]))
+        orch.tick(now=datetime.now(UTC) + orch.gate.timeout + timedelta(minutes=1))
+
+    _mo_va_qua_han()
+    assert len([a for a in orch.supervisor.actions if a.target == "G1" and a.action == "escalate"]) == 1
+    orch.gate.decide("G1", "approve", by="human:pm", reason="root_cause: kẹt; decision: reopen; hint: chạy lại")
+
+    _mo_va_qua_han()   # thế hệ hai: gate MỚI cho cùng subject, cũng quá hạn
+    esc = [a for a in orch.supervisor.actions if a.target == "G1" and a.action == "escalate"]
+    assert len(esc) == 2, f"gate thế hệ hai quá hạn phải escalate lần nữa, nhận được {len(esc)}"
+    overdue = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "gate.overdue"]
+    assert len(overdue) == 2, "và phải vào audit-log lần nữa — audit-log là bản ghi bền duy nhất"
+
+
+def test_khuon3_smoke_unverified_ghi_lai_o_lan_deploy_thu_hai():
+    """K1.4: `smoke.unverified:{rid}` nuốt lần deploy thứ hai của cùng release. Hai nhánh dùng khoá này là hai
+    nhánh KHÔNG chạy được smoke (thiếu `runtime`, thiếu worktree) — ở đó audit phụ này là bản ghi DUY NHẤT nói
+    lượt ấy chưa kiểm, nên nuốt là mất bằng chứng thật. Đo hai chiều: bỏ `:{rc.event_id}` thì assert == 2 đỏ."""
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    for _ in range(2):   # cùng release id, hai lượt deploy staging riêng biệt (redeploy sau khi sửa)
+        rc = Envelope(topic="release-candidates", key="REL-1", actor="delivery-lead",
+                      payload={"release_id": "REL-1", "project_id": "P1"})
+        orch._smoke("release-engineer", rc, "REL-1", {"status": "deployed"}, None)
+    acts = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "release.smoke_unverified"]
+    assert len(acts) == 2, f"hai lượt deploy phải ghi hai audit unverified, nhận được {len(acts)}"
+
+
+def test_khuon3_delivery_skipped_ghi_lai_o_lan_giao_thu_hai():
+    """K1.4: `delivery.skipped:{rid}` nuốt lần giao thứ hai. Nhánh này không đưa `rid` vào `o.delivered` (chưa
+    giao được gì cả) nên lượt production sau của cùng release ĐI TỚI đây lần nữa — và im lặng. Đo hai chiều:
+    bỏ `:{env.event_id}` thì assert == 2 đỏ."""
+    from company.orchestrator import StepResult
+
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler), deliver=True)
+    for _ in range(2):
+        env = Envelope(topic="release-events", key="REL-1", actor="release-engineer",
+                       payload={"release_id": "REL-1", "env": "production", "status": "deployed"})
+        orch._deliver(env, StepResult(env.event_id, env.topic, env.key))
+    acts = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "delivery.skipped"]
+    assert len(acts) == 2, f"hai lượt production phải ghi hai audit skipped, nhận được {len(acts)}"
 
 
 # ---------- khuôn 4: event cũ (đã bị vượt) không được phát lại như mới sau resume/restart ----------

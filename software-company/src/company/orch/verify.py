@@ -44,12 +44,12 @@ def smoke(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[str, Any]
     if rt is None:
         smoke = unverified("spec không khai `runtime` (lệnh khởi động, cổng, đường health)")
         o._audit("release.smoke_unverified", {"release_id": rid, "reason": smoke["reason"]}, project_id=pid,
-                    once=f"smoke.unverified:{rid}")
+                    once=f"smoke.unverified:{rid}:{rc.event_id}")
         return {**p, "smoke": smoke}
     if integ is None or not integ.path.exists():
         smoke = unverified("không có worktree tích hợp (dự án chạy không repo)")
         o._audit("release.smoke_unverified", {"release_id": rid, "reason": smoke["reason"]}, project_id=pid,
-                    once=f"smoke.unverified:{rid}")
+                    once=f"smoke.unverified:{rid}:{rc.event_id}")
         return {**p, "smoke": smoke}
     smoke = run_smoke(integ.path, rt)
     o._audit("release.smoke", {"release_id": rid, **smoke}, actor=agent, project_id=pid)
