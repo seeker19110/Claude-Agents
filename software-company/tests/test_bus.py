@@ -25,7 +25,7 @@ def test_check_khong_co_schema_cho_topic_bao_loi_ro():
 def test_schema_required_fields():
     bus = InMemoryBus()
     with pytest.raises(BusError):
-        bus.publish(Envelope(topic="incidents", key="I1", actor="support-docs", payload={"incident_id": "I1"}))
+        bus.publish(Envelope(topic="incidents", key="I1", actor="ops", payload={"incident_id": "I1"}))
 
 def test_namespace_owner_enforced():
     bus = InMemoryBus()

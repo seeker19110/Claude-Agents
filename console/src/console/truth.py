@@ -69,7 +69,7 @@ HINT_TEMPLATE = "root_cause: \ndecision: \nhint: "
 # ADR-0037: software-company không còn gate `plan` (kế hoạch do `_check_plan` cho đi thẳng). Studio vẫn có
 # `GateKind` `plan` riêng, nhưng `StudioView` không dùng bảng này — chỉ `CompanyView` gọi (`collect.py`).
 NEXT_AGENT = {"release": ROLE.OPS, "spec": f"{ROLE.SECURITY} + {ROLE.LEAD}",
-              "acceptance": ROLE.ACCOUNT_MANAGER, "escalation": "agent đang giữ ticket"}
+              "acceptance": ROLE.OPS, "escalation": "agent đang giữ ticket"}
 
 
 def gate_next_agent(kind: str) -> str:

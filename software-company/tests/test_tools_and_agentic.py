@@ -401,7 +401,7 @@ def test_lessons_calibrate_next_plan():
     _drive_to_plan(bus, orch); orch.run()
     orch.gate.decide("REL-001", "approve", by="human:rm"); orch.run()
     assert orch.supervisor.calibration() == {}, "chưa nghiệm thu thì chưa có bài học"
-    _pub(bus, "acceptance-results", "REL-001", "account-manager",
+    _pub(bus, "acceptance-results", "REL-001", "ops",
          {"release_id": "REL-001", "project_id": "P1", "verdict": "accepted", "signed_by": "customer:po"})
     orch.run()
     cal = orch.supervisor.calibration()

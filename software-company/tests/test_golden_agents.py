@@ -122,7 +122,9 @@ def test_front_matter_is_well_formed(agent_id: str):
     assert a.reads and a.writes, "agent phải có ít nhất một topic đọc và một topic ghi"
     assert a.max_retries >= 0 and a.timeout_minutes > 0
     assert len(a.all_skills) == len(set(a.all_skills)), "skill trùng lặp giữa skills/skills_core"
-    assert a.skills, "agent phải sở hữu ít nhất một skill ở mức đầy đủ"
+    # ADR-0037: agent theo pha (vd. `ops`) có thể không sở hữu skill nào ở CẤP AGENT — mọi skill nạp đầy đủ nằm
+    # trong `phases.*.skills`, vẫn tính là "sở hữu ở mức đầy đủ" đúng lượt pha đó chạy (`AgentSpec.owned_skills`).
+    assert a.skills or a.owned_skills, "agent phải sở hữu ít nhất một skill ở mức đầy đủ (cấp agent hoặc theo pha)"
 
 
 @pytest.mark.parametrize("agent_id", IDS)

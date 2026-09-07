@@ -25,7 +25,7 @@ def audit(actor: str, action: str, ev: dict[str, Any] | None = None, *, ts: date
 
 
 def rel_event(rid: str, env: str, status: str, **extra: Any) -> Envelope:
-    return Envelope(topic="release-events", key=rid, actor="release-engineer", ts=NOW,
+    return Envelope(topic="release-events", key=rid, actor="ops", ts=NOW,
                     payload={"release_id": rid, "version": "1.0.0", "env": env, "status": status, **extra})
 
 
@@ -116,7 +116,7 @@ def test_c2_tu_choi_thi_ticket_ve_dau_va_duyet_thi_ai_chay_lai() -> None:
     assert "viết lại PRD" in gate_reject_effect("spec", "SPEC-1")
     assert "mở lại" in gate_reject_effect("acceptance", "UAT-1")
     assert gate_reject_effect("publish", "PUB-1") == "", "không biết thì im, không đoán"
-    assert gate_next_agent("release") == "release-engineer" and gate_next_agent("publish") == ""
+    assert gate_next_agent("release") == "ops" and gate_next_agent("publish") == ""
 
 
 # ---- C3: quyết định đã ký, máy chưa áp ------------------------------------

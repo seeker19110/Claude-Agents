@@ -28,17 +28,26 @@ def _rc(bus, rid="REL-001", tid="T1", version="0.1.0"):
 
 
 def _payload_gui_release_engineer(client, env):
-    """Payload thực sự gửi cho release-engineer ở env đó (đọc từ prompt của FakeClient)."""
+    """Payload thực sự gửi cho ops[deploy] (từng là release-engineer riêng, ADR-0037 PR-5b) ở env đó — đọc từ
+    prompt của FakeClient. `ops` cũng chạy pha docs/account trong CÙNG kịch bản (vd. release-events production
+    → ghi docs) nên phải lọc đúng pha `deploy` qua chữ ký `# Skills của pha deploy` mà `system_prompt` nối vào
+    cuối, không chỉ lọc theo id agent."""
     import json
     for c in client.calls:
-        if "release-engineer" not in c["system"][:60]:
+        if "# ops" not in c["system"][:10] or "# Skills của pha deploy" not in c["system"]:
             continue
         u = c["user"]
-        i = u.find("{")
+        # Lấy đúng khối ```json``` ĐẦU TIÊN (mục "Đầu vào"): `ops` sở hữu hai namespace (`docs`, `contract`) nên
+        # phần "Yêu cầu" ở cuối user message cũng có dấu `{}` (liệt kê `context_writes`) — brace-matching thô
+        # (`rindex("}")`) ăn luôn đoạn đó và làm JSON hỏng, khác `release-engineer` cũ (không sở hữu namespace).
+        i = u.find("```json\n")
         if i < 0:
             continue
+        j = u.find("\n```", i)
+        if j < 0:
+            continue
         try:
-            p = json.loads(u[i:u.rindex("}") + 1])
+            p = json.loads(u[i + len("```json\n"):j])
         except ValueError:
             continue
         if p.get("target_env") == env:
@@ -80,7 +89,7 @@ def test_production_van_nhan_co_gate_release(tmp_path):
     _rc(bus)
     orch.run()
     # qa hồi quy pass trên staging rồi người duyệt Gate 3 → orchestrator gọi release-engineer cho production
-    bus.publish(Envelope(topic="release-events", key="REL-001", actor="release-engineer",
+    bus.publish(Envelope(topic="release-events", key="REL-001", actor="ops",
                          payload={"release_id": "REL-001", "project_id": "P", "env": "staging",
                                   "status": "deployed", "version": "0.1.0"}))
     orch.run()

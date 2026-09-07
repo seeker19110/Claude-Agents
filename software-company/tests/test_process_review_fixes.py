@@ -113,7 +113,7 @@ def test_lead_time_ticket_co_so_lieu():
     _drive_to_plan(bus, orch)
     orch.run()
     orch.gate.decide("REL-001", "approve", by="human:release-manager"); orch.run()
-    _pub(bus, "acceptance-results", "REL-001", "account-manager",
+    _pub(bus, "acceptance-results", "REL-001", "ops",
          {"release_id": "REL-001", "project_id": "P1", "verdict": "accepted", "signed_by": "customer:po"})
     orch.run()
     assert orch.lead.state["T1"] == "closed"

@@ -531,18 +531,77 @@ def test_run_eval_researcher_offline():
     assert [r.passed for r in res] == [True, True], [(r.name, r.failures) for r in res]
 
 
-def test_run_eval_account_manager_offline():
+def _ops_phase_of(system: str) -> str:
+    """ADR-0037 PR-5b: `ops` gộp ba vai theo pha; `AgentSpec.system_prompt` nối `# Skills của pha <tên>` vào
+    cuối — chỗ DUY NHẤT một client giả phân biệt được đang mô phỏng pha nào (`agents/operations/ops.md`)."""
+    for ph in ("deploy", "docs", "account"):
+        if f"# Skills của pha {ph}" in system: return ph
+    raise AssertionError("ops: không xác định được pha từ system prompt")
+
+
+def test_run_eval_ops_offline():
     def handler(system: str, user: str) -> dict:
         p = _input_payload(user)
-        if "uat_log" in p:
-            fail = "fail" in p["uat_log"]
-            return {"release_id": p["release_id"], "project_id": "P1", "verdict": "rejected" if fail else "accepted",
-                    "signed_by": "chị Lan (PO)" if not fail else "chưa ký: chị Lan từ chối",
-                    "findings": [{"level": "block", "text": "REQ-3: báo cáo theo UTC, lệch 7 giờ"}] if fail else []}
-        return {"change_id": "CR-1", "project_id": p["project_id"], "requested_by": p["from"], "description": "Xuất Excel danh sách lịch hẹn",
-                "affects_requirements": [], "impact": {"estimate_days": 1.5, "estimate_tokens": 40_000}, "decision": "pending"}
-    res = run_eval("account-manager", FakeClient(handler=handler))
-    assert [r.passed for r in res] == [True, True, True], [(r.name, r.failures) for r in res]
+        ph = _ops_phase_of(system)
+        if ph == "deploy":
+            return {"release_id": p["release_id"], "version": p["version"], "env": "staging", "status": "deployed"}
+        if ph == "account":
+            if "uat_log" in p:
+                fail = "fail" in p["uat_log"]
+                return {"release_id": p["release_id"], "project_id": "P1", "verdict": "rejected" if fail else "accepted",
+                        "signed_by": "chị Lan (PO)" if not fail else "chưa ký: chị Lan từ chối",
+                        "findings": [{"level": "block", "text": "REQ-3: báo cáo theo UTC, lệch 7 giờ"}] if fail else []}
+            return {"change_id": "CR-1", "project_id": p["project_id"], "requested_by": p["from"], "description": "Xuất Excel danh sách lịch hẹn",
+                    "affects_requirements": [], "impact": {"estimate_days": 1.5, "estimate_tokens": 40_000}, "decision": "pending"}
+        # ph == "docs"
+        if "incident_id" in p:
+            return {"project_id": p["project_id"], "description": f"nghiên cứu lại từ {p['incident_id']}: lịch nghỉ lễ chưa có trong spec"}
+        if "text" in p:
+            # `evals.run()` không truyền `many=True` (khác `_call` lúc chạy thật, xem `orch/routes.py`), nên ở đây
+            # trả MỘT object phẳng đúng schema `incidents` — bọc "items" chỉ đúng khi orchestrator tự gọi many=True.
+            return {"incident_id": "INC-1", "severity": "SEV2", "summary": p["text"], "root_cause_class": "code"}
+        # ca "nhầm pha": đầu vào release-candidates gửi với phase=docs — client giả này không cố tình phát hiện
+        # sai pha (đó là việc của model thật); trả một payload thiếu `rulings` để ca CHẤM sai như đúng ý nghĩa
+        # của nó (§11: điểm eval không phải cổng CI).
+        return {"release_id": p.get("release_id"), "version": p.get("version"), "env": "staging", "status": "deployed"}
+    res = run_eval("ops", FakeClient(handler=handler))
+    assert [r.passed for r in res] == [True] * (len(res) - 1) + [False], [(r.name, r.failures) for r in res]
+    # ca cuối là "nhầm pha" (§11): client giả trên KHÔNG cố tình phát hiện sai pha nên nó hỏng — đúng ý nghĩa
+    # của ca đó (đo rủi ro, không phải cổng CI: xem CONTRIBUTING §3 "ca eval chấm không đạt không làm CI đỏ").
+    assert res[-1].name == "nham-pha-deploy-gui-voi-phase-docs-phai-tu-nhan-sai-pha"
+
+
+def test_eval_case_agent_co_phases_thieu_truong_phase_bi_chan():
+    """ADR-0037 §11: agent có `phases` (vd. `ops`) mà ca eval quên khai `phase:` phải báo lỗi RÕ RÀNG (lỗi cấu
+    hình ca, không phải model trả sai) thay vì lặng lẽ chạy pha `None` (thiếu skill, chấm sai nguyên nhân)."""
+    from company.blackboard import Blackboard
+    from company.bus import InMemoryBus
+    from company.evals import _run_case
+    from company.llm import FakeClient
+    from company.runner import RunnerError
+
+    case = {"name": "thieu-phase", "topic_out": "release-events",
+            "input": {"topic": "release-candidates", "key": "REL-1", "actor": "delivery-lead",
+                       "payload": {"release_id": "REL-1", "project_id": "P1", "version": "1.0.0", "tickets": []}}}
+    bus = InMemoryBus(); bb = Blackboard(bus)
+    with pytest.raises(RunnerError, match="thiếu `phase`"):
+        _run_case("ops", case, FakeClient(handler=lambda s, u: {}), None, bb, bus)
+
+
+def test_eval_case_phase_sai_ten_bi_chan():
+    """Ca eval khai `phase:` không có trong front matter (lỗi gõ, hoặc pha vừa đổi tên) cũng phải báo rõ."""
+    from company.blackboard import Blackboard
+    from company.bus import InMemoryBus
+    from company.evals import _run_case
+    from company.llm import FakeClient
+    from company.runner import RunnerError
+
+    case = {"name": "sai-ten-pha", "phase": "khong-ton-tai", "topic_out": "release-events",
+            "input": {"topic": "release-candidates", "key": "REL-1", "actor": "delivery-lead",
+                       "payload": {"release_id": "REL-1", "project_id": "P1", "version": "1.0.0", "tickets": []}}}
+    bus = InMemoryBus(); bb = Blackboard(bus)
+    with pytest.raises(RunnerError, match="front matter chỉ có"):
+        _run_case("ops", case, FakeClient(handler=lambda s, u: {}), None, bb, bus)
 
 
 def test_python_executable_used_for_checks():

@@ -1,35 +1,4 @@
 {
-  "account-manager": {
-    "block": "operations",
-    "budget_tokens_per_task": 60000,
-    "context_namespace_write": "contract",
-    "max_retries": 2,
-    "model_tier": "standard",
-    "reads": [
-      "approved-specs",
-      "release-events",
-      "external-feedback",
-      "acceptance-results"
-    ],
-    "skills": [
-      "customer-acceptance",
-      "requirements-engineering",
-      "handover"
-    ],
-    "skills_core": [
-      "project-management",
-      "technical-writing",
-      "cost-estimation",
-      "risk-analysis"
-    ],
-    "timeout_minutes": 120,
-    "version": 8,
-    "writes": [
-      "change-requests",
-      "acceptance-results",
-      "research-requests"
-    ]
-  },
   "backend": {
     "block": "engineering",
     "budget_tokens_per_task": 120000,
@@ -252,6 +221,36 @@
       "pull-requests"
     ]
   },
+  "ops": {
+    "block": "operations",
+    "budget_tokens_per_task": 60000,
+    "context_namespace_write": [
+      "docs",
+      "contract"
+    ],
+    "max_retries": 2,
+    "model_tier": "standard",
+    "reads": [
+      "release-candidates",
+      "release-events",
+      "external-feedback",
+      "incidents",
+      "acceptance-results"
+    ],
+    "skills": [],
+    "skills_core": [
+      "observability"
+    ],
+    "timeout_minutes": 60,
+    "version": 1,
+    "writes": [
+      "release-events",
+      "incidents",
+      "research-requests",
+      "change-requests",
+      "acceptance-results"
+    ]
+  },
   "platform": {
     "block": "engineering",
     "budget_tokens_per_task": 120000,
@@ -304,31 +303,6 @@
     "version": 13,
     "writes": [
       "review-results"
-    ]
-  },
-  "release-engineer": {
-    "block": "operations",
-    "budget_tokens_per_task": 80000,
-    "context_namespace_write": null,
-    "max_retries": 2,
-    "model_tier": "standard",
-    "reads": [
-      "release-candidates"
-    ],
-    "skills": [
-      "release",
-      "devops"
-    ],
-    "skills_core": [
-      "observability",
-      "incident-management",
-      "license-compliance",
-      "security"
-    ],
-    "timeout_minutes": 120,
-    "version": 8,
-    "writes": [
-      "release-events"
     ]
   },
   "researcher": {
@@ -490,32 +464,6 @@
     "version": 12,
     "writes": [
       "supervisor-actions"
-    ]
-  },
-  "support-docs": {
-    "block": "operations",
-    "budget_tokens_per_task": 40000,
-    "context_namespace_write": "docs",
-    "max_retries": 2,
-    "model_tier": "standard",
-    "reads": [
-      "release-events",
-      "external-feedback",
-      "incidents"
-    ],
-    "skills": [
-      "technical-writing",
-      "incident-management"
-    ],
-    "skills_core": [
-      "observability",
-      "requirements-engineering"
-    ],
-    "timeout_minutes": 60,
-    "version": 9,
-    "writes": [
-      "incidents",
-      "research-requests"
     ]
   },
   "synthesizer": {

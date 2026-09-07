@@ -69,16 +69,16 @@ Kết quả: approve / hold / rollback
 
 ## Gate nghiệm thu của khách (kind `acceptance`, subject = `UAT-<release_id>`)
 Khi `release-events` báo đã deploy production, orchestrator mở gate `acceptance`. Đây là gate thật: có trong
-`gate_cli`, có hạn 24h, nhắc ở 12h, quá hạn thì supervisor escalate. Account-manager tổ chức UAT; khách ký và
+`gate_cli`, có hạn 24h, nhắc ở 12h, quá hạn thì supervisor escalate. `ops` (pha `account`) tổ chức UAT; khách ký và
 kết quả vào topic `acceptance-results` (key = `release_id`), chính chữ ký đó đóng gate — `signed_by` phải khác
-`account-manager` (four-eyes), nên công ty không tự ký thay khách. `verdict = conditional` đóng gate ở dạng
+`ops` (four-eyes), nên công ty không tự ký thay khách. `verdict = conditional` đóng gate ở dạng
 `request_changes` và phần còn lại đi qua `change-requests`; ticket chỉ `closed` khi khách accepted.
 
 Code gửi kèm: `uat-script`, `acceptance-criteria`, `known-issues`, `signed_by`
 - [ ] `uat-script` — kịch bản UAT map 1-1 với Must requirement trong PRD đã duyệt; không tiêu chí mới
 - [ ] `acceptance-criteria` — tiêu chí nghiệm thu trong SOW đã được đối chiếu từng mục
 - [ ] `known-issues` — lỗi đã biết được nêu trước khi ký, không giấu
-- [ ] `signed_by` — người ký là người của khách (code từ chối nếu trùng account-manager)
+- [ ] `signed_by` — người ký là người của khách (code từ chối nếu trùng `ops`)
 
 Người tự kiểm thêm:
 - [ ] Chạy trên bản production (hoặc staging nếu hợp đồng quy định) với dữ liệu khách chấp thuận

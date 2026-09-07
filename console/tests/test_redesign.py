@@ -48,7 +48,7 @@ def test_state_mang_du_khoi_moi_va_nguon_hong_van_du_khoa(company_db: Path, stud
     assert s["tickets"][0]["ahead"] is None, "dự án không khai repo thì không đo được — phải là None, không phải 0"
     assert s["tickets"][0]["pending_decision"] is None
     rel = next(g for g in s["gates"] if g["id"] == "REL-001")
-    assert "RC dừng tại đây" in rel["reject"] and rel["agent"] == "release-engineer"
+    assert "RC dừng tại đây" in rel["reject"] and rel["agent"] == "ops"
     pub = next(g for g in s["gates"] if g["id"] == "PUB-vid-042")
     assert pub["reject"] == "" and pub["agent"] == "", "xưởng video chưa khai hậu quả — im còn hơn đoán"
     dead = collect(tmp_path / "khong-co.sqlite", studio_db, gateway_url="http://127.0.0.1:9")

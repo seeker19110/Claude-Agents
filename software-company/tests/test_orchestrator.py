@@ -35,6 +35,14 @@ def _agent_of(system: str) -> str:
     return system.split("\n", 1)[0].lstrip("# ").strip()
 
 
+def _ops_phase(system: str) -> str:
+    """ADR-0037 PR-5b: `ops` gộp ba vai cũ theo pha; hệ thống nối `# Skills của pha <tên>` vào cuối prompt
+    (`AgentSpec.system_prompt`), nên đó là chỗ DUY NHẤT `handler()` biết đang mô phỏng vai nào."""
+    for ph in ("deploy", "docs", "account"):
+        if f"# Skills của pha {ph}" in system: return ph
+    raise AssertionError("ops: không xác định được pha từ system prompt")
+
+
 def _inp(user: str) -> dict:
     return json.loads(user.split("```json\n", 1)[1].split("\n```", 1)[0])
 
@@ -65,16 +73,18 @@ def handler(system: str, user: str) -> dict:
         if a == "security" and "artifacts" in p:  # threat model từ spec: ghi blackboard
             return {"payload": out, "context_writes": [{"namespace": "threat-model", "content_ref": "docs/threat-model.md", "summary": "v1"}]}
         return out
-    if a == "release-engineer":
-        return {"release_id": p["release_id"], "version": "1.0.0", "env": p["target_env"], "status": "deployed"}
-    if a == "account-manager":
-        if "verdict" in p:  # nghiệm thu conditional → change request cho phần còn lại
-            return {"items": [{"change_id": "CR-UAT-1", "project_id": pid, "requested_by": p["signed_by"], "description": "phần còn lại", "decision": "pending"}]}
-        return {"change_id": "CR-1", "project_id": pid, "requested_by": p["from"], "description": p["text"], "decision": "pending"}
-    if a == "support-docs":
-        if "release_id" in p: return {"context_writes": [{"namespace": "docs", "content_ref": f"docs/release-{p['release_id']}.md", "summary": "release notes"}]}
-        if "text" in p: return {"items": [{"incident_id": "INC-1", "severity": "SEV3", "summary": p["text"], "root_cause_class": "code"}]} if "lỗi" in p["text"] else {"items": []}
-        return {"items": [{"project_id": pid, "description": f"nghiên cứu lại từ {p['incident_id']}"}]}
+    if a == "ops":
+        ph = _ops_phase(system)
+        if ph == "deploy":
+            return {"release_id": p["release_id"], "version": "1.0.0", "env": p["target_env"], "status": "deployed"}
+        if ph == "account":
+            if "verdict" in p:  # nghiệm thu conditional → change request cho phần còn lại
+                return {"items": [{"change_id": "CR-UAT-1", "project_id": pid, "requested_by": p["signed_by"], "description": "phần còn lại", "decision": "pending"}]}
+            return {"change_id": "CR-1", "project_id": pid, "requested_by": p["from"], "description": p["text"], "decision": "pending"}
+        if ph == "docs":
+            if "release_id" in p: return {"context_writes": [{"namespace": "docs", "content_ref": f"docs/release-{p['release_id']}.md", "summary": "release notes"}]}
+            if "text" in p: return {"items": [{"incident_id": "INC-1", "severity": "SEV3", "summary": p["text"], "root_cause_class": "code"}]} if "lỗi" in p["text"] else {"items": []}
+            return {"items": [{"project_id": pid, "description": f"nghiên cứu lại từ {p['incident_id']}"}]}
     raise AssertionError(f"agent không mong đợi: {a}")
 
 
@@ -174,7 +184,7 @@ def test_full_lifecycle_stops_at_gates_and_humans():
     assert [e.key for e in prod] == ["REL-001"]
 
     # nghiệm thu là của khách: orchestrator không tự sinh; người publish → ticket closed
-    _pub(bus, "acceptance-results", "REL-001", "account-manager",
+    _pub(bus, "acceptance-results", "REL-001", "ops",
          {"release_id": "REL-001", "project_id": "P1", "verdict": "accepted", "signed_by": "customer:po"})
     orch.run()
     assert st["T1"] == "closed"
@@ -640,7 +650,7 @@ def _chay_het_vong_doi(bus, o):
     _drive_to_plan(bus, o)
     o.run()
     o.gate.decide("REL-001", "approve", by="human:release-manager"); o.run()
-    _pub(bus, "acceptance-results", "REL-001", "account-manager",
+    _pub(bus, "acceptance-results", "REL-001", "ops",
          {"release_id": "REL-001", "project_id": "P1", "verdict": "accepted", "signed_by": "customer:po"})
     o.run()
 
@@ -745,7 +755,7 @@ def test_ton_trong_thoi_gian_cho_backend_da_hen():
     assert goi["n"] == 2, "hết thời gian hẹn thì phải thử lại"
 
 
-def test_release_engineer_khong_tu_khai_duoc_env_production():
+def test_ops_khong_tu_khai_duoc_env_production():
     """Model khai `env: production` ở lượt STAGING không được thành deploy production: `env`/`release_id` là của
     ROUTE và của RC, code ghi đè (cùng nguyên tắc với `version`) và ghi audit `release.env_overridden`.
 
@@ -754,7 +764,7 @@ def test_release_engineer_khong_tu_khai_duoc_env_production():
     người đã ký Gate 3. Đo được 2026-09-06 (QLKH REL-019), hai lần liên tiếp. Ghi đè vừa an toàn hơn (model
     KHÔNG tự nâng được env) vừa không làm gãy dây chuyền."""
     def sneaky(system, user):
-        if _agent_of(system) == "release-engineer":
+        if _agent_of(system) == "ops" and _ops_phase(system) == "deploy":
             return {**handler(system, user), "env": "production"}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=sneaky))
@@ -902,10 +912,24 @@ def test_feedback_with_bug_opens_incident_and_requirement_incident_reopens_resea
     _pub(bus, "external-feedback", "P1", "human:customer", {"project_id": "P1", "from": "user", "text": "app lỗi khi đặt lịch"})
     orch.run()
     assert [e.payload["incident_id"] for e in bus.replay(topic="incidents")] == ["INC-1"]
-    _pub(bus, "incidents", "INC-2", "support-docs", {"incident_id": "INC-2", "severity": "SEV3", "summary": "hiểu sai yêu cầu",
+    _pub(bus, "incidents", "INC-2", "ops", {"incident_id": "INC-2", "severity": "SEV3", "summary": "hiểu sai yêu cầu",
                                                      "project_id": "P1", "root_cause_class": "requirement"})
     orch.run()
     assert any("INC-2" in e.payload["description"] for e in bus.replay(topic="research-requests"))
+
+
+def test_mot_event_hai_route_cung_agent_ca_hai_deu_chay():
+    """ADR-0037 PR-5b: `external-feedback` khớp HAI route cùng agent `ops` (`phase=docs` → incidents,
+    `phase=account` → change-requests). `partial` từng khoá theo agent nên route thứ hai bị route đầu "nuốt"
+    (đã đo được lúc triển khai: sau khi bật route account, `test_feedback_with_bug_opens_incident...` vẫn xanh
+    nhưng change-requests luôn rỗng, không assertion nào bắt được vì không ai kiểm cả hai cùng lúc).
+    `_call` nay khoá `partial` theo "<agent>:<topic_out>" (xem `Orchestrator._call`) nên cả hai chạy độc lập
+    trên CÙNG MỘT event, không cần agent nào chạy hai lượt."""
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    _pub(bus, "external-feedback", "P1", "human:customer", {"project_id": "P1", "from": "user", "text": "app lỗi khi đặt lịch"})
+    orch.run()
+    assert [e.payload["incident_id"] for e in bus.replay(topic="incidents")] == ["INC-1"], "route phase=docs phải chạy"
+    assert [e.payload["change_id"] for e in bus.replay(topic="change-requests")] == ["CR-1"], "route phase=account phải chạy"
 
 
 def test_conditional_acceptance_opens_change_request_and_lessons_recorded():
@@ -913,12 +937,12 @@ def test_conditional_acceptance_opens_change_request_and_lessons_recorded():
     _drive_to_plan(bus, orch); orch.run()
     orch.gate.decide("REL-001", "approve", by="human:rm"); orch.run()
     assert orch.blackboard.read("docs", "P1") is not None, "support-docs viết release notes sau production"
-    _pub(bus, "acceptance-results", "REL-001", "account-manager",
+    _pub(bus, "acceptance-results", "REL-001", "ops",
          {"release_id": "REL-001", "project_id": "P1", "verdict": "conditional", "signed_by": "customer:po"})
     orch.run()
     assert [e.payload["change_id"] for e in bus.replay(topic="change-requests")] == ["CR-UAT-1"]
     assert orch.lead.state["T1"] == "released", "conditional giữ released"
-    _pub(bus, "acceptance-results", "REL-001", "account-manager",
+    _pub(bus, "acceptance-results", "REL-001", "ops",
          {"release_id": "REL-001", "project_id": "P1", "verdict": "accepted", "signed_by": "customer:po"})
     orch.run()
     assert orch.lead.state["T1"] == "closed" and orch.supervisor.knowledge

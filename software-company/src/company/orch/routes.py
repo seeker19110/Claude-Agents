@@ -262,7 +262,7 @@ def _with_task(e: Envelope, o: Orchestrator) -> dict[str, Any]:
             "tests_authored_by": ROLE.TEST_AUTHOR}
 
 
-STAGING_ROUTE = Route("release-candidates", ROLE.OPS, "release-events", target_env="staging")
+STAGING_ROUTE = Route("release-candidates", ROLE.OPS, "release-events", target_env="staging", phase="deploy")
 ROUTES: tuple[Route, ...] = (
     # khối nghiên cứu: intake → researcher → synthesizer → risk → clarifier → (người trả lời) → spec-writer
     Route("research-requests", ROLE.INTAKE, "research-findings"),
@@ -294,16 +294,16 @@ ROUTES: tuple[Route, ...] = (
     STAGING_ROUTE,
     Route("release-candidates", ROLE.SECURITY, "review-results", _release_needs_security),
     Route("release-events", ROLE.QA, "review-results", _deployed("staging"), tools="ro"),  # tool trên worktree tích hợp
-    Route("release-events", ROLE.SUPPORT_DOCS, CONTEXT_ONLY, _deployed("production")),  # docs, release notes, runbook
+    Route("release-events", ROLE.OPS, CONTEXT_ONLY, _deployed("production"), phase="docs"),  # docs, release notes, runbook
     # khách và hậu release
-    Route("external-feedback", ROLE.ACCOUNT_MANAGER, "change-requests"),
-    Route("external-feedback", ROLE.SUPPORT_DOCS, "incidents", many=True),
-    Route("incidents", ROLE.SUPPORT_DOCS, "research-requests", _field("root_cause_class", "requirement"), many=True),
-    Route("acceptance-results", ROLE.ACCOUNT_MANAGER, "change-requests", _field("verdict", "conditional"), many=True),
+    Route("external-feedback", ROLE.OPS, "change-requests", phase="account"),
+    Route("external-feedback", ROLE.OPS, "incidents", many=True, phase="docs"),
+    Route("incidents", ROLE.OPS, "research-requests", _field("root_cause_class", "requirement"), many=True, phase="docs"),
+    Route("acceptance-results", ROLE.OPS, "change-requests", _field("verdict", "conditional"), many=True, phase="account"),
     Route("change-requests", ROLE.LEAD, "audit-log", _field("decision", "pending")),  # ước lượng impact → người quyết
     Route("change-requests", ROLE.INTAKE, "research-findings", _cr_accepted_needs_research),
 )
-PROD_ROUTE = Route("release-candidates", ROLE.OPS, "release-events", target_env="production")
+PROD_ROUTE = Route("release-candidates", ROLE.OPS, "release-events", target_env="production", phase="deploy")
 THREAT_ROUTE = Route("approved-specs", ROLE.SECURITY, "review-results")  # threat model trước ticket đầu (ADR-0003)
 
 # Đầu vào khiến delivery-lead lập kế hoạch (sinh nhiều ticket một lượt) → `_check_plan` → dispatch (ADR-0037).

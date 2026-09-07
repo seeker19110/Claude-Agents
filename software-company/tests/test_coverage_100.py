@@ -211,7 +211,7 @@ def test_loi_workspace_khi_rollback_thanh_audit(tmp_path, monkeypatch):
 
     def boom(*a, **k): raise WorkspaceError("git chết")
     monkeypatch.setattr(Integration, "rollback_delivery", boom)
-    bus.publish(Envelope(topic="release-events", key="REL-001", actor="release-engineer",
+    bus.publish(Envelope(topic="release-events", key="REL-001", actor="ops",
                          payload={"release_id": "REL-001", "version": "0.1.1", "env": "production", "status": "rolled_back"}))
     res = orch.run()
     assert "REL-001" in orch.delivered and "delivery.error" in _audits(bus, "delivery.")
@@ -221,7 +221,7 @@ def test_loi_workspace_khi_rollback_thanh_audit(tmp_path, monkeypatch):
 def test_loi_push_khi_rollback_duoc_ghi_audit(tmp_path):
     _repo, bus, orch = _orch_da_giao(tmp_path, push_remote="khong-co")
     orch.gate.decide("REL-001", "approve", by="human:release-manager"); orch.run()
-    bus.publish(Envelope(topic="release-events", key="REL-001", actor="release-engineer",
+    bus.publish(Envelope(topic="release-events", key="REL-001", actor="ops",
                          payload={"release_id": "REL-001", "version": "0.1.1", "env": "production", "status": "rolled_back"}))
     orch.run()
     acts = _audits(bus, "delivery.")

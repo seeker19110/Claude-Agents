@@ -233,7 +233,7 @@ def test_release_gap_khi_budget_vuot_tran_agent_hoac_duoi_estimate(tmp_path):
 
 def test_release_uoc_luong_ok_khi_co_bai_hoc_cho_moi_assignee(tmp_path):
     db, _, orch = _scenario(tmp_path)  # đã nghiệm thu? chưa — nghiệm thu là của khách
-    _pub(orch.bus, "acceptance-results", "REL-001", "account-manager",
+    _pub(orch.bus, "acceptance-results", "REL-001", "ops",
          {"release_id": "REL-001", "project_id": "P1", "verdict": "accepted", "signed_by": "customer:po"})
     orch.run()
     assert orch.supervisor.lessons(), "sau nghiệm thu có bài học estimate-vs-actual"
@@ -310,8 +310,8 @@ def test_acceptance_moi_truong_va_truy_vet(tmp_path):
     v = _verdicts(b)
     assert v["acceptance.moi-truong"] == "ok" and v["acceptance.truy-vet"] == "unknown"
     _check_golden("acceptance", b)
-    orch.blackboard.write("account-manager", "contract", "sow.md", content="UAT chạy trên production với dữ liệu ẩn danh", project_id="P1")
-    _pub(bus, "acceptance-results", "REL-001", "account-manager",
+    orch.blackboard.write("ops", "contract", "sow.md", content="UAT chạy trên production với dữ liệu ẩn danh", project_id="P1")
+    _pub(bus, "acceptance-results", "REL-001", "ops",
          {"release_id": "REL-001", "project_id": "P1", "verdict": "conditional", "signed_by": "customer:po",
           "findings": [{"level": "warn", "text": "thiếu trang tin", "location": None},
                        {"level": "nit", "text": "REQ-9 sai màu", "location": "REQ-9"}]})
@@ -329,7 +329,7 @@ def test_acceptance_gap_khi_chua_len_production(tmp_path):
         GB.build(GB.load_state(db), "UAT-REL-001")
     # ép một gate acceptance khi release mới ở staging (người mở tay) → mục môi trường là gap
     from company.gates import GateRequest
-    orch.gate.request(GateRequest(kind="acceptance", subject_id="UAT-REL-001", created_by="account-manager", checklist=["uat-script"]))
+    orch.gate.request(GateRequest(kind="acceptance", subject_id="UAT-REL-001", created_by="ops", checklist=["uat-script"]))
     b = GB.build(GB.load_state(db), "UAT-REL-001")
     assert _verdicts(b)["acceptance.moi-truong"] == "gap"
 

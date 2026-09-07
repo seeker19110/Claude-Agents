@@ -1,6 +1,6 @@
 # Software Company — Multi-Agent phòng gia công phần mềm
 
-Mô phỏng một công ty gia công phần mềm bằng hệ đa agent event-driven: 7 khối, 21 agent,
+Mô phỏng một công ty gia công phần mềm bằng hệ đa agent event-driven: 7 khối, 19 agent,
 mọi trao đổi đi qua topic có key, tri thức chung nằm trên blackboard, con người duyệt ở
 4 điểm cố định. Nguyên tắc: tính toán xác định, guardrail có hạn mức, đo token thật,
 cô lập workspace theo ticket, prompt là code. Đây là "công ty AI" đầu tiên trong hub X-Agents.
@@ -46,17 +46,17 @@ src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, g
                giới tin cậy), mcp_bridge (cầu MCP đưa tool công ty vào CLI — ADR-0024), probe (CLI chạy được chế độ tool
                nào), web (tool web cho researcher), guard (chống injection), assetscan (quét tài sản prompt), context (hạn mức ngữ cảnh),
                metrics (từ audit-log), sổ Ruling `rulings` (quyết định agent tự đưa ra — ADR-0030), evals (ghi/phát lại), stacks (lint/test theo stack — ADR-0013), smoke (khởi động sản phẩm theo `runtime` của spec, bằng chứng cho `deployed` — ADR-0029; `runtime` là điều kiện cần của Gate 1 — ADR-0031),
-               subagents (sinh 25 trợ lý kiểm duyệt chỉ-đọc `.claude/agents/sc-*.md` từ agents/ + gates/checklists.md — `make subagents`),
+               subagents (sinh 23 trợ lý kiểm duyệt chỉ-đọc `.claude/agents/sc-*.md` từ agents/ + gates/checklists.md — `make subagents`),
                gate_checklists (parser checklists.md + bảng nguồn bằng chứng §5 đặc tả), gate_brief (hồ sơ bằng chứng chỉ đọc
                cho nửa "người tự kiểm" của một gate — `make gate-brief SUBJECT=…`), demo, graph (cần `uv sync --extra graph`, không tính coverage)
 examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--relay/--resume/--auto-escalate), relay_client.py
                yeu-cau-mau-web-app.json (yêu cầu mẫu để publish vào `research-requests`: đủ mục tiêu, người dùng,
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng intake cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
-evals/         ca eval prompt theo agent (YAML) — đủ 21 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
+evals/         ca eval prompt theo agent (YAML) — đủ 19 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
 tests/         pytest 1023 ca / 60 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, release tự dừng → gate, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
-               guard/blackboard, schema consistency, golden 21 agent + 5 hồ sơ gate, bộ sinh subagent, hồ sơ gate, rà soát bảo mật);
+               guard/blackboard, schema consistency, golden 19 agent + 5 hồ sơ gate, bộ sinh subagent, hồ sơ gate, rà soát bảo mật);
                coverage fail_under=100 (phủ 100% dòng)
 ```
 
@@ -234,7 +234,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   research → ticket → code → review → release → nghiệm thu bằng client giả, model thật (`--real`) hoặc relay qua file
   (`--relay DIR`, `examples/relay_client.py`: một phiên Claude Code khác trả lời `<n>.req.json`); `--resume` chạy tiếp.
   Phát hiện F13–F19 từ mô phỏng đều đã sửa (bảng trong báo cáo).
-- Test: 714 ca pytest gồm golden 21 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
+- Test: 714 ca pytest gồm golden 19 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
   vòng tool, orchestrator với repo git thật, eval ghi/phát lại, adapter tool-use (server HTTP giả), guard, cắt ngữ cảnh,
   artifact store, retry, bảng giá, tool web (fetcher giả), song song, metrics, comment/takeover, routing nhiều backend,
   release flow và replay; ruff + mypy sạch, coverage ≥ 90% (`graph.py` không tính).
@@ -280,7 +280,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   `gate_brief` cạnh nút duyệt (mới có ở CLI và `/gate-brief`).
 
 ### Bước tiếp theo
-1. Chạy `make eval-record AGENT=<id>` cho 21 agent với model thật, commit bản ghi để CI eval có răng.
+1. Chạy `make eval-record AGENT=<id>` cho 19 agent với model thật, commit bản ghi để CI eval có răng.
 2. Deploy hạ tầng thật cho sản phẩm khách (release-engineer chạy CI/CD, container) nối tiếp tag/nhánh release của ADR-0027.
 3. Adapter bus Redis Streams/Kafka giữ interface hiện tại (kể cả `poll`) để chạy nhiều tiến trình.
 4. Console hiện hồ sơ `gate_brief` cạnh nút duyệt; thông báo webhook khi gate mở/quá hạn; giao diện UAT cho khách.

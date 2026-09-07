@@ -99,7 +99,7 @@ def rehydrate(o: Orchestrator) -> None:
         if env.actor in o.agents and env.causation_id:
             # Đầu ra agent đã publish cho event chưa được đánh dấu xong (crash giữa hai route): agent đó KHÔNG chạy
             # lại khi mở lại — tốn token và sinh PR/review trùng. `partial` được dựng lại từ causation_id.
-            o.partial.setdefault(env.causation_id, set()).add(env.actor)
+            o.partial.setdefault(env.causation_id, set()).add(f"{env.actor}:{env.topic}")  # slot = "<agent>:<topic_out>" (PR-5b)
         o.supervisor.replay(env)
     # Lệnh thử-lại chỉ sống trong RAM: `_retry_stalled` bỏ dấu `processed` rồi đẩy event vào `o.queue`.
     # Restart giữa lúc đó là mất trắng — event vẫn mang dấu `orchestrated` của LẦN LỖI, nên hàng đợi dựng lại

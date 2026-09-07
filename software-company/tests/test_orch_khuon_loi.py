@@ -149,7 +149,7 @@ def test_khuon3_delivery_skipped_ghi_lai_o_lan_giao_thu_hai():
 
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler), deliver=True)
     for _ in range(2):
-        env = Envelope(topic="release-events", key="REL-1", actor="release-engineer",
+        env = Envelope(topic="release-events", key="REL-1", actor="ops",
                        payload={"release_id": "REL-1", "env": "production", "status": "deployed"})
         orch._deliver(env, StepResult(env.event_id, env.topic, env.key))
     acts = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "delivery.skipped"]

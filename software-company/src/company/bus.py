@@ -25,7 +25,7 @@ class PermissionDenied(BusError): ...
 ENGINEERING_ACTORS = frozenset(ENGINEERING)
 REVIEW_PRODUCERS = frozenset({ROLE.REVIEWER, ROLE.QA, ROLE.SECURITY, SOURCE.QA, SOURCE.SECURITY})  # tên agent hoặc `source`
 TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
-    "research-requests": frozenset({ROLE.SUPPORT_DOCS, ROLE.ACCOUNT_MANAGER}),
+    "research-requests": frozenset({ROLE.OPS}),
     "research-findings": frozenset({ROLE.INTAKE, ROLE.RESEARCHER}),
     "requirements-draft": frozenset({ROLE.SYNTHESIZER, ROLE.RISK}),
     "clarification-questions": frozenset({ROLE.CLARIFIER}),
@@ -37,10 +37,10 @@ TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
     "review-results": REVIEW_PRODUCERS,
     "release-candidates": frozenset({LEAD_ACTOR}),
     "release-events": frozenset({ROLE.OPS}),
-    "incidents": frozenset({ROLE.SUPPORT_DOCS}),
+    "incidents": frozenset({ROLE.OPS}),
     "external-feedback": frozenset(),
-    "change-requests": frozenset({ROLE.ACCOUNT_MANAGER}),
-    "acceptance-results": frozenset({ROLE.ACCOUNT_MANAGER}),
+    "change-requests": frozenset({ROLE.OPS}),
+    "acceptance-results": frozenset({ROLE.OPS}),
     "supervisor-actions": frozenset({ROLE.SUPERVISOR}),
 }
 # Topic người được phát: đầu vào của khách (`orchestrator publish`), quyết định change request (`decide-change`),

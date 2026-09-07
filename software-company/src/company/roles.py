@@ -42,10 +42,11 @@ class ROLE:
     REVIEWER: Final = "reviewer"
     # → `security` (PR-5a: xong, đổi tên 1:1)
     SECURITY: Final = "security"
-    # → `ops` (PR-5b): release-engineer (pha `deploy`) + support-docs (pha `docs`) + account-manager (pha `account`)
-    OPS: Final = "release-engineer"
-    SUPPORT_DOCS: Final = "support-docs"
-    ACCOUNT_MANAGER: Final = "account-manager"
+    # → `ops` (PR-5b: xong) — release-engineer (pha `deploy`) + support-docs (pha `docs`) + account-manager
+    # (pha `account`) GỘP thành một hằng: khác PR-5a (đổi tên 1:1), đây là gộp 3→1 nên hai hằng cũ
+    # (`SUPPORT_DOCS`, `ACCOUNT_MANAGER`) không còn — `test_hang_role_khop_front_matter_hai_chieu` cấm hai hằng
+    # cùng giá trị, và ba id cũ đều vào `MIGRATED` trỏ về `"ops"`.
+    OPS: Final = "ops"
     # Code, không phải công đoạn — giữ nguyên qua ADR-0037
     SUPERVISOR: Final = "supervisor"
 
