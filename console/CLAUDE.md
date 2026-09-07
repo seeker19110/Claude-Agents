@@ -36,6 +36,6 @@ orchestrator thì việc giao và quyết định nằm im trên bus.
 | hồ sơ bằng chứng cạnh nút duyệt | `src/console/brief.py` → `company.gate_brief`; route `GET /api/gate/brief` |
 | quyết định gate | `src/console/decide.py` — gọi `HumanGate` công ty; lý do ≥ 20 ký tự |
 | form giao việc | `src/console/submit.py` — payload theo schema topic của công ty |
-| giao diện | `src/console/static/index.html` (một file); route hash `#/<màn>/gate/<id>`… trong `API.md` |
+| giao diện | `src/console/static/index.html` (HTML + CSS) và `static/js/*.js` (14 ES module, K7.1 — không build step). Thêm màn mới: HTML + một module + **nhập nó trong `main.js`** (không nhập = không bao giờ chạy, `tests/test_es_module.py` canh). Gán vào biến nhập từ module khác thì phải qua setter. Route hash `#/<màn>/gate/<id>`… trong `API.md` |
 | đổi hợp đồng giữa lớp | `API.md` cùng PR |
 | kiến trúc | `docs/adr/` (0001–0003) |

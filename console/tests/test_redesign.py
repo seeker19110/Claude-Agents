@@ -23,11 +23,18 @@ from console import server as srv
 from console.collect import collect
 
 PAGE = Path(__file__).resolve().parents[1] / "src" / "console" / "static" / "index.html"
+JS_DIR = PAGE.parent / "js"
 
 
 @pytest.fixture(scope="module")
 def page() -> str:
-    return PAGE.read_text(encoding="utf-8")
+    """HTML **cộng** mọi ES module của trang.
+
+    K7.1 tách khối `<script>` 1090 dòng thành `static/js/*.js`. Các test dưới đây hỏi "mã của TRANG có X không"
+    — câu hỏi đó không đổi vì mã sang file khác, nên fixture ghép lại. Ghép theo thứ tự tên file để thông báo
+    lỗi ổn định giữa hai lần chạy."""
+    return PAGE.read_text(encoding="utf-8") + "\n" + "\n".join(
+        p.read_text(encoding="utf-8") for p in sorted(JS_DIR.glob("*.js")))
 
 
 # ---------------------------------------------------------------------------

@@ -216,13 +216,24 @@ class ConsoleHandler(BaseHTTPRequestHandler):
 
     # --- tiện ích trả lời ---------------------------------------------------
 
-    def _send(self, status: int, body: bytes, content_type: str) -> None:
+    def _send(self, status: int, body: bytes, content_type: str, csp_nonce: str | None = None) -> None:
         self.send_response(int(status))
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
+        if csp_nonce:
+            # `'self'` cho các ES module ở /static/js/ (K7.1); `'nonce-…'` cho đúng một script inline là khối
+            # bootstrap ngay trên. Không `unsafe-inline`, không CDN — trang cố ý không có phụ thuộc ngoài.
+            self.send_header("Content-Security-Policy",
+                             f"default-src 'self'; script-src 'self' 'nonce-{csp_nonce}'; "
+                             # Trang nạp font từ Google Fonts (`index.html:8-10`) — đó là ngoại lệ DUY NHẤT với
+                             # "không CDN" và nó có từ trước K7; siết CSP mà quên nó là trang mất hẳn phông chữ.
+                             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                             "font-src 'self' https://fonts.gstatic.com; "
+                             "img-src 'self' data:; connect-src 'self'; "
+                             "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -561,8 +572,15 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         except OSError:
             self._error(HTTPStatus.NOT_FOUND, "chưa có static/index.html")
             return
+        # K7.2: giữ bootstrap INLINE (một trong hai phương án đặc tả cho phép), nhưng gắn nonce và bật CSP.
+        #
+        # Phương án kia — `GET /api/boot` — đổi token phiên sang query string ở lần tải đầu. Token đó là thứ
+        # DUY NHẤT chặn một trang web khác trên cùng máy gọi vào console; đưa nó vào URL là đưa vào lịch sử
+        # trình duyệt và `Referer`. Đổi một rủi ro nhỏ (script chèn được vào HTML) lấy một rủi ro lớn hơn thì
+        # không đáng, nên chọn nonce: CSP chặn MỌI script inline khác, kể cả script chèn qua nội dung từ bus.
+        nonce = secrets.token_urlsafe(16)
         boot = (
-            "<script>window.__CONSOLE__="
+            f'<script nonce="{nonce}">window.__CONSOLE__='
             + json.dumps(
                 {"token": self.server.token, "readonly": self.server.readonly, "can_submit": self.server.allow_submit},
                 ensure_ascii=False,
@@ -572,7 +590,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         lowered = html.lower()
         cut = lowered.find("</head>")
         html = (html[:cut] + boot + html[cut:]) if cut != -1 else boot + html
-        self._send(HTTPStatus.OK, html.encode("utf-8"), "text/html; charset=utf-8")
+        self._send(HTTPStatus.OK, html.encode("utf-8"), "text/html; charset=utf-8", csp_nonce=nonce)
 
     def _serve_static(self, rel: str) -> None:
         root = self.server.static_dir.resolve()
