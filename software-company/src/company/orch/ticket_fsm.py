@@ -13,10 +13,11 @@ from ..events import BUDGET_FACTOR, Envelope, Task
 from ..gates import GateRequest
 from ..llm import LLMError, TransientError
 from ..runner import RunnerError
-from .routes import SPEC_RUNTIME_REWORKS, Route, _with_draft, spec_runtime_gap
+from .fsm import Transition
+from .routes import PLAN_INPUTS, SPEC_RUNTIME_REWORKS, Route, _with_draft, spec_runtime_gap
 
 if TYPE_CHECKING:
-    from ..orchestrator import StepResult
+    from ..orchestrator import Orchestrator, StepResult
 
 
 def _superseded(o, env: Envelope, res: StepResult) -> bool:
@@ -245,3 +246,37 @@ def _cycle(graph: dict[str, list[str]]) -> list[str]:
     for n in graph:
         if n not in state and (c := visit(n)): return c
     return []
+
+
+# ---------- bảng chuyển giao (K1.7, orch/fsm.py) — dùng bởi Orchestrator.process() ----------
+
+def _act_superseded(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
+    return o._superseded(env, res)  # True: event cũ đã bị vượt, _superseded tự _mark — process() dừng ngay
+
+
+def _act_learn_repo(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
+    o._learn_repo(env)  # repo riêng của dự án (ADR-0025), trước khi intake chạy — không dừng process()
+    return False
+
+
+def _act_plan(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
+    o._plan(env, res)  # _plan tự _mark và trả res; process() luôn dừng ở đây khi PLAN_INPUTS khớp
+    return True
+
+
+def _act_clarification_fallback(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
+    """Clarifier không còn câu hỏi (hoặc quá round 2 → assumption): spec-writer đi thẳng từ draft sau risk."""
+    draft = o.latest("requirements-draft", env.key)
+    if draft is not None:
+        o._call("spec-writer", draft, Route("requirements-draft", "spec-writer", "approved-specs"), res)
+    return False
+
+
+TICKET_TRANSITIONS: list[Transition] = [
+    Transition("superseded", frozenset({"tasks", "pull-requests"}), _act_superseded),
+    Transition("learn_repo", frozenset({"research-requests"}), _act_learn_repo),
+    Transition("plan", frozenset(PLAN_INPUTS), _act_plan,
+               guard=lambda env, o: PLAN_INPUTS[env.topic](env, o)),
+    Transition("clarification_fallback", frozenset({"clarification-questions"}), _act_clarification_fallback,
+               guard=lambda env, o: not env.payload.get("questions")),
+]

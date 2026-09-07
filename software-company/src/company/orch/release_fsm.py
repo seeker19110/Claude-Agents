@@ -13,10 +13,11 @@ from ..delivery import DONE_STATES
 from ..events import Envelope
 from ..gates import GateRequest
 from ..workspace import WorkspaceError
+from .fsm import Transition
 from .routes import PROD_ROUTE, STAGING_ROUTE, Route
 
 if TYPE_CHECKING:
-    from ..orchestrator import StepResult
+    from ..orchestrator import Orchestrator, StepResult
 
 
 def _integrate(o, rc: Envelope, res: StepResult) -> bool:
@@ -219,3 +220,50 @@ def _rerun_release(o, rid: str, by: str, reason: str, res: StepResult) -> bool:
     o._recall("release-engineer", rc)
     o._call("release-engineer", inp, route, res)
     return True
+
+
+# ---------- bảng chuyển giao (K1.7, orch/fsm.py) — dùng bởi Orchestrator.process() ----------
+# phase="pre": chạy TRƯỚC vòng lặp ROUTES trong process(); "post": chạy SAU.
+
+def _act_integrate_rc(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
+    if o._integrate(env, res): return False  # mọi ticket của RC đã ở nhánh tích hợp: đi tiếp bình thường
+    o._mark(env, res); return True  # RC huỷ vì xung đột: ticket đã được giao lại, không deploy — dừng ngay
+
+
+def _act_integrate_approved(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
+    # Ticket approved lên nhánh tích hợp TRƯỚC khi ticket phụ thuộc (đã được delivery-lead dispatch ngay lúc
+    # approve, nên đứng trước review-results trong hàng đợi) tạo worktree.
+    o._integrate_approved(res)
+    return False
+
+
+def _act_production_deploy_or_rollback(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
+    status = env.payload.get("status")
+    if status == "deployed":
+        o._deliver(env, res)
+        o._open_acceptance_gate(env.key, res)
+    elif status in {"rolled_back", "failed"}:
+        o._rollback_delivery(env, res)
+    return False
+
+
+def _act_release_pending_human(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
+    o._release_paused(env, res)
+    return False
+
+
+def _act_acceptance_close(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
+    o._close_acceptance_gate(env, res)
+    o._record_lessons(env.payload["release_id"])
+    return False
+
+
+RELEASE_TRANSITIONS: list[Transition] = [
+    Transition("integrate_rc", frozenset({"release-candidates"}), _act_integrate_rc, phase="pre"),
+    Transition("integrate_approved", frozenset({"tasks", "review-results"}), _act_integrate_approved, phase="pre"),
+    Transition("production_deploy_or_rollback", frozenset({"release-events"}), _act_production_deploy_or_rollback,
+               guard=lambda env, o: env.payload.get("env") == "production", phase="post"),
+    Transition("release_pending_human", frozenset({"release-events"}), _act_release_pending_human,
+               guard=lambda env, o: env.payload.get("status") == "pending_human", phase="post"),
+    Transition("acceptance_close", frozenset({"acceptance-results"}), _act_acceptance_close, phase="post"),
+]

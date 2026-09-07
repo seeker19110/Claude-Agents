@@ -59,7 +59,7 @@ from .delivery import DONE_STATES, DeliveryLead
 from .events import Envelope
 from .gate_cli import PersistentGate
 from .llm import LLMError, ModelClient, TransientError
-from .orch import gates_flow, rehydrate, release_fsm, scheduler, ticket_fsm, verify, worktree_flow
+from .orch import fsm, gates_flow, rehydrate, release_fsm, scheduler, ticket_fsm, verify, worktree_flow
 from .orch.cli import main, source_fingerprint
 
 # Không dùng trong file này nhưng là hợp đồng công khai của module (gate_brief.py, test) — giữ re-export tường
@@ -67,8 +67,8 @@ from .orch.cli import main, source_fingerprint
 from .orch.routes import BLIND_STRIP as BLIND_STRIP
 from .orch.routes import ENGINEERING as ENGINEERING
 from .orch.routes import MAX_CONFLICT_RETRIES as MAX_CONFLICT_RETRIES
+from .orch.routes import PLAN_INPUTS as PLAN_INPUTS
 from .orch.routes import (
-    PLAN_INPUTS,
     ROUTES,
     Route,
     _dict_of,
@@ -105,7 +105,6 @@ class StepResult:
 
 class ReloadRequested(Exception):
     """Vòng watch xin khởi động lại tiến trình vì mã nguồn đã đổi (xem `Orchestrator.watch`)."""
-
 
 
 class Orchestrator:
@@ -207,16 +206,10 @@ class Orchestrator:
     takeover = worktree_flow.takeover
 
 
-
-
-
     def _integration_of_release(self, env: Envelope) -> Integration | None:
         """RC / release-event → dự án qua ticket đầu tiên của nó (mọi ticket một RC cùng dự án)."""
         tickets = env.payload.get("tickets") or []
         return self._integration_of_ticket(str(tickets[0])) if tickets else self.integration_for(self.project_for(env))
-
-
-
 
 
     def latest(self, topic: str, key: str) -> Envelope | None:
@@ -243,6 +236,10 @@ class Orchestrator:
 
 
     def process(self, env: Envelope) -> StepResult | None:
+        """Dispatcher thuần (ADR-0034, K1.7): tra `ticket_fsm.TICKET_TRANSITIONS`/`release_fsm.RELEASE_TRANSITIONS`
+        (bảng dữ liệu, xem `orch/fsm.py`) → `ROUTES` (agent nào chạy) → `_call`. Thứ tự bảng == thứ tự các
+        nhánh cũ; `phase="pre"/"post"` giữ đúng vị trí trước/sau vòng `ROUTES` (vd. `_integrate_approved` phải
+        chạy trước khi `ROUTES` giao việc cho ticket phụ thuộc)."""
         if env.event_id in self.processed: return None
         res = StepResult(env.event_id, env.topic, env.key)
         if env.topic == "audit-log":
@@ -253,36 +250,13 @@ class Orchestrator:
         pid = env.payload.get("project_id")
         if pid and pid in self.paused:  # supervisor pause cả dự án (vượt ngân sách tiền)
             return self._defer(env, res, f"paused:{pid}")
-        if env.topic in {"tasks", "pull-requests"} and self._superseded(env, res): return res
-        if env.topic == "research-requests": self._learn_repo(env)  # repo riêng của dự án (ADR-0025), trước khi intake chạy
-        if env.topic in PLAN_INPUTS and PLAN_INPUTS[env.topic](env, self):
-            return self._plan(env, res)
-        if env.topic == "release-candidates" and not self._integrate(env, res):
-            self._mark(env, res); return res  # RC huỷ vì xung đột: ticket đã được giao lại, không deploy
-        if env.topic == "clarification-questions" and not env.payload.get("questions"):
-            # clarifier không còn câu hỏi (hoặc quá round 2 → assumption): spec-writer đi thẳng từ draft sau risk
-            draft = self.latest("requirements-draft", env.key)
-            if draft is not None:
-                self._call("spec-writer", draft, Route("requirements-draft", "spec-writer", "approved-specs"), res)
-        if env.topic in {"tasks", "review-results"}:
-            # Ticket approved lên nhánh tích hợp TRƯỚC khi ticket phụ thuộc (đã được delivery-lead dispatch ngay lúc
-            # approve, nên đứng trước review-results trong hàng đợi) tạo worktree.
-            self._integrate_approved(res)
+        if fsm.step(ticket_fsm.TICKET_TRANSITIONS, self, env, res): return res
+        if fsm.step(release_fsm.RELEASE_TRANSITIONS, self, env, res, phase="pre"): return res
         for r in ROUTES:
             if r.topic_in != env.topic or (r.when and not r.when(env, self)): continue
             agent = env.payload["assignee"] if r.agent == "$assignee" else r.agent
             self._call(agent, env, r, res)
-        if env.topic == "release-events" and env.payload.get("env") == "production":
-            if env.payload.get("status") == "deployed":
-                self._deliver(env, res)
-                self._open_acceptance_gate(env.key, res)
-            elif env.payload.get("status") in {"rolled_back", "failed"}:
-                self._rollback_delivery(env, res)
-        if env.topic == "release-events" and env.payload.get("status") == "pending_human":
-            self._release_paused(env, res)
-        if env.topic == "acceptance-results":
-            self._close_acceptance_gate(env, res)
-            self._record_lessons(env.payload["release_id"])
+        fsm.step(release_fsm.RELEASE_TRANSITIONS, self, env, res, phase="post")
         self._note_closed()
         if res.transient:  # một agent chưa chạy được vì transport: giữ event lại, nhịp sau thử tiếp (agent xong rồi không chạy lại)
             stuck = next((a for a in res.actions if a.startswith("transient:")), "transient:?")
@@ -424,62 +398,12 @@ class Orchestrator:
     _record_lessons = gates_flow._record_lessons
 
 
-
-
-
-
-
-
-
-
-
-
-
     _release_evidence = verify.release_evidence
-
 
 
     _smoke = verify.smoke
     _regression_run = verify.regression_run
     _verdict_with_run = verify.verdict_with_run
-
-    # ---------- kế hoạch: gate spec → threat model → delivery-lead sinh ticket → gate plan → dispatch ----------
-
-
-
-
-
-
-    # ---------- gate decide: plan → dispatch; release → production; escalation → mở lại / đóng ----------
-
-
-
-
-
-    # ---------- giao hàng thật (ADR-0027) ----------
-
-
-
-    # ---------- vòng học ----------
-
-
-
-
-    # ---------- người can thiệp giữa vòng (ADR-0012) ----------
-
-
-
-
-
-
-
-
-
-    # ---------- hoãn / đánh dấu / audit ----------
-
-
-
-
 
 
     def _integration_status(self) -> dict[str, Any] | None:

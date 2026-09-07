@@ -220,8 +220,12 @@ def _can_author_tests(e: Envelope, o: Orchestrator) -> bool:
     if not o.test_author: return False
     tid = str(e.payload.get("ticket_id") or e.key)
     if _test_scope_ok(o, tid): return True
+    # Khoá mang thế hệ = số lần rework của TICKET (khuôn 3, TRAPS.md §1): thiếu nó, ticket rework lần 2 vẫn
+    # không phân vùng được vùng test nhưng audit không ghi lần hai — người đọc `tests_authored_by_assignee`
+    # tưởng chỉ xảy ra một lần trong khi nó lặp lại mỗi lần dispatch.
+    retry = o.lead.tickets[tid].retry if tid in o.lead.tickets else 0
     o._audit("tests_authored_by_assignee", {"ticket_id": tid, "reason": "không phân vùng được vùng test của stack"},
-             ticket_id=tid, project_id=e.payload.get("project_id"), once=f"no-test-author:{tid}")
+             ticket_id=tid, project_id=e.payload.get("project_id"), once=f"no-test-author:{tid}:{retry}")
     return False
 
 
