@@ -53,3 +53,44 @@ def test_shim_co_cau_hinh_khong_moc_lai_khung(cong_ty: str, core: str):
     src = (Path(company.__file__).parent / f"{cong_ty.split('.')[-1]}.py").read_text(encoding="utf-8")
     cam = [ln for ln in src.splitlines() if ln.startswith(("class ", "@dataclass"))]
     assert not cam, f"{cong_ty} định nghĩa lại {cam} — khung phải ở core"
+
+
+# ---------- K3.3b: `LLMConfig` là LỚP CON của core, không phải bản fork thứ hai ----------
+
+def test_llmconfig_ke_thua_khung_core_va_chi_them_truong_cua_company():
+    """`company.llm` chưa phải shim (bốn adapter còn ở lại tới K3.3c), nhưng cấu hình thì đã là khung của core.
+    Ca này canh hai chiều: kế thừa thật, và phần thêm vào ĐÚNG là những gì studio không có. Một trường chung mọc
+    lại ở đây (`base_url`, `max_tokens`, `backends`…) nghĩa là bản fork đang quay lại từ dưới lên."""
+    from dataclasses import fields
+
+    from xagents_core.llm import LLMConfig as CoreLLMConfig
+
+    from company.llm import LLMConfig
+
+    assert issubclass(LLMConfig, CoreLLMConfig)
+    them = {f.name for f in fields(LLMConfig)} - {f.name for f in fields(CoreLLMConfig)}
+    assert them == {"cli_tools", "cli_max_turns", "cli_bash", "mcp_tools", "mcp_max_turns", "retries", "retry_base",
+                    "prices", "budget_usd", "debt_reviews", "cli_max_budget_usd", "sandbox", "sandbox_image",
+                    "sandbox_runtime"}
+
+
+def test_thong_diep_thieu_model_goi_dung_bien_cua_company():
+    """`PREFIX` của lớp con là thứ duy nhất giữ cho thông điệp lỗi gọi đúng biến người vận hành phải đặt. Đo ở đây
+    vì core không biết tên công ty nào — nó chỉ đo được chuỗi `DEMO_`."""
+    import pytest
+
+    from company.llm import LLMConfig, LLMError
+
+    with pytest.raises(LLMError, match=r"COMPANY_MODEL_STANDARD hoặc llm\.yaml"):
+        LLMConfig().model_for("standard")
+
+
+def test_core_config_cua_company_dung_mot_nguon():
+    """`CORE` là chỗ duy nhất biết company tên gì và nằm ở đâu; `company.llm.ROOT/CONFIG_FILE` phải đọc từ đó chứ
+    không dựng lại từ `__file__` của mình — hai nguồn cho một sự thật thì sớm muộn chúng lệch."""
+    from company import llm
+    from company.core import CORE
+
+    assert CORE.prefix == "COMPANY" and CORE.db_name == "company.sqlite"
+    assert (CORE.root / "llm.yaml").name == "llm.yaml" and (CORE.root / "agents").is_dir()
+    assert llm.ROOT is CORE.root and llm.CONFIG_FILE == CORE.config_file
