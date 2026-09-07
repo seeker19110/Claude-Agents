@@ -34,7 +34,7 @@ assetbudget:   # prompt tĩnh chiếm bao nhiêu phần ngân sách token của 
 eval:
 	uv run python -m company.evals $(AGENT)
 eval-record:   # chạy model thật, lưu evals/recordings/$(AGENT).json — bắt buộc sau khi đổi prompt/skill (ADR-0010)
-	uv run python -m company.evals $(AGENT) --record
+	uv run python -m company.evals $(AGENT) --record --jobs $(or $(JOBS),1)
 eval-replay:   # như CI: phát lại từ bản ghi, không gọi model
 	uv run python -m company.evals all --replay
 run:

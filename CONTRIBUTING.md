@@ -67,9 +67,25 @@ Prompt là code: đổi prompt mà không chạy lại các bước dưới đâ
 1. **Tăng `version`** của agent/skill vừa sửa.
 2. **`make golden`** rồi commit lại `tests/golden/`. Job `golden-check` chạy `make golden` trong CI và so bằng
    `git diff --exit-code` — quên commit là đỏ.
-3. **`make eval-record AGENT=<id>`** bằng model thật, commit `evals/recordings/<id>.json`. Job eval-replay chạy
+3. **Ghi lại bản ghi eval bằng model thật**, commit `evals/recordings/<id>.json`. Job eval-replay chạy
    `--strict`: agent có tên trong `evals/recordings/REQUIRED.txt` mà thiếu bản ghi, hoặc bản ghi ghi ở phiên bản
    prompt cũ, đều làm CI đỏ. Bản ghi phát lại từ file, CI **không** gọi model.
+
+   Hai đường, chọn một (K5):
+
+   | Đường | Khi nào | Lệnh |
+   |---|---|---|
+   | Máy cá nhân | bạn có API key trên máy | `make eval-record AGENT=<id>` (thêm `--jobs 3` cho `AGENT=all`) |
+   | GitHub Actions | **không** có key trên máy, hoặc muốn ghi cả bộ | Actions → **eval-record** → Run workflow |
+
+   Workflow `eval-record` nhận `package` (`company`/`studio`), `agents` (`all` hoặc danh sách), `provider`
+   (`anthropic`/`openai`), `jobs`; đọc key từ Secrets `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` và tên model từ
+   Variables `<PREFIX>_MODEL_STRONG/STANDARD/LIGHT`. Kết quả **không** push thẳng `main` — nó mở một PR
+   `chore(<package>): ghi lại eval <agents>` gắn nhãn `no-changelog`, để người đọc diff trước khi vào.
+
+   **Đọc bảng điểm ở job summary trước khi merge PR bản ghi**, và đọc nó như một xu hướng: điểm chấm dao động
+   giữa các lần ghi, một lần tụt chưa phải hồi quy. Điểm không phải cổng — CI chỉ đỏ khi bản ghi thiếu hoặc
+   lệch phiên bản prompt.
 4. Commit bản ghi đầu tiên của một agent mới thì thêm id của nó vào `REQUIRED.txt` — từ lúc đó agent ấy được
    bảo vệ như trên.
 5. **`make assetscan`** (trong `software-company/`, quét cả hai công ty). Prompt là tài sản chuỗi cung ứng: mẫu
