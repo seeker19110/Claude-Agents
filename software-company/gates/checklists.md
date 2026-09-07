@@ -48,8 +48,10 @@ Người tự kiểm thêm:
 - [ ] Phụ thuộc ngoài đã xác nhận; license dependency dự kiến hợp lệ
 - [ ] Ngân sách token cho dự án được đặt; tổng estimate sprint ≤ ngân sách
 
-Ghi chú: một phần các mục trên đã bị `_check_plan` chặn trước khi gate mở (plan có `problems` thì bị từ chối,
-không xin gate). Gate là lớp thứ hai, không phải lớp duy nhất.
+Ghi chú: mọi khoá "Code gửi kèm" ở trên nay bị `_check_plan` chặn trước khi gate mở (ADR-0037 PR-1): plan có
+`problems` (ticket quá 1 ngày/200k token, thiếu `risk_tags` dù chạm từ khoá nhạy cảm, thiếu threat model, thiếu
+`architecture`/`api-contract` trên blackboard, …) thì bị `plan_rejected`, không tới tay người duyệt. Gate là lớp
+thứ hai, không phải lớp duy nhất.
 
 Kết quả: approve / request_changes / reject
 

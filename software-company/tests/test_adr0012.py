@@ -446,26 +446,32 @@ class _FlakySecurityThreatModel:
         return self.inner.complete(**kw)
 
 
-def test_threat_model_transient_khong_chan_plan_va_thu_lai():
+def test_threat_model_transient_khong_chan_lap_ke_hoach_nhung_check_plan_tu_choi():
+    """`_threat_model` tự nó không chặn lập kế hoạch (delivery-lead vẫn chạy) — nhưng ADR-0037 PR-1 dời khoá
+    `threat-model` của gate plan cũ vào `_check_plan`: chưa có `review-results` cho SPEC-P1 (dù vì transient hay
+    lỗi vĩnh viễn) thì plan bị `problems` và `plan_rejected`, không còn tới tay người duyệt thiếu bằng chứng."""
     bus = InMemoryBus(); client = _FlakySecurityThreatModel(TransientError("hết 3 lần thử: 529")); orch = Orchestrator(bus, client)
     _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app đặt lịch"})
     orch.run()
     _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "a"}]})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
-    assert "PLAN-P1-1" in orch.plans, "threat model lỗi transient không chặn lập plan"
     assert any(v == "transient:security-engineer" for _, v in orch.deferred.values()) or orch.stats["transient"] >= 1
+    assert "PLAN-P1-1" not in orch.plans, "chưa có threat model thì _check_plan phải từ chối, không để lọt tới người duyệt"
+    rejects = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "plan_rejected"]
+    assert rejects and "thiếu threat model" in rejects[-1]["evidence"]
 
 
-def test_threat_model_loi_vinh_vien_duoc_ghi_missing_khong_chan_plan():
+def test_threat_model_loi_vinh_vien_duoc_ghi_missing_va_check_plan_tu_choi():
     bus = InMemoryBus(); client = _FlakySecurityThreatModel(LLMError("JSON hỏng")); orch = Orchestrator(bus, client)
     _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app đặt lịch"})
     orch.run()
     _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "a"}]})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
-    assert "PLAN-P1-1" in orch.plans, "lỗi vĩnh viễn không chặn plan, chỉ đánh dấu thiếu threat model"
     assert "SPEC-P1" in orch.missing_threat_model
     acts = _acts(bus)
     assert "threat_model.missing" in acts
+    assert "PLAN-P1-1" not in orch.plans, "lỗi vĩnh viễn: _check_plan phải từ chối plan (ADR-0037 PR-1), không âm thầm bỏ qua"
+    assert "plan_rejected" in acts
 
 
 def test_parallel_workers_overlap_independent_tickets_and_keep_lifecycle_correct(tmp_path):
@@ -477,7 +483,8 @@ def test_parallel_workers_overlap_independent_tickets_and_keep_lifecycle_correct
     def h(system, user):
         a, p = _agent_of(system), _inp(user)
         if a == "delivery-lead" and p.get("decision") != "pending":
-            return {"items": [T1, T3], "context_writes": [{"namespace": "architecture", "content_ref": "c4.md", "summary": "L2", "content": "# C4"}]}
+            return {"items": [T1, T3], "context_writes": [{"namespace": "architecture", "content_ref": "c4.md", "summary": "L2", "content": "# C4"},
+                                                            {"namespace": "api-contract", "content_ref": "openapi.yaml", "summary": "v1"}]}
         with lock: active["n"] += 1; active["max"] = max(active["max"], active["n"])
         try:
             # chỉ chặn ở đúng pha song song (lượt của hai ticket độc lập); pha tuần tự trước đó đi thẳng
