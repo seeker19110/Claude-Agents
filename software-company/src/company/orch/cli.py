@@ -78,6 +78,9 @@ def _parser() -> argparse.ArgumentParser:
                          "ticket đi đường cũ và PR mang tests_authored_by=assignee")
     ap.add_argument("--push-remote", help="remote của repo khách để push nhánh release + tag sau khi giao (mặc định: không push)")
     ap.add_argument("--release-branch", default="company/release", help="nhánh 'đang chạy production' trong repo khách")
+    ap.add_argument("--deliver-pr", action="store_true",
+                    help="ADR-0038: sau khi giao và push, mở PR thật nhánh release → nhánh --base trên GitHub của khách "
+                         "(cần --deliver, --push-remote trỏ remote GitHub, `gh` đã `auth login`); mở, không merge")
     sub = ap.add_subparsers(dest="cmd", required=True)
     rn = sub.add_parser("run"); rn.add_argument("--max-steps", type=int); rn.add_argument("--no-reload", action="store_true",
                                                 help="không tự khởi động lại khi mã nguồn đổi (mặc định: có, chỉ ở --watch)")
@@ -135,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
                         integration=ns.integration, workers=ns.workers,
                         web=ns.web, batch_releases=ns.batch_release, artifacts=ns.artifacts or artifact_store(ns.db),
                         deliver=ns.deliver, push_remote=ns.push_remote, release_branch=ns.release_branch,
-                        test_author=ns.test_author, sandbox=_sandbox_for(ns.cmd))
+                        test_author=ns.test_author, sandbox=_sandbox_for(ns.cmd), deliver_pr=ns.deliver_pr)
     return cli_cmds.ORCH_CMDS[ns.cmd](orch, ns)
 
 

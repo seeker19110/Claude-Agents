@@ -452,6 +452,18 @@ def _brief_acceptance(orch: Orchestrator, g: GateSection, subject: str, pid: str
         out.append(_item(it, "unknown", _smoke_facts(smoke), sm_src))
         unavailable.append({"id": it.id, "reason": smoke["reason"]})
 
+    it = items["acceptance.pr-giao-hang"]  # ADR-0038: PR thật để khách review — đọc từ `delivery.done`, không từ lời khai
+    pr = (orch.delivered.get(rid) or {}).get("pr")
+    pr_src: list[dict[str, Any]] = [{"kind": "delivery", "ref": rid, "url": (pr or {}).get("url")}]
+    if pr is None:
+        out.append(_item(it, "unknown", ["không có PR giao hàng: chưa bật `--deliver-pr` hoặc release chưa giao — "
+                                         "khách xem tag/nhánh release trực tiếp"], pr_src))
+    elif "url" in pr:
+        out.append(_item(it, "ok", [f"PR #{pr.get('number')} {pr['url']} ({pr.get('base')} ← {pr.get('head')}; "
+                                    + ("mới mở" if pr.get("created") else "đang mở, dùng lại") + ")"], pr_src))
+    else:
+        out.append(_item(it, "gap", [f"PR không mở được: {pr.get('skipped') or pr.get('error')}"], pr_src))
+
     it = items["acceptance.truy-vet"]
     acc = list(orch.bus.replay(topic="acceptance-results", key=rid))
     prd, p_src = _ns(orch, "prd", pid)

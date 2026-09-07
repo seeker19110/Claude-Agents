@@ -533,6 +533,13 @@ release-engineer báo production đã deploy, công ty đặt tag `v<version>` v
 khách (ADR-0027; `--push-remote origin` để đẩy lên remote, `--release-branch` đổi tên nhánh). `main` của khách vẫn không bị
 chạm — khách tự merge `company/release` (hoặc tag) vào `main` theo quy trình của họ.
 
+Muốn khách **review bản giao ngay trên GitHub trước khi ký UAT** thì thêm `--deliver-pr` (ADR-0038): sau khi push
+xong, công ty mở PR thật `company/release → <nhánh --base>` trên repo GitHub mà `--push-remote` trỏ tới — mở, **không
+merge**; PR đang mở cùng head/base thì dùng lại. Cần `gh` (GitHub CLI) đã `gh auth login` trên máy trực: env chạy lệnh
+con đã lọc `GH_*`/`GITHUB_*`, nên token trong biến môi trường không có tác dụng. Kết quả ở `status → delivery → pr`
+và audit `delivery.pr_opened | pr_reused | pr_skipped | pr_failed`; `gh` lỗi hay remote không phải GitHub thì bản giao
+vẫn xong, chỉ thiếu PR (mở tay). Hồ sơ `gate_brief UAT-<rid>` có mục "PR giao hàng" để người duyệt đối chiếu số PR.
+
 Thêm `--test-author` để **bộ test do một vai khác viết** (ADR-0028): `test-author` đọc `acceptance` của ticket (không
 thấy code, không thấy diff, không thấy `hint` của vòng trước), ghi **chỉ** file test và commit vào nhánh ticket; rồi
 agent kỹ thuật viết code cho tới khi bộ test đó xanh mà **không ghi và không xoá được** file test — ranh giới cưỡng chế

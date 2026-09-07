@@ -145,7 +145,7 @@ class Orchestrator:
                  integration: str = "company/integration", workers: int = 1, web: WebTools | bool = False,
                  artifacts: Path | None = None, project_budget_usd: float | None = None,
                  deliver: bool = False, push_remote: str | None = None, release_branch: str = "company/release",
-                 test_author: bool = False, sandbox: Sandbox | None = None):
+                 test_author: bool = False, sandbox: Sandbox | None = None, deliver_pr: bool = False):
         self.bus = bus
         # ADR-0035 (K2.4): sandbox chạy MỌI lệnh có đối số hoặc nội dung do model/repo khách sinh — lint/test của
         # `run_checks`, tool `run` của model, lệnh khởi động trong `run_smoke`. Mặc định `SubprocessSandbox`
@@ -170,6 +170,9 @@ class Orchestrator:
         # (payload.repo, payload.base — ADR-0025): học từ log lúc mở lại và từ event lúc chạy, ticket của dự án nào
         # làm trong worktree của repo đó. Repo sai (không có .git) → audit một lần, dự án rơi về mặc định.
         self.deliver, self.push_remote, self.release_branch = bool(deliver), push_remote, release_branch
+        # ADR-0038: sau khi giao (tag + nhánh đã push), mở PR thật `release_branch → base` trên GitHub của khách để
+        # khách review trước khi ký UAT. Mặc định TẮT: nó tạo một thứ nhìn thấy được ngoài worktree.
+        self.deliver_pr = bool(deliver_pr)
         self.integration = Integration(self.repo, integration, base, release_branch) if self.repo is not None else None
         self.base, self.integration_branch = base, integration
         self.source_fp = source_fingerprint()  # mã nguồn lúc khởi động — `watch(reload=True)` so với đây
@@ -480,7 +483,7 @@ class Orchestrator:
                 "workers": self.workers, "web": self.web is not None,
                 "cost_usd": self.supervisor.sprint_report()["cost_usd_total"],
                 "integration": self._integration_status(), "void_releases": sorted(self.void_releases),
-                "delivery": {rid: {k: d.get(k) for k in ("version", "tag", "short", "branch", "problems", "pushed")}
+                "delivery": {rid: {k: d.get(k) for k in ("version", "tag", "short", "branch", "problems", "pushed", "pr")}
                              for rid, d in sorted(self.delivered.items())},
                 "stats": dict(self.stats), "events": len(self.bus)}
 

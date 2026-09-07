@@ -361,6 +361,16 @@ class Integration:
             res.pushed, res.push_error = self.push(push_remote, spec, lease=(self.release_branch, expected))
         return res
 
+    def remote_url(self, remote: str) -> str | None:
+        """URL của một remote trong repo khách (None nếu remote không có) — để biết nó có phải GitHub không (ADR-0038)."""
+        ok, out = _git_ok(self.repo, "remote", "get-url", remote)
+        return out if ok and out else None
+
+    def base_branch(self) -> str | None:
+        """Tên nhánh của `base` (ví dụ `main`); None khi `base` là commit/HEAD tách rời — PR cần một nhánh đích thật."""
+        ok, out = _git_ok(self.repo, "rev-parse", "--abbrev-ref", self.base)
+        return out if ok and out and out != "HEAD" else None
+
     def push(self, remote: str, *refspecs: str, lease: tuple[str, str] | None = None) -> tuple[bool, str]:
         """`git push` với env đã lọc bí mật và không hook; thất bại trả (False, stderr rút gọn) chứ không ném —
         bản giao cục bộ đã có, push hỏng là việc người xử lý (audit `delivery.push_failed`)."""

@@ -66,8 +66,12 @@ def _ws(tmp_path) -> TicketWorkspace:
 #   sinh — argv do code ghép, và chính nó là thứ gọi model; nhốt nó vào container mạng tắt là cắt đường ra API và
 #   mất credential của người vận hành. Tool mà CLI xin chạy vẫn đi qua cầu MCP về `tools.py`, tức là VẪN qua
 #   `Sandbox` (xem `ClaudeCodeClient.bind_toolbox`) — đó mới là chỗ mã của khách chạy.
+# - `github_pr.py` (ADR-0038): `gh pr list/create` — cùng lý do với git: argv do code ghép (slug, nhánh, tiêu đề),
+#   không chạy mã của khách, cần credential của người vận hành trên đĩa (`gh auth login`; env đã lọc `GH_*`).
+#   Nhốt vào container mạng tắt là cắt đường lên GitHub. Test dưới khẳng định TỪNG lời gọi trong file là gh.
 MIEN_HOAN_TOAN = {"sandbox.py", "llm.py"}
 CHI_GIT = {"workspace.py", "gate_brief.py"}
+CHI_GH = {"github_pr.py"}
 
 
 def _goi_subprocess(src: str) -> list[str]:
@@ -85,6 +89,8 @@ def test_pham_vi_khong_module_nao_ngoai_sandbox_goi_subprocess_truc_tiep():
         for goi in _goi_subprocess(p.read_text(encoding="utf-8")):
             if p.name in CHI_GIT and '"git"' in goi:
                 continue
+            if p.name in CHI_GH and '"gh"' in goi:
+                continue
             vi_pham.append(f"{p.relative_to(SRC).as_posix()}: {goi[:110]}")
     assert not vi_pham, ("lệnh chạy ngoài Sandbox (ADR-0035) — đưa qua `Sandbox` hoặc ghi lý do vào danh sách "
                          "ngoại lệ của test này:\n" + "\n".join(vi_pham))
@@ -95,6 +101,13 @@ def test_pham_vi_git_van_duoc_phep_ngoai_sandbox():
     for name in sorted(CHI_GIT):
         goi = _goi_subprocess((SRC / name).read_text(encoding="utf-8"))
         assert goi and all('"git"' in g for g in goi), f"mọi lời gọi còn lại trong {name} phải là git: {goi}"
+
+
+def test_pham_vi_gh_chi_o_github_pr_va_la_gh_that():
+    """Chiều ngược cho ngoại lệ ADR-0038: `github_pr.py` có gọi subprocess thật, và mọi lời gọi ở đó là `gh`."""
+    for name in sorted(CHI_GH):
+        goi = _goi_subprocess((SRC / name).read_text(encoding="utf-8"))
+        assert goi and all('"gh"' in g for g in goi), f"mọi lời gọi trong {name} phải là gh: {goi}"
 
 
 # ---------- K2.4: hành vi — ba điểm gọi thật sự đi qua sandbox được tiêm ----------

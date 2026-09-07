@@ -58,6 +58,21 @@
     },
     {
       "facts": [
+        "không có PR giao hàng: chưa bật `--deliver-pr` hoặc release chưa giao — khách xem tag/nhánh release trực tiếp"
+      ],
+      "id": "acceptance.pr-giao-hang",
+      "question": "Khách đã xem bản giao trong PR thật trên GitHub (`--deliver-pr`, ADR-0038): PR nhánh release → nhánh của khách do orchestrator mở, không merge — review bằng UI quen thuộc rồi mới ký",
+      "sources": [
+        {
+          "kind": "delivery",
+          "ref": "REL-001",
+          "url": null
+        }
+      ],
+      "verdict": "unknown"
+    },
+    {
+      "facts": [
         "khách chưa ký acceptance-results cho release này",
         "prd có 2 requirement_id (REQ-…)"
       ],

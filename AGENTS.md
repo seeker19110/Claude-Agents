@@ -1,10 +1,10 @@
 # AGENTS.md — luật cho mọi agent làm việc trong repo này
 
 Đọc file này trước khi chạm vào bất kỳ file nào. Nó ngắn vì mọi chi tiết đã có chỗ riêng; ở đây chỉ là
-**điều cấm, điều bắt buộc, và đi đâu để biết thêm**. Bộ khung 9 file: `AGENTS.md` (luật) · `CLAUDE.md` (luật cho
+**điều cấm, điều bắt buộc, và đi đâu để biết thêm**. Bộ khung 10 file: `AGENTS.md` (luật) · `CLAUDE.md` (luật cho
 Claude Code, nhập file này) · `TRAPS.md` (bẫy đã mắc) · `ARCHITECTURE.md` (bản đồ hệ) · `CODEMAP.md` (muốn đổi X thì
 sửa ở đâu) · `CHANGELOG.md` (đã đổi gì) · `docs/TASK-PACK.md` (gói việc) · `docs/PROMPT-SHEET.md` (câu lệnh chuẩn) ·
-`docs/sessions/` (nhật ký phiên). Mỗi package con có `CLAUDE.md`, `TRAPS.md`, `CODEMAP.md`, `ARCHITECTURE.md` riêng.
+`docs/sessions/` (nhật ký phiên) · `docs/NGON-NGU.md` (thuật ngữ và cách gọi phải tránh). Mỗi package con có `CLAUDE.md`, `TRAPS.md`, `CODEMAP.md`, `ARCHITECTURE.md` riêng.
 
 ## Repo này là gì
 
