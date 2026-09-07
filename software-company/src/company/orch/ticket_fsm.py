@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from ..events import BUDGET_FACTOR, MAX_TICKET_TOKENS, RISK_HINTS, Envelope, Task
 from ..gates import GateRequest
 from ..llm import LLMError, TransientError
+from ..roles import ROLE
 from ..runner import RunnerError
 from .fsm import Transition
 from .routes import PLAN_INPUTS, SPEC_RUNTIME_REWORKS, Route, _with_draft, spec_runtime_gap
@@ -83,7 +84,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     cal = o.supervisor.calibration()  # vòng học: bài học estimate-vs-actual quay lại người ước lượng
     inp = env.model_copy(update={"payload": {**env.payload, "estimate_calibration": cal}}) if cal else env
     try:
-        g = o.runner.generate("delivery-lead", inp, "tasks", many=True)
+        g = o.runner.generate(ROLE.LEAD, inp, "tasks", many=True)
     except TransientError as e:
         res.actions.append(f"transient:delivery-lead:{str(e)[:120]}")
         with o._lock: o.stats["transient"] += 1
@@ -93,7 +94,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
         with o._lock: o.stats["errors"] += 1
         o._mark(env, res); return res
     if g.context_writes:  # C4, API contract lên blackboard TRƯỚC `_check_plan` để nó thấy được (ADR-0037)
-        o.runner.write_context("delivery-lead", env, g.context_writes)
+        o.runner.write_context(ROLE.LEAD, env, g.context_writes)
     tickets = [Task.model_validate(p) for p in g.payloads]
     problems = o._check_plan(tickets, project)
     n = 1 + sum(1 for p in o.plans.values() if p["project_id"] == project)
@@ -102,7 +103,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
             "tickets": [t.model_dump() for t in tickets], "problems": problems,
             "threat_model": "missing" if f"SPEC-{project}" in o.missing_threat_model else "ok"}
     if problems:
-        o._audit("plan_rejected", plan, actor="delivery-lead", tokens=g.tokens, cost=g.cost_usd, project_id=project)
+        o._audit("plan_rejected", plan, actor=ROLE.LEAD, tokens=g.tokens, cost=g.cost_usd, project_id=project)
         res.actions.append(f"plan_rejected:{'; '.join(problems)[:120]}")
         with o._lock: o.stats["errors"] += 1
         # Kế hoạch bị từ chối là ngõ cụt: không ticket nào được tạo, không gate nào mở, và không có cơ chế
@@ -115,14 +116,14 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
         # không tồn tại, không gì xảy ra. Đo được 2026-09-06 (CR-STAGE-001, PLAN-QLKH-5 rỗng): duyệt xong hàng
         # đợi rỗng, phải phát lại decide-change bằng tay.
         with o._lock:
-            o.unhandled[project] = {"agent": "delivery-lead", "topic": env.topic, "event_id": env.event_id,
+            o.unhandled[project] = {"agent": ROLE.LEAD, "topic": env.topic, "event_id": env.event_id,
                                        "subject": project, "error": f"plan_rejected: {'; '.join(problems)[:200]}"}
         if project not in o.gate.pending:
-            o.gate.request(GateRequest(kind="escalation", subject_id=project, created_by="delivery-lead",
+            o.gate.request(GateRequest(kind="escalation", subject_id=project, created_by=ROLE.LEAD,
                                           checklist=["plan_problems", "decision:retry|close"]))
     else:
         o.plans[plan_id] = plan
-        o._audit("plan.proposed", plan, actor="delivery-lead", tokens=g.tokens, cost=g.cost_usd, project_id=project)
+        o._audit("plan.proposed", plan, actor=ROLE.LEAD, tokens=g.tokens, cost=g.cost_usd, project_id=project)
         # ADR-0037: không còn gate plan. `_check_plan` vừa chạy XONG và không trả problem nào — đó là nguồn sự thật
         # duy nhất cho phép giao ticket, nên ghi vào `lead.plans_ok` (guard trong `DeliveryLead.dispatch`) rồi giao
         # ngay. Người vẫn ký hai đầu: gate spec trước đó, gate release sau đó.
@@ -153,10 +154,10 @@ def _spec_runtime_missing(o: Orchestrator, env: Envelope, project: str, gap: str
         hint = f"orchestrator từ chối mở gate spec (lần {n}): {gap}"
         prev = {k: env.payload.get(k) for k in ("kind", "runtime", "artifacts")}
         inp = cause.model_copy(update={"payload": {**cause.payload, "hint": hint, "previous_spec": prev}})
-        o._recall("spec-writer", cause)  # `partial` đã ghi spec-writer cho event nguồn: gọi lại là CHỦ Ý
-        route = Route(cause.topic, "spec-writer", "approved-specs",
+        o._recall(ROLE.PRODUCT, cause)  # `partial` đã ghi spec-writer cho event nguồn: gọi lại là CHỦ Ý
+        route = Route(cause.topic, ROLE.PRODUCT, "approved-specs",
                       enrich=None if cause.topic == "requirements-draft" else _with_draft)
-        o._call("spec-writer", inp, route, res)
+        o._call(ROLE.PRODUCT, inp, route, res)
         res.actions.append(f"spec_runtime_missing:{project}:rework:{n}")
         o._mark(env, res); return res
     why = gap if cause is not None else f"{gap}; không có requirements-draft để spec-writer làm lại"
@@ -168,10 +169,10 @@ def _spec_runtime_missing(o: Orchestrator, env: Envelope, project: str, gap: str
     o.supervisor.escalate_gate(project, f"spec thiếu runtime sau {n} lần: {gap[:200]}", once_key=f"spec_runtime:{env.event_id}")
     if cause is not None:
         with o._lock:
-            o.unhandled[project] = {"agent": "spec-writer", "topic": cause.topic, "event_id": cause.event_id,
+            o.unhandled[project] = {"agent": ROLE.PRODUCT, "topic": cause.topic, "event_id": cause.event_id,
                                        "subject": project, "error": f"spec_runtime_missing: {gap[:200]}"}
     if project not in o.gate.pending:
-        o.gate.request(GateRequest(kind="escalation", subject_id=project, created_by="spec-writer",
+        o.gate.request(GateRequest(kind="escalation", subject_id=project, created_by=ROLE.PRODUCT,
                                       checklist=["spec_runtime", "decision:retry|close"]))
     o._mark(env, res); return res
 
@@ -182,9 +183,9 @@ def _threat_model(o: Orchestrator, env: Envelope, sid: str, res: StepResult) -> 
     if prior is not None and prior.payload.get("verdict") != "block":
         return True
     try:
-        g = o.runner.generate("security-engineer", env, "review-results")
+        g = o.runner.generate(ROLE.SECURITY, env, "review-results")
         p = {**g.payloads[0], "ticket_id": sid, "source": "security"}
-        o.runner.publish("security-engineer", env, "review-results", p, key=sid, tokens=g.tokens, model=g.model,
+        o.runner.publish(ROLE.SECURITY, env, "review-results", p, key=sid, tokens=g.tokens, model=g.model,
                             context_writes=g.context_writes, generated=g)
         with o._lock: o.stats["runs"] += 1
     except TransientError as e:
@@ -285,7 +286,7 @@ def _act_clarification_fallback(o: Orchestrator, env: Envelope, res: StepResult)
     """Clarifier không còn câu hỏi (hoặc quá round 2 → assumption): spec-writer đi thẳng từ draft sau risk."""
     draft = o.latest("requirements-draft", env.key)
     if draft is not None:
-        o._call("spec-writer", draft, Route("requirements-draft", "spec-writer", "approved-specs"), res)
+        o._call(ROLE.PRODUCT, draft, Route("requirements-draft", ROLE.PRODUCT, "approved-specs"), res)
     return False
 
 

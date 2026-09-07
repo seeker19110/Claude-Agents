@@ -12,10 +12,11 @@ from typing import Any
 from .bus import InMemoryBus
 from .events import NAMESPACE_OWNERS, AuditLog, Envelope, SupervisorAction, Task
 from .guard import scan
+from .roles import ROLE
 
 # F16: token của 3 lượt review (mỗi lượt mang system prompt + blackboard) không tính vào ngân sách ticket — delivery-lead
 # ước lượng công của engineer, còn review là chi phí cố định của quy trình; cộng chung thì mọi ticket đều bị cắt.
-REVIEW_ACTORS = frozenset({"reviewer", "qa-debugger", "security-engineer"})
+REVIEW_ACTORS = frozenset({ROLE.REVIEWER, ROLE.QA, ROLE.SECURITY})
 
 # ADR-0032: mã "nợ kiến trúc treo" trong finding của review (threat-model, schema, infra, code review): `DEF-01`, `SD-3`,
 # hoặc `debt: <mã>` viết tự do. Cùng một mã nhắc ≥ `debt_threshold` review LIÊN TIẾP của cùng nguồn trong cùng dự án
@@ -90,18 +91,18 @@ class Supervisor:
         a = SupervisorAction(target=target, action=action, reason=reason, evidence=evidence)  # type: ignore[arg-type]
         self.actions.append(a)
         if not self.replaying:
-            self.bus.publish(Envelope(topic="supervisor-actions", key=target, actor="supervisor", payload=a.model_dump()))
+            self.bus.publish(Envelope(topic="supervisor-actions", key=target, actor=ROLE.SUPERVISOR, payload=a.model_dump()))
 
     def replay(self, env: Envelope) -> None:
         # Hành động của chính supervisor phải được DỰNG LẠI, không được bỏ qua. `_on` mở đầu bằng
-        # `if env.actor == "supervisor": return` — đúng cho đường chạy sống (không tự phản ứng với hành động của
+        # `if env.actor == ROLE.SUPERVISOR: return` — đúng cho đường chạy sống (không tự phản ứng với hành động của
         # mình, tránh vòng lặp), nhưng khi replay thì nó nuốt luôn `self.actions`.
         #
         # Hệ quả dây chuyền, đo được khi chạy thật (2026-09-04): bus có 5 event escalate/budget_cut cho
         # QLKH-001 nhưng sau restart đếm được 0. `_check_escalations` tạo gate theo điều kiện
         # `state == "blocked" or n`; ticket đang `paused` ở trạng thái `in_review` với n=0 nên KHÔNG có gate nào
         # được mở — không ai gỡ được pause, dự án đứng im 6 phút mà `stalled` và `gates_pending` đều rỗng.
-        if env.topic == "supervisor-actions" and env.actor == "supervisor":
+        if env.topic == "supervisor-actions" and env.actor == ROLE.SUPERVISOR:
             self.actions.append(SupervisorAction.model_validate(env.payload))
             return
         prev, self.replaying = self.replaying, True
@@ -111,7 +112,7 @@ class Supervisor:
             self.replaying = prev
 
     def _on(self, env: Envelope) -> None:
-        if env.actor == "supervisor":
+        if env.actor == ROLE.SUPERVISOR:
             return
         self.last_seen[env.key] = env.ts
         if env.topic == "supervisor-actions" and env.payload.get("action") == "resume":

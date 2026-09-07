@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..events import Envelope, Task
+from ..roles import LEAD_ACTOR, ROLE
 from ..tools import ToolBox, WorkspaceTools
 from ..workspace import Integration, TicketWorkspace, WorkspaceError, _git
 from .routes import BLIND_STRIP, MAX_CONFLICT_RETRIES, Route, key_for
@@ -137,7 +138,7 @@ def merge_ticket_locked(o: Orchestrator, tid: str, res: StepResult, release_id: 
         else:
             o.lead.request_changes_no_retry_bump(tid, hint)
     except (ValueError, WorkspaceError) as e:
-        o._audit("handler_error", {"agent": "delivery-lead", "error": str(e)[:300]}, ticket_id=tid)
+        o._audit("handler_error", {"agent": LEAD_ACTOR, "error": str(e)[:300]}, ticket_id=tid)
     res.actions.append(f"conflict:{tid}")
     with o._lock: o.stats["conflicts"] += 1
     return False
@@ -209,7 +210,7 @@ def engineer(o: Orchestrator, agent: str, task: Envelope, r: Route, phase: str |
         p = {**g.payloads[0], "local_checks": {"unverified": True}}
         o._audit("local_checks.unverified", {"ticket_id": tid, "agent": agent, "claimed": g.payloads[0].get("local_checks")},
                     actor=agent, ticket_id=tid)
-    p = {**p, "tests_authored_by": "test-author" if doc_lap else "assignee"}
+    p = {**p, "tests_authored_by": ROLE.TEST_AUTHOR if doc_lap else "assignee"}
     return o.runner.publish(agent, task, r.topic_out, p, key=key_for(r.topic_out, p, task.key),
                                tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
 

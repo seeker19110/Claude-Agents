@@ -382,6 +382,11 @@ Mục tiêu: sau PR này, đổi tên một agent chỉ sửa **một** file mã
   và mọi id cũ trong `OLD_IDS` (21 tên). Chiều ngược: thêm tạm một literal → test đỏ.
 - `REVIEW_AGENT`, `ENGINEERING`, `NAMESPACE_OWNERS`, `EXPERTS`, `NEXT_AGENT` đều tham chiếu `roles`.
 
+Ghi chú triển khai (đã làm, PR-4): hằng gom trong namespace `ROLE` (`ROLE.SECURITY`…), tên theo đích gộp cho agent sẽ
+giữ tên, tên cũ cho agent bị gộp (`ROLE.INTAKE`, `ROLE.REVIEWER`…) — PR-5x đổi GIÁ TRỊ hằng, không đổi tên. Khoá của
+`REVIEW_AGENT` (`reviewer|qa|security`) là nhãn `source`, không phải id agent → nhóm `SOURCE.*` riêng; `Assignee`/
+`ReviewSource` (`Literal`) sống trong `roles.py`. Test dùng `tokenize` thay grep, miễn trừ duy nhất `payload.get("data")`.
+
 ## 6. PR-5a..5e — từng agent mới
 
 Khuôn chung cho mỗi PR (đúng 7 bước `CONTRIBUTING.md` §3):

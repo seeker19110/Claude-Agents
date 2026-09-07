@@ -21,10 +21,11 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from company.delivery import DONE_STATES
+from company.roles import ROLE, SOURCE
 
 ORCHESTRATOR = "orchestrator"
 CONTROL_TOPICS = frozenset({"audit-log", "shared-context", "supervisor-actions"})
-REVIEW_AGENT = {"reviewer": "reviewer", "qa": "qa-debugger", "security": "security-engineer"}
+REVIEW_AGENT = {SOURCE.REVIEWER: ROLE.REVIEWER, SOURCE.QA: ROLE.QA, SOURCE.SECURITY: ROLE.SECURITY}
 STUCK_STATES = frozenset({"blocked", "escalated"})
 # K2.7: cửa sổ nhìn lại của ô "lệnh khách chạy ở đâu". 24h = một ca trực; dài hơn thì một lượt cũ
 # kéo cảnh báo sáng mãi sau khi người vận hành đã bật container.
@@ -67,8 +68,8 @@ HINT_TEMPLATE = "root_cause: \ndecision: \nhint: "
 # Agent chạy lại sau khi DUYỆT từng loại gate — người trực phải biết mình vừa đánh thức ai (C2).
 # ADR-0037: software-company không còn gate `plan` (kế hoạch do `_check_plan` cho đi thẳng). Studio vẫn có
 # `GateKind` `plan` riêng, nhưng `StudioView` không dùng bảng này — chỉ `CompanyView` gọi (`collect.py`).
-NEXT_AGENT = {"release": "release-engineer", "spec": "security-engineer + delivery-lead",
-              "acceptance": "account-manager", "escalation": "agent đang giữ ticket"}
+NEXT_AGENT = {"release": ROLE.OPS, "spec": f"{ROLE.SECURITY} + {ROLE.LEAD}",
+              "acceptance": ROLE.ACCOUNT_MANAGER, "escalation": "agent đang giữ ticket"}
 
 
 def gate_next_agent(kind: str) -> str:

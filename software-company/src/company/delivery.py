@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from .bus import InMemoryBus
 from .events import BUDGET_FACTOR, AcceptanceResult, AuditLog, Envelope, ReviewResult, Task, can_transition
 from .gates import GateRequest, HumanGate
+from .roles import LEAD_ACTOR, SOURCE
 
 DONE_STATES = frozenset({"approved", "merged", "released", "closed"})
 
@@ -15,8 +16,8 @@ class DeliveryLead:
     """Logic xác định của delivery-lead: lập lịch theo depends_on/priority, dispatch, gom review, retry,
     release candidate, QA trên staging trước gate 3, merge/release theo release-events, đóng ticket khi khách nghiệm thu.
     LLM chỉ dùng để viết plan/ticket; phần đóng vòng ở đây là code."""
-    BASE_REVIEWS: frozenset[str] = frozenset({"reviewer"})
-    RISK_REVIEWS: frozenset[str] = frozenset({"qa", "security"})  # ADR-0021: chỉ khi ticket có risk_tags
+    BASE_REVIEWS: frozenset[str] = frozenset({SOURCE.REVIEWER})
+    RISK_REVIEWS: frozenset[str] = frozenset({SOURCE.QA, SOURCE.SECURITY})  # ADR-0021: chỉ khi ticket có risk_tags
 
     IN_FLIGHT = frozenset({"waiting", "dispatched", "in_progress", "in_review", "changes_requested"})
 
@@ -112,7 +113,7 @@ class DeliveryLead:
 
     def _publish_task(self, task: Task) -> None:
         self._set(task.ticket_id, "dispatched")
-        self._emit(Envelope(topic="tasks", key=task.ticket_id, actor="delivery-lead", payload=task.model_dump()))
+        self._emit(Envelope(topic="tasks", key=task.ticket_id, actor=LEAD_ACTOR, payload=task.model_dump()))
 
     def dispatch(self, task: Task, plan_id: str) -> Task:
         """Ticket vào hàng chờ nếu phụ thuộc chưa xong; ngược lại publish ngay. Phụ thuộc phải là ticket đã biết."""
@@ -206,8 +207,8 @@ class DeliveryLead:
             # Đo được khi chạy thật (2026-09-04): ticket QLKH-001 blocked lúc 11:17, orchestrator restart lúc
             # 11:29, gate được duyệt cùng lúc đó → `budget.extended` có ghi nhưng không có event `tasks` nào nữa;
             # dự án đứng im 8 phút với `stalled: -`, `blocked: -`, `queue: 0`.
-            self._emit(Envelope(topic="audit-log", key="delivery-lead", actor="delivery-lead",
-                                payload=AuditLog(actor="delivery-lead", action="ticket.blocked", ticket_id=tid,
+            self._emit(Envelope(topic="audit-log", key=LEAD_ACTOR, actor=LEAD_ACTOR,
+                                payload=AuditLog(actor=LEAD_ACTOR, action="ticket.blocked", ticket_id=tid,
                                                  evidence=json.dumps({"ticket_id": tid, "retry": t.retry + 1,
                                                                       "max_retries": self.max_retries},
                                                                      ensure_ascii=False)).model_dump()))
@@ -280,7 +281,7 @@ class DeliveryLead:
     def _create_release_candidate(self, tids: list[str]) -> str:
         rid = f"REL-{len(self.releases)+1:03d}"; self.releases.append(rid); self.release_tickets[rid] = tids
         project = self.tickets[tids[0]].project_id
-        self._emit(Envelope(topic="release-candidates", key=rid, actor="delivery-lead",
+        self._emit(Envelope(topic="release-candidates", key=rid, actor=LEAD_ACTOR,
             payload={"release_id": rid, "project_id": project, "tickets": tids,
                      "version": self.next_version(project, tids)}))
         return rid
@@ -330,7 +331,7 @@ class DeliveryLead:
         if need <= got and not self.replaying and rid not in self.gate.pending and not self._gate_kind_approved(rid, "release"):
             # `threat-model` và `architecture` dời từ gate plan cũ (ADR-0037): bỏ gate plan thì hai khoá đó phải
             # còn chỗ để người ký nhìn, và release là gate công đoạn cuối trước khi tiền thật đi ra.
-            self.gate.request(GateRequest(kind="release", subject_id=rid, created_by="delivery-lead",
+            self.gate.request(GateRequest(kind="release", subject_id=rid, created_by=LEAD_ACTOR,
                                           checklist=["tests", "scan", "regression-staging", "perf", "a11y", "runbook",
                                                      "rollback", "threat-model", "architecture"]))
 
@@ -345,7 +346,7 @@ class DeliveryLead:
             # Bằng chứng (finding của reviewer/qa/security) đã nằm trong topic `review-results`, `gate_brief` đọc
             # trực tiếp từ đó — không cần chép lại vào GateRequest.
             if not self.replaying and rid not in self.gate.pending and not self._gate_kind_approved(rid, "escalation"):
-                self.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="delivery-lead",
+                self.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by=LEAD_ACTOR,
                                               checklist=["root_cause", "decision:reopen|close", "hint"]))
             return
         self._maybe_open_release_gate(rid)
@@ -357,8 +358,8 @@ class DeliveryLead:
         sources = sorted(s for s, x in self.release_reviews.get(rid, {}).items() if x.verdict != "pass")
         for s in sources:
             self.release_waived[rid].add(s)
-            self._emit(Envelope(topic="audit-log", key="delivery-lead", actor="delivery-lead",
-                                payload=AuditLog(actor="delivery-lead", action="release.finding_waived",
+            self._emit(Envelope(topic="audit-log", key=LEAD_ACTOR, actor=LEAD_ACTOR,
+                                payload=AuditLog(actor=LEAD_ACTOR, action="release.finding_waived",
                                                  evidence=json.dumps({"release_id": rid, "source": s},
                                                                      ensure_ascii=False)).model_dump()))
         self._maybe_open_release_gate(rid)
@@ -410,8 +411,8 @@ class DeliveryLead:
             if can_transition(self.state.get(tid, "draft"), dst):
                 self._set(tid, dst)
         self.reviews.pop(tid, None); self.review_since.pop(tid, None)
-        self._emit(Envelope(topic="audit-log", key="delivery-lead", actor="delivery-lead",
-                            payload=AuditLog(actor="delivery-lead", action="ticket.already_integrated", ticket_id=tid,
+        self._emit(Envelope(topic="audit-log", key=LEAD_ACTOR, actor=LEAD_ACTOR,
+                            payload=AuditLog(actor=LEAD_ACTOR, action="ticket.already_integrated", ticket_id=tid,
                                              evidence=json.dumps({"ticket_id": tid, "state": self.state.get(tid)},
                                                                  ensure_ascii=False)).model_dump()))
         self._flush_waiting()

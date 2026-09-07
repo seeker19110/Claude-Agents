@@ -10,11 +10,12 @@ from itertools import pairwise
 from typing import Any
 
 from .registry import AgentSpec, load_agents
+from .roles import ROLE
 
 # Chuỗi tuyến tính từ yêu cầu thô đến kế hoạch. `domain/ux-designer/codebase/tech-scout` của bản đầu đã bị ADR-0006
 # gộp vào `researcher` và ADR-0009 bỏ hẳn `ux-designer`; danh sách dưới đây là tên agent thật, có kiểm lúc dựng graph.
-RESEARCH_ORDER: tuple[str, ...] = ("intake", "researcher", "synthesizer", "risk", "clarifier", "spec-writer",
-                                   "security-engineer", "delivery-lead")
+RESEARCH_ORDER: tuple[str, ...] = (ROLE.INTAKE, ROLE.RESEARCHER, ROLE.SYNTHESIZER, ROLE.RISK, ROLE.CLARIFIER, ROLE.PRODUCT,
+                                   ROLE.SECURITY, ROLE.LEAD)
 
 
 def research_order(agents: dict[str, AgentSpec] | None = None) -> list[str]:
