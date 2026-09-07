@@ -100,6 +100,17 @@ def _integrate_pending(o, out: list[StepResult]) -> None:
     o._integrate_approved(res)
     if res.actions: out.append(res)
 
+def _the_he(o, sid: str) -> str:
+    """Thế hệ của gate đang mở cho `sid`: dấu thời gian tạo của `GateRequest`. Cùng một subject có thể mở gate
+    NHIỀU LẦN trong đời (duyệt → hỏng → mở lại; `escalation` sau `release`), và `HumanGate.pending` khoá theo
+    `subject_id` nên gate mới ghi đè gate cũ dưới đúng cái tên đó. Khoá `once` chỉ mang `sid` là lần quá hạn
+    của gate THỨ HAI bị lần quá hạn của gate thứ nhất nuốt: không audit `gate.overdue`, không escalate — gate
+    bể hạn nằm im y hệt một gate mới (TRAPS §1 khuôn 3). Gate đã rời `pending` (vừa được quyết) thì không còn
+    thế hệ để đọc; trả `"-"` để khoá vẫn xác định được, không ném."""
+    r = o.gate.pending.get(sid)
+    return r.created_at.isoformat(timespec="microseconds") if r is not None else "-"
+
+
 def tick(o, now: datetime | None = None) -> list[StepResult]:
     """Một nhịp của chế độ watch: nạp event từ tiến trình khác, thử lại event hoãn vì lỗi transport, chạy hàng đợi,
     nhắc gate quá hạn, giao lại review quá hạn, escalate ticket im lặng quá lâu."""
@@ -114,9 +125,9 @@ def tick(o, now: datetime | None = None) -> list[StepResult]:
         # vào audit-log. Audit-log là bản ghi bền duy nhất và `metrics` đọc "gate chờ" từ đó, nên một gate bể
         # hạn đọc ra y hệt một gate mới chỉ được nhắc.
         pha = "overdue" if sid in overdue else "remind"
-        o._audit(f"gate.{pha}", {"subject_id": sid}, once=f"gate:{sid}:{pha}")
+        o._audit(f"gate.{pha}", {"subject_id": sid}, once=f"gate:{sid}:{pha}:{_the_he(o, sid)}")
     for sid in overdue:  # quá hạn không tự đi tiếp, nhưng cũng không im lặng: supervisor nhận việc
-        o.supervisor.escalate_gate(sid, f"gate quá hạn {o.gate.timeout}", once_key=f"gate.escalate:{sid}")
+        o.supervisor.escalate_gate(sid, f"gate quá hạn {o.gate.timeout}", once_key=f"gate.escalate:{sid}:{_the_he(o, sid)}")
     for tid, missing in o.lead.overdue_reviews(now).items():
         pr = o.latest("pull-requests", tid)
         since = o.lead.review_since[tid].isoformat()  # đọc trước: _call bên dưới có thể đóng vòng review và xoá nó

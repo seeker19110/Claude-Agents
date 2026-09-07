@@ -94,7 +94,7 @@ def _deliver(o, env: Envelope, res: StepResult) -> None:
     integ = o._integration_of_release(env)
     if integ is None or integ.rev(integ.branch) is None:
         o._audit("delivery.skipped", {"release_id": rid, "reason": "không có nhánh tích hợp (dự án chạy không repo)"},
-                    project_id=o.project_for(env), once=f"delivery.skipped:{rid}")
+                    project_id=o.project_for(env), once=f"delivery.skipped:{rid}:{env.event_id}")
         return
     if not o.gate.is_approved(rid):  # delivery-lead đã chặn trước (PermissionError); đây là lớp sau, không tin lời khai
         o._audit("delivery.skipped", {"release_id": rid, "reason": "gate release chưa duyệt"}, project_id=o.project_for(env))
