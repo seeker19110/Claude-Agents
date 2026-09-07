@@ -55,6 +55,8 @@ Mỗi mục phải xuất hiện trong báo cáo với đúng một kết luận
   - nguồn: approved-specs@latest — `runtime` (lệnh khởi động, cổng, đường health); thiếu thì KHÔNG THỂ CHẠY, hồ sơ nói thẳng
   - nguồn: worktree tích hợp (`--repo`) — `gate_brief` khởi động sản phẩm ở đó và gọi một request thật: lệnh, mã thoát, mã HTTP, `verified_by=orchestrator` (mục "Đã chạy" của hồ sơ)
   - nguồn: release-events{staging}.smoke — lần orchestrator tự chạy lúc deploy staging, để đối chiếu
+- **Khách đã xem bản giao trong PR thật trên GitHub (`--deliver-pr`, ADR-0038): PR nhánh release → nhánh của khách do orchestrator mở, không merge — review bằng UI quen thuộc rồi mới ký** (`acceptance.pr-giao-hang`)
+  - nguồn: audit-log delivery.done — trường `pr` (url, số PR, base ← head) của release; `delivery.pr_skipped`/`pr_failed` kèm lý do; chưa bật `--deliver-pr` thì `unknown`, khách xem tag/nhánh release trực tiếp
 
 ## Trợ lý chuyên môn nên gọi cùng hồ sơ
 

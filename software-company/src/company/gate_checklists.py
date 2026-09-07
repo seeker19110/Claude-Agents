@@ -116,6 +116,11 @@ SELF_CHECK_SOURCES: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {
                 "worktree tích hợp (`--repo`) — `gate_brief` khởi động sản phẩm ở đó và gọi một request thật: lệnh, mã thoát, "
                 "mã HTTP, `verified_by=orchestrator` (mục \"Đã chạy\" của hồ sơ)",
                 "release-events{staging}.smoke — lần orchestrator tự chạy lúc deploy staging, để đối chiếu")),
+        "Khách đã xem bản giao trong PR thật trên GitHub (`--deliver-pr`, ADR-0038): PR nhánh release → nhánh của khách "
+        "do orchestrator mở, không merge — review bằng UI quen thuộc rồi mới ký": (
+            "acceptance.pr-giao-hang", (
+                "audit-log delivery.done — trường `pr` (url, số PR, base ← head) của release; `delivery.pr_skipped`/"
+                "`pr_failed` kèm lý do; chưa bật `--deliver-pr` thì `unknown`, khách xem tag/nhánh release trực tiếp",)),
     },
     "escalation": {
         "Ngân sách còn": ("escalation.ngan-sach", (

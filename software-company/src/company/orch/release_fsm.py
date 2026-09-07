@@ -12,8 +12,9 @@ from typing import TYPE_CHECKING, Any
 from ..delivery import DONE_STATES
 from ..events import Envelope
 from ..gates import GateRequest
+from ..github_pr import PrRecord, open_pr
 from ..roles import ROLE
-from ..workspace import WorkspaceError
+from ..workspace import Integration, WorkspaceError
 from .fsm import Transition
 from .routes import PROD_ROUTE, STAGING_ROUTE, Route
 
@@ -108,11 +109,16 @@ def _deliver(o: Orchestrator, env: Envelope, res: StepResult) -> None:
     except WorkspaceError as e:
         o._audit("delivery.error", {"release_id": rid, "version": version, "error": str(e)[:300]}, project_id=o.project_for(env))
         res.actions.append(f"delivery_error:{rid}"); return
+    prinfo = _delivery_pr(o, integ, rid, version, tickets, r.pushed, r.tag)
     rec = {"release_id": rid, "version": version, "tag": r.tag, "sha": r.sha, "short": r.short, "branch": r.branch,
            "previous": r.previous, "tag_created": r.tag_created, "branch_moved": r.branch_moved, "problems": r.problems,
-           "pushed": r.pushed, "push_error": r.push_error, "repo": str(integ.repo)}
+           "pushed": r.pushed, "push_error": r.push_error, "repo": str(integ.repo), "pr": prinfo}
     with o._lock: o.delivered[rid] = rec
     o._audit("delivery.done", rec, project_id=o.project_for(env))
+    if prinfo is not None:  # ADR-0038: một dòng audit riêng cho PR để console/diagnose thấy ngay, không bới evidence
+        kind_ = ("pr_skipped" if "skipped" in prinfo else "pr_failed" if "error" in prinfo
+                 else "pr_opened" if prinfo.get("created") else "pr_reused")
+        o._audit(f"delivery.{kind_}", {"release_id": rid, **prinfo}, project_id=o.project_for(env))
     for pr in r.problems:  # mỗi vấn đề một dòng audit riêng để `diagnose`/console thấy ngay, không phải bới evidence
         kind_, _, detail = pr.partition(":")
         o._audit(f"delivery.{kind_}", {"release_id": rid, "tag": r.tag, "detail": detail}, project_id=o.project_for(env))
@@ -120,6 +126,28 @@ def _deliver(o: Orchestrator, env: Envelope, res: StepResult) -> None:
         o._audit("delivery.push_failed", {"release_id": rid, "remote": o.push_remote, "error": r.push_error},
                     project_id=o.project_for(env))
     res.actions.append(f"delivered:{rid}@{r.tag}" + (f"({','.join(r.problems)})" if r.problems else ""))
+
+def _delivery_pr(o: Orchestrator, integ: Integration, rid: str, version: str, tickets: list[str],
+                 pushed: bool | None, tag: str) -> PrRecord | None:
+    """ADR-0038: PR thật `release_branch → base` trên GitHub của khách, mở sau khi bản giao đã push. None khi
+    `--deliver-pr` tắt. Không có gì để mở (chưa push, remote không phải GitHub, base không phải nhánh) →
+    `{"skipped": lý do}`; gh lỗi → `{"error": lý do}`; còn lại `{"url", "number", "created", "slug", "base", "head"}`.
+    Kết quả nằm TRONG `delivery.done` nên mở lại bus dựng lại được, không mở PR lần hai."""
+    if not o.deliver_pr: return None
+    if not o.push_remote: return {"skipped": "cần --push-remote: PR chỉ mở được trên nhánh đã push"}
+    if pushed is not True: return {"skipped": "push chưa thành công, chưa có gì trên remote để mở PR"}
+    base = integ.base_branch()
+    if base is None: return {"skipped": f"--base `{integ.base}` không phải nhánh: PR cần nhánh đích thật"}
+    url = integ.remote_url(o.push_remote)
+    title = f"release {rid} {tag}"
+    body = (f"Bản giao `{tag}` của release `{rid}` (ADR-0038 — orchestrator mở PR, không merge).\n\n"
+            f"- tickets: {', '.join(tickets) or '-'}\n- head: `{integ.release_branch}` (con trỏ đang chạy production)\n"
+            f"- base: `{base}`\n\nReview ở đây rồi ký gate `UAT-{rid}`. Đưa vào `{base}` là quyết định của khách.")
+    r = open_pr(integ.repo, url, head=integ.release_branch, base=base, title=title, body=body)
+    if not r.ok and r.slug == "": return {"skipped": r.reason}  # remote không phải GitHub: không phải lỗi
+    rec: PrRecord = {**r.record(), "base": base, "head": integ.release_branch}
+    return rec
+
 
 def _rollback_delivery(o: Orchestrator, env: Envelope, res: StepResult) -> None:
     """Production rolled_back/failed của một release đã giao → `company/release` lùi về lần giao trước; tag giữ nguyên."""

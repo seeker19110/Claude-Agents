@@ -7,9 +7,11 @@ import subprocess
 
 import pytest
 
+from company import github_pr
 from company.bus import InMemoryBus
 from company.events import Envelope
 from company.llm import FakeClient
+from company.orch.release_fsm import _delivery_pr
 from company.orchestrator import Orchestrator
 from company.orchestrator import main as orch_main
 from company.sqlite_bus import SQLiteBus
@@ -166,7 +168,7 @@ def test_orchestrator_giao_hang_khi_production_va_lui_khi_rollback(tmp_path):
     assert [a for a, _ in done] == ["delivery.done"] and done[0][1]["release_id"] == "REL-001"
     st = orch.status()["delivery"]
     assert st == {"REL-001": {"version": "0.1.1", "tag": "v0.1.1", "short": d["short"], "branch": "company/release",
-                              "problems": [], "pushed": None}}
+                              "problems": [], "pushed": None, "pr": None}}  # `pr` None: --deliver-pr tắt (ADR-0038)
     assert any(a.startswith("delivered:REL-001@v0.1.1") for r in orch.run() for a in r.actions) is False, "không giao lại"
 
     # mở lại bus: bản đã giao và sha staging dựng lại từ audit-log
@@ -232,3 +234,187 @@ def test_cli_co_co_deliver(tmp_path, capsys):
     assert orch_main(["--db", db, "--repo", str(repo), "--deliver", "--push-remote", "origin", "--release-branch", "rel", "status"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["delivery"] == {}
+
+
+# ---------- ADR-0038: PR thật nhánh release → nhánh của khách, mở không merge ----------
+
+class _FakeGh:
+    """`gh` giả: kịch bản trả lời theo lệnh con (`list`/`create`), ghi lại argv để test đo đường đi chứ không đo gh."""
+
+    def __init__(self, list_out="[]", list_ok=True, create_out="https://github.com/acme/app/pull/7", create_ok=True):
+        self.list_out, self.list_ok, self.create_out, self.create_ok = list_out, list_ok, create_out, create_ok
+        self.calls: list[tuple[str, ...]] = []
+
+    def __call__(self, repo, *args, timeout=60):
+        self.calls.append(args)
+        if args[:2] == ("pr", "list"): return self.list_ok, self.list_out
+        assert args[:2] == ("pr", "create"), args
+        return self.create_ok, self.create_out
+
+
+def test_github_slug_nhan_dang_remote_github():
+    assert github_pr.github_slug("https://github.com/acme/app.git") == "acme/app"
+    assert github_pr.github_slug("https://github.com/acme/app") == "acme/app"
+    assert github_pr.github_slug("git@github.com:acme/app.git") == "acme/app"
+    assert github_pr.github_slug("ssh://git@github.com/acme/app/") == "acme/app"
+    for other in ("https://gitlab.com/acme/app.git", "/tmp/remote.git", "", None, "https://github.com/acme"):
+        assert github_pr.github_slug(other) is None, other
+
+
+def test_open_pr_mo_moi_dung_lai_va_loi(tmp_path, monkeypatch):
+    repo = tmp_path / "r"; repo.mkdir()
+    # remote không phải GitHub: không gọi gh lấy một lần
+    gh = _FakeGh(); monkeypatch.setattr(github_pr, "_gh", gh)
+    r = github_pr.open_pr(repo, str(tmp_path / "bare.git"), "company/release", "main", "t", "b")
+    assert not r.ok and r.slug == "" and "không phải GitHub" in r.reason and gh.calls == []
+    assert r.record() == {"error": r.reason, "slug": ""}
+    # chưa có PR đang mở → create; số PR đọc từ URL
+    r = github_pr.open_pr(repo, "https://github.com/acme/app.git", "company/release", "main", "release REL-1 v1", "body")
+    assert r.ok and r.created and r.number == 7 and r.url.endswith("/pull/7") and r.slug == "acme/app"
+    assert gh.calls[0][:2] == ("pr", "list") and "--head" in gh.calls[0] and gh.calls[1][:2] == ("pr", "create")
+    create = gh.calls[1]
+    assert create[create.index("--base") + 1] == "main" and create[create.index("--head") + 1] == "company/release"
+    assert create[create.index("--repo") + 1] == "acme/app" and create[create.index("--title") + 1] == "release REL-1 v1"
+    assert r.record() == {"url": r.url, "number": 7, "created": True, "slug": "acme/app"}
+    # PR đang mở cùng head/base → dùng lại, không create
+    gh = _FakeGh(list_out='[{"number": 3, "url": "https://github.com/acme/app/pull/3"}]'); monkeypatch.setattr(github_pr, "_gh", gh)
+    r = github_pr.open_pr(repo, "git@github.com:acme/app.git", "company/release", "main", "t", "b")
+    assert r.ok and not r.created and r.number == 3 and [c[:2] for c in gh.calls] == [("pr", "list")]
+    # list trả JSON hỏng → coi như chưa có → create; URL không có /pull/<n> → number None
+    gh = _FakeGh(list_out="không phải json", create_out="đã tạo"); monkeypatch.setattr(github_pr, "_gh", gh)
+    r = github_pr.open_pr(repo, "https://github.com/acme/app", "company/release", "main", "t", "b")
+    assert r.ok and r.created and r.number is None and r.url == "đã tạo"
+    # list có PR nhưng thiếu number → number None
+    gh = _FakeGh(list_out='[{"url": "u"}]'); monkeypatch.setattr(github_pr, "_gh", gh)
+    assert github_pr.open_pr(repo, "https://github.com/acme/app", "h", "b", "t", "b").number is None
+    # gh lỗi ở list / ở create → ok=False kèm lý do, slug vẫn có (để phân biệt với "không phải GitHub")
+    gh = _FakeGh(list_ok=False, list_out="gh: not logged in"); monkeypatch.setattr(github_pr, "_gh", gh)
+    r = github_pr.open_pr(repo, "https://github.com/acme/app", "h", "b", "t", "b")
+    assert not r.ok and r.slug == "acme/app" and r.reason == "gh: not logged in"
+    gh = _FakeGh(create_ok=False, create_out="permission denied", list_out=""); monkeypatch.setattr(github_pr, "_gh", gh)
+    r = github_pr.open_pr(repo, "https://github.com/acme/app", "h", "b", "t", "b")
+    assert not r.ok and r.reason == "permission denied" and len(gh.calls) == 2
+
+
+def test_gh_that_thieu_tren_may_qua_han_va_ma_thoat(tmp_path, monkeypatch):
+    """`_gh` thật với `subprocess.run` giả: không có gh, quá hạn, mã thoát ≠ 0, mã thoát 0 — không ném ở ca nào."""
+    calls = []
+
+    def fake_run(argv, **kw):
+        calls.append((argv, kw))
+        mode = argv[1]
+        if mode == "missing": raise FileNotFoundError(argv[0])
+        if mode == "slow": raise subprocess.TimeoutExpired(argv, kw["timeout"])
+        if mode == "bad": return subprocess.CompletedProcess(argv, 1, stdout="", stderr="x" * 400)
+        return subprocess.CompletedProcess(argv, 0, stdout="ok\n", stderr="")
+
+    monkeypatch.setattr(github_pr.subprocess, "run", fake_run)
+    monkeypatch.setenv("GH_TOKEN", "ghp_secret"); monkeypatch.setenv("GITHUB_TOKEN", "ghp_secret2")
+    assert github_pr._gh(tmp_path, "missing") == (False, "gh: không có trên máy (cài GitHub CLI rồi `gh auth login`)")
+    ok, why = github_pr._gh(tmp_path, "slow", "x", timeout=3)
+    assert not ok and why == "gh slow x: quá 3s"
+    ok, why = github_pr._gh(tmp_path, "bad")
+    assert not ok and len(why) == 300
+    assert github_pr._gh(tmp_path, "good") == (True, "ok")
+    env = calls[-1][1]["env"]
+    assert "GH_TOKEN" not in env and "GITHUB_TOKEN" not in env, "gh xác thực bằng cấu hình trên đĩa, không qua env (ADR-0027 §4)"
+    assert calls[-1][0][0] == "gh" and calls[-1][1]["cwd"] == str(tmp_path)
+
+
+def test_integration_remote_url_va_base_branch(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    it = Integration(repo, base="main")
+    assert it.remote_url("origin") is None and it.base_branch() == "main"
+    bare = tmp_path / "remote.git"; subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+    subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", str(bare)], check=True)
+    assert it.remote_url("origin") == str(bare)
+    assert Integration(repo, base="khong-co").base_branch() is None
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "--detach"], check=True)
+    assert Integration(repo, base="HEAD").base_branch() is None, "HEAD tách rời không phải nhánh đích cho PR"
+
+
+class _O:
+    def __init__(self, deliver_pr=True, push_remote="origin"): self.deliver_pr, self.push_remote = deliver_pr, push_remote
+
+
+def test_delivery_pr_moi_ly_do_bo_qua(tmp_path, monkeypatch):
+    """`_delivery_pr` từng nhánh: tắt → None; thiếu --push-remote; push hỏng; base không phải nhánh; remote không
+    phải GitHub → `skipped` có lý do; gh lỗi → `error`; còn lại → url + base/head."""
+    repo = _init_repo(tmp_path / "repo"); it = Integration(repo, base="main")
+    assert _delivery_pr(_O(deliver_pr=False), it, "R", "1.0.0", ["T1"], True, "v1.0.0") is None
+    assert "cần --push-remote" in _delivery_pr(_O(push_remote=None), it, "R", "1.0.0", ["T1"], True, "v1.0.0")["skipped"]
+    assert "push chưa thành công" in _delivery_pr(_O(), it, "R", "1.0.0", ["T1"], False, "v1.0.0")["skipped"]
+    assert "push chưa thành công" in _delivery_pr(_O(), it, "R", "1.0.0", ["T1"], None, "v1.0.0")["skipped"]
+    assert "không phải nhánh" in _delivery_pr(_O(), Integration(repo, base="khong-co"), "R", "1.0.0", [], True, "v1")["skipped"]
+    gh = _FakeGh(); monkeypatch.setattr(github_pr, "_gh", gh)
+    assert "không phải GitHub" in _delivery_pr(_O(), it, "R", "1.0.0", ["T1"], True, "v1.0.0")["skipped"] and gh.calls == []
+    monkeypatch.setattr(Integration, "remote_url", lambda self, remote: "https://github.com/acme/app.git")
+    got = _delivery_pr(_O(), it, "REL-9", "1.0.0", ["T1", "T2"], True, "v1.0.0")
+    assert got == {"url": "https://github.com/acme/app/pull/7", "number": 7, "created": True, "slug": "acme/app",
+                   "base": "main", "head": "company/release"}
+    create = gh.calls[-1]; body = create[create.index("--body") + 1]
+    assert "T1, T2" in body and "UAT-REL-9" in body and "không merge" in body and create[create.index("--title") + 1] == "release REL-9 v1.0.0"
+    gh = _FakeGh(list_ok=False, list_out="gh: auth"); monkeypatch.setattr(github_pr, "_gh", gh)
+    assert _delivery_pr(_O(), it, "R", "1.0.0", [], True, "v1")["error"] == "gh: auth"
+
+
+def _orch_pr(tmp_path, bus, monkeypatch, gh, **kw):
+    repo = _init_repo(tmp_path / "repo")
+    bare = tmp_path / "remote.git"; subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+    subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", str(bare)], check=True)
+    monkeypatch.setattr(github_pr, "_gh", gh)
+    monkeypatch.setattr(Integration, "remote_url", lambda self, remote: "https://github.com/acme/app.git")
+    orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=_repo_tool_handler), repo=repo, base="main",
+                        deliver=True, push_remote="origin", deliver_pr=True, **kw)
+    _drive_to_plan(bus, orch); orch.run()
+    return repo, bare, orch
+
+
+def test_orchestrator_mo_pr_that_sau_khi_giao_va_dung_lai_khi_da_mo(tmp_path, monkeypatch):
+    db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); gh = _FakeGh()
+    repo, bare, orch = _orch_pr(tmp_path, bus, monkeypatch, gh)
+    assert gh.calls == [], "chưa qua gate 3 thì chưa có gì để mở PR"
+    orch.gate.decide("REL-001", "approve", by="human:release-manager"); orch.run()
+    d = orch.delivered["REL-001"]
+    assert d["pushed"] is True and _rev(bare, "company/release") == d["sha"], "PR chỉ mở sau khi nhánh đã lên remote"
+    assert d["pr"] == {"url": "https://github.com/acme/app/pull/7", "number": 7, "created": True, "slug": "acme/app",
+                       "base": "main", "head": "company/release"}
+    assert [c[:2] for c in gh.calls] == [("pr", "list"), ("pr", "create")]
+    acts = _audits(bus, "delivery.")
+    assert [a for a, _ in acts] == ["delivery.done", "delivery.pr_opened"] and acts[1][1]["url"].endswith("/pull/7")
+    assert orch.status()["delivery"]["REL-001"]["pr"]["url"].endswith("/pull/7")
+    assert _git(repo, "log", "-1", "--format=%s", "main") == "init" and _rev(bare, "main") == "", "main khách không bị chạm (cục bộ lẫn remote): PR chỉ mở"
+    # mở lại bus: PR dựng lại từ delivery.done, không gọi gh lần nữa
+    gh2 = _FakeGh(); monkeypatch.setattr(github_pr, "_gh", gh2)
+    o2 = Orchestrator(SQLiteBus(db), FakeClient(handler=handler, tool_handler=_repo_tool_handler), repo=repo, base="main",
+                      deliver=True, push_remote="origin", deliver_pr=True)
+    assert o2.delivered["REL-001"]["pr"] == d["pr"] and o2.run() == [] and gh2.calls == []
+    # REL-002: PR cùng head/base đang mở → dùng lại (fast-forward nhánh release đã đẩy bản mới lên chính PR đó)
+    gh3 = _FakeGh(list_out='[{"number": 7, "url": "https://github.com/acme/app/pull/7"}]'); monkeypatch.setattr(github_pr, "_gh", gh3)
+    orch.gate.decide("REL-002", "approve", by="human:release-manager"); orch.run()
+    d2 = orch.delivered["REL-002"]
+    assert d2["pr"]["created"] is False and d2["pr"]["number"] == 7 and [c[:2] for c in gh3.calls] == [("pr", "list")]
+    assert [a for a, _ in _audits(bus, "delivery.pr_")] == ["delivery.pr_opened", "delivery.pr_reused"]
+
+
+def test_orchestrator_pr_loi_gh_va_bo_qua_khi_thieu_push_remote(tmp_path, monkeypatch):
+    bus = InMemoryBus(); gh = _FakeGh(list_ok=False, list_out="gh: not logged in")
+    _repo, _bare, orch = _orch_pr(tmp_path, bus, monkeypatch, gh)
+    orch.gate.decide("REL-001", "approve", by="human:release-manager"); orch.run()
+    d = orch.delivered["REL-001"]
+    assert d["pushed"] is True and d["pr"] == {"error": "gh: not logged in", "slug": "acme/app", "base": "main", "head": "company/release"}
+    assert [a for a, _ in _audits(bus, "delivery.")] == ["delivery.done", "delivery.pr_failed"], "gh hỏng không chặn bản giao"
+    # không có --push-remote: bật --deliver-pr là vô nghĩa, ghi lý do chứ không im lặng
+    repo2 = _init_repo(tmp_path / "repo2"); bus2 = InMemoryBus()
+    orch2 = Orchestrator(bus2, FakeClient(handler=handler, tool_handler=_repo_tool_handler), repo=repo2, base="main",
+                         deliver=True, deliver_pr=True)
+    _drive_to_plan(bus2, orch2); orch2.run()
+    orch2.gate.decide("REL-001", "approve", by="human:release-manager"); orch2.run()
+    pr = orch2.delivered["REL-001"]["pr"]
+    assert "cần --push-remote" in pr["skipped"] and [a for a, _ in _audits(bus2, "delivery.pr_")] == ["delivery.pr_skipped"]
+
+
+def test_cli_co_co_deliver_pr(tmp_path, capsys):
+    repo = _init_repo(tmp_path / "repo"); db = str(tmp_path / "c.sqlite")
+    assert orch_main(["--db", db, "--repo", str(repo), "--deliver", "--push-remote", "origin", "--deliver-pr", "status"]) == 0
+    assert json.loads(capsys.readouterr().out)["delivery"] == {}

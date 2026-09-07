@@ -282,6 +282,28 @@ def test_endpoints_va_section():
 
 # ---------- acceptance ----------
 
+def test_acceptance_pr_giao_hang_doc_tu_delivery_done(tmp_path):
+    """ADR-0038: mục `acceptance.pr-giao-hang` lấy từ `delivery.done.pr` (bằng chứng máy ghi), không từ lời khai:
+    chưa giao/chưa bật → unknown; có url → ok kèm số PR; skipped/error → gap kèm lý do."""
+    db, _bus, orch = _scenario(tmp_path)
+    it = next(x for x in GB.build(GB.load_state(db), "UAT-REL-001")["self_check"] if x["id"] == "acceptance.pr-giao-hang")
+    assert it["verdict"] == "unknown" and "--deliver-pr" in it["facts"][0]
+    orch._audit("delivery.done", {"release_id": "REL-001", "version": "0.1.1", "tag": "v0.1.1", "sha": "a" * 40,
+                                  "pr": {"url": "https://github.com/acme/app/pull/7", "number": 7, "created": True,
+                                         "slug": "acme/app", "base": "main", "head": "company/release"}}, project_id="P1")
+    it = next(x for x in GB.build(GB.load_state(db), "UAT-REL-001")["self_check"] if x["id"] == "acceptance.pr-giao-hang")
+    assert it["verdict"] == "ok" and "PR #7" in it["facts"][0] and "main ← company/release" in it["facts"][0] and "mới mở" in it["facts"][0]
+    assert it["sources"][0]["url"].endswith("/pull/7")
+    orch._audit("delivery.done", {"release_id": "REL-001", "version": "0.1.1", "tag": "v0.1.1", "sha": "a" * 40,
+                                  "pr": {"skipped": "cần --push-remote: PR chỉ mở được trên nhánh đã push"}}, project_id="P1")
+    it = next(x for x in GB.build(GB.load_state(db), "UAT-REL-001")["self_check"] if x["id"] == "acceptance.pr-giao-hang")
+    assert it["verdict"] == "gap" and "cần --push-remote" in it["facts"][0]
+    orch._audit("delivery.done", {"release_id": "REL-001", "version": "0.1.1", "tag": "v0.1.1", "sha": "a" * 40,
+                                  "pr": {"url": "u", "number": 3, "created": False, "slug": "s", "base": "main", "head": "h"}}, project_id="P1")
+    it = next(x for x in GB.build(GB.load_state(db), "UAT-REL-001")["self_check"] if x["id"] == "acceptance.pr-giao-hang")
+    assert "dùng lại" in it["facts"][0]
+
+
 def test_acceptance_moi_truong_va_truy_vet(tmp_path):
     db, bus, orch = _scenario(tmp_path)
     b = GB.build(GB.load_state(db), "UAT-REL-001")

@@ -31,7 +31,7 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0037); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0038); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
 agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
@@ -54,7 +54,7 @@ examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--rela
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng intake cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 21 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
-tests/         pytest 1013 ca / 60 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+tests/         pytest 1023 ca / 60 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, release tự dừng → gate, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
                guard/blackboard, schema consistency, golden 21 agent + 5 hồ sơ gate, bộ sinh subagent, hồ sơ gate, rà soát bảo mật);
                coverage fail_under=100 (phủ 100% dòng)
@@ -107,9 +107,12 @@ uv run python -m company.gate_brief REL-001 [--repo ../khach]   # hoặc: make g
 #   cho nửa "người tự kiểm thêm" của gate (SQLite mode=ro, verdict chỉ ok|gap|unknown, không khuyến nghị); `--all` mọi gate chờ;
 #   ghi <db>.artifacts/<project>/gate-brief/<subject>.{md,json}. Trong Claude Code: `/gate-brief REL-001` gọi thêm trợ lý
 #   `sc-gate-<kind>` + `sc-<agent>` (chỉ Read/Grep/Glob) đọc hồ sơ và in bản tóm; người vẫn tự ký bằng gate_cli
-uv run python -m company.orchestrator --repo ../khach --deliver [--push-remote origin] [--release-branch company/release] run --watch 5
+uv run python -m company.orchestrator --repo ../khach --deliver [--push-remote origin] [--release-branch company/release] [--deliver-pr] run --watch 5
 #   ADR-0027: production duyệt + deploy → tag v<version> tại sha đã QA trên staging + fast-forward nhánh `company/release`
 #   trong repo khách; rolled_back → lùi con trỏ (tag giữ); push lỗi chỉ vào audit `delivery.push_failed`; `main` khách không bị chạm
+#   ADR-0038: `--deliver-pr` (cần --push-remote trỏ remote GitHub + `gh auth login`) → sau khi push, mở PR thật
+#   `company/release → <--base>` để khách review bằng UI quen thuộc trước khi ký UAT; mở không merge, PR đang mở thì dùng lại;
+#   kết quả ở `delivery.done.pr` + audit `delivery.pr_opened|pr_reused|pr_skipped|pr_failed`; gh lỗi không chặn bản giao
 uv run python -m company.orchestrator publish clarification-answers ans.json --actor human:po
 uv run python -m company.orchestrator decide-change CR-1 accepted --by human:po   # sau khi delivery-lead ước lượng impact
 uv run python -m company.orchestrator run --workers 4 --web   # ticket khác key chạy song song; researcher có web
@@ -145,7 +148,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-04)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0037; 21 system prompt có version; 45 skill có version; 14 template; checklist 3 gate + escalation.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0038; 21 system prompt có version; 45 skill có version; 14 template; checklist 3 gate + escalation.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),

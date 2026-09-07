@@ -70,6 +70,46 @@ Sửa checklists.md → make subagents (bản dẫn xuất); thêm file test/ADR
 uv run pytest -q -p no:cacheprovider; ruff; mypy. PR #90, CHANGELOG, docs/sessions/2026-09-06.md.
 ```
 
+## Gói việc thường trực: tự kiểm số liệu (ADR-0003)
+
+Mỗi chân trời một lần (hoặc ngay sau một đợt PR làm đổi số test/agent/ADR), dán gói này vào một phiên **chỉ làm
+việc này**. Lý do nó tồn tại: `AGENTS.md` luật cấm 8 nói "không tin lời khai", nhưng số liệu trong `README.md`
+gốc là lời khai của một phiên nào đó trong quá khứ, và lần đầu đo lại (2026-09-07) thì 5/10 dòng lệch.
+
+```markdown
+# Task pack: tự kiểm số liệu trong tài liệu gốc
+
+## 1. Mục tiêu
+Đo lại mọi con số đang nằm trong `README.md`, `ARCHITECTURE.md` và các ADR trạng thái "được chấp nhận",
+trên gói đã cài (`uv sync` xong) chứ không trên ấn tượng đọc mã. Lần trước: `docs/reports/<ngày>-tu-kiem.md`.
+
+## 2. Kết quả mong đợi
+- [ ] `docs/reports/<ngày>-tu-kiem.md` với bảng **claim · đo được · chênh · lệnh** — mỗi dòng một lệnh đã chạy
+- [ ] số nào lệch → sửa TÀI LIỆU trong cùng PR; không bao giờ sửa phép đo cho khớp tài liệu
+- [ ] dòng nào lệch mà chưa có test CI canh → ghi vào "Việc để lại" của báo cáo (không tự thêm test — luật cấm 7)
+- [ ] PR mở, CHANGELOG + session log
+
+## 3. Phạm vi
+Được: `docs/reports/`, `README.md`, `ARCHITECTURE.md`, tài liệu bị lệch.
+Không: mã nguồn, test, prompt agent, `.claude/agents/` — đây là phiên đo, không phải phiên sửa.
+
+## 4. Bối cảnh
+`docs/adr/0003-doi-chieu-ruflo.md`; báo cáo tự kiểm gần nhất; `console/tests/test_readme_goc.py` và
+`*/tests/test_readme*.py` (những gì CI đã canh — không cần đo tay lại, nhưng ghi "đã có test canh" vào bảng).
+
+## 5. Ràng buộc
+Số test đếm bằng `pytest --collect-only -q` (số ca thu được), không đếm `def test_`. Agent/skill/topic/template/ADR
+đếm file trên đĩa. Coverage đọc `fail_under` trong `pyproject.toml`, không đọc badge.
+
+## 6. Bẫy
+Một dòng README có hai chỗ nói cùng một số (test package đã mắc: `pytest N ca` và `Test: N ca`) — sửa một chỗ là
+CI đỏ. Con số lệch một chiều "nói ít hơn thật" vẫn là lệch; đừng bỏ qua vì "ít nhất không nói quá".
+
+## 7. Kiểm và báo
+`uv run pytest -q console/tests/test_readme_goc.py Studio-creators/tests/test_readme_so_lieu.py` sau khi sửa README.
+Báo: PR #, dòng CHANGELOG `docs: tự kiểm <ngày>`, session log.
+```
+
 ## Khi nào không cần gói việc
 
 Sửa tài liệu một file, đổi một chuỗi, trả lời câu hỏi. Còn lại — kể cả "sửa lỗi nhỏ" — điền mục 1, 2, 3 tối thiểu;
