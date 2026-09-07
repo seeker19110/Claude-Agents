@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
 
 
-def _superseded(o, env: Envelope, res: StepResult) -> bool:
+def _superseded(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
     """Event `tasks`/`pull-requests` còn trong hàng đợi (hoãn vì paused/transient, hoặc mở lại bus) mà ticket đã
     đi tiếp thì là hàng cũ: bỏ, audit `<topic>.superseded`, không giao agent.
 
@@ -48,7 +48,7 @@ def _superseded(o, env: Envelope, res: StepResult) -> bool:
     o._mark(env, res)
     return True
 
-def _note_closed(o) -> None:
+def _note_closed(o: Orchestrator) -> None:
     """Ghi `ticket.closed` cho ticket vừa vào trạng thái cuối. `metrics.collect` tính lead time (tasks đầu → closed)
     từ chính action này; không ai phát thì `ticket_lead_seconds` luôn rỗng và gauge Prometheus không bao giờ hiện."""
     for tid, st in list(o.lead.state.items()):
@@ -57,7 +57,7 @@ def _note_closed(o) -> None:
         o._audit("ticket.closed", {"ticket_id": tid, "retry": t.retry if t else 0}, once=f"closed:{tid}",
                     ticket_id=tid, project_id=t.project_id if t else None)
 
-def _plan(o, env: Envelope, res: StepResult) -> StepResult:
+def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     project = env.payload.get("project_id") or env.key
     if env.topic == "approved-specs":
         sid = f"SPEC-{project}"
@@ -131,7 +131,7 @@ def _plan(o, env: Envelope, res: StepResult) -> StepResult:
     o._mark(env, res)
     return res
 
-def _spec_runtime_missing(o, env: Envelope, project: str, gap: str, res: StepResult) -> StepResult:
+def _spec_runtime_missing(o: Orchestrator, env: Envelope, project: str, gap: str, res: StepResult) -> StepResult:
     """ADR-0031: spec ứng dụng không có `runtime` hợp lệ thì KHÔNG mở gate spec — người ký Gate 1 không được đặt
     trước một PRD mà câu "chạy cho tôi xem" chưa có câu trả lời. Thay vào đó trả về spec-writer với lý do (`hint`)
     đúng như `request_changes` của người; quá `SPEC_RUNTIME_REWORKS` lần vẫn thiếu → escalation cấp dự án, cùng
@@ -173,7 +173,7 @@ def _spec_runtime_missing(o, env: Envelope, project: str, gap: str, res: StepRes
                                       checklist=["spec_runtime", "decision:retry|close"]))
     o._mark(env, res); return res
 
-def _threat_model(o, env: Envelope, sid: str, res: StepResult) -> bool:
+def _threat_model(o: Orchestrator, env: Envelope, sid: str, res: StepResult) -> bool:
     """Security-engineer đọc spec đã duyệt: threat model v1 lên blackboard + review-results key=SPEC-*.
     Verdict block → không lập kế hoạch (người sửa spec rồi publish lại). Trả về True nếu được đi tiếp."""
     prior = o.latest("review-results", sid)
@@ -203,7 +203,7 @@ def _threat_model(o, env: Envelope, sid: str, res: StepResult) -> bool:
         res.actions.append(f"spec_blocked:{sid}"); return False
     res.actions.append(f"threat-model:{sid}:{p['verdict']}"); return True
 
-def _check_plan(o, tickets: list[Task]) -> list[str]:
+def _check_plan(o: Orchestrator, tickets: list[Task]) -> list[str]:
     ids = {t.ticket_id for t in tickets}; known = ids | set(o.lead.tickets)
     problems = ["kế hoạch rỗng"] if not tickets else []
     if len(ids) != len(tickets): problems.append("ticket_id trùng")
@@ -218,7 +218,7 @@ def _check_plan(o, tickets: list[Task]) -> list[str]:
     if cyc: problems.append("depends_on vòng: " + " → ".join(cyc))
     return problems
 
-def _dispatch_plan(o, plan_id: str, replaying: bool = False) -> list[str]:
+def _dispatch_plan(o: Orchestrator, plan_id: str, replaying: bool = False) -> list[str]:
     plan = o.plans[plan_id]
     pending = [Task.model_validate(t) for t in plan["tickets"] if t["ticket_id"] not in o.lead.tickets]
     done: list[str] = []

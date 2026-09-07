@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
 
 
-def _integrate(o, rc: Envelope, res: StepResult) -> bool:
+def _integrate(o: Orchestrator, rc: Envelope, res: StepResult) -> bool:
     """Mọi ticket của RC phải nằm trên nhánh tích hợp (thường đã merge lúc approved). Trả về False nếu RC bị huỷ."""
     if not o._has_integration(): return True
     rid = rc.payload["release_id"]
@@ -37,11 +37,11 @@ def _integrate(o, rc: Envelope, res: StepResult) -> bool:
             return False
     return True
 
-def _void(o, rid: str) -> None:
+def _void(o: Orchestrator, rid: str) -> None:
     o.void_releases.add(rid)
     o.lead.void_release(rid)  # gom release: ticket approved trong RC huỷ phải vào RC kế tiếp
 
-def _release(o, agent: str, rc: Envelope, r: Route) -> Envelope:
+def _release(o: Orchestrator, agent: str, rc: Envelope, r: Route) -> Envelope:
     """release-engineer nhận RC kèm `target_env`; đầu ra phải đúng env và release_id, nếu không thì coi là invalid."""
     rid = rc.payload["release_id"]
     integ = o._integration_of_release(rc)
@@ -85,7 +85,7 @@ def _release(o, agent: str, rc: Envelope, r: Route) -> Envelope:
         p = o._smoke(agent, rc, rid, p, integ)
     return o.runner.publish(agent, rc, r.topic_out, p, key=rid, tokens=g.tokens, model=g.model, generated=g)
 
-def _deliver(o, env: Envelope, res: StepResult) -> None:
+def _deliver(o: Orchestrator, env: Envelope, res: StepResult) -> None:
     """Production đã deploy và gate release đã duyệt → tag `v<version>` + fast-forward `company/release` trong repo của
     dự án. Tắt (`--deliver` không bật) hoặc không có repo thì không làm gì; đã giao rồi thì không giao lại."""
     if not o.deliver: return
@@ -120,7 +120,7 @@ def _deliver(o, env: Envelope, res: StepResult) -> None:
                     project_id=o.project_for(env))
     res.actions.append(f"delivered:{rid}@{r.tag}" + (f"({','.join(r.problems)})" if r.problems else ""))
 
-def _rollback_delivery(o, env: Envelope, res: StepResult) -> None:
+def _rollback_delivery(o: Orchestrator, env: Envelope, res: StepResult) -> None:
     """Production rolled_back/failed của một release đã giao → `company/release` lùi về lần giao trước; tag giữ nguyên."""
     if not o.deliver: return
     rid = env.key
@@ -143,7 +143,7 @@ def _rollback_delivery(o, env: Envelope, res: StepResult) -> None:
                     project_id=o.project_for(env))
     res.actions.append(f"rolled_back:{rid}" + (f"({','.join(r.problems)})" if r.problems else ""))
 
-def redeploy(o, release_id: str, by: str) -> Envelope:
+def redeploy(o: Orchestrator, release_id: str, by: str) -> Envelope:
     """Chạy lại lượt STAGING cho một release-candidate đã có — dùng khi dây chuyền từng kẹt vì lỗi hạ tầng và
     RC nằm lại giữa đường.
 
@@ -165,7 +165,7 @@ def redeploy(o, release_id: str, by: str) -> Envelope:
     o._call("release-engineer", rc, STAGING_ROUTE, res)  # cùng route như lượt đầu, chỉ khác là do người gọi
     return rc
 
-def _check_paused_releases(o) -> None:
+def _check_paused_releases(o: Orchestrator) -> None:
     """Quét mọi RC mà release-event CUỐI là `pending_human` và không gate nào chờ → mở gate escalation. Cần vì
     `_release_paused` chỉ chạy lúc XỬ LÝ event: RC kẹt từ trước bản vá (event đã `processed`) hay orchestrator
     mở lại sau khi gate đã quyết mà lượt chạy lại vẫn dừng — không có sweep thì chúng nằm im mãi như cũ."""
@@ -182,7 +182,7 @@ def _check_paused_releases(o) -> None:
         o.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="release-engineer",
                                       checklist=["root_cause", "decision:redeploy|close", "hint"]))
 
-def _superseded_release(o, rid: str) -> bool:
+def _superseded_release(o: Orchestrator, rid: str) -> bool:
     """RC chưa giao, nhưng mọi ticket của nó đã ở nhánh tích hợp (hoặc đã xong) và đã có một bản giao SAU nó →
     nội dung RC này đã tới tay khách trong bản giao đó; RC chỉ còn là sổ sách."""
     if rid in o.delivered or rid not in o.lead.release_tickets: return False
@@ -191,7 +191,7 @@ def _superseded_release(o, rid: str) -> bool:
     if not later: return False
     return all(t in o.integrated or o.lead.state.get(t) in DONE_STATES for t in o.lead.release_tickets[rid])
 
-def _release_paused(o, env: Envelope, res: StepResult) -> None:
+def _release_paused(o: Orchestrator, env: Envelope, res: StepResult) -> None:
     """release-engineer TỰ DỪNG (`status=pending_human`): xem `_check_paused_releases` — sweep đó chạy ở mọi nhịp
     (kể cả ngay sau lượt vừa phát event này, trước khi event được lấy khỏi hàng đợi), nên ở đây chỉ còn ghi
     hành động để `orchestrated` của event nói rõ gate đã mở."""
@@ -199,7 +199,7 @@ def _release_paused(o, env: Envelope, res: StepResult) -> None:
     o._check_paused_releases()
     if rid in o.gate.pending: res.actions.append(f"gate:escalation:{rid}")
 
-def _recall(o, agent: str, env: Envelope) -> None:
+def _recall(o: Orchestrator, agent: str, env: Envelope) -> None:
     """Cho phép gọi LẠI một agent trên cùng event một cách chủ ý. `partial[event_id]` ghi agent đã chạy để event
     bị hoãn transient không chạy lại — nhưng nó cũng nuốt mọi lần gọi lại có chủ đích trên cùng envelope (RC):
     Gate 3 ký lần hai, chạy lại lượt release-engineer vừa tự dừng. Đo được 2026-09-06: lead ký lại Gate 3
@@ -207,7 +207,7 @@ def _recall(o, agent: str, env: Envelope) -> None:
     with o._lock:
         if env.event_id in o.partial: o.partial[env.event_id].discard(agent)
 
-def _rerun_release(o, rid: str, by: str, reason: str, res: StepResult) -> bool:
+def _rerun_release(o: Orchestrator, rid: str, by: str, reason: str, res: StepResult) -> bool:
     """Chạy lại lượt release-engineer mà nó vừa tự dừng: env lấy từ release-event cuối; production chỉ khi Gate 3
     đã ký. Lý do người duyệt đi vào payload làm `human_hint`. Trả False nếu không có gì để chạy lại."""
     last = o.latest("release-events", rid); rc = o.latest("release-candidates", rid)

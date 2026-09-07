@@ -20,19 +20,19 @@ from .cli import _fmt, source_fingerprint
 from .routes import ACTIVE_STATES, ACTOR, CONTROL_TOPICS, PAUSING, PLAN_INPUTS, REVIEW_AGENT, Route
 
 if TYPE_CHECKING:
-    from ..orchestrator import StepResult
+    from ..orchestrator import Orchestrator, StepResult
 
 
-def _actionable(o, env: Envelope) -> bool:
+def _actionable(o: Orchestrator, env: Envelope) -> bool:
     if env.topic == "audit-log": return trusted_decision(env) is not None  # gate.decide giả (actor không phải người) không chạy
     return env.topic not in CONTROL_TOPICS
 
-def _track_pause(o, env: Envelope) -> None:
+def _track_pause(o: Orchestrator, env: Envelope) -> None:
     act, target = env.payload["action"], env.payload["target"]
     if act in PAUSING: o.paused.add(target)
     elif act == "resume": o.paused.discard(target)
 
-def _on_event(o, env: Envelope) -> None:
+def _on_event(o: Orchestrator, env: Envelope) -> None:
     if env.topic == "supervisor-actions":
         o._track_pause(env)
         if env.payload["action"] == "resume": o._retry_deferred()
@@ -42,14 +42,14 @@ def _on_event(o, env: Envelope) -> None:
 def target(env: Envelope) -> str:
     return str(env.payload.get("ticket_id") or env.key)
 
-def _parallel_ok(o, env: Envelope) -> bool:
+def _parallel_ok(o: Orchestrator, env: Envelope) -> bool:
     """Event chạy được cùng lúc với event khác key? Gate decide, lập kế hoạch, RC (merge tích hợp), clarifier
     (rẽ nhánh theo trạng thái) luôn chạy một mình vì chúng đổi trạng thái chung."""
     if env.topic in {"audit-log", "release-candidates", "clarification-questions"}: return False
     if env.topic in PLAN_INPUTS and PLAN_INPUTS[env.topic](env, o): return False
     return True
 
-def _take_batch(o, n: int) -> list[Envelope]:
+def _take_batch(o: Orchestrator, n: int) -> list[Envelope]:
     """Lấy tối đa n event có target khác nhau từ đầu hàng đợi (giữ thứ tự trong cùng key)."""
     with o._qlock:
         batch = [o.queue.pop(0)]
@@ -61,7 +61,7 @@ def _take_batch(o, n: int) -> list[Envelope]:
             else: i += 1
         return batch
 
-def run(o, max_steps: int | None = None, workers: int | None = None) -> list[StepResult]:
+def run(o: Orchestrator, max_steps: int | None = None, workers: int | None = None) -> list[StepResult]:
     """Xử lý hàng đợi đến khi rỗng (hoặc đủ max_steps). Event bị hoãn không làm vòng lặp quay mãi.
     `workers` > 1: mỗi vòng lấy một lô event khác key và chạy song song (ADR-0012)."""
     workers = workers or o.workers
@@ -90,7 +90,7 @@ def run(o, max_steps: int | None = None, workers: int | None = None) -> list[Ste
     o._integrate_pending(out)
     return out
 
-def _integrate_pending(o, out: list[StepResult]) -> None:
+def _integrate_pending(o: Orchestrator, out: list[StepResult]) -> None:
     """Ticket approved mà chưa lên nhánh tích hợp thì merge ngay, không phụ thuộc vào việc có event nào của nó
     được xử lý: review-results cuối cùng có thể bị hoãn (ticket vừa bị supervisor cắt ngân sách) và từ F15 ticket
     phụ thuộc chỉ bắt đầu sau khi merge — không có bước này dự án đứng im."""
@@ -100,7 +100,7 @@ def _integrate_pending(o, out: list[StepResult]) -> None:
     o._integrate_approved(res)
     if res.actions: out.append(res)
 
-def _the_he(o, sid: str) -> str:
+def _the_he(o: Orchestrator, sid: str) -> str:
     """Thế hệ của gate đang mở cho `sid`: dấu thời gian tạo của `GateRequest`. Cùng một subject có thể mở gate
     NHIỀU LẦN trong đời (duyệt → hỏng → mở lại; `escalation` sau `release`), và `HumanGate.pending` khoá theo
     `subject_id` nên gate mới ghi đè gate cũ dưới đúng cái tên đó. Khoá `once` chỉ mang `sid` là lần quá hạn
@@ -111,7 +111,7 @@ def _the_he(o, sid: str) -> str:
     return r.created_at.isoformat(timespec="microseconds") if r is not None else "-"
 
 
-def tick(o, now: datetime | None = None) -> list[StepResult]:
+def tick(o: Orchestrator, now: datetime | None = None) -> list[StepResult]:
     """Một nhịp của chế độ watch: nạp event từ tiến trình khác, thử lại event hoãn vì lỗi transport, chạy hàng đợi,
     nhắc gate quá hạn, giao lại review quá hạn, escalate ticket im lặng quá lâu."""
     from ..orchestrator import StepResult  # nhập lười, lý do như trong _integrate_pending
@@ -149,7 +149,7 @@ def tick(o, now: datetime | None = None) -> list[StepResult]:
     results += o.run()
     return results
 
-def watch(o, interval: float = 5.0, max_ticks: int | None = None, reload: bool = False) -> None:
+def watch(o: Orchestrator, interval: float = 5.0, max_ticks: int | None = None, reload: bool = False) -> None:
     from ..orchestrator import ReloadRequested  # nhập lười: orchestrator.py nhập module này lúc định nghĩa class,
     # ReloadRequested chưa tồn tại tới khi class đó chạy xong thân — nhập ở đỉnh file gây vòng lặp import.
     """`reload=True`: mã nguồn của công ty (src/company, agents, skills, gates, llm.yaml) đổi trên đĩa → khi hàng
@@ -172,7 +172,7 @@ def watch(o, interval: float = 5.0, max_ticks: int | None = None, reload: bool =
         n += 1
         if max_ticks is None or n < max_ticks: time.sleep(interval)
 
-def _maybe_reload(o) -> None:
+def _maybe_reload(o: Orchestrator) -> None:
     from ..orchestrator import ReloadRequested  # nhập lười, lý do như trong watch()
     if not o.reload_on_change: return
     fp = source_fingerprint()
@@ -181,7 +181,7 @@ def _maybe_reload(o) -> None:
     print(f"mã nguồn đổi ({fp[1]}) — khởi động lại với mã mới", file=sys.stderr)
     raise ReloadRequested(fp[1])
 
-def _defer(o, env: Envelope, res: StepResult, reason: str, wait_s: float | None = None) -> StepResult:
+def _defer(o: Orchestrator, env: Envelope, res: StepResult, reason: str, wait_s: float | None = None) -> StepResult:
     """`wait_s`: backend nói rõ phải chờ bao lâu → không thử lại trước mốc đó (xem `_retry_deferred`)."""
     with o._lock:
         o.deferred[env.event_id] = (env, reason); res.deferred = reason; o.stats["deferred"] += 1
@@ -205,7 +205,7 @@ def _defer(o, env: Envelope, res: StepResult, reason: str, wait_s: float | None 
                     ticket_id=env.payload.get("ticket_id"), project_id=env.payload.get("project_id"))
     return res
 
-def _retry_deferred(o, only: str | None = None) -> None:
+def _retry_deferred(o: Orchestrator, only: str | None = None) -> None:
     """Đưa event hoãn về đầu hàng đợi; `only` = tiền tố lý do (vd. "transient:") để chỉ thử lại loại đó.
     Event nào backend đã hẹn giờ (`defer_until`) thì chờ đúng hẹn — hỏi lại sớm hơn chỉ tốn một dòng lỗi."""
     now = time.monotonic()
@@ -215,19 +215,19 @@ def _retry_deferred(o, only: str | None = None) -> None:
         for k in picked: o.deferred.pop(k); o.defer_until.pop(k, None)
         o.queue[:0] = [e for e, _ in picked.values()]
 
-def _mark(o, env: Envelope, res: StepResult) -> None:
+def _mark(o: Orchestrator, env: Envelope, res: StepResult) -> None:
     with o._lock:
         o.processed.add(env.event_id); o.partial.pop(env.event_id, None)
     o._audit("orchestrated", {"event_id": env.event_id, "topic": env.topic, "actions": res.actions},
                 ticket_id=env.payload.get("ticket_id") or (env.key if env.topic == "tasks" else None),
                 project_id=env.payload.get("project_id"))
 
-def _remember(o, key: str) -> None:
+def _remember(o: Orchestrator, key: str) -> None:
     """Ghi nhớ bền vững một việc chỉ làm một lần (khôi phục qua replay)."""
     with o._lock: o.once.add(key)
     o._audit("once", {"key": key})
 
-def _audit(o, action: str, data: dict[str, Any], actor: str = ACTOR, tokens: int = 0, once: str | None = None,
+def _audit(o: Orchestrator, action: str, data: dict[str, Any], actor: str = ACTOR, tokens: int = 0, once: str | None = None,
            ticket_id: str | None = None, project_id: str | None = None, cost: float = 0.0) -> None:
     if once:
         with o._lock:
