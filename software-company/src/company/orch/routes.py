@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..events import Envelope
 from ..registry import AgentSpec
+from ..roles import ENGINEERING, ROLE, SOURCE
 from ..runner import CONTEXT_ONLY
 from ..smoke import parse_runtime
 from ..workspace import WorkspaceError
@@ -21,7 +22,6 @@ if TYPE_CHECKING:
 
 ACTOR = "orchestrator"
 MAX_CLARIFY_ROUNDS = 2  # khớp `clarification-questions.round` (maximum 2) và prompt clarifier
-ENGINEERING = ("backend", "frontend", "mobile", "database", "platform", "data")
 PAUSING = frozenset({"pause", "budget_cut", "escalate"})
 
 MAX_CONFLICT_RETRIES = 6  # xung đột merge thứ 7 liên tiếp cho một ticket mới tính vào retry nội dung (xem conflict_retries)
@@ -29,7 +29,7 @@ MAX_CONFLICT_RETRIES = 6  # xung đột merge thứ 7 liên tiếp cho một tic
 # thấy. Lỗi ở các topic này mở gate `escalation` cấp dự án (approve = chạy lại event, reject = đóng dự án).
 RESEARCH_TOPICS = frozenset({"research-requests", "research-findings", "requirements-draft", "clarification-answers"})
 CONTROL_TOPICS = frozenset({"audit-log", "shared-context", "supervisor-actions"})
-REVIEW_AGENT = {"reviewer": "reviewer", "qa": "qa-debugger", "security": "security-engineer"}
+REVIEW_AGENT = {SOURCE.REVIEWER: ROLE.REVIEWER, SOURCE.QA: ROLE.QA, SOURCE.SECURITY: ROLE.SECURITY}
 KEY_FIELD = {"tasks": "ticket_id", "pull-requests": "ticket_id", "test-suites": "ticket_id", "review-results": "ticket_id", "incidents": "incident_id",
              "change-requests": "change_id", "release-candidates": "release_id", "release-events": "release_id",
              "acceptance-results": "release_id"}  # topic khác (project_id) giữ key của event nguồn
@@ -185,8 +185,8 @@ def _with_intake(e: Envelope, o: Orchestrator) -> dict[str, Any]:
     """Synthesizer cần CẢ báo cáo intake lẫn báo cáo 4 mục của researcher (ADR-0006), nhưng nó chỉ được đánh thức bởi
     báo cáo của researcher. Không đính kèm đề bài của intake thì tiêu chí bắt đầu không bao giờ đủ và draft luôn rỗng."""
     key = e.payload.get("project_id") or e.key
-    found = [x for x in o.bus.replay("research-findings", key) if x.payload.get("kind") == "intake"]
-    return {"intake": found[-1].payload.get("data")} if found and found[-1].payload.get("data") else {}
+    found = [x for x in o.bus.replay("research-findings", key) if x.payload.get("kind") == ROLE.INTAKE]
+    return {ROLE.INTAKE: found[-1].payload.get("data")} if found and found[-1].payload.get("data") else {}
 
 
 def _with_diff(e: Envelope, o: Orchestrator) -> dict[str, Any]:
@@ -259,52 +259,52 @@ def _with_task(e: Envelope, o: Orchestrator) -> dict[str, Any]:
     t = o.latest("tasks", str(e.payload.get("ticket_id") or e.key))
     base = dict(t.payload) if t is not None else {}
     return {**base, "test_suite": {k: e.payload.get(k) for k in ("files", "acceptance_covered", "tests_status", "commit", "notes")},
-            "tests_authored_by": "test-author"}
+            "tests_authored_by": ROLE.TEST_AUTHOR}
 
 
-STAGING_ROUTE = Route("release-candidates", "release-engineer", "release-events", target_env="staging")
+STAGING_ROUTE = Route("release-candidates", ROLE.OPS, "release-events", target_env="staging")
 ROUTES: tuple[Route, ...] = (
     # khối nghiên cứu: intake → researcher → synthesizer → risk → clarifier → (người trả lời) → spec-writer
-    Route("research-requests", "intake", "research-findings"),
-    Route("research-findings", "researcher", "research-findings", _from("intake"), tools="research"),
-    Route("research-findings", "synthesizer", "requirements-draft", _from("researcher"), enrich=_with_intake),
-    Route("requirements-draft", "risk", "requirements-draft", _from("synthesizer")),
-    Route("requirements-draft", "clarifier", "clarification-questions", _from("risk")),
-    Route("clarification-answers", "clarifier", "clarification-questions", _answers_incomplete, enrich=_with_draft),
-    Route("clarification-answers", "spec-writer", "approved-specs", _spec_ready, enrich=_with_draft),
+    Route("research-requests", ROLE.INTAKE, "research-findings"),
+    Route("research-findings", ROLE.RESEARCHER, "research-findings", _from(ROLE.INTAKE), tools="research"),
+    Route("research-findings", ROLE.SYNTHESIZER, "requirements-draft", _from(ROLE.RESEARCHER), enrich=_with_intake),
+    Route("requirements-draft", ROLE.RISK, "requirements-draft", _from(ROLE.SYNTHESIZER)),
+    Route("requirements-draft", ROLE.CLARIFIER, "clarification-questions", _from(ROLE.RISK)),
+    Route("clarification-answers", ROLE.CLARIFIER, "clarification-questions", _answers_incomplete, enrich=_with_draft),
+    Route("clarification-answers", ROLE.PRODUCT, "approved-specs", _spec_ready, enrich=_with_draft),
     # kỹ thuật + chất lượng
     # ADR-0028: có repo và phân vùng được vùng test → test-author viết test MÙ trước, rồi assignee viết code cho
     # tới khi xanh mà KHÔNG ghi được file test. Không phân vùng được (stack lạ, không repo) → đường cũ, và PR mang
     # `tests_authored_by: "assignee"` để reviewer biết bộ test này không độc lập.
-    Route("tasks", "test-author", "test-suites", _can_author_tests, tools="tests"),
+    Route("tasks", ROLE.TEST_AUTHOR, "test-suites", _can_author_tests, tools="tests"),
     Route("tasks", "$assignee", "pull-requests", _no_test_author, tools="rw"),
     Route("test-suites", "$assignee", "pull-requests", enrich=_with_task, tools="rw"),
     # Assignee không sửa được test (tool chặn): nó ghi `test_dispute` và việc quay về test-author — lượt DUY NHẤT
     # bộ test được đổi sau khi đã viết, và lượt duy nhất test-author được xem diff.
-    Route("pull-requests", "test-author", "test-suites", _has_dispute, enrich=_with_diff, tools="tests"),
+    Route("pull-requests", ROLE.TEST_AUTHOR, "test-suites", _has_dispute, enrich=_with_diff, tools="tests"),
     # Reviewer và security cũng có tool CHỈ ĐỌC trên worktree như QA: diff dài hơn `max_input_chars` bị cắt giữa,
     # agent "không được suy diễn" nên BLOCK vì "diff không có trong đầu vào" — không phải lỗi code. Đo được
     # 2026-09-06 (TCK-CR-DEV-001-02, PR 877 dòng): security chặn vì thiếu diff `http_adapter.py`, ticket bị trả
     # về làm lại dù reviewer + QA pass. Có tool thì nó đọc đúng file bị cắt rồi mới chấm.
-    Route("pull-requests", "reviewer", "review-results", enrich=_with_diff, tools="ro"),
-    Route("pull-requests", "qa-debugger", "review-results", _needs_qa,
+    Route("pull-requests", ROLE.REVIEWER, "review-results", enrich=_with_diff, tools="ro"),
+    Route("pull-requests", ROLE.QA, "review-results", _needs_qa,
           enrich=lambda e, o: {**_with_diff(e, o), **_with_chan_doan(e, o)}, tools="ro"),
-    Route("pull-requests", "security-engineer", "review-results", _needs_security, enrich=_with_diff, tools="ro"),
+    Route("pull-requests", ROLE.SECURITY, "review-results", _needs_security, enrich=_with_diff, tools="ro"),
     # vận hành: RC → staging (+ security DAST/license khi có risk) → QA hồi quy; production đi qua gate 3 (PROD_ROUTE)
     STAGING_ROUTE,
-    Route("release-candidates", "security-engineer", "review-results", _release_needs_security),
-    Route("release-events", "qa-debugger", "review-results", _deployed("staging"), tools="ro"),  # tool trên worktree tích hợp
-    Route("release-events", "support-docs", CONTEXT_ONLY, _deployed("production")),  # docs, release notes, runbook
+    Route("release-candidates", ROLE.SECURITY, "review-results", _release_needs_security),
+    Route("release-events", ROLE.QA, "review-results", _deployed("staging"), tools="ro"),  # tool trên worktree tích hợp
+    Route("release-events", ROLE.SUPPORT_DOCS, CONTEXT_ONLY, _deployed("production")),  # docs, release notes, runbook
     # khách và hậu release
-    Route("external-feedback", "account-manager", "change-requests"),
-    Route("external-feedback", "support-docs", "incidents", many=True),
-    Route("incidents", "support-docs", "research-requests", _field("root_cause_class", "requirement"), many=True),
-    Route("acceptance-results", "account-manager", "change-requests", _field("verdict", "conditional"), many=True),
-    Route("change-requests", "delivery-lead", "audit-log", _field("decision", "pending")),  # ước lượng impact → người quyết
-    Route("change-requests", "intake", "research-findings", _cr_accepted_needs_research),
+    Route("external-feedback", ROLE.ACCOUNT_MANAGER, "change-requests"),
+    Route("external-feedback", ROLE.SUPPORT_DOCS, "incidents", many=True),
+    Route("incidents", ROLE.SUPPORT_DOCS, "research-requests", _field("root_cause_class", "requirement"), many=True),
+    Route("acceptance-results", ROLE.ACCOUNT_MANAGER, "change-requests", _field("verdict", "conditional"), many=True),
+    Route("change-requests", ROLE.LEAD, "audit-log", _field("decision", "pending")),  # ước lượng impact → người quyết
+    Route("change-requests", ROLE.INTAKE, "research-findings", _cr_accepted_needs_research),
 )
-PROD_ROUTE = Route("release-candidates", "release-engineer", "release-events", target_env="production")
-THREAT_ROUTE = Route("approved-specs", "security-engineer", "review-results")  # threat model trước ticket đầu (ADR-0003)
+PROD_ROUTE = Route("release-candidates", ROLE.OPS, "release-events", target_env="production")
+THREAT_ROUTE = Route("approved-specs", ROLE.SECURITY, "review-results")  # threat model trước ticket đầu (ADR-0003)
 
 # Đầu vào khiến delivery-lead lập kế hoạch (sinh nhiều ticket một lượt) → `_check_plan` → dispatch (ADR-0037).
 PLAN_INPUTS: dict[str, When] = {
@@ -326,6 +326,6 @@ def check_routes(agents: dict[str, AgentSpec]) -> list[str]:
             if r.topic_out == CONTEXT_ONLY:
                 if not spec.namespaces_write: bad.append(f"{a} không có namespace để ghi blackboard")
             elif r.topic_out not in spec.writes: bad.append(f"{a} không ghi {r.topic_out}")
-    lead = agents["delivery-lead"]
-    bad += [f"delivery-lead không đọc {t}" for t in PLAN_INPUTS if t not in lead.reads]
+    lead = agents[ROLE.LEAD]
+    bad += [f"{ROLE.LEAD} không đọc {t}" for t in PLAN_INPUTS if t not in lead.reads]
     return bad

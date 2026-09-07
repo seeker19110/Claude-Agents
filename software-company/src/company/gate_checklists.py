@@ -19,6 +19,7 @@ from typing import get_args
 
 from .gates import GateKind
 from .registry import ROOT
+from .roles import ROLE
 
 CHECKLISTS = ROOT / "gates" / "checklists.md"
 
@@ -126,10 +127,10 @@ SELF_CHECK_SOURCES: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {
 
 # §5.6: kind → trợ lý chuyên môn nên gọi cùng hồ sơ.
 EXPERTS: dict[str, tuple[str, ...]] = {
-    "spec": ("sc-spec-writer", "sc-risk"),
-    "release": ("sc-qa-debugger", "sc-security-engineer", "sc-release-engineer", "sc-delivery-lead"),
-    "acceptance": ("sc-account-manager", "sc-support-docs"),
-    "escalation": ("sc-qa-debugger", "sc-<assignee> — trợ lý theo góc nhìn agent chủ quản ticket"),
+    "spec": (f"sc-{ROLE.PRODUCT}", f"sc-{ROLE.RISK}"),
+    "release": (f"sc-{ROLE.QA}", f"sc-{ROLE.SECURITY}", f"sc-{ROLE.OPS}", f"sc-{ROLE.LEAD}"),
+    "acceptance": (f"sc-{ROLE.ACCOUNT_MANAGER}", f"sc-{ROLE.SUPPORT_DOCS}"),
+    "escalation": (f"sc-{ROLE.QA}", "sc-<assignee> — trợ lý theo góc nhìn agent chủ quản ticket"),
 }
 
 # Gate đóng bằng tiền thật (production, khách ký) dùng model mạnh; còn lại standard.

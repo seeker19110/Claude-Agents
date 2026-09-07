@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from ..delivery import DONE_STATES
 from ..events import Envelope
 from ..gates import GateRequest
+from ..roles import ROLE
 from ..workspace import WorkspaceError
 from .fsm import Transition
 from .routes import PROD_ROUTE, STAGING_ROUTE, Route
@@ -161,8 +162,8 @@ def redeploy(o: Orchestrator, release_id: str, by: str) -> Envelope:
     o._audit("release.redeploy", {"release_id": release_id, "by": by}, actor=by,
                 project_id=o.project_for(rc))
     res = StepResult(rc.event_id, rc.topic, rc.key)
-    o._recall("release-engineer", rc)
-    o._call("release-engineer", rc, STAGING_ROUTE, res)  # cùng route như lượt đầu, chỉ khác là do người gọi
+    o._recall(ROLE.OPS, rc)
+    o._call(ROLE.OPS, rc, STAGING_ROUTE, res)  # cùng route như lượt đầu, chỉ khác là do người gọi
     return rc
 
 def _check_paused_releases(o: Orchestrator) -> None:
@@ -178,8 +179,8 @@ def _check_paused_releases(o: Orchestrator) -> None:
         o._remember(key)
         o._audit("release.pending_human", {"release_id": rid, "env": last.payload.get("env"),
                                               "summary": str(last.payload.get("summary") or "")[:300]},
-                    actor="release-engineer", project_id=o.project_for(last))
-        o.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="release-engineer",
+                    actor=ROLE.OPS, project_id=o.project_for(last))
+        o.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
                                       checklist=["root_cause", "decision:redeploy|close", "hint"]))
 
 def _superseded_release(o: Orchestrator, rid: str) -> bool:
@@ -217,8 +218,8 @@ def _rerun_release(o: Orchestrator, rid: str, by: str, reason: str, res: StepRes
     if route is PROD_ROUTE and not o.lead._gate_kind_approved(rid, "release"): return False
     o._audit("release.rerun", {"release_id": rid, "env": env_, "by": by}, actor=by, project_id=o.project_for(rc))
     inp = rc.model_copy(update={"payload": {**rc.payload, "human_hint": reason}}) if reason else rc
-    o._recall("release-engineer", rc)
-    o._call("release-engineer", inp, route, res)
+    o._recall(ROLE.OPS, rc)
+    o._call(ROLE.OPS, inp, route, res)
     return True
 
 

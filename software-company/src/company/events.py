@@ -6,6 +6,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from .roles import ROLE, Assignee, ReviewSource
+
 Topic = Literal[
     "research-requests", "research-findings", "requirements-draft",
     "clarification-questions", "clarification-answers", "approved-specs",
@@ -13,18 +15,16 @@ Topic = Literal[
     "release-events", "incidents", "shared-context", "audit-log", "supervisor-actions",
     "change-requests", "acceptance-results", "external-feedback",
 ]
-Assignee = Literal["backend", "frontend", "mobile", "database", "platform", "data"]
 Namespace = Literal[
     "prd", "glossary", "design", "architecture", "api-contract", "schema", "threat-model",
     "infra", "analytics", "docs", "knowledge", "contract",
 ]
-ReviewSource = Literal["reviewer", "qa", "security"]
 
 NAMESPACE_OWNERS: dict[str, set[str]] = {
-    "prd": {"spec-writer"}, "glossary": {"researcher"}, "design": {"researcher"},
-    "architecture": {"delivery-lead"}, "api-contract": {"delivery-lead", "backend"},
-    "schema": {"database"}, "threat-model": {"security-engineer"}, "infra": {"platform"},
-    "analytics": {"data"}, "docs": {"support-docs"}, "knowledge": {"supervisor"}, "contract": {"account-manager"},
+    "prd": {ROLE.PRODUCT}, "glossary": {ROLE.RESEARCHER}, "design": {ROLE.RESEARCHER},
+    "architecture": {ROLE.LEAD}, "api-contract": {ROLE.LEAD, ROLE.BACKEND},
+    "schema": {ROLE.DATABASE}, "threat-model": {ROLE.SECURITY}, "infra": {ROLE.PLATFORM},
+    "analytics": {ROLE.DATA}, "docs": {ROLE.SUPPORT_DOCS}, "knowledge": {ROLE.SUPERVISOR}, "contract": {ROLE.ACCOUNT_MANAGER},
 }
 
 # Namespace phạm vi toàn công ty (không thuộc dự án nào): bài học dùng chung cho mọi dự án.

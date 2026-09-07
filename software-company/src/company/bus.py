@@ -10,6 +10,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 from pydantic import ValidationError
 
 from .events import NAMESPACE_OWNERS, PAYLOAD_MODELS, Envelope
+from .roles import ENGINEERING, LEAD_ACTOR, ROLE, SOURCE
 
 SCHEMA_DIR = Path(__file__).resolve().parents[2] / "topics" / "schemas"
 
@@ -21,26 +22,26 @@ class PermissionDenied(BusError): ...
 # Người (`human` / `human:<tên>`) chỉ được phát các topic đầu vào của khách/người duyệt (HUMAN_TOPICS); agent chỉ phát
 # topic mình khai `writes`. `audit-log` ai cũng ghi; `shared-context` kiểm theo NAMESPACE_OWNERS. Bus là chốt chặn
 # cuối: runner đã kiểm `writes`, nhưng CLI `publish` hay code gọi thẳng `bus.publish` cũng không được vượt quyền.
-ENGINEERING_ACTORS = frozenset({"backend", "frontend", "mobile", "database", "platform", "data"})
-REVIEW_PRODUCERS = frozenset({"reviewer", "qa-debugger", "security-engineer", "qa", "security"})  # tên agent hoặc `source`
+ENGINEERING_ACTORS = frozenset(ENGINEERING)
+REVIEW_PRODUCERS = frozenset({ROLE.REVIEWER, ROLE.QA, ROLE.SECURITY, SOURCE.QA, SOURCE.SECURITY})  # tên agent hoặc `source`
 TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
-    "research-requests": frozenset({"support-docs", "account-manager"}),
-    "research-findings": frozenset({"intake", "researcher"}),
-    "requirements-draft": frozenset({"synthesizer", "risk"}),
-    "clarification-questions": frozenset({"clarifier"}),
+    "research-requests": frozenset({ROLE.SUPPORT_DOCS, ROLE.ACCOUNT_MANAGER}),
+    "research-findings": frozenset({ROLE.INTAKE, ROLE.RESEARCHER}),
+    "requirements-draft": frozenset({ROLE.SYNTHESIZER, ROLE.RISK}),
+    "clarification-questions": frozenset({ROLE.CLARIFIER}),
     "clarification-answers": frozenset(),
-    "approved-specs": frozenset({"spec-writer"}),
-    "tasks": frozenset({"delivery-lead"}),
+    "approved-specs": frozenset({ROLE.PRODUCT}),
+    "tasks": frozenset({LEAD_ACTOR}),
     "pull-requests": ENGINEERING_ACTORS,
-    "test-suites": frozenset({"test-author"}),  # ADR-0028: bộ test do một vai KHÁC người viết code phát
+    "test-suites": frozenset({ROLE.TEST_AUTHOR}),  # ADR-0028: bộ test do một vai KHÁC người viết code phát
     "review-results": REVIEW_PRODUCERS,
-    "release-candidates": frozenset({"delivery-lead"}),
-    "release-events": frozenset({"release-engineer"}),
-    "incidents": frozenset({"support-docs"}),
+    "release-candidates": frozenset({LEAD_ACTOR}),
+    "release-events": frozenset({ROLE.OPS}),
+    "incidents": frozenset({ROLE.SUPPORT_DOCS}),
     "external-feedback": frozenset(),
-    "change-requests": frozenset({"account-manager"}),
-    "acceptance-results": frozenset({"account-manager"}),
-    "supervisor-actions": frozenset({"supervisor"}),
+    "change-requests": frozenset({ROLE.ACCOUNT_MANAGER}),
+    "acceptance-results": frozenset({ROLE.ACCOUNT_MANAGER}),
+    "supervisor-actions": frozenset({ROLE.SUPERVISOR}),
 }
 # Topic người được phát: đầu vào của khách (`orchestrator publish`), quyết định change request (`decide-change`),
 # PR khi tiếp quản ticket (`takeover`), resume sau gate escalation (supervisor-actions).

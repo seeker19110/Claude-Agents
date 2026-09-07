@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..events import Envelope
 from ..gates import GateRequest
+from ..roles import ROLE
 from ..smoke import parse_runtime, run_smoke, unverified
 from ..workspace import Integration
 from .routes import _dict_of
@@ -68,7 +69,7 @@ def smoke(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[str, Any]
         o._audit("release.smoke_blocked", {"release_id": rid, "claimed_status": p.get("status"),
                                               "spec_kind": kind, "reason": smoke["reason"]}, project_id=pid)
         if rid not in o.gate.pending:   # cùng đường với smoke fail bên dưới: RC failed không có route nào tiếp
-            o.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="release-engineer",
+            o.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
                                           checklist=["root_cause", "decision:redeploy|close", "hint"]))
         return {**p, "status": "failed", "smoke": smoke}
     smoke = run_smoke(integ.path, rt, sandbox=o.sandbox)
@@ -80,7 +81,7 @@ def smoke(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[str, Any]
                                          "error": smoke.get("error")}, project_id=pid)
     # RC `failed` ở staging không có route nào tiếp: không mở gate thì nó nằm im như `pending_human` từng nằm.
     if rid not in o.gate.pending:
-        o.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="release-engineer",
+        o.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
                                       checklist=["root_cause", "decision:redeploy|close", "hint"]))
     return {**p, "status": "failed", "smoke": smoke}
 

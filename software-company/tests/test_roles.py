@@ -1,0 +1,112 @@
+"""ADR-0037 PR-4: id agent chỉ được là chuỗi ở MỘT chỗ — `src/company/roles.py` (và front matter `agents/*.md`).
+
+Test quét bằng `tokenize`, không grep: chỉ token STRING mới tính, nên chú thích/docstring nhắc tên vai không bị bắt
+(prose không đổi hành vi), còn `"delivery-lead"` trong `actor=` thì có. `TRAPS.md` §2 "Tin test canh quy ước kiểu
+grep": bộ quét được chạy trên một vi phạm biết trước (`test_bo_quet_bat_duoc_vi_pham_biet_truoc`) để chứng minh nó
+nhìn thấy thứ nó phải thấy — không kế thừa niềm tin.
+"""
+from __future__ import annotations
+
+import ast
+import io
+import tokenize
+from pathlib import Path
+from typing import get_args
+
+import pytest
+
+from company.registry import load_agents
+from company.roles import ENGINEERING, LEAD_ACTOR, ROLE, SOURCE, Assignee, ReviewSource
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src" / "company"
+CONSOLE_TRUTH = ROOT.parent / "console" / "src" / "console" / "truth.py"
+
+# 21 id trước ADR-0037. Giữ danh sách này CỐ ĐỊNH qua PR-5a..5e: khi một agent bị gộp, tên cũ của nó không được
+# quay lại src/ dưới dạng chuỗi — kể cả trong code "tương thích".
+OLD_IDS = frozenset({
+    "intake", "researcher", "synthesizer", "risk", "clarifier", "spec-writer", "delivery-lead",
+    "backend", "frontend", "mobile", "database", "platform", "data",
+    "test-author", "reviewer", "qa-debugger", "security-engineer", "release-engineer",
+    "support-docs", "account-manager", "supervisor",
+})
+
+# Chuỗi trùng tên vai nhưng KHÔNG phải vai. Miễn theo (file, đúng nguyên dòng): đổi dòng là phải xét lại lý do,
+# không có chuyện dòng khác trong cùng file "thừa hưởng" miễn trừ.
+EXEMPT_LINES: dict[tuple[str, str], str] = {
+    ("orch/routes.py", 'return {ROLE.INTAKE: found[-1].payload.get("data")} if found and found[-1].payload.get("data") else {}'):
+        "`data` là TRƯỜNG của research-findings (schema bắt buộc `kind` + `data`), không phải agent `data`",
+}
+
+
+def _scan_files() -> list[Path]:
+    files = [p for p in SRC.rglob("*.py") if p.name != "roles.py"]
+    return [*files, CONSOLE_TRUTH]
+
+
+def _violations(text: str, ids: frozenset[str], rel: str = "") -> list[tuple[int, str]]:
+    """(dòng, giá trị) của mọi token STRING có giá trị đúng bằng một id — chỉ token, không đụng chú thích."""
+    lines = text.splitlines()
+    out = []
+    for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+        if tok.type != tokenize.STRING: continue
+        try: val = ast.literal_eval(tok.string)
+        except (ValueError, SyntaxError): continue  # f-string, bytes… không phải chuỗi thuần
+        if not isinstance(val, str) or val not in ids: continue
+        if (rel, lines[tok.start[0] - 1].strip()) in EXEMPT_LINES: continue
+        out.append((tok.start[0], val))
+    return out
+
+
+def _all_ids() -> frozenset[str]:
+    return frozenset(load_agents()) | OLD_IDS
+
+
+def test_khong_con_id_agent_dang_chuoi_trong_src():
+    ids = _all_ids()
+    found: list[str] = []
+    for f in _scan_files():
+        rel = str(f.relative_to(SRC)) if f.is_relative_to(SRC) else f.name
+        rel = rel.replace("\\", "/")
+        found += [f"{rel}:{ln} {val!r}" for ln, val in _violations(f.read_text(encoding="utf-8"), ids, rel)]
+    assert not found, "id agent viết tay ngoài roles.py — dùng ROLE.* / SOURCE.* / LEAD_ACTOR:\n" + "\n".join(found)
+
+
+def test_moi_dong_mien_tru_van_ton_tai():
+    """Miễn trừ chỉ có nghĩa khi dòng còn đó đúng nguyên văn — dòng đổi/mất là mục miễn trừ đã chết, phải gỡ."""
+    for (rel, line), _reason in EXEMPT_LINES.items():
+        text = (SRC / rel).read_text(encoding="utf-8")
+        assert sum(1 for ln in text.splitlines() if ln.strip() == line) == 1, (rel, line)
+
+
+def test_bo_quet_bat_duoc_vi_pham_biet_truoc():
+    """Chiều ngược của test trên, tự chứa: một literal id thêm vào → phải thấy; chú thích và f-string → không."""
+    ids = _all_ids()
+    assert _violations('x = "delivery-lead"\n', ids) == [(1, "delivery-lead")]
+    assert _violations("y = 'qa-debugger'\n", ids) == [(1, "qa-debugger")]
+    assert _violations('z = {"reviewer": "qa"}\n', ids) == [(1, "reviewer")]  # key cũng là chuỗi
+    assert _violations('# "delivery-lead" trong chú thích\nw = f"sc-{ROLE.LEAD}"\n', ids) == []
+    assert _violations('v = "delivery-lead-x"\n', ids) == []  # chỉ bắt đúng nguyên id, không bắt chuỗi chứa nó
+
+
+def test_hang_role_khop_front_matter_hai_chieu():
+    """Mỗi `ROLE.*` là một agent thật, và mỗi agent thật có đúng một hằng — đổi tên agent mà quên roles.py là đỏ."""
+    consts = {k: v for k, v in vars(ROLE).items() if not k.startswith("_")}
+    agents = set(load_agents())
+    assert set(consts.values()) == agents, (set(consts.values()) ^ agents)
+    assert len(set(consts.values())) == len(consts), "hai hằng cùng một id"
+    assert set(consts.values()) == OLD_IDS, "PR-4 chưa đổi agent nào: 21 id cũ phải khớp 21 hằng"
+    assert LEAD_ACTOR == ROLE.LEAD  # hôm nay trùng; PR-5e tách (agent vào product, actor giữ)
+
+
+def test_source_va_literal_khop_hang():
+    assert get_args(Assignee) == ENGINEERING
+    assert get_args(ReviewSource) == (SOURCE.REVIEWER, SOURCE.QA, SOURCE.SECURITY)
+    assert set(SOURCE.__dict__) & {"REVIEWER", "QA", "SECURITY"} == {"REVIEWER", "QA", "SECURITY"}
+
+
+@pytest.mark.parametrize("name", ["ROLE", "SOURCE"])
+def test_namespace_khong_khoi_tao_duoc_thay_doi(name):
+    """Hằng là hằng: gán đè vào namespace phải bị mypy `Final` chặn lúc kiểm tĩnh; lúc chạy chỉ kiểm nó không rỗng."""
+    ns = {"ROLE": ROLE, "SOURCE": SOURCE}[name]
+    assert all(isinstance(v, str) and v for k, v in vars(ns).items() if not k.startswith("_"))
