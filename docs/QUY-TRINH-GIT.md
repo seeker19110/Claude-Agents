@@ -91,6 +91,15 @@ Không commit secret, `llm.yaml`, khóa API, hay dữ liệu thật. Không gọ
    ^(feat|fix|refactor|docs|test|chore|style|perf|build|ci|revert)(\([a-z0-9._/-]+\))?!?: .+
    ```
    Bẫy: scope chỉ nhận chữ thường — `fix(skillTiering)` trượt, `fix(skills)` đạt.
+
+   Cổng `metadata` còn ba bước nữa, đọc trước khi viết thân PR:
+   - **Dòng CHANGELOG** ở mục "Chưa phát hành" (nhãn `no-changelog` để miễn) — đỏ nếu thiếu.
+   - **PR `fix(` chạm `software-company/src/company/orchestrator.py` hoặc `orch/` phải dẫn `ADR-0034`**
+     trong thân, nói rõ đụng bảng chuyển nào (K8.3). `refactor(` không bị soi: tách module là làm ĐÚNG
+     theo ADR, còn `fix(` là sửa hành vi máy trạng thái — chỗ dễ lặng lẽ phá bảng chuyển nhất. Đặc tả
+     gốc viết "ADR-0037"; repo này không có file đó, ADR tách máy trạng thái là **0034**.
+   - **Nhật ký phiên `docs/sessions/<ngày UTC>.md`** — chỉ **cảnh báo**, không chặn merge (K8.4): nhật ký
+     là việc cuối phiên, không phải việc mỗi PR.
 2. **Tạo PR ở trạng thái ready, không để nháp.** GitHub từ chối bật auto-merge trên PR nháp.
 3. **Bật auto-merge (squash) ngay sau lệnh tạo PR** — gọi một lần, không hỏi lại. Thất bại thì
    **không bỏ mặc PR**: theo dõi CI, **xanh + không xung đột là merge (squash) ngay**.

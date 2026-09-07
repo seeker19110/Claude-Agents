@@ -38,3 +38,39 @@ jobs:
             echo "PR không đổi CHANGELOG.md. Thêm một dòng ở 'Chưa phát hành' (AGENTS.md luật bắt buộc 9), hoặc gắn nhãn no-changelog." >&2
             exit 1
           fi
+      # K8.3 kịch bản B. Đặc tả gốc viết "ADR-0037"; ở repo này ADR tách máy trạng thái là **ADR-0034**
+      # (chính ADR-0034 §"Hệ quả" đã ghi lại chỗ lệch số này) — không có file 0037, dùng số đúng.
+      # Chỉ soi PR `fix(` : `refactor(` là việc tách module theo đúng ADR, còn `fix(` là sửa HÀNH VI của máy
+      # trạng thái — chỗ dễ lặng lẽ phá bảng chuyển nhất, và là chỗ người review cần biết đụng bảng nào.
+      - name: PR `fix(` chạm orchestrator/orch phải dẫn ADR-0034
+        env:
+          BASE: ${{ github.event.pull_request.base.ref }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          case "$TITLE" in fix\(*|fix:*) ;; *) echo "không phải PR fix( — bỏ qua"; exit 0;; esac
+          git fetch -q origin "$BASE"
+          changed=$(git diff --name-only "origin/$BASE...HEAD" -- \
+            software-company/src/company/orchestrator.py \
+            software-company/src/company/orch/)
+          if [ -z "$changed" ]; then echo "không chạm orchestrator.py/orch/ — bỏ qua"; exit 0; fi
+          if printf '%s' "$BODY" | grep -q 'ADR-0034'; then
+            echo "OK: thân PR có dẫn ADR-0034"; exit 0
+          fi
+          echo "PR sửa máy trạng thái nhưng thân không dẫn ADR-0034." >&2
+          echo "File đã đổi:" >&2; printf '%s\n' "$changed" >&2
+          echo "Thêm vào thân PR: đụng bảng chuyển nào (TICKET_TRANSITIONS/RELEASE_TRANSITIONS), vì sao, và dẫn ADR-0034." >&2
+          exit 1
+
+      # K8.4 kịch bản B: CẢNH BÁO, không đỏ. Nhật ký phiên là luật cho người (AGENTS.md luật bắt buộc 9) — chặn
+      # merge vì nó là phạt sai chỗ: PR có thể của một phiên chưa kết thúc, và người viết nhật ký cuối phiên chứ
+      # không phải mỗi PR. Cảnh báo hiện ngay trong tab Checks nên vẫn nhắc được, mà không biến một luật mềm
+      # thành cổng cứng.
+      - name: Nhắc nhật ký phiên cho ngày hôm nay (cảnh báo)
+        run: |
+          ngay=$(date -u +%F)
+          if [ -f "docs/sessions/$ngay.md" ]; then
+            echo "OK: có docs/sessions/$ngay.md"
+          else
+            echo "::warning title=Thiếu nhật ký phiên::Chưa có docs/sessions/$ngay.md. AGENTS.md luật bắt buộc 9: cuối phiên ghi việc dở, PR mở, thứ người sau không được quên. Không chặn merge."
+          fi
