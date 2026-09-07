@@ -330,7 +330,9 @@ Nếu chỉ làm được một nửa: **K0, K1, K2, K3.0–K3.5, K8.3, K9.1**. 
 | K5.1–K5.5 | chưa | | sau K3.3 |
 | K6.1–K6.3 | chưa | | |
 | K7.1–K7.6 | chưa | | |
-| K8.1–K8.6 | chưa | | |
+| K8.1, K8.2, K8.5, K8.6 | chưa | | gateway README §rủi ro tài khoản, `make llm` một tài khoản, "ngày đầu của người thứ hai", gateway `stop` kiểm cmdline |
+| K8.3 | xong | #130 | `pr-policy.yml` bước 3: PR `fix(` chạm `orchestrator.py`/`orch/` mà thân không dẫn `ADR-0034` thì đỏ. **Dùng ADR-0034 chứ không phải "ADR-0037" như đặc tả viết** — repo này không có file 0037; chính ADR-0034 §Hệ quả đã ghi lại chỗ lệch số. `refactor(` không bị soi (tách module là làm đúng theo ADR; `fix(` mới là sửa hành vi máy trạng thái) |
+| K8.4 | xong | #130 | `pr-policy.yml` bước 4: thiếu `docs/sessions/<ngày UTC>.md` → `::warning`, KHÔNG đỏ — nhật ký là việc cuối phiên, chặn merge từng PR là phạt sai chỗ |
 | K9.1–K9.4 | chưa | | |
 
 Cập nhật bảng trong cùng PR của mục. Mục "xong" phải có số PR; K9 phải có đường dẫn báo cáo.
