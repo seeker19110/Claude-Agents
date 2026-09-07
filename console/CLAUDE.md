@@ -30,7 +30,7 @@ orchestrator thì việc giao và quyết định nằm im trên bus.
 
 | Sửa | Phải |
 |---|---|
-| đọc thêm dữ liệu từ bus | `src/console/collect.py`; hợp đồng trong `API.md` |
+| đọc thêm dữ liệu từ bus | `src/console/collect.py`; hợp đồng trong `API.md`. Trường payload mới phải có trong `topics/schemas/` của công ty — `tests/test_hop_dong_schema.py` (K7.4) quét mã nguồn console và đỏ khi console đọc một trường không tồn tại, hoặc khi công ty đổi tên trường console đang đọc |
 | phễu release / phễu sản phẩm, bế tắc im lặng, quyết định chưa áp | `src/console/truth.py` ("sự thật giao hàng", #76; ADR-0003) |
 | cột "commit vượt integration" | `src/console/git_truth.py` — `git rev-list --count`, **không** `branch --contains` |
 | hồ sơ bằng chứng cạnh nút duyệt | `src/console/brief.py` → `company.gate_brief`; route `GET /api/gate/brief` |

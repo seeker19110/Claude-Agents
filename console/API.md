@@ -31,6 +31,9 @@ công ty đó bao giờ).
 ```jsonc
 {
   "generated_at": "2026-09-03T08:41:12+07:00",
+  // Mọi trường payload console đọc từ hai công ty đều bị `tests/test_hop_dong_schema.py` (K7.4) canh: nó quét
+  // `collect.py`/`truth.py` và khẳng định từng tên có trong `topics/schemas/` của công ty. Đổi schema bên công
+  // ty mà quên sửa console → test console ĐỎ, thay vì ô hiện rỗng mà không ai biết.
   "sources": {                       // để trang báo phần nào đang trống và vì sao
     "software-company": {"ok": true,  "db": "software-company/company.sqlite", "events": 238, "error": null,
                          "sandbox_available": true},   // K2.7: MÁY chạy console có docker/podman không
