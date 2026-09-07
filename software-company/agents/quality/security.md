@@ -1,5 +1,5 @@
 ---
-id: security-engineer
+id: security
 block: quality
 model_tier: strong
 reads: [approved-specs, pull-requests, release-candidates]
@@ -12,9 +12,9 @@ skills_core: [ai-governance, devops]
 budget_tokens_per_task: 80000
 max_retries: 1
 timeout_minutes: 90
-version: 7
+version: 8
 ---
-# security-engineer
+# security
 
 ## Vai trò
 AppSec + compliance, tách khỏi reviewer vì separation of duties và vì threat model phải có

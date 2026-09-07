@@ -88,7 +88,7 @@ def _field(name: str, *values: Any) -> When:
 
 def _needs_security(e: Envelope, o: Orchestrator) -> bool:
     tid = e.payload.get("ticket_id") or e.key
-    return tid in o.lead.tickets and "security" in o.lead.required_reviews(tid)
+    return tid in o.lead.tickets and SOURCE.SECURITY in o.lead.required_reviews(tid)
 
 
 def _needs_qa(e: Envelope, o: Orchestrator) -> bool:
@@ -114,7 +114,7 @@ def _answers_complete(e: Envelope, o: Orchestrator) -> bool:
     Thiếu câu trả lời mà vẫn viết spec thì spec dựa trên giả định người chưa xác nhận.
 
     Câu trả lời TÍCH LUỸ trong vòng hiện tại, không chỉ tính event này: người trả lời bổ sung một câu ở lượt
-    sau (vd. sau khi security-engineer nêu thêm câu hỏi mở) không phải gửi lại toàn bộ câu cũ. Trước đây chỉ
+    sau (vd. sau khi `security` nêu thêm câu hỏi mở) không phải gửi lại toàn bộ câu cũ. Trước đây chỉ
     đọc `e.payload`, nên lượt bổ sung luôn bị coi là "thiếu hết các câu trước" và spec-writer không bao giờ
     chạy lại — câu trả lời nằm im trong bus, không audit, không báo ai (đo được khi chạy thật 2026-09-04)."""
     pid = str(e.payload.get("project_id") or e.key)

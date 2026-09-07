@@ -435,12 +435,12 @@ def test_delivery_lead_loi_vinh_vien_khi_lap_plan_duoc_ghi_audit_va_khong_lap_la
 
 
 class _FlakySecurityThreatModel:
-    """security-engineer gặp lỗi khi lập threat model (không phải review PR) — TransientError hoặc LLMError vĩnh viễn."""
+    """security gặp lỗi khi lập threat model (không phải review PR) — TransientError hoặc LLMError vĩnh viễn."""
     def __init__(self, exc):
         self.inner = FakeClient(handler=handler); self.calls = self.inner.calls; self.exc = exc; self.raised = False
 
     def complete(self, **kw):
-        if _agent_of(kw["system"]) == "security-engineer" and "`approved-specs`" in kw["user"] and not self.raised:
+        if _agent_of(kw["system"]) == "security" and "`approved-specs`" in kw["user"] and not self.raised:
             self.raised = True
             raise self.exc
         return self.inner.complete(**kw)
@@ -455,7 +455,7 @@ def test_threat_model_transient_khong_chan_lap_ke_hoach_nhung_check_plan_tu_choi
     orch.run()
     _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "a"}]})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
-    assert any(v == "transient:security-engineer" for _, v in orch.deferred.values()) or orch.stats["transient"] >= 1
+    assert any(v == "transient:security" for _, v in orch.deferred.values()) or orch.stats["transient"] >= 1
     assert "PLAN-P1-1" not in orch.plans, "chưa có threat model thì _check_plan phải từ chối, không để lọt tới người duyệt"
     rejects = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "plan_rejected"]
     assert rejects and "thiếu threat model" in rejects[-1]["evidence"]
@@ -717,7 +717,7 @@ def test_human_pr_replaces_agent_pr_in_review():
 def test_context_scoped_by_role_and_per_agent_max_input(tmp_path):
     bus = InMemoryBus(); bb = Blackboard(bus, store=tmp_path / "art")
     bb.write("spec-writer", "prd", "docs/prd.md", "PRD tóm tắt", content="# PRD\n\nREQ-1: đăng nhập")
-    bb.write("security-engineer", "threat-model", "docs/threat.md", "16 mối đe doạ", content="# Threat model\n\nT-01 XSS")
+    bb.write("security", "threat-model", "docs/threat.md", "16 mối đe doạ", content="# Threat model\n\nT-01 XSS")
     client = FakeClient(responses=[REVIEW])
     runner = AgentRunner(bus, client, blackboard=bb)
     spec = runner.agents["reviewer"]
@@ -728,7 +728,7 @@ def test_context_scoped_by_role_and_per_agent_max_input(tmp_path):
     assert "REQ-1" in user, "namespace trong context_namespace_read: toàn văn"
     assert "T-01 XSS" not in user and "16 mối đe doạ" in user and "content_omitted" in user, "namespace ngoài: chỉ tóm tắt"
     # namespace mình sở hữu luôn toàn văn, kể cả không có trong danh sách đọc
-    sec = runner.agents["security-engineer"]
+    sec = runner.agents["security"]
     assert sec.reads_full("threat-model") and not sec.reads_full("docs")
     # agent không khai báo danh sách đọc → như trước
     spec.context_namespace_read = None

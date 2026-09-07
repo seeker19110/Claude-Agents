@@ -1,5 +1,5 @@
-<!-- golden agent=security-engineer version=7 -->
-# security-engineer
+<!-- golden agent=security version=8 -->
+# security
 
 ## Vai trò
 AppSec + compliance, tách khỏi reviewer vì separation of duties và vì threat model phải có

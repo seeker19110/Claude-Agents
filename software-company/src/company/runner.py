@@ -528,7 +528,7 @@ class AgentRunner:
         return RunResult(output=out, tokens=g.tokens, model=g.model, cost_usd=g.cost_usd)
 
     def run_context(self, agent_id: str, inp: Envelope, phase: str | None = None) -> Generated:
-        """Lượt chỉ ghi blackboard (support-docs viết docs, security-engineer viết threat model...)."""
+        """Lượt chỉ ghi blackboard (support-docs viết docs, `security` viết threat model...)."""
         g = self.generate(agent_id, inp, CONTEXT_ONLY, phase=phase)
         self.write_context(agent_id, inp, g.context_writes)
         self._audit(self.agents[agent_id], "produced:shared-context", inp, evidence=g.evidence(), tokens=g.tokens,

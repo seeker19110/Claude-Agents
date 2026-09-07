@@ -4,7 +4,7 @@
 
 | Muốn | Sửa |
 |---|---|
-| Hành vi một agent: PHẢI / KHÔNG ĐƯỢC / DoD / đầu ra | `agents/<khối>/<id>.md` — khối: `research` (intake, researcher, synthesizer, risk, clarifier, spec-writer), `delivery-lead`, `engineering` (backend, frontend, mobile, database, platform, data), `quality` (reviewer, qa-debugger, security-engineer, test-author), `operations` (release-engineer, support-docs, account-manager), `supervisor` |
+| Hành vi một agent: PHẢI / KHÔNG ĐƯỢC / DoD / đầu ra | `agents/<khối>/<id>.md` — khối: `research` (intake, researcher, synthesizer, risk, clarifier, spec-writer), `delivery-lead`, `engineering` (backend, frontend, mobile, database, platform, data), `quality` (reviewer, qa-debugger, security, test-author), `operations` (release-engineer, support-docs, account-manager), `supervisor` |
 | Agent đọc topic nào, ghi topic nào, tier model, ngân sách, tool | front matter của file agent: `reads`, `writes`, `model_tier`, `budget_tokens_per_task`, `tools`, `skills`, `skills_core` |
 | Skill chỉ nạp ở MỘT loại lượt của agent | `phases:` trong front matter agent (ADR-0037); lượt nào chạy pha nào: `phase=` của `Route`, hoặc `stack` của ticket với route sửa code (`orch/routes.py::phase_for`) |
 | Đổi tên / id một agent (ADR-0037) | `src/company/roles.py` — NƠI DUY NHẤT id agent là chuỗi trong `src/` (`ROLE.*`, nhãn `SOURCE.*` của review, `LEAD_ACTOR`); mọi route/producer/chủ namespace/`truth.py` console tham chiếu hằng; `tests/test_roles.py` chặn literal viết tay và đối chiếu hai chiều với front matter |

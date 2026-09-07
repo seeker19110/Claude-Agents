@@ -31,6 +31,10 @@ OLD_IDS = frozenset({
     "support-docs", "account-manager", "supervisor",
 })
 
+# Đã gộp/đổi tên tới đâu (PR-5a..5e): id cũ → id mới. Lớn dần đúng một dòng mỗi PR-5x, và là chỗ DUY NHẤT test
+# biết đợt gộp đã đi tới đâu — quên cập nhật khi đổi `ROLE.*` là đỏ ở `test_hang_role_khop_front_matter_hai_chieu`.
+MIGRATED: dict[str, str] = {"security-engineer": "security"}  # PR-5a
+
 # Chuỗi trùng tên vai nhưng KHÔNG phải vai. Miễn theo (file, đúng nguyên dòng): đổi dòng là phải xét lại lý do,
 # không có chuyện dòng khác trong cùng file "thừa hưởng" miễn trừ.
 EXEMPT_LINES: dict[tuple[str, str], str] = {
@@ -95,7 +99,8 @@ def test_hang_role_khop_front_matter_hai_chieu():
     agents = set(load_agents())
     assert set(consts.values()) == agents, (set(consts.values()) ^ agents)
     assert len(set(consts.values())) == len(consts), "hai hằng cùng một id"
-    assert set(consts.values()) == OLD_IDS, "PR-4 chưa đổi agent nào: 21 id cũ phải khớp 21 hằng"
+    assert set(consts.values()) == (OLD_IDS - set(MIGRATED)) | set(MIGRATED.values()), \
+        "hằng phải là 21 id cũ, trừ những id đã gộp/đổi tên trong MIGRATED"
     assert LEAD_ACTOR == ROLE.LEAD  # hôm nay trùng; PR-5e tách (agent vào product, actor giữ)
 
 

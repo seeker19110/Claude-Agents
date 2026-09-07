@@ -16,7 +16,7 @@ from company.supervisor import DEBT_HINT, Supervisor, debt_ids
 from test_orchestrator import _drive_to_plan, handler
 
 
-def _review(bus, tid, text, source="security", actor="security-engineer", pid="P1", **extra):
+def _review(bus, tid, text, source="security", actor="security", pid="P1", **extra):
     payload = {"ticket_id": tid, "source": source, "verdict": "pass", "project_id": pid,
                "findings": [{"level": "warn", "text": text}] if text else [], **extra}
     return bus.publish(Envelope(topic="review-results", key=tid, actor=actor, payload=payload))

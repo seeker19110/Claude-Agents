@@ -194,7 +194,7 @@ def test_threat_model_transient_khong_chan_plan(monkeypatch):
     env = Envelope(topic="approved-specs", key="P1", actor="spec-writer", payload={"project_id": "P1"})
     res = StepResult("e1", "approved-specs", "P1")
     ok = orch._threat_model(env, "SPEC-P1", res)
-    assert ok is True and any(a.startswith("transient:security-engineer") for a in res.actions)
+    assert ok is True and any(a.startswith("transient:security") for a in res.actions)
     assert orch.stats["transient"] >= 1
 
 

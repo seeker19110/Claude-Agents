@@ -32,7 +32,7 @@ OpenTelemetry ở mọi agent kỹ thuật, ICU/CLDR cho i18n, AsyncAPI + outbox
 ISO/IEC/IEEE 29119, ISTQB, OWASP Testing Guide, Google Eng Practices, SLSA L3, CWE Top 25,
 SBOM (SPDX/CycloneDX), mutation testing ≥ 70% module lõi, contract testing, load/soak test so NFR trên staging, a11y (axe + thủ công) trước gate 3.
 - Security-engineer: STRIDE trên DFD, CVSS 4.0, OWASP SAMM, DAST trước release, DPIA (GDPR Art. 35, NĐ13), license policy (cấm GPL/AGPL/SSPL trừ ADR).
-- Separation of duties: reviewer ≠ security-engineer; ticket có `risk_tags` cần cả hai.
+- Separation of duties: reviewer ≠ security; ticket có `risk_tags` cần cả hai.
 
 ## Khối 5 – Vận hành
 Google SRE, ITIL 4, DORA, GitOps, CIS Benchmarks, NIST SSDF, ISO 22301, Diátaxis, Keep a Changelog,

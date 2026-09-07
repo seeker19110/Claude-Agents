@@ -470,9 +470,9 @@ def handler(system: str, user: str) -> dict[str, Any]:
                 "impact": {"requirement_id": p["requirement_id"], "rollback": "revert merge commit", "observability": "log có correlation id",
                            "licenses": "không thêm dependency"},
                 "local_checks": {"lint": True, "tests": True}}
-    if a in {"reviewer", "qa-debugger", "security-engineer"}:
+    if a in {"reviewer", "qa-debugger", "security"}:
         tid = p.get("ticket_id") or p.get("release_id") or f"SPEC-{pid}"
-        if a == "security-engineer" and "artifacts" in p:
+        if a == "security" and "artifacts" in p:
             return {"payload": {"ticket_id": tid, "source": "security", "verdict": "pass", "findings": [
                         {"level": "warn", "text": "T-03: PII → consent bắt buộc, không log PII, TTL 24 tháng", "location": "docs/threat-model.md"}]},
                     "context_writes": [{"namespace": "threat-model", "content_ref": "docs/threat-model.md", "summary": "STRIDE v1: T-01..T-04", "content": THREAT}]}

@@ -1,7 +1,7 @@
 """Chạy thử vòng đời đầy đủ bằng logic xác định (không gọi LLM).
 
 TCK-1: ticket thường → reviewer + qa pass là đủ.
-TCK-2: ticket có risk_tags → phải chờ thêm security-engineer (ADR-0003); phụ thuộc TCK-1 nên chờ ở `waiting` (ADR-0006).
+TCK-2: ticket có risk_tags → phải chờ thêm `security` (ADR-0003); phụ thuộc TCK-1 nên chờ ở `waiting` (ADR-0006).
 Release: candidate → staging → QA hồi quy → gate release → production → khách nghiệm thu → closed.
 """
 from __future__ import annotations

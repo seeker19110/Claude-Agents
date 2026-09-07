@@ -12,7 +12,7 @@ với front matter agent):
 | architecture, api-contract (khởi tạo) | delivery-lead | C4, ADR, OpenAPI v1 |
 | api-contract (cập nhật) | backend | OpenAPI các version sau |
 | schema | database | schema OLTP, migration |
-| threat-model | security-engineer | DFD, STRIDE, rủi ro chấp nhận |
+| threat-model | security | DFD, STRIDE, rủi ro chấp nhận |
 | infra | platform | IaC module, môi trường, SLO |
 | analytics | data | data contract, định nghĩa metric |
 | docs | support-docs | tài liệu người dùng, runbook |

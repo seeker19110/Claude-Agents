@@ -12,7 +12,7 @@ cô lập workspace theo ticket, prompt là code. Đây là "công ty AI" đầu
 | 1 | Nghiên cứu yêu cầu | intake, researcher (domain + UX + codebase + tech), synthesizer, risk, clarifier, spec-writer | Biến ý tưởng thô thành PRD có tiêu chí nghiệm thu + UX flow |
 | 2 | Quản lý dự án | delivery-lead | Kiến trúc, ước lượng, chia ticket, điều phối, đóng vòng |
 | 3 | Kỹ thuật | backend, frontend, mobile, database, platform, data | Code / hạ tầng / dữ liệu trên branch riêng theo contract |
-| 4 | Chất lượng | reviewer, qa-debugger, security-engineer | Review; test + tìm nguyên nhân; threat model, DAST, license, PII |
+| 4 | Chất lượng | reviewer, qa-debugger, security | Review; test + tìm nguyên nhân; threat model, DAST, license, PII |
 | 5 | Vận hành | release-engineer, support-docs, account-manager | Merge, staging, deploy; tài liệu, incident; SOW, UAT, change request, nghiệm thu |
 | 6 | Giám sát | supervisor | Watchdog, ngân sách token, knowledge base, version prompt |
 | 7 | Human gate | (con người) | Duyệt spec, release; ký rủi ro/license/PII; khách ký nghiệm thu (kế hoạch do `_check_plan` kiểm, ADR-0037) |
@@ -134,7 +134,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 
 ## Quy ước bắt buộc
 - Ticket phải có `estimate_tokens` trước dispatch; `budget_tokens ≥ estimate × 1.5` (code từ chối nếu không).
-- Ticket chạm auth/payment/pii/crypto/upload/admin/external-api gắn `risk_tags` → cần thêm review của security-engineer.
+- Ticket chạm auth/payment/pii/crypto/upload/admin/external-api gắn `risk_tags` → cần thêm review của security.
 - Sửa prompt/skill → tăng `version`, đi qua PR, có eval (ADR-0004). Golden test (`tests/golden/`) đỏ nếu prompt đổi mà version không tăng; cập nhật bằng `make golden`.
   Rồi `make eval-record AGENT=<id>` bằng model thật và commit `evals/recordings/<id>.json`; CI phát lại và đỏ nếu bản ghi lệch prompt (ADR-0010).
 - PR của khối kỹ thuật chỉ có bằng chứng khi chạy với `--repo`: `local_checks.verified_by=workspace` do code điền từ lint/test thật; không có repo thì `{"unverified": true}`.
@@ -165,7 +165,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 - **Workspace theo ticket** (`workspace.py`): git worktree `ticket/<id>`, chạy ruff/pytest thật, trả `local_checks`.
 - **Eval prompt** (`evals/*.yaml`, `evals.py`): ca đầu vào + tiêu chí chấm; chạy với provider bất kỳ.
 - **Orchestrator** (`orchestrator.py`, ADR-0007): vòng lặp tự động theo bảng ROUTES khớp front matter; agent ghi blackboard
-  qua `context_writes`; security-engineer làm threat model từ spec đã duyệt trước khi delivery-lead sinh ticket (C4 + contract
+  qua `context_writes`; security làm threat model từ spec đã duyệt trước khi delivery-lead sinh ticket (C4 + contract
   lên blackboard) → `_check_plan` → dispatch NGAY (ADR-0037: không còn gate plan); clarifier hết câu hỏi thì spec-writer đi thẳng; change request: delivery-lead ước
   lượng impact → người `decide-change` → accepted đi lập kế hoạch (hoặc intake nếu đổi requirement); nghiệm thu conditional
   → change request; support-docs viết docs sau production, mở incident từ feedback, incident requirement → nghiên cứu lại;
@@ -223,7 +223,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   worktree, code chạy lint/test, PR dưới tên người thay PR của agent, review làm lại). Event `tasks` còn trong hàng đợi
   mà ticket không còn `dispatched` (đã `in_review` vì PR của người, hoặc approved/blocked) bị bỏ với audit
   `task.superseded` — không giao backend chạy lại trên worktree đã commit rồi "không sửa gì" ×3 → blocked.
-- **Ngân sách review tách khỏi ngân sách ticket** (F16, commit e26139b): token của reviewer/qa-debugger/security-engineer
+- **Ngân sách review tách khỏi ngân sách ticket** (F16, commit e26139b): token của reviewer/qa-debugger/security
   (`Supervisor.REVIEW_ACTORS`) ghi vào `Budget.review_used`, có trong `sprint_report`/lesson (`review_tokens`), không kích
   hoạt warn/cut của engineer. **Replay dựng RC từ log** (F19): delivery-lead subscribe `release-candidates`, mở lại bus thì
   `releases`/`release_tickets`/`versions` dựng từ event thật; không tạo lại RC khi `replaying`.
@@ -285,7 +285,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Thứ tự triển khai khuyến nghị
 
 1. delivery-lead + backend + reviewer + qa-debugger + human gate (vòng lõi)
-2. security-engineer (threat model) ngay khi có ticket auth/payment/pii; account-manager ngay khi có khách thật
+2. security (threat model) ngay khi có ticket auth/payment/pii; account-manager ngay khi có khách thật
 3. Thêm khối nghiên cứu (intake + researcher + synthesizer...) khi yêu cầu đầu vào hay mơ hồ
 4. platform + release-engineer + support-docs khi cần deploy thật; data khi cần analytics
 5. Bật supervisor ngay khi chi phí token vượt dự tính
