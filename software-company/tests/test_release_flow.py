@@ -38,7 +38,7 @@ def _approve_ticket(bus, tid="T1"):
 
 
 def _release_event(bus, rid, env, status):
-    bus.publish(Envelope(topic="release-events", key=rid, actor="release-engineer",
+    bus.publish(Envelope(topic="release-events", key=rid, actor="ops",
                          payload={"release_id": rid, "version": "1.0.0", "env": env, "status": status}))
 
 
@@ -138,13 +138,13 @@ def _to_production(bus, gate, lead, tid="T1"):
 def test_customer_acceptance_closes_or_reopens():
     bus, gate, lead = _setup()
     rid = _to_production(bus, gate, lead)
-    bus.publish(Envelope(topic="acceptance-results", key=rid, actor="account-manager", payload=AcceptanceResult(
+    bus.publish(Envelope(topic="acceptance-results", key=rid, actor="ops", payload=AcceptanceResult(
         release_id=rid, project_id="P", verdict="accepted", signed_by="customer:ceo").model_dump()))
     assert lead.state["T1"] == "closed"
 
     bus2, gate2, lead2 = _setup()
     rid2 = _to_production(bus2, gate2, lead2)
-    bus2.publish(Envelope(topic="acceptance-results", key=rid2, actor="account-manager", payload=AcceptanceResult(
+    bus2.publish(Envelope(topic="acceptance-results", key=rid2, actor="ops", payload=AcceptanceResult(
         release_id=rid2, project_id="P", verdict="rejected", signed_by="customer:ceo",
         findings=[{"level": "block", "text": "Xuất báo cáo sai múi giờ (REQ-1)"}]).model_dump()))
     assert lead2.state["T1"] == "dispatched" and "múi giờ" in lead2.tickets["T1"].hint
@@ -154,13 +154,13 @@ def test_acceptance_result_schema_requires_customer_signature():
     bus = InMemoryBus()
     from company.bus import BusError
     with pytest.raises(BusError):
-        bus.publish(Envelope(topic="acceptance-results", key="R", actor="account-manager",
+        bus.publish(Envelope(topic="acceptance-results", key="R", actor="ops",
                              payload={"release_id": "R", "project_id": "P", "verdict": "accepted"}))
 
 
 def test_change_request_topic_validates():
     bus = InMemoryBus()
-    bus.publish(Envelope(topic="change-requests", key="CR-1", actor="account-manager", payload={
+    bus.publish(Envelope(topic="change-requests", key="CR-1", actor="ops", payload={
         "change_id": "CR-1", "project_id": "P", "requested_by": "customer:po", "description": "thêm xuất Excel",
         "impact": {"estimate_days": 1.5, "estimate_tokens": 40_000}}))
     assert len(bus) == 1
@@ -220,7 +220,7 @@ def test_conditional_acceptance_closes_tickets_once_change_request_is_decided():
     from test_orchestrator import handler
     bus, orch = _lifecycle_to_production(handler)
     assert orch.lead.state["T1"] == "released"
-    bus.publish(Envelope(topic="acceptance-results", key="REL-001", actor="account-manager", payload={
+    bus.publish(Envelope(topic="acceptance-results", key="REL-001", actor="ops", payload={
         "release_id": "REL-001", "project_id": "P1", "verdict": "conditional", "signed_by": "customer:po",
         "findings": [{"level": "nit", "text": "thiếu trang tin"}]}))
     orch.run()

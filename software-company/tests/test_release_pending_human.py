@@ -17,7 +17,9 @@ def _pausing_release_engineer(pause_envs: dict[str, int]):
     seen: dict[str, int] = {}
     def h(system, user):
         a, p = _agent_of(system), _inp(user)
-        if a == "release-engineer":
+        # ADR-0037 PR-5b: "ops" cũng chạy pha docs/account trên cùng test (vd. release-events production →
+        # ghi docs) — payload của các pha đó không có `target_env`, nên chỉ chặn đúng lượt deploy.
+        if a == "ops" and "target_env" in p:
             env = p["target_env"]; k = f"{env}:{p['release_id']}"; seen[k] = seen.get(k, 0) + 1
             if seen[k] <= pause_envs.get(env, 0):
                 return {"release_id": p["release_id"], "version": "1.0.0", "env": env, "status": "pending_human",
@@ -37,7 +39,7 @@ def test_staging_pending_human_mo_gate_va_duyet_thi_chay_lai():
     _drive_to_plan(bus, orch); orch.run()
     assert _events(bus, "REL-001", "staging") == ["pending_human"]
     g = orch.gate.pending.get("REL-001")
-    assert g is not None and g.kind == "escalation" and g.created_by == "release-engineer", \
+    assert g is not None and g.kind == "escalation" and g.created_by == "ops", \
         "agent tự dừng mà không ai được hỏi = bế tắc im lặng; phải mở gate escalation cho chính release"
     assert "decision:redeploy|close" in g.checklist
     assert any(e.payload["action"] == "release.pending_human" for e in bus.replay(topic="audit-log"))
@@ -141,7 +143,7 @@ def test_sweep_mo_gate_cho_rc_pending_khong_co_gate(tmp_path):
     bus = SQLiteBus(tmp_path / "c.sqlite")
     bus.publish(Envelope(topic="release-candidates", key="REL-001", actor="delivery-lead",
                          payload={"release_id": "REL-001", "project_id": "P1", "tickets": ["T1"], "version": "1.0.0"}))
-    bus.publish(Envelope(topic="release-events", key="REL-001", actor="release-engineer",
+    bus.publish(Envelope(topic="release-events", key="REL-001", actor="ops",
                          payload={"release_id": "REL-001", "version": "1.0.0", "env": "staging", "status": "pending_human"}))
     orch = Orchestrator(bus, FakeClient(handler=handler))
     for e in list(bus.replay()): orch.processed.add(e.event_id)  # coi như đã xử lý hết từ trước bản vá
@@ -158,7 +160,7 @@ def test_luot_production_nhan_bang_chung_staging_qa_gate_trong_payload():
     seen: dict = {}
     def h(system, user):
         a, p = _agent_of(system), _inp(user)
-        if a == "release-engineer" and p["target_env"] == "production": seen.update(p)
+        if a == "ops" and p.get("target_env") == "production": seen.update(p)
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h))
     _drive_to_plan(bus, orch); orch.run()
@@ -176,7 +178,7 @@ def test_tu_choi_escalation_cua_rc_da_bi_ban_giao_vuot_qua_thi_huy_rc_khong_lam_
     h = _pausing_release_engineer({"staging": 9})  # REL-001 dừng mãi ở staging; REL-002 cũng dừng
     def h2(system, user):
         a, p = _agent_of(system), _inp(user)
-        if a == "release-engineer" and p["release_id"] == "REL-002":  # REL-002 đi trót lọt và được giao
+        if a == "ops" and p.get("release_id") == "REL-002":  # REL-002 đi trót lọt và được giao
             return handler(system, user)
         return h(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h2))

@@ -315,8 +315,14 @@ class Orchestrator:
         return t.project_id if t else None
 
     def _call(self, agent: str, env: Envelope, r: Route, res: StepResult) -> None:
+        # ADR-0037 PR-5b: `partial` từng khoá theo AGENT không đủ khi một agent gộp (`ops`) có HAI route khác
+        # nhau khớp CÙNG MỘT event (vd. `external-feedback` → ops[docs]→incidents VÀ ops[account]→change-requests):
+        # route thứ hai bị route thứ nhất "nuốt" vì agent đã có trong `partial`, dù `topic_out` khác hẳn. Khoá
+        # thêm theo `topic_out` để hai route của cùng agent trên cùng event chạy độc lập, giữ nguyên ý nghĩa cũ
+        # (agent đã xong route này thì không chạy lại route này) khi agent không gộp (khoá vẫn duy nhất theo agent).
+        slot = f"{agent}:{r.topic_out}"
         with self._lock:
-            if agent in self.partial.get(env.event_id, set()): return  # đã chạy xong ở lần xử lý trước (event bị hoãn transient)
+            if slot in self.partial.get(env.event_id, set()): return  # đã chạy xong ở lần xử lý trước (event bị hoãn transient)
         try:
             extra = dict(r.enrich(env, self)) if r.enrich else {}
             if (pid := self.project_for(env)) and not env.payload.get("project_id"): extra["project_id"] = pid
@@ -380,18 +386,18 @@ class Orchestrator:
                                           tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
                 res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
             with self._lock:
-                self.stats["runs"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
+                self.stats["runs"] += 1; self.partial.setdefault(env.event_id, set()).add(slot)
         except TransientError as e:  # hết retry transport: không phải lỗi agent — hoãn event, nhịp sau thử lại
             res.actions.append(f"transient:{agent}:{str(e)[:120]}"); res.transient = True
             with self._lock: self.stats["transient"] += 1
         except (RunnerError, LLMError) as e:  # runner đã ghi audit; không retry lời gọi (ADR-0005)
             res.actions.append(f"error:{agent}:{str(e)[:120]}")
-            with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
+            with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(slot)
             self._after_error(env, agent, e, r, res)
         except Exception as e:  # handler xác định (delivery-lead) từ chối chuyển trạng thái: event đã ghi đĩa
             self._audit("handler_error", {"agent": agent, "error": str(e)[:300]}, ticket_id=env.payload.get("ticket_id"))
             res.actions.append(f"handler_error:{agent}:{str(e)[:120]}")
-            with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
+            with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(slot)
             self._after_error(env, agent, e, r, res)
 
     # ---------- lỗi agent không nhánh nào nhận, quyết định gate (ADR-0034: orch/gates_flow.py) ----------

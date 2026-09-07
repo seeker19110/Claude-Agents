@@ -38,7 +38,7 @@ Các khoá dưới đây đã có trong checklist của gate và người duyệ
 - `uat-script` — kịch bản UAT map 1-1 với Must requirement trong PRD đã duyệt; không tiêu chí mới
 - `acceptance-criteria` — tiêu chí nghiệm thu trong SOW đã được đối chiếu từng mục
 - `known-issues` — lỗi đã biết được nêu trước khi ký, không giấu
-- `signed_by` — người ký là người của khách (code từ chối nếu trùng account-manager)
+- `signed_by` — người ký là người của khách (code từ chối nếu trùng `ops`)
 
 ## Nửa của người — bắt buộc trả lời từng mục
 
@@ -60,8 +60,7 @@ Mỗi mục phải xuất hiện trong báo cáo với đúng một kết luận
 
 ## Trợ lý chuyên môn nên gọi cùng hồ sơ
 
-- sc-account-manager
-- sc-support-docs
+- sc-ops
 
 ## Đầu ra
 

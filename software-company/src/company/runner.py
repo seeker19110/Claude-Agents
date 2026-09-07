@@ -521,8 +521,9 @@ class AgentRunner:
                     cost=g.cost_usd, output_tokens=g.output_tokens, phase=g.phase)
         return out
 
-    def run(self, agent_id: str, inp: Envelope, topic_out: str, key: str | None = None) -> RunResult:
-        g = self.generate(agent_id, inp, topic_out)
+    def run(self, agent_id: str, inp: Envelope, topic_out: str, key: str | None = None,
+            phase: str | None = None) -> RunResult:
+        g = self.generate(agent_id, inp, topic_out, phase=phase)
         out = self.publish(agent_id, inp, topic_out, g.payloads[0], key=key, tokens=g.tokens, model=g.model,
                            context_writes=g.context_writes, cache_hit_ratio=g.cache_hit_ratio, generated=g)
         return RunResult(output=out, tokens=g.tokens, model=g.model, cost_usd=g.cost_usd)

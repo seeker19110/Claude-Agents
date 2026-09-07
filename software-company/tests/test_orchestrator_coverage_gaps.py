@@ -163,7 +163,7 @@ def test_integrate_huy_khi_merge_that_bai(monkeypatch):
     orch.lead.tickets["T1"] = Task.model_validate(T1)
     orch.lead.state["T1"] = "approved"
     monkeypatch.setattr(orch, "_merge_ticket", lambda tid, res, release_id=None: False)
-    rc = Envelope(topic="release-candidates", key="R1", actor="release-engineer",
+    rc = Envelope(topic="release-candidates", key="R1", actor="ops",
                   payload={"release_id": "R1", "tickets": ["T1"]})
     res = StepResult("e1", "release-candidates", "R1")
     ok = orch._integrate(rc, res)
@@ -178,7 +178,7 @@ def test_read_only_tools_tra_none_khi_khong_xac_dinh_duoc(tmp_path):
     orch = _orch()
     orch.repo = tmp_path
     orch.integration = type("FI", (), {"path": tmp_path})()
-    env = Envelope(topic="release-events", key="R1", actor="release-engineer", payload={})
+    env = Envelope(topic="release-events", key="R1", actor="ops", payload={})
     assert orch._read_only_tools(env) is None
 
 
@@ -226,7 +226,7 @@ def test_close_acceptance_gate_bat_loi_gate_decide(monkeypatch):
         raise PermissionError("người ký trùng account-manager")
 
     monkeypatch.setattr(orch.gate, "decide", boom)
-    env = Envelope(topic="acceptance-results", key=rid, actor="account-manager",
+    env = Envelope(topic="acceptance-results", key=rid, actor="ops",
                     payload={"release_id": rid, "verdict": "accepted", "signed_by": "account-manager"})
     res = StepResult("e1", "acceptance-results", rid)
     orch._close_acceptance_gate(env, res)

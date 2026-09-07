@@ -234,7 +234,11 @@ def _recall(o: Orchestrator, agent: str, env: Envelope) -> None:
     Gate 3 ký lần hai, chạy lại lượt release-engineer vừa tự dừng. Đo được 2026-09-06: lead ký lại Gate 3
     REL-019 lúc 03:06 chỉ chạy được vì orchestrator vừa restart (partial trong RAM trống)."""
     with o._lock:
-        if env.event_id in o.partial: o.partial[env.event_id].discard(agent)
+        # `partial` khoá theo "<agent>:<topic_out>" (ADR-0037 PR-5b, xem `_call`); recall không biết route cụ
+        # thể nên bỏ MỌI slot của agent này trên event — đủ để `_call` chạy lại route đang cần, và slot của
+        # route khác (nếu có) tự tính lại đúng như cũ khi nó chạy.
+        if env.event_id in o.partial:
+            o.partial[env.event_id] = {s for s in o.partial[env.event_id] if not s.startswith(f"{agent}:")}
 
 def _rerun_release(o: Orchestrator, rid: str, by: str, reason: str, res: StepResult) -> bool:
     """Chạy lại lượt release-engineer mà nó vừa tự dừng: env lấy từ release-event cuối; production chỉ khi Gate 3

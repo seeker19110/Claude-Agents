@@ -378,7 +378,7 @@ def test_evidence_run_song_qua_restart_va_redeploy_khong_bi_once_nuot(tmp_path, 
     assert qa[-1]["evidence"]["run"]["unverified"] is True
     assert orch2.lead.release_qa["REL-001"].verdict == "pass"
     assert "regression.unverified:REL-001:" in " ".join(orch2.once), "khoá once dựng lại từ audit-log"
-    bus2.publish(Envelope(topic="release-events", key="REL-001", actor="release-engineer",
+    bus2.publish(Envelope(topic="release-events", key="REL-001", actor="ops",
                           payload={"release_id": "REL-001", "env": "staging", "status": "deployed", "version": "0.1.0"}))
     orch2.run()
     assert _acts(bus2).count("regression.run_unverified") == 2, "lượt deployed thứ hai không bị khoá của lượt một nuốt"
@@ -387,7 +387,7 @@ def test_evidence_run_song_qua_restart_va_redeploy_khong_bi_once_nuot(tmp_path, 
 def test_verdict_with_run_giu_fail_cua_model_va_khong_nhan_doi_finding(tmp_path):
     """Model đã fail (tự thấy lỗi) và smoke cũng fail → giữ fail, không ghi `verdict_overridden`."""
     bus, orch = _orch(tmp_path, None, None)
-    env = Envelope(topic="release-events", key="REL-001", actor="release-engineer",
+    env = Envelope(topic="release-events", key="REL-001", actor="ops",
                    payload={"release_id": "REL-001", "env": "staging", "status": "deployed"})
     p = orch._verdict_with_run("qa-debugger", env, {"ticket_id": "REL-001", "source": "qa", "verdict": "fail",
                                                     "root_cause": "của model", "findings": []}, BAD)

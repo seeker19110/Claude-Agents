@@ -5,7 +5,7 @@
     "known-issues",
     "signed_by"
   ],
-  "created_by": "account-manager",
+  "created_by": "ops",
   "extra": {
     "release_id": "REL-001",
     "rulings": [],

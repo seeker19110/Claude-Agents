@@ -24,7 +24,7 @@ NAMESPACE_OWNERS: dict[str, set[str]] = {
     "prd": {ROLE.PRODUCT}, "glossary": {ROLE.RESEARCHER}, "design": {ROLE.RESEARCHER},
     "architecture": {ROLE.LEAD}, "api-contract": {ROLE.LEAD, ROLE.BACKEND},
     "schema": {ROLE.DATABASE}, "threat-model": {ROLE.SECURITY}, "infra": {ROLE.PLATFORM},
-    "analytics": {ROLE.DATA}, "docs": {ROLE.SUPPORT_DOCS}, "knowledge": {ROLE.SUPERVISOR}, "contract": {ROLE.ACCOUNT_MANAGER},
+    "analytics": {ROLE.DATA}, "docs": {ROLE.OPS}, "knowledge": {ROLE.SUPERVISOR}, "contract": {ROLE.OPS},
 }
 
 # Namespace phạm vi toàn công ty (không thuộc dự án nào): bài học dùng chung cho mọi dự án.

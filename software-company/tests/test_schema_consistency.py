@@ -55,10 +55,10 @@ def test_shared_context_namespace_enum_matches_owners():
 def test_enum_is_enforced_not_just_required():
     bus = InMemoryBus()
     with pytest.raises(BusError, match="JSON Schema"):
-        bus.publish(Envelope(topic="release-events", key="R", actor="release-engineer",
+        bus.publish(Envelope(topic="release-events", key="R", actor="ops",
                              payload={"release_id": "R", "version": "1.0.0", "env": "prod", "status": "deployed"}))
     with pytest.raises(BusError, match="JSON Schema"):
-        bus.publish(Envelope(topic="incidents", key="I", actor="support-docs",
+        bus.publish(Envelope(topic="incidents", key="I", actor="ops",
                              payload={"incident_id": "I", "severity": "SEV9", "summary": "x", "root_cause_class": "code"}))
     with pytest.raises(BusError, match="JSON Schema"):
         bus.publish(Envelope(topic="clarification-questions", key="P", actor="clarifier",

@@ -217,10 +217,20 @@ def load_cases(agent_id: str) -> list[dict[str, Any]]:
 
 
 def _run_case(agent_id: str, case: dict[str, Any], client: ModelClient, agents: dict | None, bb: Blackboard, bus: InMemoryBus):
+    agents_ = agents or load_agents()
+    spec = agents_[agent_id]
+    phase = case.get("phase")
+    # ADR-0037 §11: agent có `phases` bắt buộc mỗi ca khai `phase:`, và pha đó phải có trong front matter — thiếu
+    # hoặc sai tên là lỗi cấu hình ca eval, không phải model trả sai, nên báo rõ thay vì lặng lẽ chạy pha `None`
+    # (prompt chung, thiếu skill của pha) và chấm sai nguyên nhân.
+    if spec.phases and phase is None:
+        raise RunnerError(f"{agent_id}: ca {case.get('name', '?')} thiếu `phase` (agent có phases: {sorted(spec.phases)})")
+    if phase is not None and phase not in spec.phases:
+        raise RunnerError(f"{agent_id}: ca {case.get('name', '?')} khai phase={phase!r}, front matter chỉ có {sorted(spec.phases)}")
     runner = AgentRunner(bus, client, agents, blackboard=bb)
     i = case["input"]
     inp = Envelope(topic=i["topic"], key=i["key"], actor=i.get("actor", "human"), payload=i["payload"])
-    return runner.run(agent_id, inp, case["topic_out"])
+    return runner.run(agent_id, inp, case["topic_out"], phase=phase)
 
 
 def run_eval(agent_id: str, client: ModelClient, agents: dict | None = None) -> list[CaseResult]:

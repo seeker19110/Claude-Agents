@@ -202,7 +202,7 @@ def _open_acceptance_gate(o: Orchestrator, rid: str, res: StepResult) -> None:
     sid = f"UAT-{rid}"
     if sid in o.gate.pending or o.gate.is_approved(sid) or f"uat:{rid}" in o.once: return
     o._remember(f"uat:{rid}")
-    o.gate.request(GateRequest(kind="acceptance", subject_id=sid, created_by=ROLE.ACCOUNT_MANAGER,
+    o.gate.request(GateRequest(kind="acceptance", subject_id=sid, created_by=ROLE.OPS,
                                   checklist=["uat-script", "acceptance-criteria", "known-issues", "signed_by"]))
     res.actions.append(f"gate:acceptance:{sid}")
 
@@ -218,7 +218,7 @@ def _close_acceptance_gate(o: Orchestrator, env: Envelope, res: StepResult) -> N
         o.gate.decide(sid, decision, by=by, reason=f"acceptance-results: {verdict}", actor=ACTOR)
         res.actions.append(f"gate:acceptance:{sid}:{decision}")
     except (KeyError, PermissionError) as e:
-        o._audit("handler_error", {"agent": ROLE.ACCOUNT_MANAGER, "error": str(e)[:300]})
+        o._audit("handler_error", {"agent": ROLE.OPS, "error": str(e)[:300]})
 
 def _stall(o: Orchestrator, env: Envelope, agent: str, error: Exception, res: StepResult) -> bool:
     """Agent của chuỗi nghiên cứu lỗi → dự án không có bước kế tiếp. Ghi `project.stalled`, supervisor escalate

@@ -134,7 +134,7 @@ SELF_CHECK_SOURCES: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {
 EXPERTS: dict[str, tuple[str, ...]] = {
     "spec": (f"sc-{ROLE.PRODUCT}", f"sc-{ROLE.RISK}"),
     "release": (f"sc-{ROLE.QA}", f"sc-{ROLE.SECURITY}", f"sc-{ROLE.OPS}", f"sc-{ROLE.LEAD}"),
-    "acceptance": (f"sc-{ROLE.ACCOUNT_MANAGER}", f"sc-{ROLE.SUPPORT_DOCS}"),
+    "acceptance": (f"sc-{ROLE.OPS}",),
     "escalation": (f"sc-{ROLE.QA}", "sc-<assignee> — trợ lý theo góc nhìn agent chủ quản ticket"),
 }
 

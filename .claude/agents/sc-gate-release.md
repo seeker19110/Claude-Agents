@@ -74,7 +74,7 @@ Mỗi mục phải xuất hiện trong báo cáo với đúng một kết luận
 
 - sc-qa-debugger
 - sc-security
-- sc-release-engineer
+- sc-ops
 - sc-delivery-lead
 
 ## Đầu ra

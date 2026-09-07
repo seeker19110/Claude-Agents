@@ -317,7 +317,7 @@ class Integration:
             msg.parent.mkdir(parents=True, exist_ok=True)
             msg.write_text(message, encoding="utf-8", newline="\n")
             try:
-                _git(self.repo, "-c", "user.name=release-engineer", "-c", "user.email=release@company.local",
+                _git(self.repo, "-c", "user.name=ops", "-c", "user.email=release@company.local",
                      "tag", "-a", "-F", str(msg), tag, sha)
             finally:
                 msg.unlink(missing_ok=True)

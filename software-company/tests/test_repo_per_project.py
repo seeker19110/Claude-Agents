@@ -138,8 +138,10 @@ def test_qa_va_release_dung_nhanh_tich_hop_cua_du_an(tmp_path):
     orch = Orchestrator(bus, client)
     _drive(bus, orch, "P1", {"repo": str(repo)})
     integ = orch.integration_for("P1")
+    # ADR-0037 PR-5b: `release-engineer` gộp vào `ops` (pha `deploy`) — lọc thêm chữ ký pha vì `ops` cũng chạy
+    # pha docs/account trong cùng kịch bản (payload của các pha đó không có `integration_branch`).
     rel_in = [json.loads(c["user"].split("```json\n", 1)[1].split("\n```", 1)[0]) for c in client.calls
-              if c["system"].split("\n", 1)[0].lstrip("# ").strip() == "release-engineer"]
+              if c["system"].split("\n", 1)[0].lstrip("# ").strip() == "ops" and "# Skills của pha deploy" in c["system"]]
     assert rel_in and all(p["integration_branch"] == integ.branch and p["integration_sha"] for p in rel_in)
     rc = next(e for e in bus.replay(topic="release-candidates"))
     tb = orch._read_only_tools(Envelope(topic="release-candidates", key=rc.key, actor="delivery-lead", payload=rc.payload))

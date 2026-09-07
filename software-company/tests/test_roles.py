@@ -33,13 +33,19 @@ OLD_IDS = frozenset({
 
 # Đã gộp/đổi tên tới đâu (PR-5a..5e): id cũ → id mới. Lớn dần đúng một dòng mỗi PR-5x, và là chỗ DUY NHẤT test
 # biết đợt gộp đã đi tới đâu — quên cập nhật khi đổi `ROLE.*` là đỏ ở `test_hang_role_khop_front_matter_hai_chieu`.
-MIGRATED: dict[str, str] = {"security-engineer": "security"}  # PR-5a
+MIGRATED: dict[str, str] = {
+    "security-engineer": "security",  # PR-5a
+    "release-engineer": "ops", "support-docs": "ops", "account-manager": "ops",  # PR-5b (gộp 3→1)
+}
 
 # Chuỗi trùng tên vai nhưng KHÔNG phải vai. Miễn theo (file, đúng nguyên dòng): đổi dòng là phải xét lại lý do,
 # không có chuyện dòng khác trong cùng file "thừa hưởng" miễn trừ.
 EXEMPT_LINES: dict[tuple[str, str], str] = {
     ("orch/routes.py", 'return {ROLE.INTAKE: found[-1].payload.get("data")} if found and found[-1].payload.get("data") else {}'):
         "`data` là TRƯỜNG của research-findings (schema bắt buộc `kind` + `data`), không phải agent `data`",
+    ("orch/routes.py", '"incidents": _field("root_cause_class", "code", "ops", "design"),'):
+        "`\"ops\"` ở đây là GIÁ TRỊ enum `root_cause_class` của incidents.json (code/ops/design/…), không phải "
+        "id agent — trùng chữ tình cờ từ PR-5b (`ROLE.OPS` mới là `\"ops\"`)",
 }
 
 

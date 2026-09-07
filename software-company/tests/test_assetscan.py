@@ -236,7 +236,7 @@ def test_subagent_kiem_duyet_la_tai_san_prompt(tmp_path):
     trong cổng quét, nhưng chỉ gắn vào cây software-company (có `src/company`) để không đếm hai lần."""
     real = A.asset_files(ROOT)
     subs = [p for p in real if p.parent.name == "agents" and p.parent.parent.name == ".claude"]
-    assert len(subs) == 25 and all(p.name.startswith("sc-") for p in subs)   # 21 agent + 4 gate (ADR-0037)
+    assert len(subs) == 23 and all(p.name.startswith("sc-") for p in subs)   # 19 agent + 4 gate (ADR-0037 PR-5b)
     assert {A.rel_path(p, ROOT) for p in subs} == {f".claude/agents/{p.name}" for p in subs}
     findings, errors = A.scan_root(ROOT)
     assert not errors and not [f for f in findings if f.path.startswith(".claude/")]

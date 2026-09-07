@@ -182,7 +182,7 @@ def test_orchestrator_giao_hang_khi_production_va_lui_khi_rollback(tmp_path):
     assert d2["tag"] == "v0.2.0" and d2["previous"] == d["sha"] and _rev(repo, "company/release") == d2["sha"] == staged["REL-002"]
 
     # production của REL-002 rolled_back → con trỏ lùi về REL-001, tag v0.2.0 giữ nguyên
-    bus.publish(Envelope(topic="release-events", key="REL-002", actor="release-engineer",
+    bus.publish(Envelope(topic="release-events", key="REL-002", actor="ops",
                          payload={"release_id": "REL-002", "version": "0.2.0", "env": "production", "status": "rolled_back"}))
     orch.run()
     assert "REL-002" not in orch.delivered and "REL-001" in orch.delivered

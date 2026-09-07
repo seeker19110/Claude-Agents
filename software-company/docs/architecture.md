@@ -25,22 +25,22 @@ phải có mặt; agent được liệt kê mà không có route phải ghi `(ch
 
 | Topic | Producer | Consumer | Key |
 |-------|----------|----------|-----|
-| research-requests | human / support-docs / account-manager | intake | project_id |
+| research-requests | human / ops | intake | project_id |
 | research-findings | intake, researcher | synthesizer, researcher | project_id |
 | requirements-draft | synthesizer | risk, clarifier, researcher (chỉ đọc) | project_id |
 | clarification-questions | clarifier | human gate | project_id |
 | clarification-answers | human gate | clarifier (hỏi lại khi trả lời thiếu), spec-writer (khi đủ) | project_id |
-| approved-specs | spec-writer → human gate `spec` | không có route trong `ROUTES`: security (threat model, `THREAT_ROUTE`), delivery-lead (plan, `PLAN_INPUTS`), account-manager (chỉ đọc) | project_id |
+| approved-specs | spec-writer → human gate `spec` | không có route trong `ROUTES`: security (threat model, `THREAT_ROUTE`), delivery-lead (plan, `PLAN_INPUTS`), ops (chỉ đọc) | project_id |
 | tasks | delivery-lead | test-author (khi bật, ADR-0028), engineering (6 agent) | ticket_id |
 | test-suites | test-author | engineering (6 agent) | ticket_id |
 | pull-requests | engineering | reviewer, qa-debugger, security (khi risk_tags), test-author (khi có `test_dispute`) | ticket_id |
 | review-results | reviewer, qa-debugger, security | delivery-lead | ticket_id (hoặc release_id cho QA staging) |
-| release-candidates | delivery-lead | release-engineer, security | release_id |
-| release-events | release-engineer | delivery-lead, qa-debugger (staging), support-docs (production), account-manager (chỉ đọc), human gate | release_id |
-| incidents | support-docs | delivery-lead (plan khi root_cause_class code/ops/design), support-docs (→ research-requests khi requirement) | incident_id |
-| external-feedback | human (khách, người dùng) | support-docs, account-manager | project_id |
-| change-requests | account-manager | delivery-lead, intake | change_id |
-| acceptance-results | account-manager | delivery-lead, account-manager (→ change-requests khi verdict conditional) | release_id |
+| release-candidates | delivery-lead | ops, security | release_id |
+| release-events | ops (pha `deploy`) | delivery-lead, qa-debugger (staging), ops (pha `docs`, production), ops (pha `account`, chỉ đọc), human gate | release_id |
+| incidents | ops (pha `docs`) | delivery-lead (plan khi root_cause_class code/ops/design), ops (pha `docs`, → research-requests khi requirement) | incident_id |
+| external-feedback | human (khách, người dùng) | ops (pha `docs`), ops (pha `account`) | project_id |
+| change-requests | ops (pha `account`) | delivery-lead, intake | change_id |
+| acceptance-results | ops (pha `account`) | delivery-lead, ops (pha `account`, → change-requests khi verdict conditional) | release_id |
 | shared-context | theo namespace | tất cả | namespace |
 | audit-log | tất cả | supervisor | actor |
 | supervisor-actions | supervisor | tất cả | target |
@@ -60,11 +60,11 @@ security:  review-results(source=security) — chỉ khi ticket có risk_tags
 delivery-lead:      đủ review bắt buộc và tất cả pass → approved → release-candidates
                     có fail/block → tasks(ticket, retry+1, hint); retry ≥ 3 → blocked
                     ticket có depends_on chưa xong → waiting; tự dispatch theo priority khi phụ thuộc approved
-release-engineer:   gộp branch → build/test/scan/sign → release-events(env=staging) → ticket merged
+ops[deploy]:        gộp branch → build/test/scan/sign → release-events(env=staging) → ticket merged
 qa-debugger:        hồi quy + perf + a11y trên staging → review-results(ticket_id=release_id, source=qa)
 delivery-lead:      QA staging pass → xin human gate 3; fail → ticket quay lại với hint
-release-engineer:   gate 3 approve → release-events(env=production) → ticket released; rolled_back → ticket quay lại
-account-manager:    UAT với khách → acceptance-results(accepted → closed | rejected → ticket quay lại | conditional)
+ops[deploy]:        gate 3 approve → release-events(env=production) → ticket released; rolled_back → ticket quay lại
+ops[account]:       UAT với khách → acceptance-results(accepted → closed | rejected → ticket quay lại | conditional)
 supervisor:         retry > MAX_RETRY, token > budget, review quá 2h → supervisor-actions(warn, pause, escalate)
                     cùng mã nợ kiến trúc (DEF-xx/SD-xx/debt:) ≥ N review liên tiếp → gate escalation cấp dự án (ADR-0032)
 ```
@@ -81,7 +81,7 @@ cộng `blocked` và `escalated` có thể vào từ bất kỳ trạng thái n�
 
 Ba điểm bắt buộc của công ty: `approved-specs`, plan sau delivery-lead (kèm threat model), release production
 (chỉ sau khi QA staging pass). Điểm thứ tư thuộc về khách: nghiệm thu (`acceptance-results`, người ký của khách,
-account-manager ghi nhận). Timeout 24h, supervisor nhắc ở 12h. Không bao giờ tự đi tiếp. Checklist trong
+ops pha `account` ghi nhận). Timeout 24h, supervisor nhắc ở 12h. Không bao giờ tự đi tiếp. Checklist trong
 `gates/checklists.md`, tách hai nửa: "Code gửi kèm" (khoá trong `GateRequest.checklist`, hiện ở `gate_cli list`) và "Người tự
 kiểm thêm". Nửa sau có **trợ lý kiểm duyệt** (`docs/dac-ta-tro-ly-kiem-duyet.md`): `gate_brief` (code, chỉ đọc) rút bằng chứng
 định lượng thành hồ sơ `ok|gap|unknown`; subagent `sc-gate-<kind>` / `sc-<agent>` (sinh từ checklist và prompt agent, chỉ
@@ -99,7 +99,7 @@ Read/Grep/Glob) đọc hồ sơ và in bản tóm; người ký bằng `gate_cli
   lọc mọi biến trông như bí mật (`workspace.SECRET_ENV`), git không chạy hook của khách (`NO_HOOKS`).
   Vòng lặp model ↔ tool nằm trong runner (`generate(tools=…)`), dừng khi hết lượt hoặc vượt ngân sách token.
 - **Nhánh tích hợp** (ADR-0011): ticket rẽ từ `company/integration`; RC xuất hiện → `merge --no-ff` vào đó trước khi
-  release-engineer chạy; xung đột → RC huỷ, ticket làm lại trên nền mới. `main` của khách không bị chạm.
+  ops (pha `deploy`) chạy; xung đột → RC huỷ, ticket làm lại trên nền mới. `main` của khách không bị chạm.
 - **Giao hàng** (ADR-0027, `--deliver`): sha nhánh tích hợp lúc deploy staging được ghi `release.staged`; production duyệt +
   deploy → `Integration.deliver`: tag `v<version>` tại sha đó + fast-forward `company/release` (tạo nếu chưa có); tag trùng ở
   sha khác hay nhánh không fast-forward được → audit `delivery.tag_conflict` / `delivery.diverged`, không ghi đè. Rolled_back/

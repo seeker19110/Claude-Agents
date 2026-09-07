@@ -74,7 +74,7 @@ python -m company.subagents list                                # id nguồn -> 
 
 | Nguồn | Đích | Ghi chú |
 |---|---|---|
-| `agents/<block>/<id>.md` | `.claude/agents/sc-<id>.md` | 21 agent hiện có, dẫn xuất máy móc |
+| `agents/<block>/<id>.md` | `.claude/agents/sc-<id>.md` | 19 agent hiện có, dẫn xuất máy móc |
 | `gates/checklists.md` mục Gate | `.claude/agents/sc-gate-<kind>.md` | 5 kind: spec, plan, release, acceptance, escalation |
 
 Tiền tố `sc-` (software-company) để không đụng subagent khác của người dùng.
@@ -230,8 +230,8 @@ Sau đó `/gate-brief <ticket>` gọi `sc-qa-debugger` với hồ sơ này. Mụ
 |---|---|
 | spec | `sc-spec-writer`, `sc-risk` |
 | plan | `sc-delivery-lead`, `sc-security` (khi có `risk_tags`), `sc-platform` |
-| release | `sc-qa-debugger`, `sc-security`, `sc-release-engineer` |
-| acceptance | `sc-account-manager`, `sc-support-docs` |
+| release | `sc-qa-debugger`, `sc-security`, `sc-ops` |
+| acceptance | `sc-ops` |
 | escalation | `sc-qa-debugger` + agent chủ quản ticket (`assignee`) |
 
 ## 6. Phần C — phiên duyệt
@@ -351,4 +351,4 @@ Kết quả: cả sáu PR gộp trong một đợt (nhánh `claude/software-comp
 - Không tự sinh hồ sơ khi gate mở (orchestrator không gọi `gate_brief`): hồ sơ do người yêu cầu, lúc người ngồi
   xuống duyệt. Tự sinh chỉ tạo thêm một dòng chảy không ai đọc.
 - Không cho trợ lý ghi `audit-log` "đã kiểm": dấu vết kiểm là chữ ký của người, không phải của máy.
-- Không gộp trợ lý vào 21 agent của công ty: khác phía gate, khác quyền, khác vòng đời.
+- Không gộp trợ lý vào 19 agent của công ty: khác phía gate, khác quyền, khác vòng đời.

@@ -196,7 +196,9 @@ def test_mo_lai_khong_chay_lai_agent_da_xong_cua_event_do_dang(tmp_path):
                     (f"%{pr.event_id}%",))
     calls_before = len(FakeClient(handler=handler).calls)
     c2 = FakeClient(handler=handler); o2 = Orchestrator(SQLiteBus(db), c2)
-    assert o2.partial.get(pr.event_id) == {"reviewer", "qa-debugger", "security"}
+    # ADR-0037 PR-5b: slot = "<agent>:<topic_out>" (khoá thêm topic_out để hai route của cùng agent gộp trên
+    # cùng event không nuốt nhau — xem `Orchestrator._call`).
+    assert o2.partial.get(pr.event_id) == {"reviewer:review-results", "qa-debugger:review-results", "security:review-results"}
     assert any(e.event_id == pr.event_id for e in o2.queue), "event vẫn được xử lý nốt (đánh dấu xong)"
     o2.run()
     reran = [c for c in c2.calls if _agent_of(c["system"]) in {"reviewer", "qa-debugger", "security"}

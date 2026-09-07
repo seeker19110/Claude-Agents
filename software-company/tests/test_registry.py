@@ -13,21 +13,24 @@ EXPECTED = {
     "backend", "frontend", "mobile", "database", "platform", "data",
     # quality (4) — ADR-0028 tách vai viết test khỏi vai viết code
     "reviewer", "qa-debugger", "security", "test-author",
-    # operations (3)
-    "release-engineer", "support-docs", "account-manager",
+    # operations (1) — ADR-0037 PR-5b: release-engineer + support-docs + account-manager gộp thành `ops`
+    "ops",
     # supervision (1)
     "supervisor",
 }
 
-def test_all_21_agents_load():
+def test_all_19_agents_load():
     agents = load_agents()
     assert set(agents) == EXPECTED
-    assert len(agents) == 21
+    assert len(agents) == 19
 
 def test_prompts_have_skills_and_dod():
     for a in load_agents().values():
         assert "Definition of done" in a.prompt
-        assert a.skill_text, a.id
+        # ADR-0037: agent theo pha (vd. `ops`) có thể không có skill nào ở CẤP AGENT (skills: []) — mọi skill
+        # sống trong `phases.*`, vẫn nạp đầy đủ ở đúng lượt (xem `AgentSpec.system_prompt`). Không rỗng CẢ HAI
+        # thì mới là agent thiếu skill thật.
+        assert a.skill_text or a.phases, a.id
         assert a.budget_tokens_per_task > 0
 
 def test_prompt_versions_at_least_1():
@@ -116,7 +119,7 @@ def test_context_namespace_read_names_real_namespaces():
     for spec in agents.values():
         assert spec.context_namespace_read is not None, f"{spec.id}: thiếu context_namespace_read"
         assert set(spec.context_namespace_read) <= set(NAMESPACE_OWNERS), spec.id
-    for aid in ("reviewer", "qa-debugger", "security", "release-engineer", "support-docs", "supervisor"):
+    for aid in ("reviewer", "qa-debugger", "security", "ops", "supervisor"):
         assert agents[aid].max_input_chars and agents[aid].max_input_chars <= 70_000, aid
 
 

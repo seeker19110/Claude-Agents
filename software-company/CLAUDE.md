@@ -1,6 +1,6 @@
 # software-company — luật riêng (bổ sung `../AGENTS.md`, không thay)
 
-Package `company`. Công ty gia công phần mềm: 21 agent, 45 skill, 19 topic, 3 human gate + escalation, code thật
+Package `company`. Công ty gia công phần mềm: 19 agent, 45 skill, 19 topic, 3 human gate + escalation, code thật
 trên git worktree của repo khách, giao hàng bằng tag + nhánh `company/release`.
 
 ## Chạy ở đâu
