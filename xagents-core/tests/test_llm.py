@@ -1,8 +1,9 @@
 """Nền chung của lớp LLM (K3.3a).
 
-Chỉ đo phần đã lên core. Bốn adapter (`AnthropicClient`, `OpenAICompatClient`, `ClaudeCodeClient`, `CodexClient`),
-`LLMConfig`/`load_config` và `Completion.json()` vẫn ở hai bên và được đo ở test của chính công ty đó — chúng đã
-rẽ nhánh, K3.3a cố ý không đụng tới.
+Chỉ đo phần đã lên core ở bước a. `LLMConfig`/`load_config` (K3.3b) đo ở `test_llm_config.py`, `Completion` và
+đường bóc JSON (K3.3c1) ở `test_llm_completion.py`. Bốn adapter (`AnthropicClient`, `OpenAICompatClient`,
+`ClaudeCodeClient`, `CodexClient`) vẫn ở hai bên — chúng lệch nhất, và `test_pham_vi_bon_adapter_chua_len_core`
+dưới đây là chốt phạm vi cho điều đó.
 
 Ba nhóm ca đáng giữ:
 
@@ -14,7 +15,6 @@ Ba nhóm ca đáng giữ:
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -195,10 +195,16 @@ def os_utime(p: Path, t: int) -> None:
     os.utime(p, (t, t))
 
 
-def test_json_module_khong_bi_keo_theo_vao_core():
-    """Canh phạm vi K3.3a: `Completion.json()` (hai thuật toán bóc JSON khác nhau) CHƯA lên core. Ca này đỏ khi
-    ai đó mang nó sang mà quên rằng đó là quyết định hợp nhất phải đo bằng eval, không phải chuyển mã."""
+def test_pham_vi_bon_adapter_chua_len_core():
+    """Chốt phạm vi, cập nhật theo từng bước của K3.3.
+
+    K3.3a đặt ca này để canh `Completion.json()` chưa lên core; K3.3c1 đã mang nó lên **kèm bằng chứng eval
+    replay hai công ty giống hệt bản trước**, nên nửa đó của ca đổi chiều. Nửa còn lại vẫn đứng: bốn adapter
+    chưa lên, và chúng là phần lệch nhất (`ClaudeCodeClient` 0.32, `OpenAICompatClient` 0.28). Ai mang chúng
+    sang thì phải đổi ca này, và đổi nó là lúc phải hỏi "eval replay đâu?".
+    """
     import xagents_core.llm as m
 
-    assert not hasattr(m, "Completion")
-    assert json  # giữ import cho rõ: core chưa cần json, đây là chốt phạm vi
+    assert hasattr(m, "Completion"), "K3.3c1 đã mang Completion lên core"
+    for ten in ("AnthropicClient", "OpenAICompatClient", "ClaudeCodeClient", "CodexClient", "FakeClient"):
+        assert not hasattr(m, ten), f"{ten} lên core là bước sau (K3.3c2/c3), không phải chuyển mã thuần"

@@ -66,8 +66,8 @@ def artifact_store(db: Path) -> Path:
 def _co_ve_la_json(text: str) -> bool:
     """Đầu ra đã ở dạng JSON object chưa (sau khi bóc code fence)? Chỉ nhìn ký tự đầu — việc kiểm hợp lệ thật
     là của `Completion.json()`; ở đây chỉ cần biết có nên xin model chốt lại một lượt nữa hay không."""
-    from .llm import _strip_code_fence
-    return _strip_code_fence(text or "").lstrip().startswith("{")
+    from .llm import strip_code_fence
+    return strip_code_fence(text or "").lstrip().startswith("{")
 
 
 def build_user_message(spec: AgentSpec, inp: Envelope, topic_out: str, context: dict[str, Any],

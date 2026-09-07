@@ -22,7 +22,9 @@ Ba chỗ studio **được nâng** ở đây, đều tương thích ngược (AD
 """
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import tempfile
 from collections.abc import Iterator, Mapping
@@ -34,11 +36,13 @@ from typing import Any, ClassVar, Self, TypeVar, cast
 import yaml
 
 from .config import CoreConfig
+from .tools import ToolCall
 
 __all__ = ["ARGV_LIMIT", "CLAUDE_EFFORT", "CLI_BASE_FLAGS", "CLI_SUBTYPE_ERRORS", "CODEX_EFFORT", "TIERS",
-           "TRANSIENT_HTTP", "LLMConfig", "LLMError", "Refused", "TransientError", "cli_effort_args",
-           "find_codex_binary", "load_config", "neutral_messages", "reported_model", "strict_schema",
-           "system_prompt_args"]
+           "TRANSIENT_HTTP", "Completion", "LLMConfig", "LLMError", "Refused", "TransientError",
+           "cli_effort_args", "find_codex_binary", "load_config", "neutral_messages",
+           "object_before_trailing_junk", "object_in_prose", "reported_model", "strict_schema",
+           "strip_code_fence", "system_prompt_args"]
 
 C = TypeVar("C", bound="LLMConfig")
 
@@ -104,6 +108,126 @@ def reported_model(model_usage: dict[str, Any], requested: str) -> str:
         return int(v.get("outputTokens", 0) or 0) if isinstance(v, dict) else 0
     return max(model_usage, key=out)
 
+
+# ---------- kết quả một lượt gọi + bóc JSON (K3.3c1) ----------
+
+def strip_code_fence(raw: str) -> str:
+    """Bóc code fence bao quanh JSON (model nhỏ hay bọc ```json ... ```).
+
+    Chỉ bỏ fence MỞ ở đầu và fence ĐÓNG ở CUỐI; fence nằm giữa là nội dung thật (research findings hay trích
+    đoạn config) — cắt theo nó sẽ chặt cụt JSON giữa chừng. Không có fence thì trả nguyên văn.
+    """
+    text = raw.strip()
+    if not text.startswith("```"):
+        return text
+    if "\n" in text:
+        text = text.split("\n", 1)[1]          # bỏ cả dòng mở (``` hoặc ```json)
+    else:
+        text = text[3:].lstrip()                # fence một dòng: ```{...}``` hoặc ```json {...}```
+        if not text.startswith(("{", "[")):     # bỏ nhãn ngôn ngữ dính liền (```json {...}```)
+            text = text.split(None, 1)[1] if len(text.split(None, 1)) > 1 else text
+    text = text.rstrip()
+    if text.endswith("```"):                    # fence đóng chỉ khi thật sự ở cuối
+        text = text[:-3]
+    return text.strip()
+
+
+def object_before_trailing_junk(text: str) -> dict[str, Any] | None:
+    """Một object HOÀN CHỈNH rồi thừa dấu đóng ở cuối → trả object đó; mọi trường hợp khác → None.
+
+    Trượt quan sát được của model khi đầu ra dài (đo 2026-09-05 trên bản ghi eval `researcher`: 14.5k ký tự
+    JSON, thừa đúng một `}` ở cuối). Object đứng trước đã đóng đủ và không mơ hồ — bỏ cả lượt vì một dấu thừa
+    là phí, y như chuyện chuỗi "null" ở `runner._normalize_nulls`.
+
+    Ranh giới hẹp có chủ đích: chỉ chấp nhận phần dư gồm khoảng trắng và `}`/`]`.
+    """
+    try:
+        obj, end = json.JSONDecoder().raw_decode(text)
+    except json.JSONDecodeError:
+        return None
+    thua = "".join(text[end:].split())  # bỏ mọi khoảng trắng, kể cả ở giữa các dấu đóng
+    if not isinstance(obj, dict) or not thua or set(thua) - {"}", "]"}:
+        return None
+    return cast("dict[str, Any]", obj)
+
+
+def object_in_prose(raw: str) -> dict[str, Any] | None:
+    """Model kể chuyện rồi mới trả JSON: lấy object trong code fence ĐẦU TIÊN, không được thì quét `{` đầu tới
+    `}` cuối và lùi dần dấu đóng. Không có object nào → None.
+
+    Bản của studio. Nó đi TÌM trong văn xuôi, nên chỉ được gọi khi đầu ra **không** bắt đầu bằng JSON — xem
+    `Completion.json`.
+    """
+    m = re.search(r"```(?:json)?\s*\n(.*?)\n\s*```", raw, re.DOTALL)   # fence đầu tiên
+    if m:
+        try: return cast("dict[str, Any]", json.loads(m.group(1)))
+        except json.JSONDecodeError: pass
+    start = raw.find("{")
+    end = raw.rfind("}")
+    while start >= 0 and end > start:
+        try: return cast("dict[str, Any]", json.loads(raw[start:end + 1]))
+        except json.JSONDecodeError: end = raw.rfind("}", start, end)
+    return None
+
+
+@dataclass
+class Completion:
+    """Kết quả một lượt gọi model, trung lập provider.
+
+    `input_tokens` LUÔN là tổng input đã tính tiền, kể cả phần đọc từ cache và phần ghi cache — mỗi adapter tự
+    quy đổi về nghĩa này vì provider đếm khác nhau (Anthropic tách cache ra khỏi `input_tokens`, OpenAI gộp vào
+    `prompt_tokens`). `cached_input_tokens` và `cache_write_tokens` chỉ để báo cáo hiệu quả cache, không cộng thêm.
+
+    K3.3c1 hợp nhất hai bản: studio nhận thêm `cache_write_tokens` và `tool_mode` (mặc định 0 / `""` nên mọi
+    `Completion(...)` cũ vẫn dựng được), company nhận thêm đường bóc JSON trong văn xuôi.
+    """
+    text: str
+    input_tokens: int
+    output_tokens: int
+    model: str
+    stop_reason: str = "end_turn"
+    cached_input_tokens: int = 0  # phần input phục vụ từ cache (đã nằm trong input_tokens)
+    cache_write_tokens: int = 0   # phần input ghi vào cache lần đầu (đã nằm trong input_tokens)
+    tool_calls: list[ToolCall] = field(default_factory=list)  # model muốn gọi tool (rỗng = trả lời cuối)
+    # Ai đã chạy vòng tool của lượt này: "" = vòng lặp của runner (mọi provider API); "mcp" = CLI chạy, gọi ngược
+    # tool của công ty qua cầu MCP; "cli" = CLI chạy bằng tool RIÊNG của nó. Runner ghi vào audit `tools_used` để
+    # người vận hành biết lượt vừa rồi đi hàng rào nào, không phải đoán từ cấu hình.
+    tool_mode: str = ""
+
+    @property
+    def tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+    @property
+    def cache_hit_ratio(self) -> float:
+        return self.cached_input_tokens / self.input_tokens if self.input_tokens else 0.0
+
+    def json(self) -> dict[str, Any]:
+        """JSON object trong câu trả lời. Bốn đường, theo đúng thứ tự này — thứ tự LÀ quyết định hợp nhất:
+
+        1. bóc fence bao ngoài rồi `json.loads` (đường thường);
+        2. object hoàn chỉnh + thừa dấu đóng ở cuối (bản company, `object_before_trailing_junk`);
+        3. **chỉ khi đầu ra không bắt đầu bằng JSON**: tìm trong văn xuôi (bản studio, `object_in_prose`);
+        4. hết đường → `LLMError` kèm trích đoạn quanh vị trí lỗi.
+
+        Điều kiện ở bước 3 là chỗ hai bản mâu thuẫn thật, và là quyết định của PR này. Company cố ý ĐỎ khi JSON
+        hỏng **giữa cấu trúc** (model đóng object sớm rồi viết tiếp `,{...}`): cứu chỗ đó là đoán ý model, mà
+        đoán sai thì ticket đi tiếp với một nửa dữ liệu. Nhưng phép quét của studio lại cứu đúng một tình huống
+        company chưa cứu được: model **kể chuyện trước rồi mới trả JSON** — thường gặp khi model vừa chạy tool.
+        Phân biệt hai tình huống bằng chỗ JSON bắt đầu: có văn xuôi đứng trước thì đi tìm, còn đầu ra tự nhận là
+        JSON ngay từ ký tự đầu mà hỏng thì vẫn đỏ như cũ.
+        """
+        text = strip_code_fence(self.text)
+        try:
+            return cast("dict[str, Any]", json.loads(text))
+        except json.JSONDecodeError as e:
+            if (obj := object_before_trailing_junk(text)) is not None:
+                return obj
+            if not text.lstrip().startswith(("{", "[")) and (obj := object_in_prose(self.text)) is not None:
+                return obj
+            # chỉ trích đoạn quanh vị trí lỗi, không đổ cả đầu ra vào log
+            near = text[max(0, e.pos - 120):e.pos + 120]
+            raise LLMError(f"đầu ra không phải JSON: {e} — gần vị trí lỗi: ...{near}...") from e
 
 # ---------- cấu hình (K3.3b) ----------
 
