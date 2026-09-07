@@ -6,7 +6,7 @@ tools: Read, Grep, Glob
 model: opus
 ---
 
-<!-- SINH TỰ ĐỘNG từ gates/checklists.md (Gate 3 — Duyệt release production (kind `release`, subject `<release_id>`)) — sửa nguồn rồi chạy make subagents -->
+<!-- SINH TỰ ĐỘNG từ gates/checklists.md (Gate 2 — Duyệt release production (kind `release`, subject `<release_id>`)) — sửa nguồn rồi chạy make subagents -->
 
 ## Ranh giới
 
@@ -43,6 +43,8 @@ Các khoá dưới đây đã có trong checklist của gate và người duyệ
 - `a11y` — a11y (axe + thủ công) trên staging pass
 - `runbook` — runbook đã thử
 - `rollback` — rollback đã thử; mỗi PR trong release có rollback plan
+- `threat-model` — threat model v1 có; High/Critical có mitigation hoặc ADR có người ký
+- `architecture` — C4 L1–L2 và ADR trên blackboard
 
 ## Nửa của người — bắt buộc trả lời từng mục
 
@@ -60,12 +62,20 @@ Mỗi mục phải xuất hiện trong báo cáo với đúng một kết luận
   - nguồn: repo không định nghĩa SLO → `unavailable`, không đoán
 - **Người duyệt ≠ người tạo release** (`release.four-eyes`)
   - nguồn: GateRequest.created_by — code từ chối khi decided_by trùng created_by
+- **Ước lượng có cơ sở (tham chiếu `knowledge` hoặc PERT)** (`plan.uoc-luong-co-so`)
+  - nguồn: knowledge — bài học estimate-vs-actual, hệ số hiệu chỉnh theo assignee
+  - nguồn: audit-log `plan.proposed` — estimate_tokens từng ticket, phân bố min/median/max
+- **Ngân sách token cho dự án được đặt; tổng estimate ≤ ngân sách** (`plan.ngan-sach-token`)
+  - nguồn: audit-log `plan.proposed` — sum(estimate_tokens), sum(budget_tokens) của plan
+  - nguồn: front matter agents/ — budget_tokens_per_task của từng assignee
+  - nguồn: llm.yaml `budget_usd` / `orchestrator metrics` — trần tiền của dự án
 
 ## Trợ lý chuyên môn nên gọi cùng hồ sơ
 
 - sc-qa-debugger
 - sc-security-engineer
 - sc-release-engineer
+- sc-delivery-lead
 
 ## Đầu ra
 

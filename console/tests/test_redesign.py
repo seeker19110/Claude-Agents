@@ -47,8 +47,8 @@ def test_state_mang_du_khoi_moi_va_nguon_hong_van_du_khoa(company_db: Path, stud
     assert s["reviews"][0]["trim_src"] == []
     assert s["tickets"][0]["ahead"] is None, "dự án không khai repo thì không đo được — phải là None, không phải 0"
     assert s["tickets"][0]["pending_decision"] is None
-    plan = next(g for g in s["gates"] if g["id"] == "PLAN-1")
-    assert "lập lại kế hoạch" in plan["reject"] and plan["agent"] == "delivery-lead"
+    rel = next(g for g in s["gates"] if g["id"] == "REL-001")
+    assert "RC dừng tại đây" in rel["reject"] and rel["agent"] == "release-engineer"
     pub = next(g for g in s["gates"] if g["id"] == "PUB-vid-042")
     assert pub["reject"] == "" and pub["agent"] == "", "xưởng video chưa khai hậu quả — im còn hơn đoán"
     dead = collect(tmp_path / "khong-co.sqlite", studio_db, gateway_url="http://127.0.0.1:9")
@@ -136,8 +136,8 @@ def get(server: srv.ConsoleServer, path: str, *, token: str | None = None) -> tu
 def test_c8_ho_so_gate_lay_duoc_qua_http_o_che_do_chi_doc(console: srv.ConsoleServer) -> None:
     """Đọc bằng chứng phải RẺ HƠN ký: `/api/gate/brief` là GET và không cần `--allow-decide` (server đang readonly)."""
     assert console.readonly is True
-    status, body = get(console, "/api/gate/brief?id=PLAN-1")
-    assert status == 200 and body["ok"] is True and body["kind"] == "plan"
+    status, body = get(console, "/api/gate/brief?id=REL-001")
+    assert status == 200 and body["ok"] is True and body["kind"] == "release"
     assert "Nửa của người" in body["md"]
 
 
@@ -153,7 +153,7 @@ def test_c8_ly_do_khong_dung_duoc_di_ve_trang_chu_khong_thanh_500(console: srv.C
 
 
 def test_c8_ho_so_van_can_token_phien(console: srv.ConsoleServer) -> None:
-    status, _ = get(console, "/api/gate/brief?id=PLAN-1", token="sai")
+    status, _ = get(console, "/api/gate/brief?id=REL-001", token="sai")
     assert status == 401
 
 

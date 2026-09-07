@@ -81,7 +81,7 @@ def test_generic_error_in_engineering_triggers_rework(tmp_path, monkeypatch):
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler), repo=repo, base="main")
     monkeypatch.setattr(orch.runner, "generate_in_workspace",
                         lambda *a, **k: (_ for _ in ()).throw(WorkspaceError("git commit: index.lock")))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.state["T1"] == "blocked", "không treo dispatched: retry tới blocked → gate escalation"
     tasks = [e.payload for e in bus.replay(topic="tasks") if e.key == "T1"]
     assert [t["retry"] for t in tasks] == [0, 1, 2] and all("index.lock" in t["hint"] for t in tasks[1:])
@@ -301,7 +301,7 @@ def test_retry_gets_remaining_budget(tmp_path, monkeypatch):
                            output_tokens=2_000)
         raise RunnerError("đầu ra hỏng")
     monkeypatch.setattr(orch.runner, "generate_in_workspace", fake_generate)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert budgets[0] == 6_000 and budgets[1] == 4_000 and budgets[2] == 2_000, "mỗi lần làm lại chỉ còn phần chưa đốt"
 
 

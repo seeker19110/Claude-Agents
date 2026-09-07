@@ -14,10 +14,10 @@ from console.brief import BriefUnavailable, gate_brief
 
 
 def test_ho_so_tren_trang_va_ho_so_cua_cli_la_mot(company_db: Path) -> None:
-    got = gate_brief(company_db, "PLAN-1")
-    assert got["kind"] == "plan" and got["subject_id"] == "PLAN-1"
+    got = gate_brief(company_db, "REL-001")
+    assert got["kind"] == "release" and got["subject_id"] == "REL-001"
     orch = gb.load_state(company_db)
-    assert got["md"] == gb.render_md(gb.build(orch, "PLAN-1")), "trang và CLI phải đọc cùng một văn bản"
+    assert got["md"] == gb.render_md(gb.build(orch, "REL-001")), "trang và CLI phải đọc cùng một văn bản"
     assert "Nửa của người" in got["md"]
 
 
@@ -33,27 +33,27 @@ def test_moi_ly_do_khong_dung_duoc_deu_noi_thanh_loi(company_db: Path, tmp_path:
     with pytest.raises(BriefUnavailable, match="thiếu subject_id"):
         gate_brief(company_db, "   ")
     with pytest.raises(BriefUnavailable, match="chưa có file DB"):
-        gate_brief(None, "PLAN-1")
+        gate_brief(None, "REL-001")
     with pytest.raises(BriefUnavailable, match="chưa có file DB"):
-        gate_brief(tmp_path / "khong-co.sqlite", "PLAN-1")
+        gate_brief(tmp_path / "khong-co.sqlite", "REL-001")
 
     def hong(*a: object, **k: object) -> None:
         raise gb.BriefError("log hỏng")
 
     monkeypatch.setattr(gb, "load_state", hong)
     with pytest.raises(BriefUnavailable, match="không dựng được hồ sơ: log hỏng"):
-        gate_brief(company_db, "PLAN-1")
+        gate_brief(company_db, "REL-001")
 
     def no(*a: object, **k: object) -> None:
         raise RuntimeError("checklist đổi hình dạng")
 
     monkeypatch.setattr(gb, "load_state", no)
     with pytest.raises(BriefUnavailable, match="RuntimeError: checklist đổi hình dạng"):
-        gate_brief(company_db, "PLAN-1")
+        gate_brief(company_db, "REL-001")
 
 
 def test_dung_ho_so_khong_ghi_gi_vao_db(company_db: Path) -> None:
     """Chỉ đọc là điều kiện để nút này nằm cạnh nút Duyệt mà không cần `--allow-decide`."""
     before = company_db.stat().st_size, company_db.read_bytes()
-    gate_brief(company_db, "PLAN-1")
+    gate_brief(company_db, "REL-001")
     assert (company_db.stat().st_size, company_db.read_bytes()) == before

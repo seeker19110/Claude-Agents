@@ -100,9 +100,9 @@ def test_spec_writer_sua_theo_hint_thi_gate_mo_nhu_cu():
     assert next(iter(orch.deferred.values()))[1] == "gate:SPEC-P1"
     assert _acts(bus).count("spec.runtime_missing") == 1 and "spec.runtime_escalated" not in _acts(bus)
     assert bus.latest("approved-specs", "P1").payload["runtime"] == RUNTIME
-    # duyệt thì đi tiếp bình thường: plan được lập
+    # duyệt thì đi tiếp bình thường: plan được lập (ADR-0037: lập xong là giao luôn, không gate plan)
     orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
-    assert "PLAN-P1-1" in orch.gate.pending
+    assert "PLAN-P1-1" in orch.plans
 
 
 def test_co_runtime_ngay_tu_dau_thi_gate_mo_khong_goi_lai():
@@ -145,7 +145,7 @@ def test_gate_spec_da_duyet_truoc_adr_khong_bi_cham():
     orch.gate.decide("SPEC-P1", "approve", by="human:po")
     _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "approved", "artifacts": ARTIFACTS})
     orch.run()
-    assert "PLAN-P1-1" in orch.gate.pending and "spec.runtime_missing" not in _acts(bus)
+    assert "PLAN-P1-1" in orch.plans and "spec.runtime_missing" not in _acts(bus)
 
 
 # ---------- người quyết escalation → chạy lại, bộ đếm về 0 ----------

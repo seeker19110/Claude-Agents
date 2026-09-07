@@ -1,4 +1,4 @@
-"""Máy trạng thái TICKET: gate spec → threat model → delivery-lead sinh ticket → gate plan → dispatch; event
+"""Máy trạng thái TICKET: gate spec → threat model → delivery-lead sinh ticket → `_check_plan` → dispatch; event
 cũ bị vượt (superseded); ticket vào trạng thái cuối (ADR-0034, tách khỏi orchestrator.py).
 
 Mỗi hàm nhận `o: Orchestrator` làm tham số đầu, gán làm method trên `Orchestrator`
@@ -73,11 +73,11 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
             return o._defer(env, res, f"gate:{sid}")
         if not o._threat_model(env, sid, res):
             o._mark(env, res); return res
-        live = [pid for pid, p in o.plans.items() if p["project_id"] == project and p["source_topic"] == "approved-specs"
-                and (pid in o.gate.pending or o.gate.is_approved(pid))]
+        live = [pid for pid, p in o.plans.items() if p["project_id"] == project and p["source_topic"] == "approved-specs"]
         if live:
             # Spec publish lặp (spec-writer chạy lại, người publish hai lần) không được sinh plan thứ hai cho cùng
-            # dự án: ticket trùng, hai gate plan cho một việc. Muốn lập lại thì reject plan cũ trước.
+            # dự án: ticket trùng, hai lần giao cho một việc. ADR-0037 bỏ gate plan nên `o.plans` chỉ chứa kế hoạch
+            # đã qua `_check_plan` và đã dispatch — có mặt ở đây là đang sống, không cần hỏi gate nữa.
             o._audit("plan.duplicate_spec", {"project_id": project, "event_id": env.event_id, "existing": live}, project_id=project)
             res.actions.append(f"plan_skipped:{','.join(live)}"); o._mark(env, res); return res
     cal = o.supervisor.calibration()  # vòng học: bài học estimate-vs-actual quay lại người ước lượng
@@ -92,7 +92,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
         res.actions.append(f"error:delivery-lead:{str(e)[:120]}")
         with o._lock: o.stats["errors"] += 1
         o._mark(env, res); return res
-    if g.context_writes:  # C4, API contract lên blackboard TRƯỚC khi xin gate plan để người duyệt đọc được
+    if g.context_writes:  # C4, API contract lên blackboard TRƯỚC `_check_plan` để nó thấy được (ADR-0037)
         o.runner.write_context("delivery-lead", env, g.context_writes)
     tickets = [Task.model_validate(p) for p in g.payloads]
     problems = o._check_plan(tickets, project)
@@ -123,10 +123,12 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     else:
         o.plans[plan_id] = plan
         o._audit("plan.proposed", plan, actor="delivery-lead", tokens=g.tokens, cost=g.cost_usd, project_id=project)
-        o.gate.request(GateRequest(kind="plan", subject_id=plan_id, created_by="delivery-lead",
-                                      checklist=["tickets", "estimate_tokens", "risk_tags", "depends_on", "threat-model",
-                                                 "architecture", "api-contract"]))
+        # ADR-0037: không còn gate plan. `_check_plan` vừa chạy XONG và không trả problem nào — đó là nguồn sự thật
+        # duy nhất cho phép giao ticket, nên ghi vào `lead.plans_ok` (guard trong `DeliveryLead.dispatch`) rồi giao
+        # ngay. Người vẫn ký hai đầu: gate spec trước đó, gate release sau đó.
+        o.lead.plans_ok.add(plan_id)
         res.actions.append(f"plan:{plan_id}:{len(tickets)} ticket")
+        res.actions.append("dispatch:" + ",".join(o._dispatch_plan(plan_id)))
         with o._lock: o.stats["plans"] += 1
     o._mark(env, res)
     return res
@@ -190,8 +192,8 @@ def _threat_model(o: Orchestrator, env: Envelope, sid: str, res: StepResult) -> 
         with o._lock: o.stats["transient"] += 1
         return True  # threat model không chặn plan; lần lập kế hoạch sau (nếu có) sẽ thử lại
     except (RunnerError, LLMError) as e:
-        # Không chặn kế hoạch (người duyệt gate plan vẫn quyết được), nhưng phải hiện ra: audit riêng + đánh dấu
-        # vào plan để mục `threat-model` trong checklist gate không bị tick nhầm là đã có.
+        # Đánh dấu vào `missing_threat_model`: từ ADR-0037 PR-1 đây LÀ một `problems` của `_check_plan`, nên kế
+        # hoạch bị `plan_rejected` + escalation chứ không lặng lẽ đi tiếp với một mục checklist tick nhầm.
         o._audit("threat_model.missing", {"subject_id": sid, "error": str(e)[:300]},
                     project_id=env.payload.get("project_id"))
         with o._lock: o.missing_threat_model.add(sid)

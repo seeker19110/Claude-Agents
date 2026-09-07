@@ -17,7 +17,7 @@ from company.registry import load_agents
 from company.subagents import GATE_PREFIX, PREFIX, TOOLS, build, diffs, render_all, sections
 from company.subagents import main as sub_main
 
-N_AGENTS, N_GATES = 21, 5
+N_AGENTS, N_GATES = 21, 4   # ADR-0037: GateKind bỏ `plan`
 
 
 def _agent_files() -> dict:
@@ -130,7 +130,7 @@ def test_only_va_agent_la():
     """`--only` nhận cả `sc-x` lẫn `x` lẫn `sc-gate-<kind>`; tên không tồn tại thì gãy to, không sinh im lặng."""
     assert set(render_all("sc-qa-debugger")) == set(render_all("qa-debugger"))
     assert len(render_all("qa-debugger")) == 1
-    assert [p.stem for p in render_all("sc-gate-plan")] == ["sc-gate-plan"]
+    assert [p.stem for p in render_all("sc-gate-release")] == ["sc-gate-release"]
     with pytest.raises(SystemExit):
         render_all("khong-ton-tai")
     with pytest.raises(SystemExit):

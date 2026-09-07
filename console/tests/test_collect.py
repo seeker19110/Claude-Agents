@@ -80,17 +80,17 @@ def test_tuoi_gate_va_nguong_sev_theo_hang_so_cua_cong_ty(company_db: Path, stud
     over_h = g.timeout.total_seconds() / 3600
     warn_h = g.remind_at.total_seconds() / 3600
     by_id = {x["id"]: x for x in state(company_db, studio_db)["gates"]}
-    assert by_id["PLAN-1"]["hours"] == 30 and by_id["PLAN-1"]["sev"] == "over"
+    assert by_id["REL-001"]["hours"] == 30 and by_id["REL-001"]["sev"] == "over"
     assert by_id["PUB-vid-042"]["hours"] == 13 and by_id["PUB-vid-042"]["sev"] == "warn"
     assert by_id["PLAN-ch1"]["hours"] == 2 and by_id["PLAN-ch1"]["sev"] == "calm"
-    assert by_id["PLAN-1"]["hours"] >= over_h > by_id["PUB-vid-042"]["hours"] >= warn_h > by_id["PLAN-ch1"]["hours"]
+    assert by_id["REL-001"]["hours"] >= over_h > by_id["PUB-vid-042"]["hours"] >= warn_h > by_id["PLAN-ch1"]["hours"]
     assert math.floor(over_h) == 24 and math.floor(warn_h) == 12  # khớp GATE_TIMEOUT/REMIND của repo
 
 
 def test_gate_da_quyet_khong_con_trong_danh_sach(company_db: Path, studio_db: Path) -> None:
     s = state(company_db, studio_db)
     assert "SPEC-1" not in {g["id"] for g in s["gates"]}          # đã có gate.decide trong log
-    assert {"PLAN-1", "PUB-vid-042", "PLAN-ch1"} == {g["id"] for g in s["gates"]}
+    assert {"REL-001", "PUB-vid-042", "PLAN-ch1"} == {g["id"] for g in s["gates"]}
     bus = StudioSQLiteBus(studio_db)
     gate_decide(bus, StudioEnvelope, StudioAudit, subject_id="PLAN-ch1", decision="approve", by="human:owner")
     bus.close()

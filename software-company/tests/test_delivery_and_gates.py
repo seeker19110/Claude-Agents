@@ -10,31 +10,35 @@ from company.gates import GateRequest, HumanGate
 
 def _setup():
     bus = InMemoryBus(); gate = HumanGate(); lead = DeliveryLead(bus, gate)
-    gate.request(GateRequest(kind="plan", subject_id="PLAN", checklist=[], created_by="delivery-lead"))
     return bus, gate, lead
 
 def _task(**kw): return Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="backend", title="x", acceptance=["a"], **kw)
 def _pr(bus): bus.publish(Envelope(topic="pull-requests", key="T1", actor="backend", payload=PullRequest(ticket_id="T1", branch="b", pr_ref="#1", local_checks={"lint": True}).model_dump()))
 def _rev(bus, src, verdict, rc=None): bus.publish(Envelope(topic="review-results", key="T1", actor=src, payload=ReviewResult(ticket_id="T1", source=src, verdict=verdict, root_cause=rc).model_dump()))
 
-def test_cannot_dispatch_without_plan_approval():
+def test_dispatch_tu_choi_plan_chua_check():
+    """ADR-0037: gate `plan` biến mất nhưng guard KHÔNG biến mất — chỉ đổi nguồn sự thật. Plan chưa qua
+    `_check_plan` (không có trong `plans_ok`) thì `dispatch` vẫn `PermissionError`."""
     _, _, lead = _setup()
-    with pytest.raises(PermissionError):
+    with pytest.raises(PermissionError, match="plan chưa qua _check_plan"):
         lead.dispatch(_task(), "PLAN")
+    lead.plans_ok.add("PLAN")
+    assert lead.dispatch(_task(), "PLAN").ticket_id == "T1", "vào plans_ok rồi thì giao được"
 
 def test_four_eyes():
     _, gate, _ = _setup()
+    gate.request(GateRequest(kind="spec", subject_id="SPEC-P", checklist=[], created_by="spec-writer"))
     with pytest.raises(PermissionError):
-        gate.decide("PLAN", "approve", by="delivery-lead")
+        gate.decide("SPEC-P", "approve", by="spec-writer")
 
 def test_happy_path_to_release_gate():
-    bus, gate, lead = _setup(); gate.decide("PLAN", "approve", by="human")
+    bus, gate, lead = _setup(); lead.plans_ok.add("PLAN")
     lead.dispatch(_task(), "PLAN"); _pr(bus); _rev(bus, "reviewer", "pass"); _rev(bus, "qa", "pass")
     assert lead.state["T1"] == "approved" and lead.releases == ["REL-001"]
     assert "REL-001" not in gate.pending, "gate 3 chỉ xin sau khi QA staging pass (ADR-0006)"
 
 def test_fail_retries_with_hint_then_blocks():
-    bus, gate, lead = _setup(); gate.decide("PLAN", "approve", by="human")
+    bus, _gate, lead = _setup(); lead.plans_ok.add("PLAN")
     lead.dispatch(_task(), "PLAN")
     for i in range(2):
         _pr(bus); _rev(bus, "reviewer", "fail", rc=f"bug{i}")
@@ -44,7 +48,7 @@ def test_fail_retries_with_hint_then_blocks():
 
 def test_security_review_required_when_risk_tags():
     """ADR-0003: reviewer + qa pass chưa đủ nếu ticket có risk_tags; cần thêm security."""
-    bus, gate, lead = _setup(); gate.decide("PLAN", "approve", by="human")
+    bus, _gate, lead = _setup(); lead.plans_ok.add("PLAN")
     lead.dispatch(_task(risk_tags=["payment"]), "PLAN"); _pr(bus)
     _rev(bus, "reviewer", "pass"); _rev(bus, "qa", "pass")
     assert lead.state["T1"] == "in_review" and lead.releases == []
@@ -52,7 +56,7 @@ def test_security_review_required_when_risk_tags():
     assert lead.state["T1"] == "approved" and lead.releases == ["REL-001"]
 
 def test_security_block_requests_changes_with_hint():
-    bus, gate, lead = _setup(); gate.decide("PLAN", "approve", by="human")
+    bus, _gate, lead = _setup(); lead.plans_ok.add("PLAN")
     lead.dispatch(_task(risk_tags=["auth"]), "PLAN"); _pr(bus)
     _rev(bus, "reviewer", "pass"); _rev(bus, "qa", "pass")
     bus.publish(Envelope(topic="review-results", key="T1", actor="security-engineer", payload=ReviewResult(
@@ -70,14 +74,14 @@ def test_security_not_required_without_risk_tags():
 
 def test_budget_must_cover_estimate_times_factor():
     """skill cost-estimation: budget_tokens ≥ estimate_tokens × 1.5."""
-    _, gate, lead = _setup(); gate.decide("PLAN", "approve", by="human")
+    _, _g, lead = _setup(); lead.plans_ok.add("PLAN")
     with pytest.raises(ValueError):
         lead.dispatch(_task(estimate_tokens=100_000, budget_tokens=120_000), "PLAN")
     lead.dispatch(_task(estimate_tokens=80_000, budget_tokens=120_000), "PLAN")
     assert lead.state["T1"] == "dispatched"
 
 def test_human_hint_bao_loi_khi_trang_thai_khong_can_thiep_duoc():
-    _, gate, lead = _setup(); gate.decide("PLAN", "approve", by="human")
+    _, _g, lead = _setup(); lead.plans_ok.add("PLAN")
     lead.dispatch(_task(), "PLAN")
     nt = lead.human_hint("T1", "gợi ý")   # dispatched: hợp lệ, phát lại task ngay nên state về "dispatched"
     assert lead.state["T1"] == "dispatched" and nt.hint == "gợi ý"
@@ -85,19 +89,19 @@ def test_human_hint_bao_loi_khi_trang_thai_khong_can_thiep_duoc():
         lead.human_hint("T2-khong-ton-tai", "x")
 
 def test_rework_bao_loi_ngoai_dispatched_hoac_in_progress():
-    bus, gate, lead = _setup(); gate.decide("PLAN", "approve", by="human")
+    bus, _gate, lead = _setup(); lead.plans_ok.add("PLAN")
     lead.dispatch(_task(), "PLAN"); _pr(bus)
     with pytest.raises(ValueError, match="rework chỉ từ dispatched/in_progress"):
         lead.rework("T1", "test fail")   # đã ở in_review, không phải dispatched/in_progress
 
 def test_reopen_bao_loi_ngoai_blocked_hoac_escalated():
-    _, gate, lead = _setup(); gate.decide("PLAN", "approve", by="human")
+    _, _g, lead = _setup(); lead.plans_ok.add("PLAN")
     lead.dispatch(_task(), "PLAN")
     with pytest.raises(ValueError, match="chỉ mở lại ticket blocked/escalated"):
         lead.reopen("T1", "x")   # đang dispatched, chưa blocked
 
 def test_reopen_mo_lai_ticket_blocked_va_dem_lai_retry():
-    bus, gate, lead = _setup(); gate.decide("PLAN", "approve", by="human")
+    bus, _gate, lead = _setup(); lead.plans_ok.add("PLAN")
     lead.dispatch(_task(), "PLAN")
     for i in range(3):
         _pr(bus); _rev(bus, "reviewer", "fail", rc=f"bug{i}")
@@ -121,7 +125,7 @@ def test_replay_nuot_loi_nghiep_vu_khong_lam_sap_viec_dung_lai_log():
 
 def test_on_release_candidate_bo_qua_version_hong_khong_sap():
     """Log cũ có `version` không phải `X.Y.Z` hợp lệ (vd. rỗng hoặc chữ) thì bỏ qua, không ném lỗi lên trên."""
-    bus, gate, lead = _setup(); gate.decide("PLAN", "approve", by="human")
+    bus, _gate, lead = _setup(); lead.plans_ok.add("PLAN")
     lead.dispatch(_task(), "PLAN"); _pr(bus); _rev(bus, "reviewer", "pass"); _rev(bus, "qa", "pass")
     assert lead.versions.get("P") is None or isinstance(lead.versions.get("P"), tuple)
     bus.publish(Envelope(topic="release-candidates", key="REL-002", actor="delivery-lead",

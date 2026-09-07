@@ -9,7 +9,7 @@ Dẫn xuất là MỘT CHIỀU, từ hai nguồn (đặc tả `docs/dac-ta-tro-l
 - `agents/<block>/<id>.md` → `.claude/agents/sc-<id>.md`: trợ lý CHUYÊN MÔN, chấm bằng chứng theo tiêu chuẩn của
   đúng agent đó (20 file).
 - `gates/checklists.md` (qua `gate_checklists.parse`) → `.claude/agents/sc-gate-<kind>.md`: trợ lý THEO GATE, mỗi mục
-  "Người tự kiểm thêm" thành một đề mục bắt buộc trả lời kèm nguồn bằng chứng (5 file, một cho mỗi `GateKind`).
+  "Người tự kiểm thêm" thành một đề mục bắt buộc trả lời kèm nguồn bằng chứng (4 file, một cho mỗi `GateKind`).
 
 Sửa đích bằng tay sẽ bị `check` bắt (CI gọi cùng chỗ với golden test), vì bản dẫn xuất lệch nguồn nghĩa là người
 duyệt đang chấm theo tiêu chuẩn khác với tiêu chuẩn công ty thực sự dùng.

@@ -6,7 +6,7 @@ tools: Read, Grep, Glob
 model: opus
 ---
 
-<!-- SINH TỰ ĐỘNG từ gates/checklists.md (Gate 4 — Nghiệm thu của khách (kind `acceptance`, subject = `UAT-<release_id>`)) — sửa nguồn rồi chạy make subagents -->
+<!-- SINH TỰ ĐỘNG từ gates/checklists.md (Gate nghiệm thu của khách (kind `acceptance`, subject = `UAT-<release_id>`)) — sửa nguồn rồi chạy make subagents -->
 
 ## Ranh giới
 

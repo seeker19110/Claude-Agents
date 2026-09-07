@@ -34,7 +34,7 @@ def _events(bus, rid, env):
 def test_staging_pending_human_mo_gate_va_duyet_thi_chay_lai():
     h = _pausing_release_engineer({"staging": 1})
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert _events(bus, "REL-001", "staging") == ["pending_human"]
     g = orch.gate.pending.get("REL-001")
     assert g is not None and g.kind == "escalation" and g.created_by == "release-engineer", \
@@ -53,7 +53,7 @@ def test_staging_pending_human_mo_gate_va_duyet_thi_chay_lai():
 def test_production_pending_human_mo_gate_va_duyet_thi_chay_lai_production():
     h = _pausing_release_engineer({"production": 1})
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     orch.gate.decide("REL-001", "approve", by="human:release-manager"); orch.run()  # Gate 3
     assert _events(bus, "REL-001", "production") == ["pending_human"]
     assert orch.gate.pending["REL-001"].kind == "escalation"
@@ -65,7 +65,7 @@ def test_production_pending_human_mo_gate_va_duyet_thi_chay_lai_production():
 def test_tu_choi_escalation_cua_release_dang_pending_thi_tra_ticket_ve_lam_lai():
     h = _pausing_release_engineer({"staging": 5})
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.gate.pending["REL-001"].kind == "escalation"
     # T1 chưa merged (staging chưa deployed) nên rework không đổi được state — nhưng không được chạy lại
     orch.gate.decide("REL-001", "reject", by="human:lead", reason="nội dung sai thật"); orch.run()
@@ -76,7 +76,7 @@ def test_tu_choi_escalation_cua_release_dang_pending_thi_tra_ticket_ve_lam_lai()
 def test_khong_mo_gate_trung_khi_da_co_gate_cho_release():
     h = _pausing_release_engineer({"staging": 1})
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     n = sum(1 for e in bus.replay(topic="audit-log") if e.payload["action"] == "gate.request"
             and '"subject_id": "REL-001"' in (e.payload.get("evidence") or ""))
     assert n == 1
@@ -91,7 +91,7 @@ def test_khong_mo_gate_trung_khi_da_co_gate_cho_release():
 
 def test_rerun_khong_lam_gi_khi_khong_pending_human():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     from company.orchestrator import StepResult
     res = StepResult("x", "audit-log", "REL-001")
     assert orch._rerun_release("REL-001", "human:lead", "", res) is False  # staging deployed rồi
@@ -103,7 +103,7 @@ def test_ky_lai_gate_3_chay_lai_duoc_luot_production_khong_can_restart():
     2026-09-06 cho REL-019) trước đây chỉ chạy được vì orchestrator vừa restart."""
     h = _pausing_release_engineer({"production": 1})
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     orch.gate.decide("REL-001", "approve", by="human:release-manager"); orch.run()
     assert _events(bus, "REL-001", "production") == ["pending_human"]
     # đóng escalation bằng cách ký LẠI Gate 3 (request + approve kind=release) thay vì duyệt escalation
@@ -120,7 +120,7 @@ def test_mo_lai_bus_thi_rc_dang_pending_human_tu_truoc_van_duoc_mo_gate(tmp_path
     from company.sqlite_bus import SQLiteBus
     h = _pausing_release_engineer({"staging": 2})
     bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient(handler=h))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.gate.pending["REL-001"].kind == "escalation"
     # giả lập "trước bản vá": xoá gate khỏi RAM và khoá once, rồi mở lại bus bằng orchestrator mới
     bus.close()
@@ -161,7 +161,7 @@ def test_luot_production_nhan_bang_chung_staging_qa_gate_trong_payload():
         if a == "release-engineer" and p["target_env"] == "production": seen.update(p)
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     orch.gate.decide("REL-001", "approve", by="human:release-manager", reason="đủ điều kiện"); orch.run()
     ev = seen["evidence"]
     assert ev["staging"]["status"] == "deployed" and ev["staging"]["version"] and ev["staging"]["at"]  # version là của RC (delivery-lead), không phải lời khai model
@@ -180,7 +180,7 @@ def test_tu_choi_escalation_cua_rc_da_bi_ban_giao_vuot_qua_thi_huy_rc_khong_lam_
             return handler(system, user)
         return h(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h2))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert _events(bus, "REL-001", "staging") == ["pending_human"]
     # REL-002 (T2) chưa mở được vì T2 phụ thuộc T1 mà T1 chưa merged → dùng đường: coi REL-001 đã tích hợp và
     # có bản giao sau nó bằng cách ghi trực tiếp sổ sách như _rehydrate làm

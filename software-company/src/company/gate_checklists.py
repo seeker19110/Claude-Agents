@@ -47,7 +47,7 @@ class SelfItem:
 class GateSection:
     kind: str
     title: str        # dòng H2 nguyên văn (không có `## `)
-    subject: str      # dạng subject: `SPEC-<project>`, `PLAN-<project>-<n>`, `<release_id>`, `UAT-<release_id>`, `ticket_id`
+    subject: str      # dạng subject: `SPEC-<project>`, `<release_id>`, `UAT-<release_id>`, `ticket_id`
     code: tuple[CodeItem, ...]
     self_checks: tuple[SelfItem, ...]
 
@@ -74,19 +74,6 @@ SELF_CHECK_SOURCES: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {
                 "prd@latest — mục 8b `Chạy ở đâu`: lệnh, cổng, health, phụ thuộc ngoài khớp payload",
                 "audit-log `spec.runtime_missing` theo project_id — số lần spec bị trả lại vì thiếu runtime")),
     },
-    "plan": {
-        "Ước lượng có cơ sở (tham chiếu `knowledge` hoặc PERT)": ("plan.uoc-luong-co-so", (
-            "knowledge — bài học estimate-vs-actual, hệ số hiệu chỉnh theo assignee",
-            "audit-log `plan.proposed` — estimate_tokens từng ticket, phân bố min/median/max")),
-        "Phụ thuộc ngoài đã xác nhận; license dependency dự kiến hợp lệ": ("plan.phu-thuoc-ngoai", (
-            "architecture@latest, api-contract@latest — dependency/dịch vụ ngoài được nhắc tới",
-            "research-findings kind=researcher — mục tech",
-            "review-results source=security — kết quả scan license gần nhất nếu có")),
-        "Ngân sách token cho dự án được đặt; tổng estimate sprint ≤ ngân sách": ("plan.ngan-sach-token", (
-            "audit-log `plan.proposed` — sum(estimate_tokens), sum(budget_tokens) của plan",
-            "front matter agents/ — budget_tokens_per_task của từng assignee",
-            "llm.yaml `budget_usd` / `orchestrator metrics` — trần tiền của dự án")),
-    },
     "release": {
         "Dashboard + alert (có runbook) cho dịch vụ/tính năng mới": ("release.dashboard-alert", (
             "api-contract@latest — endpoint/dịch vụ trong contract",
@@ -101,6 +88,15 @@ SELF_CHECK_SOURCES: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {
             "repo không định nghĩa SLO → `unavailable`, không đoán")),
         "Người duyệt ≠ người tạo release": ("release.four-eyes", (
             "GateRequest.created_by — code từ chối khi decided_by trùng created_by",)),
+        # Hai mục dưới dời từ gate `plan` cũ (ADR-0037). `id` giữ nguyên tiền tố `plan.` CÓ CHỦ Ý: hồ sơ
+        # gate_brief đã ghi ra đĩa trước đây dùng đúng id này, đổi là hồ sơ cũ không đọc lại được.
+        "Ước lượng có cơ sở (tham chiếu `knowledge` hoặc PERT)": ("plan.uoc-luong-co-so", (
+            "knowledge — bài học estimate-vs-actual, hệ số hiệu chỉnh theo assignee",
+            "audit-log `plan.proposed` — estimate_tokens từng ticket, phân bố min/median/max")),
+        "Ngân sách token cho dự án được đặt; tổng estimate ≤ ngân sách": ("plan.ngan-sach-token", (
+            "audit-log `plan.proposed` — sum(estimate_tokens), sum(budget_tokens) của plan",
+            "front matter agents/ — budget_tokens_per_task của từng assignee",
+            "llm.yaml `budget_usd` / `orchestrator metrics` — trần tiền của dự án")),
     },
     "acceptance": {
         "Chạy trên bản production (hoặc staging nếu hợp đồng quy định) với dữ liệu khách chấp thuận": (
@@ -131,8 +127,7 @@ SELF_CHECK_SOURCES: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {
 # §5.6: kind → trợ lý chuyên môn nên gọi cùng hồ sơ.
 EXPERTS: dict[str, tuple[str, ...]] = {
     "spec": ("sc-spec-writer", "sc-risk"),
-    "plan": ("sc-delivery-lead", "sc-security-engineer (khi plan có ticket risk_tags)", "sc-platform"),
-    "release": ("sc-qa-debugger", "sc-security-engineer", "sc-release-engineer"),
+    "release": ("sc-qa-debugger", "sc-security-engineer", "sc-release-engineer", "sc-delivery-lead"),
     "acceptance": ("sc-account-manager", "sc-support-docs"),
     "escalation": ("sc-qa-debugger", "sc-<assignee> — trợ lý theo góc nhìn agent chủ quản ticket"),
 }

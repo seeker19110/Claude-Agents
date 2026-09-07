@@ -11,7 +11,13 @@ Mỗi gate dưới đây tách làm hai phần:
   và subagent `.claude/agents/sc-gate-<kind>.md` sinh từ chính file này (`make subagents`). Sửa một mục "Người tự kiểm thêm"
   thì phải khai nguồn bằng chứng cho nó trong `src/company/gate_checklists.py` rồi `make subagents` — parser gãy nếu thiếu.
 
-`GateKind` hiện có đúng năm giá trị: `spec`, `plan`, `release`, `acceptance`, `escalation` (`src/company/gates.py`).
+`GateKind` hiện có đúng bốn giá trị: `spec`, `release`, `acceptance`, `escalation` (`src/company/gates.py`).
+Hai gate CÔNG ĐOẠN là `spec` và `release`; `acceptance` là chữ ký của khách, `escalation` là đường bất thường.
+ADR-0037 bỏ gate `plan`: mọi khoá của nó nay là `problems` của `_check_plan` (code chặn trước khi giao ticket),
+hai mục người-tự-kiểm của nó dời xuống Gate 2.
+Số gate vì thế đổi: **Gate 3 cũ (release) = Gate 2 nay**, **Gate 4 cũ = gate nghiệm thu (bỏ số)**. Chú thích
+trong mã và system prompt của agent còn dùng số cũ cho tới khi PR-5x của ADR-0037 viết lại prompt — `kind`
+(`spec`/`release`/`acceptance`/`escalation`) mới là thứ code dùng, số thứ tự chỉ để người đọc.
 
 ## Gate 1 — Duyệt spec (kind `spec`, subject `SPEC-<project>`)
 Code gửi kèm: `prd`, `acceptance-criteria`, `ux-flow`, `risks`
@@ -33,33 +39,13 @@ lớp thứ hai: lệnh có đúng là lệnh của sản phẩm này không, ph
 
 Kết quả: approve / request_changes(lý do) / reject
 
-## Gate 2 — Duyệt plan (kind `plan`, subject `PLAN-<project>-<n>`)
-Code gửi kèm: `tickets`, `estimate_tokens`, `risk_tags`, `depends_on`, `threat-model`, `architecture`, `api-contract`
-- [ ] `tickets` — danh sách ticket của plan; ticket ≤ 1 ngày / ≤ 200k token
-- [ ] `estimate_tokens` — mọi ticket có `estimate_tokens`, `budget_tokens ≥ estimate × 1.5`
-- [ ] `risk_tags` — ticket chạm auth/payment/pii/crypto/upload/admin/external-api có `risk_tags`
-- [ ] `depends_on` — phụ thuộc giữa ticket khai đúng, không vòng
-- [ ] `threat-model` — threat model v1 trong `threat-model`; High/Critical có mitigation hoặc ADR có người ký
-- [ ] `architecture` — C4 L1–L2 và ADR trên blackboard trước khi gate mở
-- [ ] `api-contract` — API contract tồn tại
-
-Người tự kiểm thêm:
-- [ ] Ước lượng có cơ sở (tham chiếu `knowledge` hoặc PERT)
-- [ ] Phụ thuộc ngoài đã xác nhận; license dependency dự kiến hợp lệ
-- [ ] Ngân sách token cho dự án được đặt; tổng estimate sprint ≤ ngân sách
-
-Ghi chú: mọi khoá "Code gửi kèm" ở trên nay bị `_check_plan` chặn trước khi gate mở (ADR-0037 PR-1): plan có
-`problems` (ticket quá 1 ngày/200k token, thiếu `risk_tags` dù chạm từ khoá nhạy cảm, thiếu threat model, thiếu
-`architecture`/`api-contract` trên blackboard, …) thì bị `plan_rejected`, không tới tay người duyệt. Gate là lớp
-thứ hai, không phải lớp duy nhất.
-
-Kết quả: approve / request_changes / reject
-
-## Gate 3 — Duyệt release production (kind `release`, subject `<release_id>`)
+## Gate 2 — Duyệt release production (kind `release`, subject `<release_id>`)
 Điều kiện mở: delivery-lead chỉ xin gate khi đã có review `qa` pass (cộng `security` pass nếu release chứa
-ticket có `risk_tags`).
+ticket có `risk_tags`). Threat model (`review-results` key `SPEC-<project>`, không `block`) và `architecture` trên
+blackboard đã được `_threat_model` và `_check_plan` bảo đảm từ trước khi ticket được giao (ADR-0037) — hai khoá
+dưới đây là lớp thứ hai để người ký NHÌN THẤY chúng, không phải lớp duy nhất.
 
-Code gửi kèm: `tests`, `scan`, `regression-staging`, `perf`, `a11y`, `runbook`, `rollback`
+Code gửi kèm: `tests`, `scan`, `regression-staging`, `smoke`, `perf`, `a11y`, `runbook`, `rollback`, `threat-model`, `architecture`
 - [ ] `tests` — mọi test pass
 - [ ] `scan` — SAST, SCA, DAST, license pass; SBOM có; artifact ký
 - [ ] `regression-staging` — QA hồi quy trên staging pass (`review-results` ticket_id=release_id); `evidence.run` do orchestrator tự chạy trên worktree RC (ADR-0029): `ok=true` kèm mã HTTP, hoặc `unverified` kèm lý do — verdict pass mà smoke fail đã bị code hạ fail
@@ -68,16 +54,20 @@ Code gửi kèm: `tests`, `scan`, `regression-staging`, `perf`, `a11y`, `runbook
 - [ ] `a11y` — a11y (axe + thủ công) trên staging pass
 - [ ] `runbook` — runbook đã thử
 - [ ] `rollback` — rollback đã thử; mỗi PR trong release có rollback plan
+- [ ] `threat-model` — threat model v1 có; High/Critical có mitigation hoặc ADR có người ký
+- [ ] `architecture` — C4 L1–L2 và ADR trên blackboard
 
 Người tự kiểm thêm:
 - [ ] Dashboard + alert (có runbook) cho dịch vụ/tính năng mới
 - [ ] Changelog, docs, NOTICE cập nhật
 - [ ] Error budget không âm
 - [ ] Người duyệt ≠ người tạo release
+- [ ] Ước lượng có cơ sở (tham chiếu `knowledge` hoặc PERT)
+- [ ] Ngân sách token cho dự án được đặt; tổng estimate ≤ ngân sách
 
 Kết quả: approve / hold / rollback
 
-## Gate 4 — Nghiệm thu của khách (kind `acceptance`, subject = `UAT-<release_id>`)
+## Gate nghiệm thu của khách (kind `acceptance`, subject = `UAT-<release_id>`)
 Khi `release-events` báo đã deploy production, orchestrator mở gate `acceptance`. Đây là gate thật: có trong
 `gate_cli`, có hạn 24h, nhắc ở 12h, quá hạn thì supervisor escalate. Account-manager tổ chức UAT; khách ký và
 kết quả vào topic `acceptance-results` (key = `release_id`), chính chữ ký đó đóng gate — `signed_by` phải khác

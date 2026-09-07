@@ -14,7 +14,7 @@ thể: `CODEMAP.md`.
    ┌────────────────────────────────▼─────┐   ┌────────────────▼──────────────────────┐
    │ software-company/  (package company) │   │ Studio-creators/  (package studio)     │
    │ 21 agent · 45 skill · 19 topic       │   │ 14 agent · 24 skill · 19 topic         │
-   │ 4 human gate + escalation            │   │ 4 human gate                           │
+   │ 3 human gate + escalation            │   │ 4 human gate                           │
    │ code thật trên git worktree của khách│   │ render thật: TTS + ảnh + ffmpeg        │
    └────────────────┬─────────────────────┘   └────────────────┬───────────────────────┘
                     │  llm.yaml: backends + routing theo tier    │

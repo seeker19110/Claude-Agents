@@ -16,7 +16,6 @@ from company.bus import InMemoryBus
 from company.delivery import DeliveryLead
 from company.events import Envelope, Task
 from company.gate_cli import PersistentGate
-from company.gates import GateRequest
 from company.metrics import collect
 from company.tools import ToolError
 from company.web import check_url, resolve_host
@@ -28,8 +27,7 @@ PR = {"ticket_id": "T1", "branch": "ticket/T1", "pr_ref": "#1", "local_checks": 
 
 def _lead(bus: InMemoryBus) -> DeliveryLead:
     gate = PersistentGate(bus); lead = DeliveryLead(bus, gate)
-    gate.request(GateRequest(kind="plan", subject_id="PLAN-1", created_by="delivery-lead", checklist=["tickets"]))
-    gate.decide("PLAN-1", "approve", by="human:pm")
+    lead.plans_ok.add("PLAN-1")   # ADR-0037: không còn gate plan
     lead.dispatch(Task.model_validate(T1), "PLAN-1")
     return lead
 
@@ -113,7 +111,7 @@ def test_lead_time_ticket_co_so_lieu():
 
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
     _drive_to_plan(bus, orch)
-    orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    orch.run()
     orch.gate.decide("REL-001", "approve", by="human:release-manager"); orch.run()
     _pub(bus, "acceptance-results", "REL-001", "account-manager",
          {"release_id": "REL-001", "project_id": "P1", "verdict": "accepted", "signed_by": "customer:po"})

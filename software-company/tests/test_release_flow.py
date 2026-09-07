@@ -9,14 +9,13 @@ import pytest
 from company.bus import InMemoryBus
 from company.delivery import DeliveryLead
 from company.events import AcceptanceResult, AuditLog, Envelope, PullRequest, ReviewResult, Task
-from company.gates import GateRequest, HumanGate
+from company.gates import HumanGate
 from company.supervisor import Supervisor
 
 
 def _setup():
     bus = InMemoryBus(); gate = HumanGate(); lead = DeliveryLead(bus, gate)
-    gate.request(GateRequest(kind="plan", subject_id="PLAN", checklist=[], created_by="delivery-lead"))
-    gate.decide("PLAN", "approve", by="human")
+    lead.plans_ok.add("PLAN")   # ADR-0037: `_check_plan` thay gate plan làm nguồn sự thật cho `dispatch`
     return bus, gate, lead
 
 
@@ -208,7 +207,7 @@ def _lifecycle_to_production(handler_fn, **kw):
     from company.orchestrator import Orchestrator
     from test_orchestrator import _drive_to_plan
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler_fn), **kw)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     for rid in list(orch.gate.pending):
         if rid.startswith("REL"): orch.gate.decide(rid, "approve", by="human:release-manager")
     orch.run()
@@ -254,7 +253,7 @@ def test_batch_releases_do_not_wait_for_blocked_ticket():
             return {"ticket_id": "T2", "source": "reviewer", "verdict": "block", "findings": [{"level": "block", "text": "sai"}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=failing), batch_releases=True)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     # T2 bị supervisor cắt ngân sách (review block lặp) → paused + gate escalation; T1 approved chưa release vì T2 còn in_review
     assert orch.lead.state["T1"] == "approved" and not orch.lead.releases and orch.gate.pending["T2"].kind == "escalation"
     orch.gate.decide("T2", "reject", by="human:pm", reason="bỏ T2"); orch.run()

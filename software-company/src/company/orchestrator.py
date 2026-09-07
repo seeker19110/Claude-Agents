@@ -5,8 +5,8 @@ Mỗi event trên bus được đối chiếu với bảng ROUTES (rút từ b�
 Phần xác định (DeliveryLead, Supervisor, PersistentGate) subscribe bus như trước; orchestrator chỉ điền chỗ trống
 "ai chạy tiếp theo" và tôn trọng ba thứ không bao giờ tự đi tiếp:
 
-- Human gate: `approved-specs` chờ gate `spec`; plan của delivery-lead chờ gate `plan`; production chờ gate `release`;
-  ticket blocked/escalate chờ gate `escalation`.
+- Human gate: `approved-specs` chờ gate `spec`; production chờ gate `release`; ticket blocked/escalate chờ gate
+  `escalation`. Kế hoạch của delivery-lead KHÔNG chờ ai (ADR-0037): `_check_plan` kiểm bằng code rồi giao ngay.
 - Supervisor: ticket bị pause/budget_cut/escalate thì mọi event của ticket đó bị hoãn đến khi `resume`.
 - Khách: `clarification-answers`, `acceptance-results`, quyết định `change-requests` do người publish (CLI).
 

@@ -17,7 +17,7 @@ from company.registry import load_agents
 from company.routing import Backend, RoutingClient, is_auth_error, is_missing_error, is_quota_error
 from company.supervisor import Supervisor
 from company.tools import _is_secret
-from test_orchestrator import _agent_of, _drive_to_plan, handler
+from test_orchestrator import _agent_of, _drive_to_plan, _drive_to_spec_gate, handler
 from test_routing import _call, _Client, _router
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -81,7 +81,7 @@ def test_reassigned_review_failing_again_escalates_instead_of_hanging():
         if _agent_of(system) == "qa-debugger" and "`pull-requests`" in user: raise LLMError("timeout")
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=lazy))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     later = datetime.now(UTC) + timedelta(hours=3)
     assert orch.lead.state["T2"] == "in_review"
     orch.tick(now=later); orch.tick(now=later + timedelta(hours=1))
@@ -94,7 +94,9 @@ def test_reassigned_review_failing_again_escalates_instead_of_hanging():
 # ---------- 8. sprint_report có cache ----------
 
 def test_sprint_report_cached_until_bus_changes(monkeypatch):
-    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler)); _drive_to_plan(bus, orch)
+    # ADR-0037: dừng ở gate spec — sau khi ký là cả đường ống chạy hết trong một `run()`, không còn mốc nào
+    # để đo "bus đổi thì báo cáo đổi".
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler)); _drive_to_spec_gate(bus, orch)
     sup: Supervisor = orch.supervisor
     first = sup.sprint_report()
     n = 0
@@ -105,7 +107,8 @@ def test_sprint_report_cached_until_bus_changes(monkeypatch):
     assert again == first and n == 0, "bus không đổi thì không replay lại"
     again["tickets"]["x"] = 1
     assert "x" not in sup.sprint_report()["tickets"], "bản trả về là bản sao, sửa không ảnh hưởng cache"
-    orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    orch.gate.decide("SPEC-P1", "approve", by="human:po")
+    orch.run()
     assert sup.sprint_report() != first and n > 0
     assert orch.status()["cost_usd"] == sup.sprint_report()["cost_usd_total"]
 

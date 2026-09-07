@@ -57,8 +57,9 @@ def test_man_huong_dan_render_bang_quyen_theo_dung_co_dang_chay(page: str) -> No
 
 def test_man_huong_dan_noi_dung_khop_hanh_vi_that_cua_he(page: str) -> None:
     guide = page[page.index('id="v-huong-dan"'):page.index('<section class="view" id="v-nhat-ky"')]
-    for gate in ("spec", "plan", "release", "acceptance"):
-        assert f"<code>{gate}</code>" in guide, f"thiếu gate {gate} trong bảng bốn điểm dừng"
+    for gate in ("spec", "release", "acceptance"):
+        assert f"<code>{gate}</code>" in guide, f"thiếu gate {gate} trong bảng ba điểm dừng"
+    assert "_check_plan" in guide, "ADR-0037: phải nói rõ kế hoạch được CODE kiểm chứ không còn là điểm dừng"
     assert "escalation" in guide, "gate bất thường phải được nhắc"
     assert "local_checks.unverified" in guide, "phải nói rõ hệ quả khi dự án không có repo"
     assert "--allow-decide" in guide and "--allow-submit" in guide

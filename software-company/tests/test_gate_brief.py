@@ -69,8 +69,8 @@ def _scenario(tmp_path: Path, h=rich_handler, *, to: str = "acceptance", repo: P
         _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app"}); orch.run()
         return db, bus, orch
     _drive_to_plan(bus, orch)
-    if to == "plan": return db, bus, orch
-    orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    if to == "plan": return db, bus, orch   # ADR-0037: mốc "vừa lập xong kế hoạch", không còn gate nào chờ
+    orch.run()
     if to in {"release", "escalation"}: return db, bus, orch
     orch.gate.decide("REL-001", "approve", by="human:release-manager"); orch.run()
     return db, bus, orch
@@ -128,7 +128,7 @@ def test_khong_co_db_hoac_repo_sai(tmp_path, capsys):
         GB.open_read_only(tmp_path / "khong.sqlite")
     assert GB.main(["X", "--db", str(tmp_path / "khong.sqlite")]) == 3
     db, _, _ = _scenario(tmp_path, to="plan")
-    assert GB.main(["PLAN-P1-1", "--db", str(db), "--repo", str(tmp_path / "khong-phai-repo")]) == 3
+    assert GB.main(["SPEC-P1", "--db", str(db), "--repo", str(tmp_path / "khong-phai-repo")]) == 3
     assert GB.main(["--db", str(db)]) == 2, "cần subject hoặc --all"
 
 
@@ -141,9 +141,9 @@ def test_kind_suy_ra_tu_replay(tmp_path):
     assert GB.build(orch, "UAT-REL-001")["kind"] == "acceptance"
     spec = GB.build(orch, "SPEC-P1", closed=True)
     assert spec["kind"] == "spec" and spec["status"] == "approve" and spec["project_id"] == "P1"
-    plan = GB.build(orch, "PLAN-P1-1", closed=True)
-    assert plan["kind"] == "plan" and plan["created_by"] == "delivery-lead"
-    for b in (spec, plan):
+    with pytest.raises(GB.NotPending):
+        GB.build(orch, "PLAN-P1-1", closed=True)   # ADR-0037: không còn gate plan để dựng hồ sơ
+    for b in (spec,):
         assert set(_verdicts(b).values()) <= {"ok", "gap", "unknown"}
         assert b["schema_version"] == 1 and {"self_check", "unavailable", "code_checklist", "extra"} <= set(b)
 
@@ -204,39 +204,40 @@ def test_pii_cat_200_ky_tu(tmp_path):
     assert GB.excerpt("x" * 500) == "x" * 199 + "…" and GB.excerpt("  a   b ") == "a b" and GB.excerpt(None) == ""
 
 
-# ---------- plan ----------
+# ---------- hai mục dời từ gate plan cũ, nay nằm ở gate release (ADR-0037) ----------
 
-def test_plan_uoc_luong_phu_thuoc_ngan_sach(tmp_path):
-    db, _, _ = _scenario(tmp_path, to="plan")
-    b = GB.build(GB.load_state(db), "PLAN-P1-1")
+def test_release_uoc_luong_va_ngan_sach_doi_tu_gate_plan(tmp_path):
+    """ADR-0037 bỏ gate plan; hai mục người-tự-kiểm của nó ("ước lượng có cơ sở", "ngân sách token") không mất
+    mà dời sang gate release, giữ nguyên `id` cũ để hồ sơ đã ghi ra đĩa còn đọc được."""
+    db, _, _ = _scenario(tmp_path, to="release")
+    b = GB.build(GB.load_state(db), "REL-001")
     v = _verdicts(b); facts = {it["id"]: it["facts"] for it in b["self_check"]}
-    assert v["plan.uoc-luong-co-so"] == "unknown" and "2/2 ticket có estimate_tokens" in facts["plan.uoc-luong-co-so"][0]
+    assert v["plan.uoc-luong-co-so"] == "unknown" and "1/1 ticket có estimate_tokens" in facts["plan.uoc-luong-co-so"][0]
     assert any("dự án đầu" in f for f in facts["plan.uoc-luong-co-so"])
-    assert v["plan.phu-thuoc-ngoai"] == "unknown" and any("fastapi" in f for f in facts["plan.phu-thuoc-ngoai"])
-    assert v["plan.ngan-sach-token"] == "unknown" and "tổng estimate 8000" in facts["plan.ngan-sach-token"][0]
-    assert [t["ticket_id"] for t in b["extra"]["tickets"]] == ["T1", "T2"]
-    _check_golden("plan", b)
+    assert v["plan.ngan-sach-token"] == "unknown" and "tổng estimate 4000" in facts["plan.ngan-sach-token"][0]
+    src = next(it for it in b["self_check"] if it["id"] == "plan.ngan-sach-token")["sources"][0]
+    assert src["ref"] == "audit-log" and src["key"] == "plan.proposed" and len(src["event_ids"]) == 1
 
 
-def test_plan_gap_khi_budget_vuot_tran_agent_hoac_duoi_estimate(tmp_path):
+def test_release_gap_khi_budget_vuot_tran_agent_hoac_duoi_estimate(tmp_path):
     def h(system, user):
         out = rich_handler(system, user)
         if _agent_of(system) == "delivery-lead" and "items" in out:
             out["items"] = [{**out["items"][0], "budget_tokens": 10_000_000}, {**out["items"][1]}]
         return out
-    db, _, _ = _scenario(tmp_path, h, to="plan")
-    b = GB.build(GB.load_state(db), "PLAN-P1-1")
+    db, _, _ = _scenario(tmp_path, h, to="release")
+    b = GB.build(GB.load_state(db), "REL-001")
     it = next(x for x in b["self_check"] if x["id"] == "plan.ngan-sach-token")
     assert it["verdict"] == "gap" and any("vượt budget_tokens_per_task" in f for f in it["facts"])
 
 
-def test_plan_ok_khi_co_bai_hoc_cho_moi_assignee(tmp_path):
+def test_release_uoc_luong_ok_khi_co_bai_hoc_cho_moi_assignee(tmp_path):
     db, _, orch = _scenario(tmp_path)  # đã nghiệm thu? chưa — nghiệm thu là của khách
     _pub(orch.bus, "acceptance-results", "REL-001", "account-manager",
          {"release_id": "REL-001", "project_id": "P1", "verdict": "accepted", "signed_by": "customer:po"})
     orch.run()
     assert orch.supervisor.lessons(), "sau nghiệm thu có bài học estimate-vs-actual"
-    b = GB.build(GB.load_state(db), "PLAN-P1-1", closed=True)
+    b = GB.build(GB.load_state(db), "REL-001", closed=True)
     it = next(x for x in b["self_check"] if x["id"] == "plan.uoc-luong-co-so")
     assert it["verdict"] == "ok" and any("backend×" in f for f in it["facts"])
 

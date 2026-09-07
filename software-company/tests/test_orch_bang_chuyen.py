@@ -101,7 +101,7 @@ def test_cap_cam_task_cu_cho_ticket_da_vuot_qua_dispatched():
     `run()` (không dừng ở `in_review`), nên ticket đã tới `merged` khi ta phát lại `tasks` gốc."""
     bus = InMemoryBus(); orch = _orch(bus)
     _drive_to_plan(bus, orch)
-    orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    orch.run()
     assert orch.lead.state["T1"] == "merged"
     old = bus.latest("tasks", "T1")
     orch.processed.discard(old.event_id)  # mô phỏng event cũ được phát lại (mở lại bus / xử lý lại)
