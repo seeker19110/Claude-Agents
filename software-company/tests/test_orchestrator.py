@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from company.bus import InMemoryBus
-from company.events import Envelope, SupervisorAction
+from company.events import Envelope, ReviewResult, SupervisorAction
 from company.llm import FakeClient, LLMError
 from company.orchestrator import ENGINEERING, PLAN_INPUTS, ROUTES, Orchestrator, StepResult, check_routes
 from company.orchestrator import main as orch_main
@@ -228,7 +228,10 @@ def test_loi_agent_khong_nhanh_nao_nhan_thi_mo_gate_chu_khong_im_lang():
     dấu đã xử lý, ticket treo `in_review`, không gate nào mở, `status` báo mọi chỉ số XANH trong khi dự án
     đã chết. Đo được khi chạy thật 2026-09-04: ba reviewer cùng hỏng, 13 ticket phụ thuộc chờ vĩnh viễn."""
     def reviewer_hong(system, user):
-        if _agent_of(system) in {"reviewer", "qa-debugger", "security-engineer"}:
+        # Không hỏng lượt threat-model của security-engineer (nhận diện qua `artifacts` trong payload
+        # `approved-specs`) — nếu không plan bị `_check_plan` từ chối vì thiếu threat model (ADR-0037 PR-1),
+        # còn test này muốn phủ nhánh reviewer hỏng ở bước review PR.
+        if _agent_of(system) in {"reviewer", "qa-debugger", "security-engineer"} and "artifacts" not in _inp(user):
             raise LLMError("model không trả về nội dung nào")
         return handler(system, user)
 
@@ -624,8 +627,10 @@ def test_state_song_sot_qua_restart_ca_khi_co_escalation(tmp_path):
     Bài học về chính test bất biến: nó chỉ phủ được những gì kịch bản đi qua."""
     def reviewer_hong(system, user):
         # reviewer hỏng trên `pull-requests` → `_after_error` gọi `supervisor.escalate_gate` (đường DUY NHẤT
-        # sinh action "escalate"; nhánh ticket blocked gọi thẳng `gate.request`, không qua supervisor).
-        if _agent_of(system) in {"reviewer", "qa-debugger", "security-engineer"}:
+        # sinh action "escalate"; nhánh ticket blocked gọi thẳng `gate.request`, không qua supervisor). Loại trừ
+        # lượt threat-model (payload có `artifacts`) — hỏng nó thì `_check_plan` từ chối plan (ADR-0037 PR-1),
+        # không tới được nhánh review PR mà test này muốn phủ.
+        if _agent_of(system) in {"reviewer", "qa-debugger", "security-engineer"} and "artifacts" not in _inp(user):
             raise LLMError("reviewer hỏng")
         return handler(system, user)
 
@@ -820,6 +825,12 @@ def test_clarifier_without_questions_goes_straight_to_spec_writer():
 
 def test_change_request_impact_then_human_decision_then_plan(tmp_path):
     db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=handler))
+    # Dự án đã có plan trước đó (khách đang dùng bản đã giao mới góp ý được) — architecture/api-contract/threat
+    # model đã có trên blackboard từ lần lập kế hoạch đầu, nếu không `_check_plan` từ chối plan CR (ADR-0037 PR-1).
+    orch.blackboard.write("delivery-lead", "architecture", "docs/c4.md", "L1-L2", project_id="P1")
+    orch.blackboard.write("delivery-lead", "api-contract", "openapi.yaml", "v1", project_id="P1")
+    _pub(bus, "review-results", "SPEC-P1", "security-engineer",
+         ReviewResult(ticket_id="SPEC-P1", source="security", verdict="pass").model_dump())
     _pub(bus, "external-feedback", "P1", "human:customer", {"project_id": "P1", "from": "chị Lan", "text": "muốn xuất Excel"})
     orch.run()
     crs = list(bus.replay(topic="change-requests"))

@@ -69,7 +69,9 @@ def test_xung_dot_lap_lai_qua_nguong_moi_tinh_vao_retry_noi_dung(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     def lead_independent(system, user):
         if _agent_of(system) == "delivery-lead" and "P1" in user and "decision" not in _inp(user):
-            return {"items": [{**T1, "budget_tokens": 40_000}, {**T2, "depends_on": [], "risk_tags": [], "budget_tokens": 40_000, "priority": 3}]}
+            return {"items": [{**T1, "budget_tokens": 40_000}, {**T2, "title": "POST /notes", "depends_on": [], "risk_tags": [], "budget_tokens": 40_000, "priority": 3}],
+                    "context_writes": [{"namespace": "architecture", "content_ref": "docs/c4.md", "summary": "L1-L2"},
+                                        {"namespace": "api-contract", "content_ref": "openapi.yaml", "summary": "v1"}]}
         return handler(system, user)
     def th(msgs, tools):
         names = {t.name for t in tools}
@@ -94,7 +96,9 @@ def test_conflict_voids_release_and_ticket_redoes_on_fresh_base(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     def lead_independent(system, user):  # hai ticket độc lập, cùng ghi shared.py khác nhau → ticket sau xung đột
         if _agent_of(system) == "delivery-lead" and "P1" in user and "decision" not in _inp(user):
-            return {"items": [{**T1, "budget_tokens": 40_000}, {**T2, "depends_on": [], "risk_tags": [], "budget_tokens": 40_000, "priority": 3}]}  # đủ ngân sách cho một lần làm lại
+            return {"items": [{**T1, "budget_tokens": 40_000}, {**T2, "title": "POST /notes", "depends_on": [], "risk_tags": [], "budget_tokens": 40_000, "priority": 3}],
+                    "context_writes": [{"namespace": "architecture", "content_ref": "docs/c4.md", "summary": "L1-L2"},
+                                        {"namespace": "api-contract", "content_ref": "openapi.yaml", "summary": "v1"}]}  # đủ ngân sách cho một lần làm lại
         return handler(system, user)
     def th(msgs, tools):
         names = {t.name for t in tools}
@@ -177,7 +181,9 @@ def test_rework_state_survives_restart_and_empty_branch_is_not_integrated(tmp_pa
     repo = _init_repo(tmp_path / "repo"); db = tmp_path / "c.sqlite"
     def lead_independent(system, user):
         if _agent_of(system) == "delivery-lead" and "P1" in user and "decision" not in _inp(user):
-            return {"items": [{**T1, "budget_tokens": 40_000}, {**T2, "depends_on": [], "risk_tags": [], "budget_tokens": 40_000, "priority": 3}]}
+            return {"items": [{**T1, "budget_tokens": 40_000}, {**T2, "title": "POST /notes", "depends_on": [], "risk_tags": [], "budget_tokens": 40_000, "priority": 3}],
+                    "context_writes": [{"namespace": "architecture", "content_ref": "docs/c4.md", "summary": "L1-L2"},
+                                        {"namespace": "api-contract", "content_ref": "openapi.yaml", "summary": "v1"}]}
         return handler(system, user)
     calls = {"n": 0}
     def th(msgs, tools):

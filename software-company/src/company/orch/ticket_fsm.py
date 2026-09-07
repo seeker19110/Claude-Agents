@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..events import BUDGET_FACTOR, Envelope, Task
+from ..events import BUDGET_FACTOR, MAX_TICKET_TOKENS, RISK_HINTS, Envelope, Task
 from ..gates import GateRequest
 from ..llm import LLMError, TransientError
 from ..runner import RunnerError
@@ -95,7 +95,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     if g.context_writes:  # C4, API contract lên blackboard TRƯỚC khi xin gate plan để người duyệt đọc được
         o.runner.write_context("delivery-lead", env, g.context_writes)
     tickets = [Task.model_validate(p) for p in g.payloads]
-    problems = o._check_plan(tickets)
+    problems = o._check_plan(tickets, project)
     n = 1 + sum(1 for p in o.plans.values() if p["project_id"] == project)
     plan_id = f"PLAN-{project}-{n}"
     plan = {"plan_id": plan_id, "project_id": project, "source_event": env.event_id, "source_topic": env.topic,
@@ -203,7 +203,9 @@ def _threat_model(o: Orchestrator, env: Envelope, sid: str, res: StepResult) -> 
         res.actions.append(f"spec_blocked:{sid}"); return False
     res.actions.append(f"threat-model:{sid}:{p['verdict']}"); return True
 
-def _check_plan(o: Orchestrator, tickets: list[Task]) -> list[str]:
+def _check_plan(o: Orchestrator, tickets: list[Task], project: str) -> list[str]:
+    """ADR-0037 PR-1: mọi khoá "Code gửi kèm" của gate plan cũ trở thành một kiểm ở đây, để PR-2 bỏ gate mà
+    không mất kiểm nào (`docs/DAC-TA-TRIEN-KHAI-ADR-0037.md` §2)."""
     ids = {t.ticket_id for t in tickets}; known = ids | set(o.lead.tickets)
     problems = ["kế hoạch rỗng"] if not tickets else []
     if len(ids) != len(tickets): problems.append("ticket_id trùng")
@@ -214,6 +216,19 @@ def _check_plan(o: Orchestrator, tickets: list[Task]) -> list[str]:
         if not t.acceptance: problems.append(f"{t.ticket_id} thiếu acceptance")
         unknown = [d for d in t.depends_on if d not in known]
         if unknown or t.ticket_id in t.depends_on: problems.append(f"{t.ticket_id} depends_on sai {unknown or 'chính nó'}")
+        if t.estimate_days > 1 or (t.estimate_tokens is not None and t.estimate_tokens > MAX_TICKET_TOKENS):
+            problems.append(f"{t.ticket_id} quá 1 ngày/200k token: chia nhỏ")
+        text = " ".join((t.title, " ".join(t.scope), " ".join(t.acceptance))).lower()
+        if not t.risk_tags and any(hint in text for hint in RISK_HINTS):
+            hit = next(hint for hint in RISK_HINTS if hint in text)
+            problems.append(f"{t.ticket_id} chạm {hit} nhưng không có risk_tags")
+    sid = f"SPEC-{project}"
+    if sid in o.missing_threat_model or o.latest("review-results", sid) is None:
+        problems.append(f"thiếu threat model cho {sid}")
+    if o.blackboard:
+        have = o.blackboard.snapshot(project)
+        for ns in ("architecture", "api-contract"):
+            if ns not in have: problems.append(f"blackboard thiếu {ns}")
     cyc = _cycle({t.ticket_id: [d for d in t.depends_on if d in ids] for t in tickets})
     if cyc: problems.append("depends_on vòng: " + " → ".join(cyc))
     return problems

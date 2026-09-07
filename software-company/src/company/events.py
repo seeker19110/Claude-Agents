@@ -34,6 +34,15 @@ GLOBAL_NAMESPACES = frozenset({"knowledge"})
 RISK_TAGS = frozenset({"auth", "payment", "pii", "crypto", "upload", "admin", "external-api"})
 BUDGET_FACTOR = 1.5  # budget_tokens ≥ estimate_tokens × BUDGET_FACTOR (skill cost-estimation)
 
+# ADR-0037 PR-1: ticket vượt trần này phải chia nhỏ trước khi qua `_check_plan` (dời từ mục "Code gửi kèm" của
+# gate plan cũ — mọi khoá gate plan nay là một kiểm ở `_check_plan`, không còn chỗ nào chỉ người mới thấy).
+MAX_TICKET_TOKENS = 200_000
+# Từ khoá trong title/scope/acceptance (so khớp không phân biệt hoa thường) buộc ticket phải khai `risk_tags`.
+RISK_HINTS = frozenset({
+    "auth", "login", "password", "payment", "thanh toán", "pii", "cccd", "email",
+    "crypto", "upload", "admin", "webhook", "external",
+})
+
 SCHEMA_VERSION = 1  # tăng khi envelope hoặc payload của topic đổi không tương thích ngược
 
 
