@@ -54,6 +54,8 @@ Không có `make` (Windows): mỗi target đều có dạng `uv run` tương đ�
 
 Chạy model thật, không API key: mỗi công ty có sẵn hồ sơ **gói Claude + gateway Antigravity** — `make llm` chép
 `llm.claude-gateway.yaml` thành `llm.yaml` là chạy được (cần `claude login` và `cd gateway && make login && make start`).
+`make llm` **từ chối cài** khi máy chưa đăng nhập tài khoản Antigravity nào (`python -m gateway ready`): hồ sơ trỏ
+`base_url` vào daemon, cài lên máy trống là dựng sẵn một cấu hình chắc chắn hỏng ở lượt gọi model đầu tiên.
 Muốn tự khai từ đầu thì sao chép `llm.example.yaml` → `llm.yaml` (bị gitignore), hoặc đặt biến môi trường
 `COMPANY_LLM_*` / `STUDIO_LLM_*` (biến môi trường thắng file và bỏ qua `backends:`). Provider hỗ trợ: `anthropic`, `openai`
 (mọi server OpenAI-compatible: OpenAI, OpenRouter, Ollama, Groq, vLLM, Gemini OpenAI-compat…), `claude-code` (CLI `claude -p`
