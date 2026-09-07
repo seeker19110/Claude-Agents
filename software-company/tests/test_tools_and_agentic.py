@@ -339,7 +339,7 @@ def test_orchestrator_with_repo_produces_verified_prs_and_reviewers_read_diff(tm
     for c in client.calls: by_agent.setdefault(_agent_of(c["system"]), []).append(c)
     rev = _inp(by_agent["reviewer"][0]["user"])
     assert "+def t1():" in rev["diff"] and rev["changed_files"] == ["f_t1.py"], "reviewer đọc diff thật"
-    sec_pr = [c for c in by_agent["security-engineer"] if _inp(c["user"]).get("branch")]
+    sec_pr = [c for c in by_agent["security"] if _inp(c["user"]).get("branch")]
     # security có tool chỉ-đọc → FakeClient gọi 2 lượt (tool + kết luận) cho cùng PR; diff phải có ở lượt đầu
     assert sec_pr and "+def t2():" in _inp(sec_pr[0]["user"])["diff"], "security review PR T2 (risk_tags) đọc diff"
     qa_pr = [c for c in by_agent["qa-debugger"] if c["tools"]]
@@ -757,7 +757,7 @@ def test_reviewer_with_tools_but_no_calls_is_audited(tmp_path):
     _drive_to_plan(bus, orch); orch.run()
     lazy_qa = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "review.no_tool_evidence"]
     # reviewer/security giờ cũng có tool trên PR: không gọi tool nào cũng bị ghi "chỉ là lời khai" như QA
-    assert lazy_qa and {a["agent"] for a in lazy_qa} == {"qa-debugger", "reviewer", "security-engineer"}
+    assert lazy_qa and {a["agent"] for a in lazy_qa} == {"qa-debugger", "reviewer", "security"}
     assert {a["topic"] for a in lazy_qa} == {"pull-requests", "release-events"}
     assert all(a["agent"] == "qa-debugger" for a in lazy_qa if a["topic"] == "release-events")
 

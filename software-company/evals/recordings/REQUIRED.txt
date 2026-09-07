@@ -21,7 +21,7 @@ release-engineer
 researcher
 reviewer
 risk
-security-engineer
+security
 spec-writer
 supervisor
 support-docs

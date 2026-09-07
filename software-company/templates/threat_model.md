@@ -1,7 +1,7 @@
 # Threat model: <dự án> — v<n>
 
 - project_id: P-xx · spec: SPEC-xx · ASVS level: L2|L3
-- Ngày · Tác giả: security-engineer · Người duyệt (Gate 2):
+- Ngày · Tác giả: security · Người duyệt (Gate 2):
 
 ## 1. Data-flow diagram
 ```mermaid

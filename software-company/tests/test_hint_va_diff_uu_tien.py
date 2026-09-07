@@ -5,7 +5,7 @@
    file nào…", hai lượt còn lại agent mò trong bóng tối.
 2. `TicketWorkspace.diff` — mã nguồn đứng TRƯỚC file sinh tự động, và nói rõ file nào bị cắt. Đo được cùng ngày:
    QLKH-012 sinh lại `api/QLKH/openapi.yaml` 804 dòng, `git diff` xếp theo đường dẫn nên nó ăn hết hạn mức và đẩy
-   `qlkh/application/erasure_*.py` ra ngoài; security-engineer kết luận "thiếu diff erasure_*.py" và chặn ticket oan.
+   `qlkh/application/erasure_*.py` ra ngoài; security kết luận "thiếu diff erasure_*.py" và chặn ticket oan.
 """
 from __future__ import annotations
 

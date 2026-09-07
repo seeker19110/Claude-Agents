@@ -241,7 +241,7 @@ def test_claude_code_client_parses_print_json_and_counts_cache_tokens():
 
 def test_claude_code_json_schema_union_nhieu_kieu_thanh_anyof():
     """`claude -p --json-schema` kiểm bằng ajv strictTypes: `type: [X, "null"]` được, union ≥ 2 kiểu không-null bị
-    từ chối "use allowUnionTypes" và CLI thoát mã 1 trước khi gọi model (đo được: security-engineer trên REL-004,
+    từ chối "use allowUnionTypes" và CLI thoát mã 1 trước khi gọi model (đo được: security trên REL-004,
     2026-09-05, vì `review-results.scan_summary`). Chỉ union đó thành `anyOf`; nullable và phần còn lại giữ nguyên;
     schema nhúng trong prompt (stdin) vẫn là bản gốc."""
     from company.llm import cli_json_schema

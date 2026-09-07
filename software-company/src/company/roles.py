@@ -2,8 +2,8 @@
 
 Mọi chỗ khác — bảng route, producer của bus, chủ namespace blackboard, actor của event, `truth.py` bên console —
 tham chiếu hằng ở đây, nên đổi tên một agent chỉ sửa **một** file mã và file front matter của nó. Trong lúc gộp
-21 agent thành 5 (PR-5a..5e) hằng đổi GIÁ TRỊ, không đổi tên: `ROLE.SECURITY` hôm nay là `"security-engineer"`,
-sau PR-5a là `"security"`, code gọi nó không biết gì.
+21 agent thành 5 (PR-5a..5e) hằng đổi GIÁ TRỊ, không đổi tên: `ROLE.SECURITY` trước PR-5a là `"security-engineer"`,
+từ PR-5a là `"security"`, code gọi nó không biết gì.
 
 Ba nhóm hằng, cố ý tách:
 - `ROLE.*` — id agent (khớp `id:` trong front matter; `tests/test_roles.py` đối chiếu hai chiều với `load_agents()`).
@@ -19,7 +19,7 @@ from typing import Final, Literal
 
 
 class ROLE:
-    """Namespace hằng, không khởi tạo. Nhóm theo đích ADR-0037; giá trị HIỆN TẠI là id agent cũ (PR-4 chưa đổi agent)."""
+    """Namespace hằng, không khởi tạo. Nhóm theo đích ADR-0037; hằng của agent chưa gộp vẫn mang id cũ."""
 
     # → `product` (PR-5e): intake + researcher + synthesizer + risk + clarifier + spec-writer + delivery-lead (pha `plan`)
     PRODUCT: Final = "spec-writer"
@@ -40,8 +40,8 @@ class ROLE:
     QA: Final = "qa-debugger"
     TEST_AUTHOR: Final = "test-author"
     REVIEWER: Final = "reviewer"
-    # → `security` (PR-5a): đổi tên 1:1
-    SECURITY: Final = "security-engineer"
+    # → `security` (PR-5a: xong, đổi tên 1:1)
+    SECURITY: Final = "security"
     # → `ops` (PR-5b): release-engineer (pha `deploy`) + support-docs (pha `docs`) + account-manager (pha `account`)
     OPS: Final = "release-engineer"
     SUPPORT_DOCS: Final = "support-docs"

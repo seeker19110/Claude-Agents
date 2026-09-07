@@ -73,7 +73,7 @@ Mỗi mục phải xuất hiện trong báo cáo với đúng một kết luận
 ## Trợ lý chuyên môn nên gọi cùng hồ sơ
 
 - sc-qa-debugger
-- sc-security-engineer
+- sc-security
 - sc-release-engineer
 - sc-delivery-lead
 

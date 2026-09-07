@@ -229,8 +229,8 @@ Sau đó `/gate-brief <ticket>` gọi `sc-qa-debugger` với hồ sơ này. Mụ
 | kind | gọi |
 |---|---|
 | spec | `sc-spec-writer`, `sc-risk` |
-| plan | `sc-delivery-lead`, `sc-security-engineer` (khi có `risk_tags`), `sc-platform` |
-| release | `sc-qa-debugger`, `sc-security-engineer`, `sc-release-engineer` |
+| plan | `sc-delivery-lead`, `sc-security` (khi có `risk_tags`), `sc-platform` |
+| release | `sc-qa-debugger`, `sc-security`, `sc-release-engineer` |
 | acceptance | `sc-account-manager`, `sc-support-docs` |
 | escalation | `sc-qa-debugger` + agent chủ quản ticket (`assignee`) |
 

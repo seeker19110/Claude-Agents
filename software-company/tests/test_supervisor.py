@@ -88,7 +88,7 @@ def test_review_tokens_do_not_count_against_ticket_budget():
     bus = InMemoryBus(); sup = Supervisor(bus)
     bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=_task(budget=1000).model_dump()))
     _audit(bus, "backend", 400)
-    for reviewer in ("reviewer", "qa-debugger", "security-engineer"): _audit(bus, reviewer, 500)
+    for reviewer in ("reviewer", "qa-debugger", "security"): _audit(bus, reviewer, 500)
     assert not sup.actions, "review không được kích hoạt warn/budget_cut"
     b = sup.budgets["T1"]
     assert (b.used, b.review_used) == (400, 1500)

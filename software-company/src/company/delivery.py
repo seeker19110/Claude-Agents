@@ -326,7 +326,7 @@ class DeliveryLead:
         return any(g.subject_id == subject_id and g.kind == kind and g.decision == "approve" for g in self.gate.history)
 
     def _maybe_open_release_gate(self, rid: str) -> None:
-        need = {"qa"} | ({"security"} if self.release_needs_security(rid) else set())
+        need = {SOURCE.QA} | ({SOURCE.SECURITY} if self.release_needs_security(rid) else set())
         got = {s for s, x in self.release_reviews[rid].items() if x.verdict == "pass"} | self.release_waived.get(rid, set())
         if need <= got and not self.replaying and rid not in self.gate.pending and not self._gate_kind_approved(rid, "release"):
             # `threat-model` và `architecture` dời từ gate plan cũ (ADR-0037): bỏ gate plan thì hai khoá đó phải

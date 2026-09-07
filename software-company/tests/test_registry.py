@@ -12,7 +12,7 @@ EXPECTED = {
     # engineering (6)
     "backend", "frontend", "mobile", "database", "platform", "data",
     # quality (4) — ADR-0028 tách vai viết test khỏi vai viết code
-    "reviewer", "qa-debugger", "security-engineer", "test-author",
+    "reviewer", "qa-debugger", "security", "test-author",
     # operations (3)
     "release-engineer", "support-docs", "account-manager",
     # supervision (1)
@@ -116,14 +116,14 @@ def test_context_namespace_read_names_real_namespaces():
     for spec in agents.values():
         assert spec.context_namespace_read is not None, f"{spec.id}: thiếu context_namespace_read"
         assert set(spec.context_namespace_read) <= set(NAMESPACE_OWNERS), spec.id
-    for aid in ("reviewer", "qa-debugger", "security-engineer", "release-engineer", "support-docs", "supervisor"):
+    for aid in ("reviewer", "qa-debugger", "security", "release-engineer", "support-docs", "supervisor"):
         assert agents[aid].max_input_chars and agents[aid].max_input_chars <= 70_000, aid
 
 
 def test_review_tiers_per_adr0021():
     agents = load_agents()
     assert agents["reviewer"].model_tier == "standard" and agents["qa-debugger"].model_tier == "standard"
-    assert agents["security-engineer"].model_tier == "strong", "separation of duties: security giữ tier mạnh"
+    assert agents["security"].model_tier == "strong", "separation of duties: security giữ tier mạnh"
 
 
 # ---------- ADR-0037: skill theo pha ----------

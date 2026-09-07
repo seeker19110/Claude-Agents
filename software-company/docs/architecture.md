@@ -16,7 +16,7 @@
 8. **Ước lượng trước khi làm** (skill cost-estimation): ticket không có `estimate_tokens`
    không được dispatch; budget = estimate × 1.5.
 9. **Bảo mật đi trước code** (ADR-0003): threat model trước ticket đầu; ticket có
-   `risk_tags` cần review của security-engineer, tách khỏi reviewer.
+   `risk_tags` cần review của security, tách khỏi reviewer.
 
 ## Topic
 
@@ -30,12 +30,12 @@ phải có mặt; agent được liệt kê mà không có route phải ghi `(ch
 | requirements-draft | synthesizer | risk, clarifier, researcher (chỉ đọc) | project_id |
 | clarification-questions | clarifier | human gate | project_id |
 | clarification-answers | human gate | clarifier (hỏi lại khi trả lời thiếu), spec-writer (khi đủ) | project_id |
-| approved-specs | spec-writer → human gate `spec` | không có route trong `ROUTES`: security-engineer (threat model, `THREAT_ROUTE`), delivery-lead (plan, `PLAN_INPUTS`), account-manager (chỉ đọc) | project_id |
+| approved-specs | spec-writer → human gate `spec` | không có route trong `ROUTES`: security (threat model, `THREAT_ROUTE`), delivery-lead (plan, `PLAN_INPUTS`), account-manager (chỉ đọc) | project_id |
 | tasks | delivery-lead | test-author (khi bật, ADR-0028), engineering (6 agent) | ticket_id |
 | test-suites | test-author | engineering (6 agent) | ticket_id |
-| pull-requests | engineering | reviewer, qa-debugger, security-engineer (khi risk_tags), test-author (khi có `test_dispute`) | ticket_id |
-| review-results | reviewer, qa-debugger, security-engineer | delivery-lead | ticket_id (hoặc release_id cho QA staging) |
-| release-candidates | delivery-lead | release-engineer, security-engineer | release_id |
+| pull-requests | engineering | reviewer, qa-debugger, security (khi risk_tags), test-author (khi có `test_dispute`) | ticket_id |
+| review-results | reviewer, qa-debugger, security | delivery-lead | ticket_id (hoặc release_id cho QA staging) |
+| release-candidates | delivery-lead | release-engineer, security | release_id |
 | release-events | release-engineer | delivery-lead, qa-debugger (staging), support-docs (production), account-manager (chỉ đọc), human gate | release_id |
 | incidents | support-docs | delivery-lead (plan khi root_cause_class code/ops/design), support-docs (→ research-requests khi requirement) | incident_id |
 | external-feedback | human (khách, người dùng) | support-docs, account-manager | project_id |
@@ -56,7 +56,7 @@ engineering:        đọc shared-context → code trên branch cho tới khi te
 test-author:        PR có test_dispute → xem diff, sửa test hoặc bác bỏ → test-suites(blind=false)
 reviewer:           review-results(source=reviewer, verdict=pass|block, findings[])
 qa-debugger:        review-results(source=qa, verdict=pass|fail, root_cause?)
-security-engineer:  review-results(source=security) — chỉ khi ticket có risk_tags
+security:  review-results(source=security) — chỉ khi ticket có risk_tags
 delivery-lead:      đủ review bắt buộc và tất cả pass → approved → release-candidates
                     có fail/block → tasks(ticket, retry+1, hint); retry ≥ 3 → blocked
                     ticket có depends_on chưa xong → waiting; tự dispatch theo priority khi phụ thuộc approved

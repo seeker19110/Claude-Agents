@@ -30,7 +30,7 @@ NAMESPACE_OWNERS: dict[str, set[str]] = {
 # Namespace phạm vi toàn công ty (không thuộc dự án nào): bài học dùng chung cho mọi dự án.
 GLOBAL_NAMESPACES = frozenset({"knowledge"})
 
-# Ticket có bất kỳ tag nào dưới đây bắt buộc thêm review của security-engineer (ADR-0003).
+# Ticket có bất kỳ tag nào dưới đây bắt buộc thêm review của `security` (ADR-0003).
 RISK_TAGS = frozenset({"auth", "payment", "pii", "crypto", "upload", "admin", "external-api"})
 BUDGET_FACTOR = 1.5  # budget_tokens ≥ estimate_tokens × BUDGET_FACTOR (skill cost-estimation)
 

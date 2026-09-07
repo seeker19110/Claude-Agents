@@ -58,11 +58,11 @@ def handler(system: str, user: str) -> dict:
                                                        {"namespace": "api-contract", "content_ref": "openapi.yaml", "summary": "v1"}]}
     if a in ENGINEERING:
         return {"ticket_id": p["ticket_id"], "branch": f"ticket/{p['ticket_id']}", "pr_ref": "#1", "local_checks": {"lint": True, "tests": True}}
-    if a in {"reviewer", "qa-debugger", "security-engineer"}:
-        src = {"reviewer": "reviewer", "qa-debugger": "qa", "security-engineer": "security"}[a]
+    if a in {"reviewer", "qa-debugger", "security"}:
+        src = {"reviewer": "reviewer", "qa-debugger": "qa", "security": "security"}[a]
         tid = p.get("ticket_id") or p.get("release_id") or f"SPEC-{pid}"
         out = {"ticket_id": tid, "source": src, "verdict": "pass"}
-        if a == "security-engineer" and "artifacts" in p:  # threat model từ spec: ghi blackboard
+        if a == "security" and "artifacts" in p:  # threat model từ spec: ghi blackboard
             return {"payload": out, "context_writes": [{"namespace": "threat-model", "content_ref": "docs/threat-model.md", "summary": "v1"}]}
         return out
     if a == "release-engineer":
@@ -278,10 +278,10 @@ def test_loi_agent_khong_nhanh_nao_nhan_thi_mo_gate_chu_khong_im_lang():
     dấu đã xử lý, ticket treo `in_review`, không gate nào mở, `status` báo mọi chỉ số XANH trong khi dự án
     đã chết. Đo được khi chạy thật 2026-09-04: ba reviewer cùng hỏng, 13 ticket phụ thuộc chờ vĩnh viễn."""
     def reviewer_hong(system, user):
-        # Không hỏng lượt threat-model của security-engineer (nhận diện qua `artifacts` trong payload
+        # Không hỏng lượt threat-model của security (nhận diện qua `artifacts` trong payload
         # `approved-specs`) — nếu không plan bị `_check_plan` từ chối vì thiếu threat model (ADR-0037 PR-1),
         # còn test này muốn phủ nhánh reviewer hỏng ở bước review PR.
-        if _agent_of(system) in {"reviewer", "qa-debugger", "security-engineer"} and "artifacts" not in _inp(user):
+        if _agent_of(system) in {"reviewer", "qa-debugger", "security"} and "artifacts" not in _inp(user):
             raise LLMError("model không trả về nội dung nào")
         return handler(system, user)
 
@@ -297,7 +297,7 @@ def test_loi_agent_khong_nhanh_nao_nhan_thi_mo_gate_chu_khong_im_lang():
 
 
 def test_cau_tra_loi_tich_luy_trong_cung_mot_vong():
-    """Người trả lời bổ sung ở lượt sau (vd. sau khi security-engineer nêu câu hỏi mở) không phải gửi lại
+    """Người trả lời bổ sung ở lượt sau (vd. sau khi security nêu câu hỏi mở) không phải gửi lại
     toàn bộ câu cũ. Trước đây `_answers_complete` chỉ đọc event HIỆN TẠI, nên lượt bổ sung luôn bị coi là
     "thiếu hết các câu trước": spec-writer không bao giờ chạy lại, câu trả lời nằm im trong bus, không audit,
     không báo ai. Đo được khi chạy thật 2026-09-04 với OQ-02/OQ-05 của dự án QLKH."""
@@ -680,7 +680,7 @@ def test_state_song_sot_qua_restart_ca_khi_co_escalation(tmp_path):
         # sinh action "escalate"; nhánh ticket blocked gọi thẳng `gate.request`, không qua supervisor). Loại trừ
         # lượt threat-model (payload có `artifacts`) — hỏng nó thì `_check_plan` từ chối plan (ADR-0037 PR-1),
         # không tới được nhánh review PR mà test này muốn phủ.
-        if _agent_of(system) in {"reviewer", "qa-debugger", "security-engineer"} and "artifacts" not in _inp(user):
+        if _agent_of(system) in {"reviewer", "qa-debugger", "security"} and "artifacts" not in _inp(user):
             raise LLMError("reviewer hỏng")
         return handler(system, user)
 
@@ -770,7 +770,7 @@ def test_review_tren_release_khong_tu_khai_duoc_ticket_id():
     2026-09-06 (QLKH REL-024). Subject của review trên release là của ROUTE: code ghi đè và ghi audit."""
     def sneaky(system, user):
         a, p = _agent_of(system), _inp(user)
-        if a == "security-engineer" and "release_id" in p and "ticket_id" not in p:
+        if a == "security" and "release_id" in p and "ticket_id" not in p:
             return {"ticket_id": p["tickets"][0], "source": "security", "verdict": "pass"}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=sneaky))
@@ -855,7 +855,7 @@ def test_agents_write_blackboard_and_threat_model_precedes_plan():
 
 def test_security_block_on_spec_stops_planning():
     def blocker(system, user):
-        if _agent_of(system) == "security-engineer" and "artifacts" in _inp(user):
+        if _agent_of(system) == "security" and "artifacts" in _inp(user):
             return {"ticket_id": "SPEC-P1", "source": "security", "verdict": "block", "findings": [{"level": "block", "text": "PII không mã hoá"}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=blocker))
@@ -881,7 +881,7 @@ def test_change_request_impact_then_human_decision_then_plan(tmp_path):
     # model đã có trên blackboard từ lần lập kế hoạch đầu, nếu không `_check_plan` từ chối plan CR (ADR-0037 PR-1).
     orch.blackboard.write("delivery-lead", "architecture", "docs/c4.md", "L1-L2", project_id="P1")
     orch.blackboard.write("delivery-lead", "api-contract", "openapi.yaml", "v1", project_id="P1")
-    _pub(bus, "review-results", "SPEC-P1", "security-engineer",
+    _pub(bus, "review-results", "SPEC-P1", "security",
          ReviewResult(ticket_id="SPEC-P1", source="security", verdict="pass").model_dump())
     _pub(bus, "external-feedback", "P1", "human:customer", {"project_id": "P1", "from": "chị Lan", "text": "muốn xuất Excel"})
     orch.run()

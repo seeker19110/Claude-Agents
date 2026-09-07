@@ -4,7 +4,7 @@ cases:
     topic_out: tasks
     context:
       - {actor: spec-writer, namespace: prd, content_ref: PRD.md, summary: "R-12 (Must): khách thanh toán đơn hàng bằng thẻ; R-20 (Should): xem lịch sử đơn"}
-      - {actor: security-engineer, namespace: threat-model, content_ref: threat-model.md, summary: "luồng thanh toán: STRIDE xong, threat model v1"}
+      - {actor: security, namespace: threat-model, content_ref: threat-model.md, summary: "luồng thanh toán: STRIDE xong, threat model v1"}
     input:
       topic: approved-specs
       key: P1

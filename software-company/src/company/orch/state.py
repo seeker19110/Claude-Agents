@@ -65,7 +65,7 @@ class OrchState:
     # cùng sửa một file interface), không phải may rủi thứ tự.
     conflict_retries: Counter[str] = field(default_factory=Counter,
                                            metadata=_src("audit:integration.conflict"))
-    # spec chưa có threat model vì security-engineer lỗi
+    # spec chưa có threat model vì agent `security` lỗi
     missing_threat_model: set[str] = field(default_factory=set,
                                            metadata=_src("audit:threat_model.missing"))
     # project_id → số lần spec bị trả về spec-writer vì `kind=application` mà không có `runtime` hợp lệ (ADR-0031).

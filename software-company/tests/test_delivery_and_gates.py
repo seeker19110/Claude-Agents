@@ -59,7 +59,7 @@ def test_security_block_requests_changes_with_hint():
     bus, _gate, lead = _setup(); lead.plans_ok.add("PLAN")
     lead.dispatch(_task(risk_tags=["auth"]), "PLAN"); _pr(bus)
     _rev(bus, "reviewer", "pass"); _rev(bus, "qa", "pass")
-    bus.publish(Envelope(topic="review-results", key="T1", actor="security-engineer", payload=ReviewResult(
+    bus.publish(Envelope(topic="review-results", key="T1", actor="security", payload=ReviewResult(
         ticket_id="T1", source="security", verdict="block",
         findings=[{"level": "block", "text": "JWT không kiểm tra exp", "location": "auth.py:42"}]).model_dump()))
     assert lead.state["T1"] == "dispatched" and lead.tickets["T1"].retry == 1

@@ -1,4 +1,4 @@
-# Eval cho security-engineer. Chạy: python -m company.evals security-engineer
+# Eval cho security. Chạy: python -m company.evals security
 cases:
   - name: sql-noi-chuoi-tren-endpoint-auth-phai-block
     topic_out: review-results
@@ -21,7 +21,7 @@ cases:
   - name: pr-sach-khong-duoc-block-cho-co
     topic_out: review-results
     context:
-      - {actor: security-engineer, namespace: threat-model, content_ref: threat-model.md, summary: "luồng đơn hàng: ASVS L2, không có threat High tồn đọng"}
+      - {actor: security, namespace: threat-model, content_ref: threat-model.md, summary: "luồng đơn hàng: ASVS L2, không có threat High tồn đọng"}
     input:
       topic: pull-requests
       key: TCK-71

@@ -8,7 +8,7 @@ chiếu với `ROUTES`, vòng đời ticket, trạng thái, human gate). Tiêu c
 
 ```
 yêu cầu thô ─► intake ─► researcher (4 mảng) ─► synthesizer ─► risk ─► clarifier ⇄ người ─► spec-writer
-   ─► GATE spec ─► security-engineer (threat model) ─► delivery-lead (plan, ticket) ─► GATE plan
+   ─► GATE spec ─► security (threat model) ─► delivery-lead (plan, ticket) ─► GATE plan
    ─► [test-author lượt mù] ─► engineering (worktree ticket/<id>, lint/test thật) ─► reviewer + qa-debugger (+ security nếu risk_tags)
    ─► delivery-lead: approved → merge vào company/integration ─► release-candidate
    ─► release-engineer staging ─► ORCHESTRATOR SMOKE (ADR-0029) ─► qa-debugger hồi quy ─► GATE release

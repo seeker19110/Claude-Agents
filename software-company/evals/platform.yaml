@@ -4,7 +4,7 @@ cases:
     topic_out: pull-requests
     context:
       - {actor: delivery-lead, namespace: architecture, content_ref: c4-l2.md, summary: "payment-service chạy container, cần bucket lưu hoá đơn PDF"}
-      - {actor: security-engineer, namespace: threat-model, content_ref: threat-model.md, summary: "hoá đơn chứa dữ liệu cá nhân, bắt buộc mã hoá at-rest"}
+      - {actor: security, namespace: threat-model, content_ref: threat-model.md, summary: "hoá đơn chứa dữ liệu cá nhân, bắt buộc mã hoá at-rest"}
     input:
       topic: tasks
       key: TCK-60

@@ -16,10 +16,10 @@ from test_tools_and_agentic import _init_repo, _repo_tool_handler
 
 def test_threat_model_ghi_o_luot_review_pr_nam_trong_du_an_cua_ticket():
     """pull-requests không mang project_id: trước đây write_context/publish nhận env gốc nên threat-model của
-    security-engineer rơi vào ô toàn cục (hiện ở mọi dự án) và audit produced:* không có project_id."""
+    security rơi vào ô toàn cục (hiện ở mọi dự án) và audit produced:* không có project_id."""
     def h(system, user):
         a, p = _agent_of(system), _inp(user)
-        if a == "security-engineer" and "ticket_id" in p and "artifacts" not in p:
+        if a == "security" and "ticket_id" in p and "artifacts" not in p:
             return {"payload": {"ticket_id": p["ticket_id"], "source": "security", "verdict": "pass"},
                     "context_writes": [{"namespace": "threat-model", "content_ref": "docs/tm.md", "summary": "PR", "content": "# TM từ PR"}]}
         return handler(system, user)
@@ -196,10 +196,10 @@ def test_mo_lai_khong_chay_lai_agent_da_xong_cua_event_do_dang(tmp_path):
                     (f"%{pr.event_id}%",))
     calls_before = len(FakeClient(handler=handler).calls)
     c2 = FakeClient(handler=handler); o2 = Orchestrator(SQLiteBus(db), c2)
-    assert o2.partial.get(pr.event_id) == {"reviewer", "qa-debugger", "security-engineer"}
+    assert o2.partial.get(pr.event_id) == {"reviewer", "qa-debugger", "security"}
     assert any(e.event_id == pr.event_id for e in o2.queue), "event vẫn được xử lý nốt (đánh dấu xong)"
     o2.run()
-    reran = [c for c in c2.calls if _agent_of(c["system"]) in {"reviewer", "qa-debugger", "security-engineer"}
+    reran = [c for c in c2.calls if _agent_of(c["system"]) in {"reviewer", "qa-debugger", "security"}
              and _inp(c["user"]).get("ticket_id") == "T2"]
     assert not reran and len(c2.calls) - calls_before >= 0, "không gọi lại model cho lượt review đã có"
     assert len([e for e in o2.bus.replay(topic="review-results") if e.causation_id == pr.event_id]) == 3
@@ -455,4 +455,4 @@ def test_reviewer_va_security_co_tool_chi_doc_khi_cham_pr():
     (TCK-CR-DEV-001-02, 2026-09-06). Cả ba nguồn review PR phải đọc được worktree."""
     from company.orchestrator import ROUTES
     tools = {r.agent: r.tools for r in ROUTES if r.topic_in == "pull-requests" and r.topic_out == "review-results"}
-    assert tools == {"reviewer": "ro", "qa-debugger": "ro", "security-engineer": "ro"}
+    assert tools == {"reviewer": "ro", "qa-debugger": "ro", "security": "ro"}
