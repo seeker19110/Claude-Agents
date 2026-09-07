@@ -25,7 +25,7 @@ from company.orchestrator import main as orch_main
 from company.registry import Phase, load_agents
 from company.sqlite_bus import SQLiteBus
 
-T1 = {"ticket_id": "T1", "project_id": "P1", "requirement_id": "REQ-1", "assignee": "builder", "title": "GET /orders",
+T1 = {"ticket_id": "T1", "project_id": "P1", "requirement_id": "REQ-1", "assignee": "builder", "stack": "backend", "title": "GET /orders",
       "acceptance": ["given/when/then"], "estimate_tokens": 4_000, "budget_tokens": 6_000, "retry": 0}
 T2 = {**T1, "ticket_id": "T2", "requirement_id": "REQ-2", "title": "POST /payments", "depends_on": ["T1"],
       "risk_tags": ["payment"], "priority": 1}
@@ -48,6 +48,38 @@ def _ops_phase(system: str) -> str:
     return _phase_of(system, "ops", "deploy", "docs", "account")
 
 
+def _product_phase(system: str) -> str:
+    return _phase_of(system, "product", "intake", "research", "spec", "plan")
+
+
+def _la_luot_hoi(system: str, p: dict) -> bool:
+    """Lượt SINH CÂU HỎI của pha `intake` (không phải lượt bóc đề bài). Cùng một pha phục vụ hai đầu vào từ
+    PR-5e, nên test nào muốn thay riêng lượt hỏi phải phân biệt bằng đầu vào chứ không chỉ bằng tên pha."""
+    return _agent_of(system) == "product" and _product_phase(system) == "intake" and ("answers" in p or p.get("kind") == "draft")
+
+
+def _product(system: str, p: dict, pid: str) -> dict:
+    """ADR-0037 PR-5e: bốn pha của `product`. Pha nào chạy là do BẢNG ROUTE, nên mô phỏng cũng đọc pha từ system
+    prompt (`_phase_of`) rồi mới nhìn đầu vào — đúng thứ tự agent thật phải theo."""
+    ph = _product_phase(system)
+    if ph == "intake":
+        if "answers" in p or p.get("kind") == "draft":  # requirements-draft / clarification-answers → hỏi tiếp
+            return {"project_id": pid, "round": 1, "questions": [{"id": "Q1", "text": "?", "options": ["a"], "default": "a"}]}
+        return {"project_id": pid, "kind": "intake", "data": {"goals": ["G1"]}}
+    if ph == "research": return {"project_id": pid, "kind": "researcher", "data": {"domain": {}}}
+    if ph == "spec":
+        if p.get("kind") == "researcher":  # báo cáo 4 mục → draft ĐÃ KÈM risks (lượt `risk` cũ đã bỏ)
+            return {"project_id": pid, "kind": "draft", "requirements": [], "risks": [{"id": "R1", "text": "rủi ro"}]}
+        return {"payload": {"project_id": pid, "status": "pending_human", "kind": "library",
+                            "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}},
+                "context_writes": [{"namespace": "prd", "content_ref": "docs/prd.md", "summary": "PRD v1"}]}
+    if p.get("decision") == "pending":  # pha `plan`: ước lượng impact cho change request
+        return {"actor": "delivery-lead", "action": "change.impact", "project_id": pid,
+                "evidence": json.dumps({"change_id": p["change_id"], "impact": {"estimate_days": 1, "estimate_tokens": 5000}})}
+    return {"items": [T1, T2], "context_writes": [{"namespace": "architecture", "content_ref": "docs/c4.md", "summary": "L1-L2"},
+                                                  {"namespace": "api-contract", "content_ref": "openapi.yaml", "summary": "v1"}]}
+
+
 def _qa_phase(system: str) -> str:
     """`qa[author]` khai `skills: []` nên không có tiêu đề pha nào để nhận ra — mặc định về `author`."""
     return "review" if "# Skills của pha review" in system else "author"
@@ -61,19 +93,7 @@ def handler(system: str, user: str) -> dict:
     """Mô phỏng mọi agent bằng đầu ra hợp lệ tối thiểu; xác định agent qua tiêu đề system prompt."""
     a, p = _agent_of(system), _inp(user)
     pid = p.get("project_id", "P1")
-    if a == "intake": return {"project_id": pid, "kind": "intake", "data": {"goals": ["G1"]}}
-    if a == "researcher": return {"project_id": pid, "kind": "researcher", "data": {"domain": {}}}
-    if a == "synthesizer": return {"project_id": pid, "kind": "draft", "requirements": []}
-    if a == "risk": return {"project_id": pid, "kind": "risk", "risks": [{"id": "R1", "text": "rủi ro"}]}
-    if a == "clarifier": return {"project_id": pid, "round": 1, "questions": [{"id": "Q1", "text": "?", "options": ["a"], "default": "a"}]}
-    if a == "spec-writer": return {"payload": {"project_id": pid, "status": "pending_human", "kind": "library", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}},
-                                   "context_writes": [{"namespace": "prd", "content_ref": "docs/prd.md", "summary": "PRD v1"}]}
-    if a == "delivery-lead":
-        if p.get("decision") == "pending":  # ước lượng impact cho change request
-            return {"actor": "delivery-lead", "action": "change.impact", "project_id": pid,
-                    "evidence": json.dumps({"change_id": p["change_id"], "impact": {"estimate_days": 1, "estimate_tokens": 5000}})}
-        return {"items": [T1, T2], "context_writes": [{"namespace": "architecture", "content_ref": "docs/c4.md", "summary": "L1-L2"},
-                                                       {"namespace": "api-contract", "content_ref": "openapi.yaml", "summary": "v1"}]}
+    if a == "product": return _product(system, p, pid)
     if a in ENGINEERING:
         return {"ticket_id": p["ticket_id"], "branch": f"ticket/{p['ticket_id']}", "pr_ref": "#1", "local_checks": {"lint": True, "tests": True}}
     if a == "qa" and _qa_phase(system) == "author":
@@ -202,7 +222,9 @@ def _pub_env() -> Envelope:
 def test_full_lifecycle_stops_at_gates_and_humans():
     bus = InMemoryBus(); client = FakeClient(handler=handler); orch = Orchestrator(bus, client)
     _drive_to_plan(bus, orch)
-    assert _topics(bus)[:6] == ["research-requests", "research-findings", "research-findings", "requirements-draft",
+    # ADR-0037 PR-5e: chuỗi nghiên cứu còn 5 event, không phải 6 — lượt `risk` riêng (bản `requirements-draft`
+    # thứ hai) đã bỏ, rủi ro nằm ngay trong draft của pha `spec`.
+    assert _topics(bus)[:5] == ["research-requests", "research-findings", "research-findings",
                                 "requirements-draft", "clarification-questions"]
 
     orch.run()
@@ -231,7 +253,9 @@ def test_full_lifecycle_stops_at_gates_and_humans():
     assert all(a["tokens"] == 1300 for a in audits if a["action"].startswith("produced:")), "token thật từ client"
     assert orch.stats["errors"] == 0 and not orch.queue
     tiers = {c["model_tier"] for c in client.calls}
-    assert tiers == {"strong", "standard", "light"}, "model theo tier của từng agent (ADR-0019)"
+    # ADR-0037 PR-5e: `light` biến mất khỏi vòng đời một dự án — hai agent tier `light` (intake, clarifier) nay là
+    # hai pha của `product` (tier `strong`). `supervisor` vẫn `light` nhưng nó không nằm trong chuỗi này.
+    assert tiers == {"strong", "standard"}, "model theo tier của từng agent (ADR-0019)"
 
 
 # ---------- khôi phục từ bus bền vững ----------
@@ -254,9 +278,10 @@ def test_resume_from_sqlite_does_not_redo_work(tmp_path):
     assert [e.event_id for e in o2.queue] == [e.event_id for e in o1.queue]
     o2.run()
     assert o2.lead.state["T1"] == "merged" and o2.lead.state["T2"] == "merged" and o2.stats["errors"] == 0
-    # 8 (nghiên cứu + threat model + plan) + T1: 2 (builder + qa[review]) + REL-001: 2 + T2: 3 (builder +
-    # qa[review] + security; ADR-0037 gộp reviewer và qa-debugger thành MỘT lượt) + REL-002: 3 = 18
-    assert n_calls + len(c2.calls) == 18
+    # 7 (nghiên cứu + threat model + plan; ADR-0037 PR-5e bỏ lượt `risk` nên bớt một) + T1: 2 (builder +
+    # qa[review]) + REL-001: 2 + T2: 3 (builder + qa[review] + security; PR-5c gộp reviewer và qa-debugger thành
+    # MỘT lượt) + REL-002: 3 = 17
+    assert n_calls + len(c2.calls) == 17
 
 
 def test_poll_picks_up_gate_decision_from_other_process(tmp_path):
@@ -307,10 +332,10 @@ def test_paused_ticket_is_deferred_until_resume():
 
 def test_plan_rejected_when_budget_rule_violated():
     def bad(system, user):
-        if _agent_of(system) == "delivery-lead": return {"items": [{**T1, "budget_tokens": 4_000}]}
+        if _agent_of(system) == "product" and _product_phase(system) == "plan": return {"items": [{**T1, "budget_tokens": 4_000}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=bad))
-    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "kind": "library", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
+    _pub(bus, "approved-specs", "P1", "product", {"project_id": "P1", "status": "pending_human", "kind": "library", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert "plan_rejected" in acts and not orch.plans and not orch.lead.tickets
@@ -350,7 +375,7 @@ def test_cau_tra_loi_tich_luy_trong_cung_mot_vong():
     "thiếu hết các câu trước": spec-writer không bao giờ chạy lại, câu trả lời nằm im trong bus, không audit,
     không báo ai. Đo được khi chạy thật 2026-09-04 với OQ-02/OQ-05 của dự án QLKH."""
     def hai_cau(system, user):
-        if _agent_of(system) == "clarifier":
+        if _la_luot_hoi(system, _inp(user)):
             return {"project_id": "P1", "round": 1,
                     "questions": [{"id": "Q1", "text": "?", "options": ["a"], "default": "a"},
                                   {"id": "Q2", "text": "?", "options": ["b"], "default": "b"}]}
@@ -377,7 +402,7 @@ def test_lenh_thu_lai_song_sot_qua_restart(tmp_path):
     lan = {"n": 0}
 
     def hong_lan_dau(system, user):
-        if _agent_of(system) == "researcher":
+        if _agent_of(system) == "product" and _product_phase(system) == "research":
             lan["n"] += 1
             if lan["n"] == 1: raise LLMError("model rớt mạng")
         return handler(system, user)
@@ -414,7 +439,7 @@ def test_khong_chay_lai_viec_da_co_nguoi_lam_xong(tmp_path):
     lan = {"n": 0}
 
     def hong_lan_dau(system, user):
-        if _agent_of(system) == "researcher":
+        if _agent_of(system) == "product" and _product_phase(system) == "research":
             lan["n"] += 1
             if lan["n"] == 1: raise LLMError("model rớt mạng")
         return handler(system, user)
@@ -428,7 +453,7 @@ def test_khong_chay_lai_viec_da_co_nguoi_lam_xong(tmp_path):
     orch.run(max_steps=1)          # ghi `project.retried`, chưa kịp chạy lại thì tiến trình chết
 
     # Trong lúc chờ, việc ĐÃ ĐƯỢC LÀM XONG bằng đường khác: researcher cho ra research-findings cho P1.
-    _pub(bus, "research-findings", "P1", "researcher", {"project_id": "P1", "kind": "researcher", "data": {}})
+    _pub(bus, "research-findings", "P1", "product", {"project_id": "P1", "kind": "researcher", "data": {}})
 
     goi_truoc = lan["n"]
     orch2 = Orchestrator(SQLiteBus(db), FakeClient(handler=hong_lan_dau))
@@ -774,7 +799,7 @@ def test_ton_trong_thoi_gian_cho_backend_da_hen():
     goi = {"n": 0}
 
     def het_quota(system, user):
-        if _agent_of(system) == "intake":
+        if _agent_of(system) == "product" and _product_phase(system) == "intake":
             goi["n"] += 1
             raise TransientError("mọi backend đều đang nghỉ, thử lại sau 1515s")
         return handler(system, user)
@@ -833,7 +858,7 @@ def test_model_error_is_audited_and_loop_continues():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient())  # hết câu trả lời → LLMError
     _pub(bus, "research-requests", "P1", "human", {"project_id": "P1", "description": "x"})
     res = orch.run()
-    assert res[0].actions[0].startswith("error:intake") and orch.stats["errors"] == 1 and not orch.queue
+    assert res[0].actions[0].startswith("error:product") and orch.stats["errors"] == 1 and not orch.queue
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert acts[0] == "llm_error" and "project.stalled" in acts and acts[-1] == "orchestrated"
 
@@ -864,7 +889,7 @@ def test_cli_publish_and_status(tmp_path, capsys, monkeypatch):
     assert json.loads(capsys.readouterr().out)["queue"] == 1
     assert orch_main(["--db", db, "run", "--max-steps", "1"]) == 0  # FakeClient rỗng → lỗi được ghi, không crash
     out = capsys.readouterr().out
-    assert "error:intake" in out and '"errors": 1' in out
+    assert "error:product" in out and '"errors": 1' in out
 
 
 def test_cli_publish_change_request_keys_by_change_id(tmp_path, capsys, monkeypatch):
@@ -880,7 +905,7 @@ def test_cli_publish_change_request_keys_by_change_id(tmp_path, capsys, monkeypa
 
 
 def test_orchestrator_rejects_inconsistent_routes():
-    agents = load_agents(); agents["intake"].reads = ["clarification-answers"]
+    agents = load_agents(); agents["product"].reads = ["clarification-answers"]
     with pytest.raises(ValueError, match="ROUTES lệch"):
         Orchestrator(InMemoryBus(), FakeClient(), agents=agents)
 
@@ -907,7 +932,7 @@ def test_security_block_on_spec_stops_planning():
             return {"ticket_id": "SPEC-P1", "source": "security", "verdict": "block", "findings": [{"level": "block", "text": "PII không mã hoá"}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=blocker))
-    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "kind": "library", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
+    _pub(bus, "approved-specs", "P1", "product", {"project_id": "P1", "status": "pending_human", "kind": "library", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
     assert not orch.plans and not orch.gate.pending
     assert any(e.payload["action"] == "spec_blocked_by_security" for e in bus.replay(topic="audit-log"))
@@ -915,20 +940,20 @@ def test_security_block_on_spec_stops_planning():
 
 def test_clarifier_without_questions_goes_straight_to_spec_writer():
     def quiet(system, user):
-        if _agent_of(system) == "clarifier": return {"project_id": "P1", "round": 1, "questions": []}
+        if _la_luot_hoi(system, _inp(user)): return {"project_id": "P1", "round": 1, "questions": []}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=quiet))
     _pub(bus, "research-requests", "P1", "human", {"project_id": "P1", "description": "x"})
     orch.run()
-    assert [e.actor for e in bus.replay(topic="approved-specs")] == ["spec-writer"] and "SPEC-P1" in orch.gate.pending
+    assert [e.actor for e in bus.replay(topic="approved-specs")] == ["product"] and "SPEC-P1" in orch.gate.pending
 
 
 def test_change_request_impact_then_human_decision_then_plan(tmp_path):
     db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=handler))
     # Dự án đã có plan trước đó (khách đang dùng bản đã giao mới góp ý được) — architecture/api-contract/threat
     # model đã có trên blackboard từ lần lập kế hoạch đầu, nếu không `_check_plan` từ chối plan CR (ADR-0037 PR-1).
-    orch.blackboard.write("delivery-lead", "architecture", "docs/c4.md", "L1-L2", project_id="P1")
-    orch.blackboard.write("delivery-lead", "api-contract", "openapi.yaml", "v1", project_id="P1")
+    orch.blackboard.write("product", "architecture", "docs/c4.md", "L1-L2", project_id="P1")
+    orch.blackboard.write("product", "api-contract", "openapi.yaml", "v1", project_id="P1")
     _pub(bus, "review-results", "SPEC-P1", "security",
          ReviewResult(ticket_id="SPEC-P1", source="security", verdict="pass").model_dump())
     _pub(bus, "external-feedback", "P1", "human:customer", {"project_id": "P1", "from": "chị Lan", "text": "muốn xuất Excel"})
@@ -937,12 +962,12 @@ def test_change_request_impact_then_human_decision_then_plan(tmp_path):
     assert len(crs) == 1 and crs[0].payload["decision"] == "pending"
     assert not list(bus.replay(topic="incidents")), "feedback không phải lỗi → support-docs không mở incident"
     impact = [e for e in bus.replay(topic="audit-log") if e.payload["action"] == "change.impact"]
-    assert impact and impact[0].actor == "delivery-lead"
+    assert impact and impact[0].actor == "product"
     assert orch_main(["--db", str(db), "decide-change", "CR-1", "accepted", "--by", "human:po"]) == 0
     orch.tick()
     cr = list(bus.replay(topic="change-requests"))[-1].payload
     assert cr["decision"] == "accepted" and cr["impact"]["estimate_tokens"] == 5000 and cr["impact"]["decided_by"] == "human:po"
-    assert "PLAN-P1-1" in orch.plans, "CR accepted không đổi requirement → delivery-lead lập kế hoạch thẳng"
+    assert "PLAN-P1-1" in orch.plans, "CR accepted không đổi requirement → `product` pha `plan` lập kế hoạch thẳng"
 
 
 def test_feedback_with_bug_opens_incident_and_requirement_incident_reopens_research():
@@ -1072,10 +1097,10 @@ def test_incomplete_answers_go_back_to_clarifier_then_spec_writer():
 # ---------- F1/F2/F5 (báo cáo mô phỏng donghanhcungban 2026-09-02) ----------
 
 def test_research_agent_error_stalls_project_opens_gate_and_retries_on_approve():
-    """F1: synthesizer lỗi → dự án không có bước tiếp theo. Trước đây: status trống, không gate, không ai biết."""
+    """F1: pha `spec` lỗi → dự án không có bước tiếp theo. Trước đây: status trống, không gate, không ai biết."""
     bad = {"n": 0}
     def flaky(system, user):
-        if _agent_of(system) == "synthesizer" and bad["n"] == 0:
+        if _agent_of(system) == "product" and _product_phase(system) == "spec" and bad["n"] == 0:
             bad["n"] += 1; return {"project_id": "P1", "kind": "draft", "requirements": [{"id": "REQ-1"}]}  # sai schema
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=flaky))
@@ -1083,7 +1108,7 @@ def test_research_agent_error_stalls_project_opens_gate_and_retries_on_approve()
     orch.run()
     assert "requirements-draft" not in _topics(bus) and orch.stats["errors"] == 1
     assert orch.gate.pending["P1"].kind == "escalation" and "P1" in orch.paused, "dự án kẹt phải hiện thành gate"
-    assert orch.status()["stalled"] == {"P1": "synthesizer lỗi trên research-findings: " + orch.stalled["P1"]["error"][:120]}
+    assert orch.status()["stalled"] == {"P1": "product lỗi trên research-findings: " + orch.stalled["P1"]["error"][:120]}
     # khách trả lời câu hỏi chưa tồn tại: dự án đang hoãn → không sinh spec từ đầu vào trống
     _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": []})
     orch.run()
@@ -1103,7 +1128,7 @@ def test_stalled_project_survives_restart_and_reject_closes_it(tmp_path):
     orch.run()
     assert "P1" in orch.stalled
     orch2 = Orchestrator(SQLiteBus(tmp_path / "c.sqlite"), FakeClient())
-    assert orch2.stalled["P1"]["agent"] == "intake" and orch2.gate.pending["P1"].kind == "escalation"
+    assert orch2.stalled["P1"]["agent"] == "product" and orch2.gate.pending["P1"].kind == "escalation"
     orch2.gate.decide("P1", "reject", by="human:lead", reason="huỷ dự án"); orch2.run()
     assert "P1" not in orch2.stalled and not orch2.queue
     assert any(e.payload["action"] == "project.closed" for e in orch2.bus.replay(topic="audit-log"))
@@ -1140,12 +1165,12 @@ def test_republished_spec_does_not_create_second_plan():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
     _drive_to_plan(bus, orch)
     spec = bus.latest("approved-specs", "P1")
-    _pub(bus, "approved-specs", "P1", "spec-writer", spec.payload); orch.run()
+    _pub(bus, "approved-specs", "P1", "product", spec.payload); orch.run()
     assert list(orch.plans) == ["PLAN-P1-1"] and "PLAN-P1-1" not in orch.gate.pending
     a = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "plan.duplicate_spec"]
     assert a and a[0]["existing"] == ["PLAN-P1-1"]
     orch.run()
-    _pub(bus, "approved-specs", "P1", "spec-writer", spec.payload); orch.run()  # sau khi ticket đã giao cũng không lập lại
+    _pub(bus, "approved-specs", "P1", "product", spec.payload); orch.run()  # sau khi ticket đã giao cũng không lập lại
     assert list(orch.plans) == ["PLAN-P1-1"] and set(orch.lead.tickets) == {"T1", "T2"}
 
 
@@ -1156,13 +1181,13 @@ def test_synthesizer_receives_intake_report_with_researcher_findings():
     seen: dict = {}
 
     def h(system: str, user: str) -> dict:
-        if _agent_of(system) == "synthesizer": seen.update(_inp(user))
+        if _agent_of(system) == "product" and _product_phase(system) == "spec": seen.update(_inp(user))
         return handler(system, user)
 
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h))
-    _pub(bus, "research-findings", "P1", "intake", {"project_id": "P1", "kind": "intake",
+    _pub(bus, "research-findings", "P1", "product", {"project_id": "P1", "kind": "intake",
                                                     "data": {"goals": [{"id": "G-1", "text": "đặt lịch online"}]}})
-    _pub(bus, "research-findings", "P1", "researcher", {"project_id": "P1", "kind": "researcher", "data": {"domain": {}}})
+    _pub(bus, "research-findings", "P1", "product", {"project_id": "P1", "kind": "researcher", "data": {"domain": {}}})
     orch.run()
     assert seen["intake"] == {"goals": [{"id": "G-1", "text": "đặt lịch online"}]}
 

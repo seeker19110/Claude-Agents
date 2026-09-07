@@ -64,7 +64,7 @@ def test_runner_main_chay_mot_agent_that_tren_mot_envelope(tmp_path, monkeypatch
 
 def test_runner_publishes_output_and_audit_with_real_tokens():
     bus = InMemoryBus(); bb = Blackboard(bus)
-    bb.write("delivery-lead", "api-contract", "openapi.yaml", "v1")
+    bb.write("product", "api-contract", "openapi.yaml", "v1")
     client = FakeClient(responses=[{"ticket_id": "TCK-1", "source": "reviewer", "verdict": "pass"}], tokens_per_call=(700, 50))
     r = AgentRunner(bus, client, blackboard=bb).run("qa", _pr_env(), "review-results")
     assert r.output.topic == "review-results" and r.output.actor == "qa" and r.tokens == 750
@@ -187,26 +187,26 @@ def test_generate_context_only_bao_loi_khi_agent_khong_so_huu_namespace():
 def test_generate_bao_loi_khi_dau_ra_khong_phai_list_dict():
     bus = InMemoryBus()
     client = FakeClient(responses=[{"items": ["khong-phai-dict"]}])
-    inp = Envelope(topic="approved-specs", key="T1", actor="spec-writer", payload={"ticket_id": "T1"})
+    inp = Envelope(topic="approved-specs", key="T1", actor="product", payload={"ticket_id": "T1"})
     with pytest.raises(RunnerError, match="object hoặc"):
-        AgentRunner(bus, client).generate("delivery-lead", inp, "tasks", many=True)
+        AgentRunner(bus, client).generate("product", inp, "tasks", many=True, phase="plan")
 
 
 def test_generate_bao_loi_khi_context_writes_thieu_truong():
     bus = InMemoryBus()
     client = FakeClient(responses=[{"payload": {"ticket_id": "T1", "branch": "b", "pr_ref": "#1", "local_checks": {}},
                                     "context_writes": [{"namespace": "architecture"}]}])
-    inp = Envelope(topic="approved-specs", key="T1", actor="spec-writer", payload={"ticket_id": "T1"})
+    inp = Envelope(topic="approved-specs", key="T1", actor="product", payload={"ticket_id": "T1"})
     with pytest.raises(RunnerError, match="context_writes phải là"):
-        AgentRunner(bus, client).generate("delivery-lead", inp, "tasks")
+        AgentRunner(bus, client).generate("product", inp, "tasks", phase="plan")
 
 
 def test_write_context_bo_qua_namespace_khong_thuoc_agent():
-    """spec-writer chỉ sở hữu namespace `prd`: ghi vào namespace khác phải bị từ chối và audit `context_rejected`."""
+    """`product` không sở hữu namespace `threat-model`: ghi vào namespace khác phải bị từ chối và audit `context_rejected`."""
     bus = InMemoryBus(); bb = Blackboard(bus)
     runner = AgentRunner(bus, FakeClient(), blackboard=bb)
-    done = runner.write_context("spec-writer", _pr_env(),
-                                [{"namespace": "architecture", "content_ref": "x", "summary": "s"}])
+    done = runner.write_context("product", _pr_env(),
+                                [{"namespace": "threat-model", "content_ref": "x", "summary": "s"}])
     assert done == []
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert "context_rejected" in acts
@@ -215,7 +215,7 @@ def test_write_context_bo_qua_namespace_khong_thuoc_agent():
 def test_write_context_bo_qua_khi_khong_co_blackboard():
     bus = InMemoryBus()
     runner = AgentRunner(bus, FakeClient(), blackboard=None)
-    done = runner.write_context("spec-writer", _pr_env(), [{"namespace": "prd", "content_ref": "x", "summary": "s"}])
+    done = runner.write_context("product", _pr_env(), [{"namespace": "prd", "content_ref": "x", "summary": "s"}])
     assert done == []
     assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["context_rejected"]
 
@@ -355,10 +355,10 @@ def test_persistent_gate_rebuilds_from_audit_log(tmp_path):
 
 def test_gate_cli_roundtrip(tmp_path, capsys):
     db = str(tmp_path / "g.sqlite")
-    assert gate_main(["--db", db, "request", "spec", "SPEC-1", "--by", "spec-writer", "--checklist", "prd,ac"]) == 0
+    assert gate_main(["--db", db, "request", "spec", "SPEC-1", "--by", "product", "--checklist", "prd,ac"]) == 0
     assert gate_main(["--db", db, "list"]) == 0
     assert "SPEC-1" in capsys.readouterr().out
-    assert gate_main(["--db", db, "approve", "SPEC-1", "--by", "spec-writer"]) == 3, "four-eyes"
+    assert gate_main(["--db", db, "approve", "SPEC-1", "--by", "product"]) == 3, "four-eyes"
     assert gate_main(["--db", db, "approve", "SPEC-1", "--by", "human:po", "--reason", "ok"]) == 0
     assert gate_main(["--db", db, "approve", "SPEC-1", "--by", "human:po"]) == 2, "không còn chờ"
     assert PersistentGate(SQLiteBus(db)).is_approved("SPEC-1")
@@ -366,9 +366,9 @@ def test_gate_cli_roundtrip(tmp_path, capsys):
 
 def test_gate_cli_request_bao_loi_thieu_subject_id_hoac_checklist(tmp_path, capsys):
     db = str(tmp_path / "g2.sqlite")
-    assert gate_main(["--db", db, "request", "spec", "  ", "--by", "spec-writer", "--checklist", "prd"]) == 2
+    assert gate_main(["--db", db, "request", "spec", "  ", "--by", "product", "--checklist", "prd"]) == 2
     assert "subject_id không được rỗng" in capsys.readouterr().err
-    assert gate_main(["--db", db, "request", "spec", "SPEC-2", "--by", "spec-writer"]) == 2
+    assert gate_main(["--db", db, "request", "spec", "SPEC-2", "--by", "product"]) == 2
     assert "cần --checklist" in capsys.readouterr().err
 
 
@@ -519,8 +519,15 @@ def _input_payload(user: str) -> dict:
     return json.loads(user.split("```json\n", 1)[1].split("\n```", 1)[0])
 
 
-def test_run_eval_researcher_offline():
+_CA_RESEARCH = {"de-bai-day-du-phai-ra-4-muc-co-nguon", "khong-co-codebase-phai-ghi-khong-ap-dung-khong-bia"}
+
+
+def test_run_eval_product_research_offline():
+    """Chỉ chấm hai ca pha `research` của `product` — client giả này mô phỏng đúng một pha, chạy cả 16 ca sẽ đo
+    lỗi của chính client chứ không đo gì về agent."""
     def handler(system: str, user: str) -> dict:
+        if "# Skills của pha research" not in system:
+            raise LLMError("client giả này chỉ mô phỏng pha `research`")   # ca pha khác: run_eval ghi FAIL, ta lọc ra
         p = _input_payload(user); goal = p["data"]["goal"]; has_repo = any("repo" in a for a in p["data"].get("attachments", []))
         return {"project_id": p["project_id"], "kind": "researcher", "sources": ["brief"], "data": {
             "domain": {"glossary": ["lịch hẹn", "chi nhánh", "lễ tân"], "processes": ["đặt → xác nhận → nhắc"],
@@ -529,7 +536,7 @@ def test_run_eval_researcher_offline():
             "codebase": {"architecture": "HIS export CSV", "debt": [], "touchpoints": ["CSV"]} if has_repo else "không áp dụng: sản phẩm mới, chưa có codebase",
             "tech": {"options": ["Next.js + Postgres"], "licenses": ["MIT"], "costs": {"monthly_usd": 40},
                      "ai_risks": ["prompt injection", "chi phí LLM"] if "AI" in goal else []}}}
-    res = run_eval("researcher", FakeClient(handler=handler))
+    res = [r for r in run_eval("product", FakeClient(handler=handler)) if r.name in _CA_RESEARCH]
     assert [r.passed for r in res] == [True, True], [(r.name, r.failures) for r in res]
 
 

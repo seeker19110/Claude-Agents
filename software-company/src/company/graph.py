@@ -13,9 +13,9 @@ from .registry import AgentSpec, load_agents
 from .roles import ROLE
 
 # Chuỗi tuyến tính từ yêu cầu thô đến kế hoạch. `domain/ux-designer/codebase/tech-scout` của bản đầu đã bị ADR-0006
-# gộp vào `researcher` và ADR-0009 bỏ hẳn `ux-designer`; danh sách dưới đây là tên agent thật, có kiểm lúc dựng graph.
-RESEARCH_ORDER: tuple[str, ...] = (ROLE.INTAKE, ROLE.RESEARCHER, ROLE.SYNTHESIZER, ROLE.RISK, ROLE.CLARIFIER, ROLE.PRODUCT,
-                                   ROLE.SECURITY, ROLE.LEAD)
+# gộp vào `researcher` và ADR-0009 bỏ hẳn `ux-designer`; ADR-0037 PR-5e gộp cả bảy vai nghiên cứu/spec/plan vào
+# `product` (bốn PHA, xem `roles.PHASE`) nên chuỗi chỉ còn hai node: danh sách là tên agent thật, kiểm lúc dựng graph.
+RESEARCH_ORDER: tuple[str, ...] = (ROLE.PRODUCT, ROLE.SECURITY)
 
 
 def research_order(agents: dict[str, AgentSpec] | None = None) -> list[str]:

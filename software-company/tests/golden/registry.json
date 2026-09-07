@@ -28,89 +28,6 @@
       "pull-requests"
     ]
   },
-  "clarifier": {
-    "block": "research",
-    "budget_tokens_per_task": 20000,
-    "context_namespace_write": null,
-    "max_retries": 2,
-    "model_tier": "light",
-    "reads": [
-      "requirements-draft",
-      "clarification-answers"
-    ],
-    "skills": [
-      "requirements-engineering"
-    ],
-    "skills_core": [
-      "technical-writing"
-    ],
-    "timeout_minutes": 30,
-    "version": 8,
-    "writes": [
-      "clarification-questions"
-    ]
-  },
-  "delivery-lead": {
-    "block": "delivery",
-    "budget_tokens_per_task": 100000,
-    "context_namespace_write": [
-      "architecture",
-      "api-contract"
-    ],
-    "max_retries": 3,
-    "model_tier": "strong",
-    "reads": [
-      "approved-specs",
-      "review-results",
-      "incidents",
-      "change-requests",
-      "acceptance-results"
-    ],
-    "skills": [
-      "project-management",
-      "architecture",
-      "cost-estimation"
-    ],
-    "skills_core": [
-      "api-contract",
-      "risk-analysis",
-      "release",
-      "event-driven-architecture",
-      "incident-management",
-      "customer-acceptance"
-    ],
-    "timeout_minutes": 120,
-    "version": 13,
-    "writes": [
-      "tasks",
-      "release-candidates",
-      "audit-log"
-    ]
-  },
-  "intake": {
-    "block": "research",
-    "budget_tokens_per_task": 20000,
-    "context_namespace_write": null,
-    "max_retries": 1,
-    "model_tier": "light",
-    "reads": [
-      "research-requests",
-      "clarification-answers",
-      "change-requests"
-    ],
-    "skills": [
-      "requirements-engineering",
-      "domain-research"
-    ],
-    "skills_core": [
-      "customer-acceptance"
-    ],
-    "timeout_minutes": 30,
-    "version": 9,
-    "writes": [
-      "research-findings"
-    ]
-  },
   "ops": {
     "block": "operations",
     "budget_tokens_per_task": 60000,
@@ -141,6 +58,47 @@
       "acceptance-results"
     ]
   },
+  "product": {
+    "block": "research",
+    "budget_tokens_per_task": 100000,
+    "context_namespace_write": [
+      "prd",
+      "glossary",
+      "design",
+      "architecture",
+      "api-contract"
+    ],
+    "max_retries": 2,
+    "model_tier": "strong",
+    "reads": [
+      "research-requests",
+      "research-findings",
+      "requirements-draft",
+      "clarification-answers",
+      "change-requests",
+      "approved-specs",
+      "incidents",
+      "acceptance-results",
+      "review-results"
+    ],
+    "skills": [
+      "requirements-engineering",
+      "technical-writing"
+    ],
+    "skills_core": [
+      "customer-acceptance"
+    ],
+    "timeout_minutes": 120,
+    "version": 1,
+    "writes": [
+      "research-findings",
+      "requirements-draft",
+      "clarification-questions",
+      "approved-specs",
+      "tasks",
+      "audit-log"
+    ]
+  },
   "qa": {
     "block": "quality",
     "budget_tokens_per_task": 60000,
@@ -165,63 +123,6 @@
     "writes": [
       "test-suites",
       "review-results"
-    ]
-  },
-  "researcher": {
-    "block": "research",
-    "budget_tokens_per_task": 120000,
-    "context_namespace_write": [
-      "glossary",
-      "design"
-    ],
-    "max_retries": 1,
-    "model_tier": "strong",
-    "reads": [
-      "research-findings",
-      "requirements-draft"
-    ],
-    "skills": [
-      "domain-research",
-      "tech-evaluation",
-      "codebase-analysis",
-      "ui-ux-design",
-      "legacy-modernization"
-    ],
-    "skills_core": [
-      "accessibility",
-      "license-compliance",
-      "cost-estimation",
-      "ai-feature-engineering",
-      "requirements-engineering"
-    ],
-    "timeout_minutes": 120,
-    "version": 10,
-    "writes": [
-      "research-findings"
-    ]
-  },
-  "risk": {
-    "block": "research",
-    "budget_tokens_per_task": 40000,
-    "context_namespace_write": null,
-    "max_retries": 1,
-    "model_tier": "strong",
-    "reads": [
-      "requirements-draft"
-    ],
-    "skills": [
-      "risk-analysis"
-    ],
-    "skills_core": [
-      "threat-modeling",
-      "privacy-compliance",
-      "ai-governance",
-      "license-compliance"
-    ],
-    "timeout_minutes": 45,
-    "version": 7,
-    "writes": [
-      "requirements-draft"
     ]
   },
   "security": {
@@ -252,31 +153,6 @@
       "review-results"
     ]
   },
-  "spec-writer": {
-    "block": "research",
-    "budget_tokens_per_task": 80000,
-    "context_namespace_write": "prd",
-    "max_retries": 1,
-    "model_tier": "strong",
-    "reads": [
-      "requirements-draft",
-      "clarification-answers"
-    ],
-    "skills": [
-      "requirements-engineering",
-      "technical-writing"
-    ],
-    "skills_core": [
-      "customer-acceptance",
-      "ui-ux-design",
-      "accessibility"
-    ],
-    "timeout_minutes": 90,
-    "version": 9,
-    "writes": [
-      "approved-specs"
-    ]
-  },
   "supervisor": {
     "block": "supervision",
     "budget_tokens_per_task": 40000,
@@ -300,28 +176,6 @@
     "version": 13,
     "writes": [
       "supervisor-actions"
-    ]
-  },
-  "synthesizer": {
-    "block": "research",
-    "budget_tokens_per_task": 60000,
-    "context_namespace_write": null,
-    "max_retries": 1,
-    "model_tier": "strong",
-    "reads": [
-      "research-findings"
-    ],
-    "skills": [
-      "requirements-engineering"
-    ],
-    "skills_core": [
-      "project-management",
-      "risk-analysis"
-    ],
-    "timeout_minutes": 60,
-    "version": 9,
-    "writes": [
-      "requirements-draft"
     ]
   }
 }

@@ -1,4 +1,4 @@
-"""Máy trạng thái TICKET: gate spec → threat model → delivery-lead sinh ticket → `_check_plan` → dispatch; event
+"""Máy trạng thái TICKET: gate spec → threat model → `product` pha `plan` sinh ticket → `_check_plan` → dispatch; event
 cũ bị vượt (superseded); ticket vào trạng thái cuối (ADR-0034, tách khỏi orchestrator.py).
 
 Mỗi hàm nhận `o: Orchestrator` làm tham số đầu, gán làm method trên `Orchestrator`
@@ -12,10 +12,10 @@ from typing import TYPE_CHECKING
 from ..events import BUDGET_FACTOR, MAX_TICKET_TOKENS, RISK_HINTS, Envelope, Task
 from ..gates import GateRequest
 from ..llm import LLMError, TransientError
-from ..roles import ROLE, SOURCE
+from ..roles import PHASE, ROLE, SOURCE
 from ..runner import RunnerError
 from .fsm import Transition
-from .routes import PLAN_INPUTS, SPEC_RUNTIME_REWORKS, Route, _with_draft, spec_runtime_gap
+from .routes import PLAN_INPUTS, SPEC_RUNTIME_REWORKS, spec_route, spec_runtime_gap
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
@@ -76,7 +76,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
             o._mark(env, res); return res
         live = [pid for pid, p in o.plans.items() if p["project_id"] == project and p["source_topic"] == "approved-specs"]
         if live:
-            # Spec publish lặp (spec-writer chạy lại, người publish hai lần) không được sinh plan thứ hai cho cùng
+            # Spec publish lặp (pha `spec` chạy lại, người publish hai lần) không được sinh plan thứ hai cho cùng
             # dự án: ticket trùng, hai lần giao cho một việc. ADR-0037 bỏ gate plan nên `o.plans` chỉ chứa kế hoạch
             # đã qua `_check_plan` và đã dispatch — có mặt ở đây là đang sống, không cần hỏi gate nữa.
             o._audit("plan.duplicate_spec", {"project_id": project, "event_id": env.event_id, "existing": live}, project_id=project)
@@ -84,17 +84,17 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     cal = o.supervisor.calibration()  # vòng học: bài học estimate-vs-actual quay lại người ước lượng
     inp = env.model_copy(update={"payload": {**env.payload, "estimate_calibration": cal}}) if cal else env
     try:
-        g = o.runner.generate(ROLE.LEAD, inp, "tasks", many=True)
+        g = o.runner.generate(ROLE.PRODUCT, inp, "tasks", many=True, phase=PHASE.PLAN)
     except TransientError as e:
-        res.actions.append(f"transient:delivery-lead:{str(e)[:120]}")
+        res.actions.append(f"transient:{ROLE.PRODUCT}:{str(e)[:120]}")
         with o._lock: o.stats["transient"] += 1
-        return o._defer(env, res, "transient:delivery-lead")
+        return o._defer(env, res, f"transient:{ROLE.PRODUCT}")
     except (RunnerError, LLMError) as e:
-        res.actions.append(f"error:delivery-lead:{str(e)[:120]}")
+        res.actions.append(f"error:{ROLE.PRODUCT}:{str(e)[:120]}")
         with o._lock: o.stats["errors"] += 1
         o._mark(env, res); return res
     if g.context_writes:  # C4, API contract lên blackboard TRƯỚC `_check_plan` để nó thấy được (ADR-0037)
-        o.runner.write_context(ROLE.LEAD, env, g.context_writes)
+        o.runner.write_context(ROLE.PRODUCT, env, g.context_writes)
     tickets = [Task.model_validate(p) for p in g.payloads]
     problems = o._check_plan(tickets, project)
     n = 1 + sum(1 for p in o.plans.values() if p["project_id"] == project)
@@ -103,7 +103,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
             "tickets": [t.model_dump() for t in tickets], "problems": problems,
             "threat_model": "missing" if f"SPEC-{project}" in o.missing_threat_model else "ok"}
     if problems:
-        o._audit("plan_rejected", plan, actor=ROLE.LEAD, tokens=g.tokens, cost=g.cost_usd, project_id=project)
+        o._audit("plan_rejected", plan, actor=ROLE.PRODUCT, tokens=g.tokens, cost=g.cost_usd, project_id=project)
         res.actions.append(f"plan_rejected:{'; '.join(problems)[:120]}")
         with o._lock: o.stats["errors"] += 1
         # Kế hoạch bị từ chối là ngõ cụt: không ticket nào được tạo, không gate nào mở, và không có cơ chế
@@ -116,14 +116,14 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
         # không tồn tại, không gì xảy ra. Đo được 2026-09-06 (CR-STAGE-001, PLAN-QLKH-5 rỗng): duyệt xong hàng
         # đợi rỗng, phải phát lại decide-change bằng tay.
         with o._lock:
-            o.unhandled[project] = {"agent": ROLE.LEAD, "topic": env.topic, "event_id": env.event_id,
+            o.unhandled[project] = {"agent": ROLE.PRODUCT, "topic": env.topic, "event_id": env.event_id,
                                        "subject": project, "error": f"plan_rejected: {'; '.join(problems)[:200]}"}
         if project not in o.gate.pending:
-            o.gate.request(GateRequest(kind="escalation", subject_id=project, created_by=ROLE.LEAD,
+            o.gate.request(GateRequest(kind="escalation", subject_id=project, created_by=ROLE.PRODUCT,
                                           checklist=["plan_problems", "decision:retry|close"]))
     else:
         o.plans[plan_id] = plan
-        o._audit("plan.proposed", plan, actor=ROLE.LEAD, tokens=g.tokens, cost=g.cost_usd, project_id=project)
+        o._audit("plan.proposed", plan, actor=ROLE.PRODUCT, tokens=g.tokens, cost=g.cost_usd, project_id=project)
         # ADR-0037: không còn gate plan. `_check_plan` vừa chạy XONG và không trả problem nào — đó là nguồn sự thật
         # duy nhất cho phép giao ticket, nên ghi vào `lead.plans_ok` (guard trong `DeliveryLead.dispatch`) rồi giao
         # ngay. Người vẫn ký hai đầu: gate spec trước đó, gate release sau đó.
@@ -136,10 +136,10 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
 
 def _spec_runtime_missing(o: Orchestrator, env: Envelope, project: str, gap: str, res: StepResult) -> StepResult:
     """ADR-0031: spec ứng dụng không có `runtime` hợp lệ thì KHÔNG mở gate spec — người ký Gate 1 không được đặt
-    trước một PRD mà câu "chạy cho tôi xem" chưa có câu trả lời. Thay vào đó trả về spec-writer với lý do (`hint`)
+    trước một PRD mà câu "chạy cho tôi xem" chưa có câu trả lời. Thay vào đó trả về `product` pha `spec` với lý do (`hint`)
     đúng như `request_changes` của người; quá `SPEC_RUNTIME_REWORKS` lần vẫn thiếu → escalation cấp dự án, cùng
     khuôn với kế hoạch bị `_check_plan` từ chối (approve = chạy lại event nguồn, reject = bỏ).
-    Khoá theo `event_id` của spec (mỗi lần spec-writer publish là một event mới, không nuốt lần hai — khuôn 3
+    Khoá theo `event_id` của spec (mỗi lần `product` publish một spec là một event mới, không nuốt lần hai — khuôn 3
     `TRAPS.md`); bộ đếm theo dự án dựng lại từ audit (khuôn 2)."""
     with o._lock:
         o.spec_runtime_reworks[project] += 1; n = o.spec_runtime_reworks[project]
@@ -154,13 +154,11 @@ def _spec_runtime_missing(o: Orchestrator, env: Envelope, project: str, gap: str
         hint = f"orchestrator từ chối mở gate spec (lần {n}): {gap}"
         prev = {k: env.payload.get(k) for k in ("kind", "runtime", "artifacts")}
         inp = cause.model_copy(update={"payload": {**cause.payload, "hint": hint, "previous_spec": prev}})
-        o._recall(ROLE.PRODUCT, cause)  # `partial` đã ghi spec-writer cho event nguồn: gọi lại là CHỦ Ý
-        route = Route(cause.topic, ROLE.PRODUCT, "approved-specs",
-                      enrich=None if cause.topic == "requirements-draft" else _with_draft)
-        o._call(ROLE.PRODUCT, inp, route, res)
+        o._recall(ROLE.PRODUCT, cause)  # `partial` đã ghi `product` cho event nguồn: gọi lại là CHỦ Ý
+        o._call(ROLE.PRODUCT, inp, spec_route(cause.topic), res)
         res.actions.append(f"spec_runtime_missing:{project}:rework:{n}")
         o._mark(env, res); return res
-    why = gap if cause is not None else f"{gap}; không có requirements-draft để spec-writer làm lại"
+    why = gap if cause is not None else f"{gap}; không có requirements-draft để pha `spec` làm lại"
     o._audit("spec.runtime_escalated", {"project_id": project, "event_id": env.event_id, "attempts": n, "reason": why,
                                            "source_event": cause.event_id if cause else None,
                                            "source_topic": cause.topic if cause else None}, project_id=project)
@@ -217,6 +215,11 @@ def _check_plan(o: Orchestrator, tickets: list[Task], project: str) -> list[str]
         if t.estimate_tokens is None: problems.append(f"{t.ticket_id} thiếu estimate_tokens")
         elif t.budget_tokens < t.estimate_tokens * BUDGET_FACTOR: problems.append(f"{t.ticket_id} budget < estimate×{BUDGET_FACTOR}")
         if not t.acceptance: problems.append(f"{t.ticket_id} thiếu acceptance")
+        # ADR-0037 §4.2: `stack` chọn bộ skill mà `builder` được nạp cho ticket này. Kiểm ở ĐÂY chứ không đặt
+        # `required` trong `tasks.json` (§13): bus từ chối một ticket là kế hoạch chết giữa chừng — vài ticket đã
+        # publish, phần còn lại rơi vào `invalid_output` — còn ở đây cả kế hoạch bị trả về cho `product` sửa,
+        # kèm tên ticket thiếu. Thiếu `stack` mà lọt xuống builder thì ticket chạy bằng prompt chung, không ai đỏ.
+        if not t.stack: problems.append(f"{t.ticket_id} thiếu stack")
         unknown = [d for d in t.depends_on if d not in known]
         if unknown or t.ticket_id in t.depends_on: problems.append(f"{t.ticket_id} depends_on sai {unknown or 'chính nó'}")
         if t.estimate_days > 1 or (t.estimate_tokens is not None and t.estimate_tokens > MAX_TICKET_TOKENS):
@@ -283,10 +286,10 @@ def _act_plan(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
 
 
 def _act_clarification_fallback(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
-    """Clarifier không còn câu hỏi (hoặc quá round 2 → assumption): spec-writer đi thẳng từ draft sau risk."""
+    """Pha `intake` không còn câu hỏi nào (hoặc quá round 2 → assumption): đi thẳng pha `spec` từ bản draft."""
     draft = o.latest("requirements-draft", env.key)
     if draft is not None:
-        o._call(ROLE.PRODUCT, draft, Route("requirements-draft", ROLE.PRODUCT, "approved-specs"), res)
+        o._call(ROLE.PRODUCT, draft, spec_route("requirements-draft"), res)
     return False
 
 

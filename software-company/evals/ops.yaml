@@ -118,7 +118,7 @@ cases:
     phase: account
     topic_out: change-requests
     context:
-      - {actor: spec-writer, namespace: prd, content_ref: docs/prd.md, summary: "PRD P1 v1: REQ-1..REQ-5, out-of-scope: xuất Excel"}
+      - {actor: product, namespace: prd, content_ref: docs/prd.md, summary: "PRD P1 v1: REQ-1..REQ-5, out-of-scope: xuất Excel"}
     input:
       topic: external-feedback
       key: P1

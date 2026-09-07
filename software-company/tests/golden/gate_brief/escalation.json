@@ -33,7 +33,7 @@
       {
         "action": "builder: invalid_output",
         "at": "<…>",
-        "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id': 'T1', 'nonsense': True}, input_type=dict] For further inform…"
+        "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id': 'T1', 'nons...ue, '_phase': 'backend'}, input_type=dict] For…"
       },
       {
         "action": "tasks retry=1",
@@ -43,7 +43,7 @@
       {
         "action": "builder: invalid_output",
         "at": "<…>",
-        "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id': 'T1', 'nonsense': True}, input_type=dict] For further inform…"
+        "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id': 'T1', 'nons...ue, '_phase': 'backend'}, input_type=dict] For…"
       },
       {
         "action": "tasks retry=2",
@@ -53,7 +53,7 @@
       {
         "action": "builder: invalid_output",
         "at": "<…>",
-        "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id': 'T1', 'nonsense': True}, input_type=dict] For further inform…"
+        "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id': 'T1', 'nons...ue, '_phase': 'backend'}, input_type=dict] For…"
       },
       {
         "action": "delivery-lead: ticket.blocked",

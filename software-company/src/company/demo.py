@@ -38,8 +38,8 @@ def run() -> None:
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8")  # Windows console cp1252
     bus = InMemoryBus(); bb = Blackboard(bus); gate = HumanGate(); sup = Supervisor(bus)
     lead = DeliveryLead(bus, gate)
-    bb.write(ROLE.LEAD, "architecture", "docs/c4.md", "C4 L1-L2")
-    bb.write(ROLE.LEAD, "api-contract", "openapi.yaml", "v1")
+    bb.write(ROLE.PRODUCT, "architecture", "docs/c4.md", "C4 L1-L2")
+    bb.write(ROLE.PRODUCT, "api-contract", "openapi.yaml", "v1")
     bb.write(ROLE.SECURITY, "threat-model", "docs/threat-model.md", "v1: T-01..T-06")
     bb.write(ROLE.OPS, "contract", "docs/sow.md", "SOW + kịch bản UAT map Must")
     # ADR-0037: người ký gate SPEC; kế hoạch không còn gate — `_check_plan` của orchestrator cho phép giao ticket

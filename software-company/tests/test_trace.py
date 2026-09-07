@@ -39,8 +39,8 @@ def test_ticket_ra_du_gate_va_retry(tmp_path):
     assert s["errors"] >= 3 and any(r["action"] == "invalid_output" for r in t["rows"])
     # intake → deploy: mốc đầu tiên là yêu cầu của người, mốc agent có tier từ registry
     assert t["rows"][0]["topic"] == "research-requests" and t["rows"][0]["actor"] == "human:sales"
-    intake = next(r for r in t["rows"] if r["agent"] == "intake" and r["action"] == "produced:research-findings")
-    assert intake["tier"] == orch.agents["intake"].model_tier and intake["model"] is not None
+    intake = next(r for r in t["rows"] if r["agent"] == "product" and r["action"] == "produced:research-findings")
+    assert intake["tier"] == orch.agents["product"].model_tier and intake["model"] is not None
     assert all(r["wait_s"] >= 0 for r in t["rows"]) and t["rows"][0]["wait_s"] == 0.0
     # gate quyết ghi ai và lý do
     dec = next(r for r in t["rows"] if r["gate"] and r["gate"]["decision"] == "approve")
@@ -124,5 +124,7 @@ def test_render_cho_thoi_gian_dai_va_tier_mac_dinh(tmp_path):
     last = t2["rows"][-2:]
     assert last[0]["tools"] is None and last[1]["model"] is None and last[1]["tokens"] == 7 and last[1]["agent"] == "builder"
     md = TR.render(t2)
-    assert "[?/" not in md and "7 tok $0.0100" in md and "[light/fake-light]" in md and "[light]" in md
+    # ADR-0037 PR-5e: chuỗi nghiên cứu không còn agent tier `light` (intake/clarifier đã vào `product`, tier
+    # `strong`), nên bản render của một dự án chỉ còn `strong`/`standard`.
+    assert "[?/" not in md and "7 tok $0.0100" in md and "[strong/fake-strong]" in md and "[strong]" in md
     assert TR.trace(bus, "P1", {})["rows"][-1]["agent"] is None, "không có registry thì không đoán agent/tier"

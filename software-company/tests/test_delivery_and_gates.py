@@ -29,9 +29,9 @@ def test_dispatch_tu_choi_plan_chua_check():
 
 def test_four_eyes():
     _, gate, _ = _setup()
-    gate.request(GateRequest(kind="spec", subject_id="SPEC-P", checklist=[], created_by="spec-writer"))
+    gate.request(GateRequest(kind="spec", subject_id="SPEC-P", checklist=[], created_by="product"))
     with pytest.raises(PermissionError):
-        gate.decide("SPEC-P", "approve", by="spec-writer")
+        gate.decide("SPEC-P", "approve", by="product")
 
 def test_happy_path_to_release_gate():
     bus, gate, lead = _setup(); lead.plans_ok.add("PLAN")

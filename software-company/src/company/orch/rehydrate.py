@@ -73,7 +73,7 @@ def rehydrate(o: Orchestrator) -> None:
             elif a["action"] in {"project.retried", "project.closed"}: o.stalled.pop(d["project_id"], None)
             elif a["action"] == "agent_error_unhandled" and d.get("subject"): o.unhandled[str(d["subject"])] = d
             elif a["action"] == "plan_rejected" and d.get("source_event"):
-                o.unhandled[str(d["project_id"])] = {"agent": ROLE.LEAD, "topic": d.get("source_topic"),
+                o.unhandled[str(d["project_id"])] = {"agent": ROLE.PRODUCT, "topic": d.get("source_topic"),
                                                         "event_id": d["source_event"], "subject": str(d["project_id"])}
             elif a["action"] == "spec.runtime_missing": o.spec_runtime_reworks[str(d["project_id"])] += 1
             elif a["action"] == "spec.runtime_escalated" and d.get("source_event"):

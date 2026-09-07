@@ -162,6 +162,10 @@ def test_every_topic_has_a_writer_and_a_reader():
     readers = {t for a in AGENTS.values() for t in a.reads} | {"*"}
     writers = {t for a in AGENTS.values() for t in a.writes}
     human_written = {"clarification-answers", "research-requests", "approved-specs", "shared-context", "external-feedback"}  # account-manager ghi change-requests/acceptance-results
+    # ADR-0037 PR-5e: `release-candidates` do CODE phát (`delivery.py`, actor `LEAD_ACTOR`) khi đủ review — không
+    # model nào sinh nó, nên không agent nào khai `writes`. Trước PR-5e nó nằm trong front matter của
+    # `delivery-lead` dù lượt model chưa bao giờ trả topic này; `bus.TOPIC_PRODUCERS` mới là nơi nói ai phát.
+    human_written |= {"release-candidates"}
     human_read = {"clarification-questions", "release-events", "supervisor-actions", "shared-context", "audit-log"}
     for t in TOPICS:
         assert t in writers or t in human_written, f"không ai ghi `{t}`"

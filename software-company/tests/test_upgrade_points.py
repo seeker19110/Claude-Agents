@@ -17,6 +17,7 @@ from company.events import AuditLog, Envelope, Task
 from company.llm import Completion, FakeClient, LLMConfig, LLMError, OpenAICompatClient, TransientError
 from company.orchestrator import Orchestrator
 from company.registry import load_agents
+from company.roles import LEAD_ACTOR
 from company.runner import AgentRunner, RunnerError
 from company.sqlite_bus import SQLiteBus
 from company.supervisor import Supervisor
@@ -61,6 +62,11 @@ def test_topic_producers_match_agent_front_matter():
         for topic in spec.writes:
             if topic not in schemas: continue  # tên không phải topic bus (vd. knowledge-base của supervisor)
             assert producer_allowed(topic, aid), f"{aid} khai writes {topic} nhưng bus chặn"
+    # ADR-0037 PR-5e: `tasks` có HAI producer và đó là hai vai khác nhau, không phải một chỗ nới lỏng.
+    # `LEAD_ACTOR` là CODE (`delivery.py`) đóng vòng dispatch; `product` là AGENT sinh danh sách ticket. Chốt
+    # chặn "ticket chỉ ra đời sau khi kế hoạch qua kiểm" ở `DeliveryLead.dispatch` (`plans_ok`), không ở đây.
+    assert producer_allowed("tasks", "product") and producer_allowed("tasks", LEAD_ACTOR)
+    assert not producer_allowed("tasks", "qa"), "vẫn không phải ai cũng phát được tasks"
     assert HUMAN_TOPICS <= set(TOPIC_PRODUCERS), "topic của người cũng phải có trong bảng"
 
 

@@ -10,7 +10,17 @@ from company.llm import FakeClient
 from company.orchestrator import MAX_CONFLICT_RETRIES, Orchestrator
 from company.sqlite_bus import SQLiteBus
 from company.workspace import Integration, TicketWorkspace
-from test_orchestrator import T1, T2, _agent_of, _drive_to_plan, _drive_to_spec_gate, _inp, _pub, handler
+from test_orchestrator import (
+    T1,
+    T2,
+    _agent_of,
+    _drive_to_plan,
+    _drive_to_spec_gate,
+    _inp,
+    _product_phase,
+    _pub,
+    handler,
+)
 from test_tools_and_agentic import _first_turn, _init_repo, _repo_tool_handler, _tc
 
 
@@ -68,7 +78,7 @@ def test_xung_dot_lap_lai_qua_nguong_moi_tinh_vao_retry_noi_dung(tmp_path):
     ở ngưỡng, để đúng MỘT xung đột thật đẩy nó qua ngưỡng."""
     repo = _init_repo(tmp_path / "repo")
     def lead_independent(system, user):
-        if _agent_of(system) == "delivery-lead" and "P1" in user and "decision" not in _inp(user):
+        if _agent_of(system) == "product" and _product_phase(system) == "plan" and "P1" in user and "decision" not in _inp(user):
             return {"items": [{**T1, "budget_tokens": 40_000}, {**T2, "title": "POST /notes", "depends_on": [], "risk_tags": [], "budget_tokens": 40_000, "priority": 3}],
                     "context_writes": [{"namespace": "architecture", "content_ref": "docs/c4.md", "summary": "L1-L2"},
                                         {"namespace": "api-contract", "content_ref": "openapi.yaml", "summary": "v1"}]}
@@ -96,7 +106,7 @@ def test_xung_dot_lap_lai_qua_nguong_moi_tinh_vao_retry_noi_dung(tmp_path):
 def test_conflict_voids_release_and_ticket_redoes_on_fresh_base(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     def lead_independent(system, user):  # hai ticket độc lập, cùng ghi shared.py khác nhau → ticket sau xung đột
-        if _agent_of(system) == "delivery-lead" and "P1" in user and "decision" not in _inp(user):
+        if _agent_of(system) == "product" and _product_phase(system) == "plan" and "P1" in user and "decision" not in _inp(user):
             return {"items": [{**T1, "budget_tokens": 40_000}, {**T2, "title": "POST /notes", "depends_on": [], "risk_tags": [], "budget_tokens": 40_000, "priority": 3}],
                     "context_writes": [{"namespace": "architecture", "content_ref": "docs/c4.md", "summary": "L1-L2"},
                                         {"namespace": "api-contract", "content_ref": "openapi.yaml", "summary": "v1"}]}  # đủ ngân sách cho một lần làm lại
@@ -134,7 +144,7 @@ def test_conflict_voids_release_and_ticket_redoes_on_fresh_base(tmp_path):
 
 def test_without_repo_no_integration():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
-    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "kind": "library", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
+    _pub(bus, "approved-specs", "P1", "product", {"project_id": "P1", "status": "pending_human", "kind": "library", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run()
     assert orch.integration is None and orch.status()["integration"] is None
 
@@ -181,7 +191,7 @@ def test_rework_state_survives_restart_and_empty_branch_is_not_integrated(tmp_pa
     F18: branch vừa `fresh()` (không có gì mới) merge no-op không được tính là đã tích hợp."""
     repo = _init_repo(tmp_path / "repo"); db = tmp_path / "c.sqlite"
     def lead_independent(system, user):
-        if _agent_of(system) == "delivery-lead" and "P1" in user and "decision" not in _inp(user):
+        if _agent_of(system) == "product" and _product_phase(system) == "plan" and "P1" in user and "decision" not in _inp(user):
             return {"items": [{**T1, "budget_tokens": 40_000}, {**T2, "title": "POST /notes", "depends_on": [], "risk_tags": [], "budget_tokens": 40_000, "priority": 3}],
                     "context_writes": [{"namespace": "architecture", "content_ref": "docs/c4.md", "summary": "L1-L2"},
                                         {"namespace": "api-contract", "content_ref": "openapi.yaml", "summary": "v1"}]}

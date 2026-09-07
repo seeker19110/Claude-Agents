@@ -33,7 +33,7 @@ from company.sqlite_bus import SQLiteBus
 from company.supervisor import Supervisor
 from company.tools import ToolError
 from company.web import WebTools, _parse_ddg, html_to_text, research_toolbox
-from test_orchestrator import T1, _agent_of, _drive_to_plan, _drive_to_spec_gate, _inp, _pub, handler
+from test_orchestrator import T1, _agent_of, _drive_to_plan, _drive_to_spec_gate, _inp, _product_phase, _pub, handler
 from test_tools_and_agentic import _init_repo, _tc
 
 REVIEW = {"ticket_id": "TCK-1", "source": "reviewer", "verdict": "pass"}
@@ -104,11 +104,11 @@ def test_runner_audits_context_trimmed_and_passes_truncated_diff():
 
 def test_blackboard_content_mirrors_to_store_and_reaches_prompt(tmp_path):
     bus = InMemoryBus(); bb = Blackboard(bus, store=tmp_path / "art")
-    bb.write("spec-writer", "prd", "docs/prd.md", "PRD v1", content="# PRD\n\nREQ-1: đăng nhập")
+    bb.write("product", "prd", "docs/prd.md", "PRD v1", content="# PRD\n\nREQ-1: đăng nhập")
     assert (tmp_path / "art" / "prd" / "v1.md").read_text(encoding="utf-8").startswith("# PRD") and bb.path("prd").exists()
-    bb.write("spec-writer", "prd", "docs/prd.md", "PRD v2", content="# PRD v2")
+    bb.write("product", "prd", "docs/prd.md", "PRD v2", content="# PRD v2")
     assert bb.path("prd").read_text(encoding="utf-8") == "# PRD v2" and (tmp_path / "art" / "prd" / "v2.md").exists()
-    bb.write("delivery-lead", "api-contract", "openapi.yaml", "v1", content="openapi: 3.1.0\n")
+    bb.write("product", "api-contract", "openapi.yaml", "v1", content="openapi: 3.1.0\n")
     assert bb.path("api-contract").name == "latest.yaml"
     client = FakeClient(responses=[REVIEW])
     AgentRunner(bus, client, blackboard=bb).run("qa", _pr_env(), "review-results")
@@ -124,14 +124,14 @@ def test_context_writes_carry_full_content_and_flag_missing():
     env = Envelope(topic="clarification-answers", key="P1", actor="human:po", payload={"project_id": "P1", "answers": []})
     client = FakeClient(responses=[{"payload": spec, "context_writes": [
         {"namespace": "prd", "content_ref": "docs/prd.md", "summary": "PRD v1", "content": "# PRD\n\nREQ-1"}]}])
-    AgentRunner(bus, client, blackboard=bb).run("spec-writer", env, "approved-specs")
+    AgentRunner(bus, client, blackboard=bb).run("product", env, "approved-specs")
     assert bb.content("prd", "P1") == "# PRD\n\nREQ-1", "artifact nằm trong phạm vi dự án của event (ADR-0018)"
     assert bb.content("prd") is None, "không có dự án nào khác đọc nhầm được"
     schema = client.calls[0]["schema"]
     assert "content" in schema["properties"]["context_writes"]["items"]["required"], "schema ép model trả toàn văn"
     assert "TOÀN VĂN" in client.calls[0]["user"]
     client2 = FakeClient(responses=[{"payload": spec, "context_writes": [{"namespace": "prd", "content_ref": "docs/prd.md", "summary": "v2"}]}])
-    AgentRunner(bus, client2, blackboard=bb).run("spec-writer", env, "approved-specs")
+    AgentRunner(bus, client2, blackboard=bb).run("product", env, "approved-specs")
     assert "context_no_content" in _acts(bus) and bb.read("prd", "P1").version == 2 and bb.content("prd", "P1") is None
 
 
@@ -356,12 +356,12 @@ def test_orchestrator_gives_researcher_repo_and_web_tools(tmp_path):
     finally:
         socket.getaddrinfo = real
     assert seen["tools"] == ["read_file", "list_files", "search", "web_search", "fetch_url"]
-    rs = [c for c in client.calls if _agent_of(c["system"]) == "researcher"]
+    rs = [c for c in client.calls if _agent_of(c["system"]) == "product" and _product_phase(c["system"]) == "research"]
     assert len(rs) == 2 and any(m["role"] == "tool" and "def add" in m["content"] for m in rs[1]["messages"])
     assert any(m["role"] == "tool" and "KHÔNG TIN CẬY" in m["content"] and "doc" in m["content"] for m in rs[1]["messages"])
     ev = json.loads(next(e.payload["evidence"] for e in bus.replay(topic="audit-log") if e.payload["action"] == "tools_used"))
     assert ev["urls"] == ["https://example.org/"] and ev["calls"] == {"read_file": 1, "fetch_url": 1}
-    assert next(r for r in ROUTES if r.agent == "researcher").tools == "research"
+    assert next(r for r in ROUTES if r.phase == "research").tools == "research"
     orch2 = Orchestrator(InMemoryBus(), FakeClient(handler=handler))
     assert orch2.web is None and research_toolbox(orch2.repo, orch2.web) is None, "không repo, không --web → researcher không tool"
 
@@ -399,13 +399,13 @@ def test_transient_error_defers_event_and_next_tick_skips_agents_already_done():
 
 
 class _FlakyDeliveryLead:
-    """delivery-lead gặp TransientError đúng một lần khi lập plan (`tasks`), sau đó gặp LLMError vĩnh viễn (biến thể)."""
+    """`product` pha `plan` gặp TransientError đúng một lần khi lập plan (`tasks`), sau đó LLMError vĩnh viễn."""
     def __init__(self, then_error: bool = False):
         self.inner = FakeClient(handler=handler); self.calls = self.inner.calls
         self.failed_once = False; self.then_error = then_error
 
     def complete(self, **kw):
-        if _agent_of(kw["system"]) == "delivery-lead":
+        if _agent_of(kw["system"]) == "product" and _product_phase(kw["system"]) == "plan":
             if not self.failed_once:
                 self.failed_once = True
                 raise TransientError("hết 3 lần thử lại: HTTP 529")
@@ -420,8 +420,8 @@ def test_delivery_lead_transient_khi_lap_plan_bi_hoan_roi_thu_lai_thanh_cong():
     orch.run()
     _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "a"}]})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
-    assert not orch.plans, "delivery-lead lỗi transient: chưa có plan nào, event phải được hoãn"
-    assert any(v == "transient:delivery-lead" for _, v in orch.deferred.values())
+    assert not orch.plans, "product[plan] lỗi transient: chưa có plan nào, event phải được hoãn"
+    assert any(v == "transient:product" for _, v in orch.deferred.values())
     orch.tick()
     assert "PLAN-P1-1" in orch.plans, "thử lại thành công thì lập được plan"
 
@@ -435,7 +435,7 @@ def test_delivery_lead_loi_vinh_vien_khi_lap_plan_duoc_ghi_audit_va_khong_lap_la
     orch.tick()   # lần thử lại thứ hai: LLMError vĩnh viễn
     assert not orch.plans and not orch.deferred, "lỗi không phải transport thì đánh dấu xong, không lặp lại mãi"
     orchestrated = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "orchestrated"]
-    assert any(any(str(a).startswith("error:delivery-lead:") for a in json.loads(e["evidence"])["actions"]) for e in orchestrated)
+    assert any(any(str(a).startswith("error:product:") for a in json.loads(e["evidence"])["actions"]) for e in orchestrated)
 
 
 class _FlakySecurityThreatModel:
@@ -486,7 +486,7 @@ def test_parallel_workers_overlap_independent_tickets_and_keep_lifecycle_correct
     T3 = {**T1, "ticket_id": "T3", "requirement_id": "REQ-3", "title": "GET /users"}
     def h(system, user):
         a, p = _agent_of(system), _inp(user)
-        if a == "delivery-lead" and p.get("decision") != "pending":
+        if a == "product" and _product_phase(system) == "plan" and p.get("decision") != "pending":
             return {"items": [T1, T3], "context_writes": [{"namespace": "architecture", "content_ref": "c4.md", "summary": "L2", "content": "# C4"},
                                                             {"namespace": "api-contract", "content_ref": "openapi.yaml", "summary": "v1"}]}
         with lock: active["n"] += 1; active["max"] = max(active["max"], active["n"])
@@ -697,8 +697,8 @@ def test_cli_show_bao_loi_ro_khi_namespace_o_nhieu_du_an(tmp_path, capsys):
     """`show` không kèm `--project` mà namespace có ở nhiều dự án phải báo lỗi, không đoán bừa (dòng 1133-1134)."""
     db = tmp_path / "multi.sqlite"
     bus = SQLiteBus(db); bb = Blackboard(bus)
-    bb.write("spec-writer", "prd", "docs/prd.md", "v1", content="nội dung P1", project_id="P1")
-    bb.write("spec-writer", "prd", "docs/prd.md", "v1", content="nội dung P2", project_id="P2")
+    bb.write("product", "prd", "docs/prd.md", "v1", content="nội dung P1", project_id="P1")
+    bb.write("product", "prd", "docs/prd.md", "v1", content="nội dung P2", project_id="P2")
     bus.close()
     rc = orch_main(["--db", str(db), "show", "prd"])
     err = capsys.readouterr().err
@@ -721,7 +721,7 @@ def test_human_pr_replaces_agent_pr_in_review():
 
 def test_context_scoped_by_role_and_per_agent_max_input(tmp_path):
     bus = InMemoryBus(); bb = Blackboard(bus, store=tmp_path / "art")
-    bb.write("spec-writer", "prd", "docs/prd.md", "PRD tóm tắt", content="# PRD\n\nREQ-1: đăng nhập")
+    bb.write("product", "prd", "docs/prd.md", "PRD tóm tắt", content="# PRD\n\nREQ-1: đăng nhập")
     bb.write("security", "threat-model", "docs/threat.md", "16 mối đe doạ", content="# Threat model\n\nT-01 XSS")
     client = FakeClient(responses=[REVIEW])
     runner = AgentRunner(bus, client, blackboard=bb)
@@ -760,8 +760,8 @@ def test_diagnose_gom_loi_tho_thanh_khuon_va_chi_ra_ticket_quay_vong():
 
     bus = InMemoryBus()
     for n in (1, 43, 1960):  # cùng một khuôn, khác con số → phải gom làm một
-        bus.publish(Envelope(topic="audit-log", key="a", actor="spec-writer",
-                             payload={"actor": "spec-writer", "action": "llm_error", "ticket_id": "T1",
+        bus.publish(Envelope(topic="audit-log", key="a", actor="product",
+                             payload={"actor": "product", "action": "llm_error", "ticket_id": "T1",
                                       "evidence": json.dumps({"error": f"TransientError: thử lại sau {n}s"})}))
     bus.publish(Envelope(topic="audit-log", key="a", actor="qa",
                          payload={"actor": "qa", "action": "invalid_output", "ticket_id": "T1",
@@ -777,7 +777,7 @@ def test_diagnose_gom_loi_tho_thanh_khuon_va_chi_ra_ticket_quay_vong():
     assert d["so_khuon"] == 2, f"3 lỗi cùng khuôn + 1 khác khuôn = 2 khuôn, nhận được {d['so_khuon']}"
     top = d["loi_theo_khuon"][0]
     assert top["so_lan"] == 3 and "<số>" in top["chu_ky"], "khuôn hay gặp nhất phải gom đủ 3 và chuẩn hoá số"
-    assert top["agents"] == ["spec-writer"] and top["tickets"] == ["T1"]
+    assert top["agents"] == ["product"] and top["tickets"] == ["T1"]
     assert "1960" in top["vi_du"] or "43" in top["vi_du"] or "1" in top["vi_du"], "phải giữ một ví dụ thô để đọc"
 
     assert d["ticket_quay_vong"]["T1"]["blocked"] == 1

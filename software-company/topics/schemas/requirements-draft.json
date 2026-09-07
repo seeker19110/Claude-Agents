@@ -94,7 +94,8 @@
           "type": "array",
           "items": {
             "type": "object"
-          }
+          },
+          "description": "ADR-0037 PR-5e: rủi ro nằm NGAY trong bản draft (lượt `risk` riêng đã bỏ). Bắt buộc — mảng rỗng nghĩa là \"đã rà và không thấy rủi ro\", còn thiếu trường thì không phân biệt được với \"chưa rà\"."
         },
         "rulings": {
           "type": "array",
@@ -126,7 +127,8 @@
       },
       "required": [
         "project_id",
-        "kind"
+        "kind",
+        "risks"
       ],
       "additionalProperties": true
     },

@@ -12,7 +12,7 @@ from company.events import Envelope
 from company.llm import FakeClient
 from company.orchestrator import SPEC_RUNTIME_REWORKS, Orchestrator, spec_runtime_gap
 from company.sqlite_bus import SQLiteBus
-from test_orchestrator import _agent_of, _inp, _pub, _thuoc_tinh_lech, handler
+from test_orchestrator import _agent_of, _inp, _product_phase, _pub, _thuoc_tinh_lech, handler
 
 RUNTIME = {"command": "python -m app --port {port}", "port": 0, "health": "/health", "dependencies": ["sqlite"]}
 ARTIFACTS = {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}
@@ -24,12 +24,16 @@ def _spec(pid: str, **extra) -> dict:
 
 
 def _handler_with(spec_fn):
-    """`handler` của test_orchestrator nhưng spec-writer do test quyết; ghi lại từng đầu vào nó nhận."""
+    """`handler` của test_orchestrator nhưng lượt VIẾT SPEC do test quyết; ghi lại từng đầu vào nó nhận.
+
+    ADR-0037 PR-5e: `product` chạy cả bốn pha, nên chỉ chặn đúng lượt pha `spec` sinh `approved-specs` (đầu vào
+    là bản draft hoặc câu trả lời) — chặn cả agent thì lượt bóc đề bài cũng trả ra một `approved-specs`."""
     seen: list[dict] = []
 
     def h(system, user):
-        if _agent_of(system) == "spec-writer":
-            p = _inp(user); seen.append(p)
+        p = _inp(user)
+        if _agent_of(system) == "product" and _product_phase(system) == "spec" and p.get("kind") != "researcher":
+            seen.append(p)
             return spec_fn(p, len(seen))
         return handler(system, user)
     return h, seen
@@ -88,8 +92,8 @@ def test_ung_dung_thieu_runtime_thi_khong_mo_gate_ma_tra_lai_spec_writer_roi_esc
     # lần 2 vẫn thiếu: không lặp mãi, không im lặng — escalation cấp dự án cho người quyết
     assert "spec.runtime_escalated" in acts and "P1" in orch.gate.pending
     assert orch.gate.pending["P1"].kind == "escalation" and "spec_runtime" in orch.gate.pending["P1"].checklist
-    assert orch.unhandled["P1"]["agent"] == "spec-writer" and orch.spec_runtime_reworks["P1"] == 1 + SPEC_RUNTIME_REWORKS
-    assert orch.gate.pending["P1"].created_by == "spec-writer"
+    assert orch.unhandled["P1"]["agent"] == "product" and orch.spec_runtime_reworks["P1"] == 1 + SPEC_RUNTIME_REWORKS
+    assert orch.gate.pending["P1"].created_by == "product"
 
 
 def test_spec_writer_sua_theo_hint_thi_gate_mo_nhu_cu():
@@ -130,7 +134,7 @@ def test_tat_ban_sua_thi_do__thieu_kind_khong_phai_mien_tru():
 
 def test_spec_publish_tay_khong_co_draft_thi_escalate_ngay_voi_ly_do():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
-    _pub(bus, "approved-specs", "P9", "spec-writer", {"project_id": "P9", "status": "pending_human", "artifacts": ARTIFACTS})
+    _pub(bus, "approved-specs", "P9", "product", {"project_id": "P9", "status": "pending_human", "artifacts": ARTIFACTS})
     orch.run()
     assert "SPEC-P9" not in orch.gate.pending and "P9" in orch.gate.pending
     esc = next(e for e in bus.replay(topic="audit-log") if e.payload["action"] == "spec.runtime_escalated")
@@ -141,9 +145,9 @@ def test_gate_spec_da_duyet_truoc_adr_khong_bi_cham():
     """Kiểm chỉ chạy lúc MỞ gate: dự án cũ có spec đã duyệt (không kind, không runtime) đi tiếp lập plan như trước."""
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
     orch.gate.request(__import__("company.gates", fromlist=["GateRequest"]).GateRequest(
-        kind="spec", subject_id="SPEC-P1", created_by="spec-writer", checklist=["prd"]))
+        kind="spec", subject_id="SPEC-P1", created_by="product", checklist=["prd"]))
     orch.gate.decide("SPEC-P1", "approve", by="human:po")
-    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "approved", "artifacts": ARTIFACTS})
+    _pub(bus, "approved-specs", "P1", "product", {"project_id": "P1", "status": "approved", "artifacts": ARTIFACTS})
     orch.run()
     assert "PLAN-P1-1" in orch.plans and "spec.runtime_missing" not in _acts(bus)
 
@@ -186,7 +190,7 @@ def test_bo_dem_va_unhandled_song_sot_qua_restart(tmp_path):
     o2 = Orchestrator(SQLiteBus(db), FakeClient(handler=h))
     lech = _thuoc_tinh_lech(o, o2)
     assert not lech, " | ".join(lech)
-    assert o2.spec_runtime_reworks["P1"] == 2 and o2.unhandled["P1"]["agent"] == "spec-writer"
+    assert o2.spec_runtime_reworks["P1"] == 2 and o2.unhandled["P1"]["agent"] == "product"
     # sau khi người cho chạy lại, mở lại bus cũng phải thấy bộ đếm về 0
     o2.gate.decide("P1", "approve", by="human:po", reason="làm lại"); o2.run()
     o3 = Orchestrator(SQLiteBus(db), FakeClient(handler=h))
@@ -221,7 +225,7 @@ def test_gate_brief_spec_gap_khi_gate_mo_tay_cho_spec_thieu_runtime():
     """Gate mở tay (gate_cli request) cho spec thiếu runtime — hồ sơ phải nói `gap`, không im."""
     from company.gates import GateRequest
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
-    bus.publish(Envelope(topic="approved-specs", key="P1", actor="spec-writer",
+    bus.publish(Envelope(topic="approved-specs", key="P1", actor="product",
                          payload={"project_id": "P1", "status": "pending_human", "artifacts": ARTIFACTS}))
     orch.gate.request(GateRequest(kind="spec", subject_id="SPEC-P1", created_by="human:po", checklist=["prd"]))
     it = _brief_item(orch)

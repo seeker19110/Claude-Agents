@@ -73,7 +73,7 @@ def test_pr_thu_hai_thay_pr_cu_thay_vi_ném_loi():
 # ---------- blackboard ----------
 
 def test_hai_chu_namespace_ghi_song_song_khong_mat_ban_ghi(monkeypatch):
-    """`api-contract` có hai chủ (delivery-lead, backend). Đánh version là đọc-sửa-ghi nên chạy song song
+    """`api-contract` có hai chủ (product, builder). Đánh version là đọc-sửa-ghi nên chạy song song
     (--workers > 1) mà không khoá thì cả hai cùng ra v1 và bản sau bị `_on` bỏ im lặng.
 
     `scope_of` chạy ngay trước lúc đọc version: cho cả hai luồng gặp nhau ở đúng điểm đó bằng Barrier mở đúng cửa
@@ -92,7 +92,7 @@ def test_hai_chu_namespace_ghi_song_song_khong_mat_ban_ghi(monkeypatch):
     def w(actor: str) -> None:
         bb.write(actor, "api-contract", "openapi.yaml", actor, content=actor * 50, project_id="P1")
 
-    ts = [threading.Thread(target=w, args=(a,)) for a in ("delivery-lead", "builder")]
+    ts = [threading.Thread(target=w, args=(a,)) for a in ("product", "builder")]
     for t in ts: t.start()
     for t in ts: t.join()
     versions = [e.payload["version"] for e in bus.replay(topic="shared-context")]

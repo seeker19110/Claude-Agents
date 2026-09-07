@@ -191,7 +191,7 @@ def test_threat_model_transient_khong_chan_plan(monkeypatch):
         raise TransientError("mạng chập chờn")
 
     monkeypatch.setattr(orch.runner, "generate", boom)
-    env = Envelope(topic="approved-specs", key="P1", actor="spec-writer", payload={"project_id": "P1"})
+    env = Envelope(topic="approved-specs", key="P1", actor="product", payload={"project_id": "P1"})
     res = StepResult("e1", "approved-specs", "P1")
     ok = orch._threat_model(env, "SPEC-P1", res)
     assert ok is True and any(a.startswith("transient:security") for a in res.actions)
@@ -207,7 +207,7 @@ def test_threat_model_loi_danh_dau_missing(monkeypatch):
         raise LLMError("model lỗi")
 
     monkeypatch.setattr(orch.runner, "generate", boom)
-    env = Envelope(topic="approved-specs", key="P1", actor="spec-writer", payload={"project_id": "P1"})
+    env = Envelope(topic="approved-specs", key="P1", actor="product", payload={"project_id": "P1"})
     res = StepResult("e1", "approved-specs", "P1")
     ok = orch._threat_model(env, "SPEC-P1", res)
     assert ok is True and "SPEC-P1" in orch.missing_threat_model
