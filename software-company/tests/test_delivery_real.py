@@ -147,7 +147,7 @@ def test_orchestrator_giao_hang_khi_production_va_lui_khi_rollback(tmp_path):
     repo = _init_repo(tmp_path / "repo"); db = tmp_path / "c.sqlite"
     bus = SQLiteBus(db); client = FakeClient(handler=handler, tool_handler=_repo_tool_handler)
     orch = Orchestrator(bus, client, repo=repo, base="main", deliver=True)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.state == {"T1": "merged", "T2": "merged"} and orch.stats["errors"] == 0
     assert not orch.delivered and not _git(repo, "tag", "-l"), "chưa qua gate 3 thì chưa giao"
     staged = orch.release_sha
@@ -194,7 +194,7 @@ def test_orchestrator_giao_hang_khi_production_va_lui_khi_rollback(tmp_path):
 def test_khong_bat_deliver_thi_nhu_cu(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=_repo_tool_handler), repo=repo, base="main")
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     orch.gate.decide("REL-001", "approve", by="human:release-manager"); orch.run()
     assert orch.lead.state["T1"] == "released" and not orch.delivered and orch.status()["delivery"] == {}
     assert not _git(repo, "tag", "-l") and not _git(repo, "branch", "--list", "company/release")
@@ -203,7 +203,7 @@ def test_khong_bat_deliver_thi_nhu_cu(tmp_path):
 
 def test_deliver_khong_repo_thi_bo_qua_co_audit(tmp_path):
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler), deliver=True)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     orch.gate.decide("REL-001", "approve", by="human:release-manager"); orch.run()
     assert orch.lead.state["T1"] == "released" and not orch.delivered
     skipped = _audits(bus, "delivery.skipped")
@@ -216,7 +216,7 @@ def test_deliver_ghi_van_de_va_loi_push_vao_audit(tmp_path):
     bus = InMemoryBus()
     orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=_repo_tool_handler), repo=repo, base="main",
                         deliver=True, push_remote="khong-co", release_branch="rel/prod")
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     res = []
     orch.gate.decide("REL-001", "approve", by="human:release-manager"); res = orch.run()
     d = orch.delivered["REL-001"]

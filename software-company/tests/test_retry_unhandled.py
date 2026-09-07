@@ -96,7 +96,7 @@ def test_duyet_escalation_plan_rong_thi_lap_lai_ke_hoach():
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert "plan_rejected" in acts
     orch.gate.decide("P1", "approve", by="human:lead", reason="lập lại"); orch.run()
-    assert orch.plans and "PLAN-P1-1" in orch.gate.pending, "duyệt = delivery-lead lập lại và gate plan mở"
+    assert "PLAN-P1-1" in orch.plans and orch.lead.tickets, "duyệt = delivery-lead lập lại và ticket được giao ngay (ADR-0037)"
     assert "P1" not in orch.unhandled
 
 

@@ -215,25 +215,6 @@ def test_threat_model_loi_danh_dau_missing(monkeypatch):
     assert missing and missing[0]["subject_id"] == "SPEC-P1"
 
 
-# ---------- _on_gate_decide: approve plan nhưng _dispatch_plan lỗi (depends_on vòng/chưa biết) ----------
-
-def test_on_gate_decide_loi_dispatch_plan(monkeypatch):
-    bus = InMemoryBus()
-    orch = _orch(bus)
-    plan_id = "PLAN-P1-1"
-    orch.plans[plan_id] = {"tickets": [{**T1, "ticket_id": "TX", "depends_on": ["KHONG-CO"]}]}
-    orch.gate.request(GateRequest(kind="plan", subject_id=plan_id, created_by="delivery-lead", checklist=[]))
-    orch.gate.decide(plan_id, "approve", by="human:pm")
-    env = Envelope(topic="audit-log", key=plan_id, actor="human:pm",
-                    payload={"actor": "human:pm", "action": "gate.decide",
-                             "evidence": json.dumps({"subject_id": plan_id, "decision": "approve", "by": "human:pm"})})
-    res = StepResult(env.event_id, env.topic, env.key)
-    out = orch._on_gate_decide(env, res)
-    assert any(a.startswith("error:") for a in out.actions)
-    err = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "plan_dispatch_error"]
-    assert err and err[0]["plan_id"] == plan_id
-
-
 # ---------- _close_acceptance_gate: gate.decide lỗi (KeyError/PermissionError) ----------
 
 def test_close_acceptance_gate_bat_loi_gate_decide(monkeypatch):

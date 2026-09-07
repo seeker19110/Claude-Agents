@@ -62,8 +62,9 @@ def build_company_db(path: Path) -> Path:
               ticket_id="TCK-112", project_id="P1")
     _produced(bus, CompanyEnvelope, CompanyAudit, actor="reviewer", topic_out="review-results", tokens=2_100, cost=0.05,
               age_days=3, ticket_id="TCK-112", project_id="P1")
-    gate_request(bus, CompanyEnvelope, CompanyAudit, kind="plan", subject_id="PLAN-1",
-                 checklist=["c4", "review:reviewer:block"], created_by="delivery-lead", age_hours=30)
+    # ADR-0037: software-company không còn `GateKind` `plan` — gate công đoạn quá hạn ở đây là `release`.
+    gate_request(bus, CompanyEnvelope, CompanyAudit, kind="release", subject_id="REL-001",
+                 checklist=["tests", "review:reviewer:block"], created_by="delivery-lead", age_hours=30)
     gate_request(bus, CompanyEnvelope, CompanyAudit, kind="spec", subject_id="SPEC-1", checklist=["prd"],
                  created_by="spec-writer", age_hours=1)
     gate_decide(bus, CompanyEnvelope, CompanyAudit, subject_id="SPEC-1", decision="approve", by="human:pm")

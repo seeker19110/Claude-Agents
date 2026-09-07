@@ -134,7 +134,7 @@ def _orch(tmp_path: Path, **kw) -> tuple[InMemoryBus, Orchestrator]:
 
 def test_luong_ticket_di_qua_test_author_truoc_roi_moi_toi_code(tmp_path: Path) -> None:
     bus, orch = _orch(tmp_path, test_author=True)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     ts = list(bus.replay(topic="test-suites"))
     prs = list(bus.replay(topic="pull-requests"))
     assert ts and prs, "phải có cả bộ test lẫn PR"
@@ -149,7 +149,7 @@ def test_luong_ticket_di_qua_test_author_truoc_roi_moi_toi_code(tmp_path: Path) 
 
 def test_test_author_tat_mac_dinh_thi_giu_nguyen_duong_cu(tmp_path: Path) -> None:
     bus, orch = _orch(tmp_path)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert not list(bus.replay(topic="test-suites"))
     prs = list(bus.replay(topic="pull-requests"))
     assert prs and all(e.payload["tests_authored_by"] == "assignee" for e in prs)
@@ -163,7 +163,7 @@ def test_stack_khong_phan_vung_duoc_thi_di_duong_cu_va_noi_thang(tmp_path: Path)
     subprocess.run(["git", "-C", str(repo), "commit", "-qam", "bỏ dấu hiệu stack"], check=True, capture_output=True)
     bus = InMemoryBus()
     orch = Orchestrator(bus, FakeClient(handler=_handler, tool_handler=_tool_handler), repo=repo, base="main", test_author=True)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert not list(bus.replay(topic="test-suites")), "không phân vùng được thì KHÔNG chạy test-author"
     acts = {e.payload["action"] for e in bus.replay(topic="audit-log")}
     assert "tests_authored_by_assignee" in acts, "mất lớp bảo vệ thì phải ghi lại, không im lặng"

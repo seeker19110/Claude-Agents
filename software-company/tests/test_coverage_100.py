@@ -172,7 +172,7 @@ def _orch_da_giao(tmp_path, **kw):
     repo = _init_repo(tmp_path / "repo"); bus = InMemoryBus()
     orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=_repo_tool_handler), repo=repo, base="main",
                         deliver=True, **kw)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     return repo, bus, orch
 
 
@@ -239,11 +239,12 @@ def test_cli_diagnose_in_json(tmp_path, capsys):
 
 # ---------- gate_brief ----------
 
-def test_project_of_suy_tu_ten_plan_va_kind_la(tmp_path):
+def test_project_of_kind_la_hoac_subject_khong_theo_mau(tmp_path):
+    """ADR-0037: `plan` không còn là kind nào cả. Kind lạ (hay subject không theo mẫu của kind đó) → `None`,
+    không đoán một project_id ra từ chuỗi."""
     _db, _, orch = _scenario(tmp_path, to="plan")
-    assert GB._project_of(orch, "plan", "PLAN-KHACH-9") == "KHACH", "plan chưa có trong state → suy từ tên"
-    assert GB._project_of(orch, "plan", "khong-theo-mau") is None
     assert GB._project_of(orch, "kind-la", "X") is None
+    assert GB._project_of(orch, "spec", "khong-theo-mau") is None
 
 
 def test_spec_thieu_nfr_va_out_of_scope(tmp_path):

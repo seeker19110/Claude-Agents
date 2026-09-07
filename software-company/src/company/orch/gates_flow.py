@@ -1,4 +1,4 @@
-"""Quyết định gate: plan → dispatch; release → production; escalation → mở lại/đóng dự án hoặc ticket;
+"""Quyết định gate: release → production; escalation → mở lại/đóng dự án hoặc ticket;
 đường xử lý lỗi agent không nhánh nào nhận (ADR-0034, tách khỏi orchestrator.py).
 
 Mỗi hàm nhận `o: Orchestrator` làm tham số đầu và được gán làm method trên `Orchestrator`
@@ -36,15 +36,12 @@ def _on_gate_decide(o: Orchestrator, env: Envelope, res: StepResult) -> StepResu
     if kind == "escalation":
         o._on_escalation_decided(sid, decision, by, d.get("reason", ""), res)
     elif decision == "approve":
-        if sid in o.plans:
-            try:
-                res.actions.append("dispatch:" + ",".join(o._dispatch_plan(sid)))
-            except (ValueError, PermissionError) as e:
-                o._audit("plan_dispatch_error", {"plan_id": sid, "error": str(e)[:300]}); res.actions.append(f"error:{e}")
-        elif sid in o.lead.release_tickets:
+        # ADR-0037: không còn nhánh `sid in o.plans` — kế hoạch được `_check_plan` cho đi thẳng lúc lập, không
+        # chờ ai ký. Duyệt gate release vẫn là bước cho phép deploy production.
+        if sid in o.lead.release_tickets:
             rc = o.latest("release-candidates", sid)
             if rc is not None:
-                o._recall("release-engineer", rc)  # ký lại Gate 3 phải chạy lại được lượt production
+                o._recall("release-engineer", rc)  # ký lại gate release phải chạy lại được lượt production
                 o._call("release-engineer", rc, PROD_ROUTE, res)
     o._note_closed()
     o._mark(env, res)

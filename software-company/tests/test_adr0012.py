@@ -33,7 +33,7 @@ from company.sqlite_bus import SQLiteBus
 from company.supervisor import Supervisor
 from company.tools import ToolError
 from company.web import WebTools, _parse_ddg, html_to_text, research_toolbox
-from test_orchestrator import T1, _agent_of, _drive_to_plan, _inp, _pub, handler
+from test_orchestrator import T1, _agent_of, _drive_to_plan, _drive_to_spec_gate, _inp, _pub, handler
 from test_tools_and_agentic import _init_repo, _tc
 
 REVIEW = {"ticket_id": "TCK-1", "source": "reviewer", "verdict": "pass"}
@@ -381,7 +381,7 @@ class _Blip:
 
 def test_transient_error_defers_event_and_next_tick_skips_agents_already_done():
     bus = InMemoryBus(); client = _Blip(); orch = Orchestrator(bus, client)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     # ADR-0021: qa-debugger ở lượt PR chỉ chạy cho ticket có risk_tags (T2)
     assert orch.lead.state["T2"] == "in_review" and orch.stats["transient"] == 1 and orch.stats["errors"] == 0
     assert [v for _, v in orch.deferred.values()] == ["transient:qa-debugger"]
@@ -496,7 +496,7 @@ def test_parallel_workers_overlap_independent_tickets_and_keep_lifecycle_correct
             with lock: active["n"] -= 1
     db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); client = FakeClient(handler=h)
     orch = Orchestrator(bus, client, workers=4, artifacts=tmp_path / "art")
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.state["T1"] == "merged" and orch.lead.state["T3"] == "merged" and orch.stats["errors"] == 0
     assert active["max"] >= 2 and not overlap.broken, "hai ticket độc lập chạy chồng lên nhau"
     # File mirror nằm dưới tầng dự án vì blackboard phân vùng theo project_id (ADR-0018).
@@ -513,13 +513,14 @@ def test_metrics_collect_and_prometheus(tmp_path, capsys):
     db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); client = FakeClient(handler=handler)
     client.pricing = Pricing({"fake-": {"input": 1.0, "output": 2.0}})
     orch = Orchestrator(bus, client)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     m = collect(bus)
     produced = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"].startswith("produced:")]
     assert m["total"]["calls"] == len(produced) and m["total"]["tokens"] == sum(a["tokens"] for a in produced)
     assert m["total"]["cost_usd"] == pytest.approx(sum(a["cost_usd"] for a in produced)) and m["total"]["unpriced"] == 0
     assert m["agents"]["reviewer"]["calls"] == 2 and m["models"]["fake-strong"]["calls"] > 0 and m["tickets"]["T1"]["calls"] >= 2
-    assert m["gates"]["decided"] == 2 and m["gates"]["pending"] == 2 and m["gates"]["wait_seconds_avg"] is not None
+    # ADR-0037: chỉ còn gate spec được quyết trên đường này (gate plan biến mất); hai gate release còn chờ.
+    assert m["gates"]["decided"] == 1 and m["gates"]["pending"] == 2 and m["gates"]["wait_seconds_avg"] is not None
     assert m["topics"]["pull-requests"] == 2 and m["health"] == {"local_checks.unverified": 2}
     text = prometheus(m)
     assert 'company_agent_calls{agent="reviewer"} 2' in text and "# TYPE company_total_tokens counter" in text
@@ -572,7 +573,7 @@ def test_human_comment_and_takeover_with_repo(tmp_path, capsys, monkeypatch):
     # tách khỏi auto-retry: test này về người can thiệp. Trả True = "nhánh này đã nhận trách nhiệm",
     # để `_after_error` không mở thêm gate escalation (xem hợp đồng ở `_after_error`).
     orch._rework_after_error = lambda *a, **k: True  # type: ignore[method-assign]
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.state["T1"] == "dispatched" and orch.stats["errors"] >= 1
     with pytest.raises(ValueError, match="human"): orch.comment("T1", "backend", "x")
     with pytest.raises(ValueError, match="không có ticket"): orch.comment("T9", "human:lead", "x")
@@ -609,7 +610,7 @@ def test_task_cu_trong_hang_doi_bi_vuot_khi_nguoi_da_takeover(tmp_path, monkeypa
     bus = SQLiteBus(db); client = FakeClient(handler=handler, tool_handler=lambda m, t: [])
     orch = Orchestrator(bus, client, repo=repo, base="main")
     orch._rework_after_error = lambda *a, **k: True  # type: ignore[method-assign]
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.state["T1"] == "dispatched"
     # thứ tự thật: task retry của delivery-lead vào bus TRƯỚC, PR tiếp quản của người vào SAU; orchestrator xử lý task trước
     stale = orch.lead.tickets["T1"].model_copy(update={"retry": 1, "hint": "hàng cũ"})
@@ -637,7 +638,7 @@ def test_pr_cu_trong_hang_doi_bi_vuot_khi_co_pr_moi_hon(tmp_path, monkeypatch):
     bus = SQLiteBus(db); client = FakeClient(handler=handler, tool_handler=lambda m, t: [])
     orch = Orchestrator(bus, client, repo=repo, base="main")
     orch._rework_after_error = lambda *a, **k: True  # type: ignore[method-assign]
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     ws = orch.workspace("T1")
     (ws.path / "f_a.py").write_text("def a():\n    return 1\n", encoding="utf-8")
     old = orch.takeover("T1", "human:lead")
@@ -662,7 +663,7 @@ def test_cli_comment_va_takeover_thanh_cong_in_ket_qua(tmp_path, capsys, monkeyp
     bus = SQLiteBus(db); client = FakeClient(handler=handler, tool_handler=lambda m, t: [])
     orch = Orchestrator(bus, client, repo=repo, base="main")
     orch._rework_after_error = lambda *a, **k: None  # type: ignore[method-assign]
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.state["T1"] == "dispatched"
     bus.close()
     rc = orch_main(["--db", str(db), "--repo", str(repo), "comment", "T1", "--by", "human:lead", "--text", "dùng add()"])
@@ -679,8 +680,9 @@ def test_takeover_bao_loi_khong_co_worktree_khi_khong_co_repo(tmp_path, monkeypa
     """`takeover` mà orchestrator không chạy với `--repo` (không worktree) phải báo lỗi rõ, không NoneType lỗi mù mờ."""
     monkeypatch.setenv("COMPANY_LLM_PROVIDER", "fake")
     bus = InMemoryBus(); client = FakeClient(handler=handler); orch = Orchestrator(bus, client)  # không repo
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm")
-    orch.run(max_steps=1)   # chỉ dispatch, chưa chạy engineer → ticket còn "dispatched"
+    _drive_to_spec_gate(bus, orch)
+    orch.gate.decide("SPEC-P1", "approve", by="human:po")
+    orch.run(max_steps=3)   # lập kế hoạch + giao T1, chưa chạy engineer → ticket còn "dispatched"
     assert orch.lead.state["T1"] == "dispatched"
     with pytest.raises(ValueError, match="không có worktree"):
         orch.takeover("T1", "human:lead")
@@ -702,7 +704,8 @@ def test_cli_show_bao_loi_ro_khi_namespace_o_nhieu_du_an(tmp_path, capsys):
 
 def test_human_pr_replaces_agent_pr_in_review():
     bus = InMemoryBus(); client = FakeClient(handler=handler); orch = Orchestrator(bus, client)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run(max_steps=2)
+    _drive_to_spec_gate(bus, orch)
+    orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run(max_steps=4)
     assert orch.lead.state["T1"] == "in_review"
     _pub(bus, "pull-requests", "T1", "human:lead", {"ticket_id": "T1", "branch": "ticket/T1", "pr_ref": "abc",
                                                     "local_checks": {"lint": True, "tests": True, "verified_by": "workspace"}})

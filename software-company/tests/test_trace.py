@@ -28,9 +28,11 @@ def test_ticket_ra_du_gate_va_retry(tmp_path):
     assert t["kind"] == "ticket" and t["project_id"] == "P1" and t["tickets"] == ["T1"]
     s = t["summary"]
     kinds = [(g["kind"], g["decision"]) for g in s["gates"]]
-    assert ("spec", None) in kinds and ("spec", "approve") in kinds and ("plan", "approve") in kinds \
-        and ("escalation", None) in kinds, f"phải thấy cả ba gate mở và hai gate đã quyết, nhận {kinds}"
-    assert s["gates_opened"] == 3 and s["gates_decided"] == 2
+    # ADR-0037: gate `plan` không còn — dòng thời gian của ticket đi qua gate spec rồi thẳng tới escalation
+    assert ("spec", None) in kinds and ("spec", "approve") in kinds and ("escalation", None) in kinds, \
+        f"phải thấy hai gate mở và một gate đã quyết, nhận {kinds}"
+    assert ("plan", "approve") not in kinds, "không còn gate plan để mà quyết"
+    assert s["gates_opened"] == 2 and s["gates_decided"] == 1
     assert s["task_retries"] == 2, "ticket quay 2 vòng: mốc retry cao nhất phải là 2"
     retries = [r["retry"] for r in t["rows"] if r["topic"] == "tasks"]
     assert retries == [0, 1, 2], retries
@@ -66,7 +68,7 @@ def test_release_va_du_an(tmp_path):
 
 def test_ticket_khac_cung_du_an_khong_lan_vao(tmp_path):
     _db, bus, orch = _scenario(tmp_path, to="plan")
-    orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    orch.run()
     # ticket T9 cùng dự án nhưng không nằm trong câu chuyện của T1
     bus.publish(Envelope(topic="tasks", key="T9", actor="delivery-lead", payload={"ticket_id": "T9", "project_id": "P1", "requirement_id": "REQ-9", "assignee": "backend",
                                   "title": "khác", "acceptance": ["x"], "retry": 0}))
@@ -100,7 +102,7 @@ def test_khong_ton_tai_va_cli(tmp_path, capsys):
     # qua orchestrator CLI (bus đã mở, như diagnose) và qua module chỉ đọc
     assert orch_main(["--db", str(db), "trace", "T1"]) == 0
     out = capsys.readouterr().out
-    assert out.startswith("# trace T1 (ticket)") and "gate plan PLAN-P1-1 quyết approve by human:pm" in out
+    assert out.startswith("# trace T1 (ticket)") and "gate spec SPEC-P1 quyết approve by human:po" in out
     assert orch_main(["--db", str(db), "trace", "KHONG-CO"]) == 1
     assert TR.main(["T1", "--db", str(db), "--json"]) == 0
     j = json.loads(capsys.readouterr().out)

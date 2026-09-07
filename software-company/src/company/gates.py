@@ -4,7 +4,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-GateKind = Literal["spec", "plan", "release", "escalation", "acceptance"]
+# ADR-0037: `plan` KHÔNG còn là gate. Kế hoạch được `_check_plan` (code) chặn rồi dispatch ngay — người ký hai
+# gate công đoạn (`spec`, `release`), cộng nghiệm thu của khách và gate bất thường.
+GateKind = Literal["spec", "release", "escalation", "acceptance"]
 Decision = Literal["approve", "request_changes", "reject", "hold", "rollback", "pending"]
 
 @dataclass

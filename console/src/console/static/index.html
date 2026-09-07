@@ -671,18 +671,21 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
       </div>
 
       <div class="sect">
-        <div class="sect-head"><h2>Bốn điểm dừng chờ người</h2><p>công ty không bao giờ tự đi qua các bước này</p></div>
+        <div class="sect-head"><h2>Ba điểm dừng chờ người</h2><p>công ty không bao giờ tự đi qua các bước này</p></div>
         <div class="tablewrap">
           <table>
             <thead><tr><th>Gate</th><th>Dừng khi nào</th><th>Bạn quyết gì</th></tr></thead>
             <tbody>
               <tr><td><code>spec</code></td><td>spec-writer viết xong PRD</td><td>đặc tả đúng ý khách chưa</td></tr>
-              <tr><td><code>plan</code></td><td>delivery-lead chia xong ticket, kèm threat model</td><td>kiến trúc và ước lượng có hợp lý không</td></tr>
               <tr><td><code>release</code></td><td>QA đã chạy hồi quy trên staging và pass</td><td>có đẩy lên production không</td></tr>
               <tr><td><code>acceptance</code></td><td>đã lên production</td><td>khách ký nghiệm thu</td></tr>
             </tbody>
           </table>
         </div>
+        <p class="note">Kế hoạch KHÔNG còn là một điểm dừng (ADR-0037): delivery-lead chia xong ticket thì
+        <code>_check_plan</code> trong code kiểm ngay (ticket quá 1 ngày/200k token, thiếu <code>risk_tags</code>,
+        thiếu threat model, thiếu kiến trúc/API contract) — sạch thì giao luôn, có vấn đề thì mở gate
+        <code>escalation</code>. Ước lượng và ngân sách token nay hỏi ở gate <code>release</code>.</p>
         <p class="note">Thêm gate <code>escalation</code> mở ra bất thường: ticket hết lượt làm lại, vượt ngân sách,
         hoặc chuỗi nghiên cứu bị kẹt. Duyệt là mở lại kèm gợi ý; từ chối là bỏ ticket — khi đó ticket phụ thuộc nó
         cũng dừng lại chờ bạn, chứ không chạy tiếp trên nền thiếu code.</p>

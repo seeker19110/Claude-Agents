@@ -112,7 +112,7 @@ def test_c2_tu_choi_thi_ticket_ve_dau_va_duyet_thi_ai_chay_lai() -> None:
     assert "không deploy" in gate_reject_effect("release", "REL-1")
     assert "nằm nguyên bậc" in gate_reject_effect("escalation", "REL-1")
     assert "ĐÓNG hẳn" in gate_reject_effect("escalation", "T1")
-    assert "lập lại kế hoạch" in gate_reject_effect("plan", "PLAN-1")
+    assert gate_reject_effect("plan", "PLAN-ch1") == "", "ADR-0037: company không còn gate plan; studio có nhưng không dùng bảng này"
     assert "viết lại PRD" in gate_reject_effect("spec", "SPEC-1")
     assert "mở lại" in gate_reject_effect("acceptance", "UAT-1")
     assert gate_reject_effect("publish", "PUB-1") == "", "không biết thì im, không đoán"

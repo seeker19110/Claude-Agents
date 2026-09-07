@@ -6,7 +6,9 @@
     "perf",
     "a11y",
     "runbook",
-    "rollback"
+    "rollback",
+    "threat-model",
+    "architecture"
   ],
   "created_by": "delivery-lead",
   "extra": {
@@ -67,6 +69,42 @@
         }
       ],
       "verdict": "ok"
+    },
+    {
+      "facts": [
+        "1/1 ticket có estimate_tokens",
+        "estimate min/median/max = 4000/4000/4000 token",
+        "knowledge có 0 bài học estimate-vs-actual; hiệu chỉnh: chưa có",
+        "dự án đầu: chưa có bài học để đối chiếu"
+      ],
+      "id": "plan.uoc-luong-co-so",
+      "question": "Ước lượng có cơ sở (tham chiếu `knowledge` hoặc PERT)",
+      "sources": [
+        {
+          "event_ids": 1,
+          "key": "plan.proposed",
+          "kind": "topic",
+          "ref": "audit-log"
+        }
+      ],
+      "verdict": "unknown"
+    },
+    {
+      "facts": [
+        "1 ticket: tổng estimate 4000 token, tổng budget 6000 token",
+        "trần tiền dự án (llm.yaml budget_usd): chưa đặt; đã dùng 0.00 USD"
+      ],
+      "id": "plan.ngan-sach-token",
+      "question": "Ngân sách token cho dự án được đặt; tổng estimate ≤ ngân sách",
+      "sources": [
+        {
+          "event_ids": 1,
+          "key": "plan.proposed",
+          "kind": "topic",
+          "ref": "audit-log"
+        }
+      ],
+      "verdict": "unknown"
     }
   ],
   "status": "pending",

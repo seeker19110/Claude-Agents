@@ -10,7 +10,7 @@ from company.bus import InMemoryBus
 from company.llm import FakeClient
 from company.orchestrator import Orchestrator
 from company.workspace import Integration, MergeResult
-from test_orchestrator import _agent_of, _drive_to_plan, _inp, handler
+from test_orchestrator import _agent_of, _drive_to_plan, _drive_to_spec_gate, _inp, handler
 from test_tools_and_agentic import _init_repo, _repo_tool_handler
 
 
@@ -24,7 +24,7 @@ def test_threat_model_ghi_o_luot_review_pr_nam_trong_du_an_cua_ticket():
                     "context_writes": [{"namespace": "threat-model", "content_ref": "docs/tm.md", "summary": "PR", "content": "# TM từ PR"}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.state["T2"] in {"approved", "merged", "in_review"}, orch.lead.state
     assert orch.blackboard.content("threat-model", "P1") == "# TM từ PR", "ghi vào đúng phân vùng dự án"
     assert orch.blackboard.read("threat-model", None) is None, "không rơi vào ô toàn cục"
@@ -38,9 +38,10 @@ def test_merge_tich_hop_khong_chay_dong_thoi(tmp_path, monkeypatch):
     repo = _init_repo(tmp_path / "repo")
     bus = InMemoryBus(); client = FakeClient(handler=handler, tool_handler=_repo_tool_handler)
     orch = Orchestrator(bus, client, repo=repo, base="main")
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm")
+    _drive_to_spec_gate(bus, orch)
     # chạy tới lúc T1 approved nhưng chưa merge: chặn _integrate_approved trong run()
     monkeypatch.setattr(orch, "_integrate_approved", lambda res: None)
+    orch.gate.decide("SPEC-P1", "approve", by="human:po")   # ADR-0037: ký gate spec là ticket được giao ngay
     for _ in range(50):
         if orch.lead.state.get("T1") == "approved": break
         orch.run(max_steps=1)
@@ -120,10 +121,9 @@ def test_cli_model_env_khong_mang_khoa_cong_ty(monkeypatch):
 
 def _lead(batch=False):
     from company.delivery import DeliveryLead
-    from company.gates import GateRequest, HumanGate
+    from company.gates import HumanGate
     bus = InMemoryBus(); gate = HumanGate(); lead = DeliveryLead(bus, gate, batch_releases=batch)
-    gate.request(GateRequest(kind="plan", subject_id="PLAN", checklist=[], created_by="delivery-lead"))
-    gate.decide("PLAN", "approve", by="human:pm")
+    lead.plans_ok.add("PLAN")   # ADR-0037: không còn gate plan
     return bus, lead
 
 
@@ -164,7 +164,7 @@ def test_ticket_bi_bo_duoc_dung_lai_khi_mo_lai_tu_sqlite(tmp_path):
             return {"ticket_id": _inp(user)["ticket_id"], "source": "reviewer", "verdict": "block", "findings": [{"level": "block", "text": "sai"}]}
         return handler(system, user)
     db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=failing))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     orch.gate.decide("T1", "approve", by="human:pm", reason="tiếp"); orch.run()
     assert orch.lead.state["T1"] == "blocked" and orch.lead.state["T2"] == "waiting"
     orch.gate.decide("T1", "reject", by="human:pm", reason="bỏ"); orch.run()
@@ -182,7 +182,7 @@ def test_mo_lai_khong_chay_lai_agent_da_xong_cua_event_do_dang(tmp_path):
     """Crash giữa hai route của một event: agent đã publish đầu ra (causation_id = event) không chạy lại khi mở lại."""
     from company.sqlite_bus import SQLiteBus
     db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=handler))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     pr = next(e for e in bus.replay(topic="pull-requests") if e.key == "T2")   # PR T2: reviewer + qa + security cùng đọc
     reviews = [e for e in bus.replay(topic="review-results") if e.causation_id == pr.event_id]
     assert len(reviews) == 3

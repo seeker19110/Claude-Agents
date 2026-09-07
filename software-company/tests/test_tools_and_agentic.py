@@ -327,7 +327,7 @@ def test_orchestrator_with_repo_produces_verified_prs_and_reviewers_read_diff(tm
     repo = _init_repo(tmp_path / "repo")
     bus = InMemoryBus(); client = FakeClient(handler=handler, tool_handler=_repo_tool_handler)
     orch = Orchestrator(bus, client, repo=repo, base="main")
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.state["T1"] == "merged" and orch.lead.state["T2"] == "merged" and orch.stats["errors"] == 0
     prs = {e.key: e.payload for e in bus.replay(topic="pull-requests")}
     assert set(prs) == {"T1", "T2"}
@@ -351,7 +351,7 @@ def test_orchestrator_with_repo_produces_verified_prs_and_reviewers_read_diff(tm
 
 def test_orchestrator_without_repo_marks_prs_unverified():
     bus = InMemoryBus(); client = FakeClient(handler=handler); orch = Orchestrator(bus, client)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     prs = [e.payload for e in bus.replay(topic="pull-requests")]
     assert prs and all(p["local_checks"] == {"unverified": True} for p in prs), "lời khai của model không thành bằng chứng"
     a = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "local_checks.unverified"]
@@ -368,7 +368,7 @@ def test_orchestrator_rejects_non_git_repo(tmp_path):
 def test_engineering_failure_in_workspace_is_audited_and_loop_continues(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=lambda m, t: []), repo=repo, base="main")
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     # Agent không sửa file → invalid_output → ticket KHÔNG treo dispatched: retry kèm hint tới khi blocked → gate escalation
     assert not list(bus.replay(topic="pull-requests")) and orch.lead.state["T1"] == "blocked" and orch.stats["errors"] >= 3
     assert any(e.payload["action"] == "invalid_output" and "không có thay đổi" in e.payload["evidence"] for e in bus.replay(topic="audit-log"))
@@ -398,7 +398,7 @@ def test_plan_with_dependency_cycle_is_rejected_before_gate():
 
 def test_lessons_calibrate_next_plan():
     bus = InMemoryBus(); client = FakeClient(handler=handler); orch = Orchestrator(bus, client)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     orch.gate.decide("REL-001", "approve", by="human:rm"); orch.run()
     assert orch.supervisor.calibration() == {}, "chưa nghiệm thu thì chưa có bài học"
     _pub(bus, "acceptance-results", "REL-001", "account-manager",
@@ -741,7 +741,7 @@ def test_staging_qa_gets_read_only_tools_on_integration_worktree(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     bus = InMemoryBus(); client = FakeClient(handler=handler, tool_handler=_repo_tool_handler)
     orch = Orchestrator(bus, client, repo=repo, base="main")
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.releases == ["REL-001", "REL-002"] and orch.stats["errors"] == 0
     staging_qa = [c for c in client.calls if _agent_of(c["system"]) == "qa-debugger" and _inp(c["user"]).get("release_id")]
     assert staging_qa and all(c["tools"] == ["read_file", "list_files", "search", "run"] for c in staging_qa)
@@ -754,7 +754,7 @@ def test_reviewer_with_tools_but_no_calls_is_audited(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     lazy = lambda msgs, tools: _repo_tool_handler(msgs, tools) if "write_file" in {t.name for t in tools} else []  # noqa: E731
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=lazy), repo=repo, base="main")
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     lazy_qa = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "review.no_tool_evidence"]
     # reviewer/security giờ cũng có tool trên PR: không gọi tool nào cũng bị ghi "chỉ là lời khai" như QA
     assert lazy_qa and {a["agent"] for a in lazy_qa} == {"qa-debugger", "reviewer", "security-engineer"}
@@ -773,7 +773,7 @@ def test_pr_with_failing_local_checks_goes_back_to_ticket_not_to_review(tmp_path
                 _tc("write_file", path=f"test_{tid.lower()}.py", content=f"from f_{tid.lower()} import {tid.lower()}\n\n\ndef test_x():\n    assert {tid.lower()}() == 1\n")]
     bus = InMemoryBus(); client = FakeClient(handler=handler, tool_handler=th)
     orch = Orchestrator(bus, client, repo=repo, base="main")
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.state["T1"] == "merged" and orch.stats["errors"] == 0
     prs = [e.payload for e in bus.replay(topic="pull-requests") if e.key == "T1"]
     assert len(prs) == 1 and prs[0]["local_checks"]["tests"] is True, "PR đỏ không được publish"

@@ -49,7 +49,7 @@ def test_hieu_qua_duyet_theo_loai_gate() -> None:
     assert "GIAO HÀNG" in gate_effect("release", "REL-1")
     assert "KHÔNG deploy" in gate_effect("escalation", "REL-1")
     assert "mở lại ticket" in gate_effect("escalation", "T1")
-    assert "giao ticket" in gate_effect("plan", "PLAN-1")
+    assert gate_effect("plan", "PLAN-ch1") == "", "ADR-0037: company không còn gate plan"
     assert "threat model" in gate_effect("spec", "SPEC-1")
     assert "nghiệm thu" in gate_effect("acceptance", "UAT-1")
     assert gate_effect("publish", "PUB-1") == ""
@@ -130,7 +130,7 @@ def test_quyet_dinh_da_ky_chua_ap_dung() -> None:
     """gate.decide nằm trong log mà chưa có `orchestrated` cho nó = người đã ký, máy chưa áp."""
     gate = HumanGate()
     gate.request(GateRequest(kind="release", subject_id="REL-1", created_by="delivery-lead", checklist=[]))
-    applied = audit("human:lead", "gate.decide", {"subject_id": "PLAN-1", "decision": "approve", "by": "human:lead"},
+    applied = audit("human:lead", "gate.decide", {"subject_id": "REL-001", "decision": "approve", "by": "human:lead"},
                     ts=NOW - timedelta(minutes=30))
     waiting = audit("human:lead", "gate.decide", {"subject_id": "REL-1", "decision": "approve", "by": "human:lead",
                                                   "reason": "đủ điều kiện"}, ts=NOW - timedelta(minutes=12))
@@ -226,8 +226,8 @@ def test_collect_mang_khoi_su_that_va_hieu_qua_gate(company_db: Path, studio_db:
     # conftest ký SPEC-1 nhưng không có `orchestrated` cho quyết định đó → đúng là "người đã ký, máy chưa áp"
     assert [(d["id"], d["kind"]) for d in s["pending_decisions"]] == [("SPEC-1", "spec")] and s["running"]["queue"] >= 1
     assert isinstance(s["deadlocks"], list)
-    plan = next(g for g in s["gates"] if g["id"] == "PLAN-1")
-    assert "giao ticket" in plan["effect"]
+    rel = next(g for g in s["gates"] if g["id"] == "REL-001")
+    assert "GIAO HÀNG" in rel["effect"]
     pub = next(g for g in s["gates"] if g["id"] == "PUB-vid-042")
     assert pub["effect"] == ""
     t = s["tickets"][0]

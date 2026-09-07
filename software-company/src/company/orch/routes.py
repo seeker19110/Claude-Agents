@@ -306,7 +306,7 @@ ROUTES: tuple[Route, ...] = (
 PROD_ROUTE = Route("release-candidates", "release-engineer", "release-events", target_env="production")
 THREAT_ROUTE = Route("approved-specs", "security-engineer", "review-results")  # threat model trước ticket đầu (ADR-0003)
 
-# Đầu vào khiến delivery-lead lập kế hoạch (sinh nhiều ticket một lượt) → gate `plan` → dispatch.
+# Đầu vào khiến delivery-lead lập kế hoạch (sinh nhiều ticket một lượt) → `_check_plan` → dispatch (ADR-0037).
 PLAN_INPUTS: dict[str, When] = {
     "approved-specs": lambda e, _o: True,
     "incidents": _field("root_cause_class", "code", "ops", "design"),

@@ -75,7 +75,7 @@ def test_supervisor_no_tang_tiep_thi_chom_nguong_lan_hai():
 
 def _dua_toi_ke_hoach(bus):
     o = Orchestrator(bus, FakeClient(handler=handler))
-    _drive_to_plan(bus, o); o.gate.decide("PLAN-P1-1", "approve", by="human:pm"); o.run()
+    _drive_to_plan(bus, o); o.run()
     return o
 
 

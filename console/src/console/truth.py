@@ -65,7 +65,9 @@ PRODUCT_STAGES = [
 HINT_TEMPLATE = "root_cause: \ndecision: \nhint: "
 
 # Agent chạy lại sau khi DUYỆT từng loại gate — người trực phải biết mình vừa đánh thức ai (C2).
-NEXT_AGENT = {"release": "release-engineer", "spec": "security-engineer + delivery-lead", "plan": "delivery-lead",
+# ADR-0037: software-company không còn gate `plan` (kế hoạch do `_check_plan` cho đi thẳng). Studio vẫn có
+# `GateKind` `plan` riêng, nhưng `StudioView` không dùng bảng này — chỉ `CompanyView` gọi (`collect.py`).
+NEXT_AGENT = {"release": "release-engineer", "spec": "security-engineer + delivery-lead",
               "acceptance": "account-manager", "escalation": "agent đang giữ ticket"}
 
 
@@ -82,8 +84,6 @@ def gate_reject_effect(kind: str, subject_id: str) -> str:
         if subject_id.startswith("REL-"):
             return "Từ chối = finding vẫn chặn; RC nằm nguyên bậc hiện tại cho tới khi có RC mới."
         return "Từ chối = ticket ĐÓNG hẳn (`closed`), không ai làm tiếp — không phải \"để đó tính sau\"."
-    if kind == "plan":
-        return "Từ chối = delivery-lead lập lại kế hoạch từ đầu; chưa ticket nào được giao, chưa tiêu token."
     if kind == "spec":
         return "Từ chối = spec-writer viết lại PRD; chưa có ticket nào tồn tại để mà quay về."
     if kind == "acceptance":
@@ -99,10 +99,8 @@ def gate_effect(kind: str, subject_id: str) -> str:
         if subject_id.startswith("REL-"):
             return "Duyệt = chấp nhận finding đang chặn release này (waive), KHÔNG deploy gì. Từ chối = trả ticket về làm lại."
         return "Duyệt = mở lại ticket với lý do bạn ghi làm hint cho agent, cấp thêm một ngân sách. Từ chối = đóng ticket."
-    if kind == "plan":
-        return "Duyệt = giao ticket cho kỹ sư, bắt đầu tiêu token."
     if kind == "spec":
-        return "Duyệt = security viết threat model, delivery-lead lập kế hoạch và chia ticket."
+        return "Duyệt = security viết threat model, delivery-lead chia ticket và GIAO NGAY (ADR-0037: không còn gate plan)."
     if kind == "acceptance":
         return "Duyệt = khách ký nghiệm thu, ticket của release đóng."
     return ""

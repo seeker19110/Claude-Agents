@@ -86,18 +86,30 @@ def _topics(bus):
     return [e.topic for e in bus.replay() if e.topic not in {"audit-log", "shared-context", "supervisor-actions"}]
 
 
-def _drive_to_plan(bus, orch):
-    """research-request → ... → clarification-questions (người trả lời) → approved-specs → gate spec → plan → gate plan."""
+def _drive_to_spec_gate(bus, orch):
+    """research-request → ... → clarification-questions (người trả lời) → approved-specs → gate spec ĐANG CHỜ.
+
+    ADR-0037: đây là mốc cuối cùng còn dừng được trước khi ticket được giao — ký gate spec xong là `_check_plan`
+    cho kế hoạch đi thẳng tới `dispatch` trong cùng một `run()`. Test nào cần chen một sự kiện vào giữa (pause,
+    giới hạn `max_steps`, quyết định gate từ tiến trình khác) thì dùng hàm này, không dùng `_drive_to_plan`."""
     _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app đặt lịch"})
     orch.run()
     assert _topics(bus)[-1] == "clarification-questions", "dừng chờ người trả lời"
     _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "a"}]})
     orch.run()
     assert "SPEC-P1" in orch.gate.pending and next(iter(orch.deferred.values()))[1] == "gate:SPEC-P1"
+
+
+def _drive_to_plan(bus, orch):
+    """`_drive_to_spec_gate` + ký gate spec → kế hoạch được lập và ticket được GIAO NGAY (ADR-0037).
+
+    Hàm này trả về khi ticket đã ở trên bus, không phải khi có một gate plan đang chờ."""
+    _drive_to_spec_gate(bus, orch)
     orch.gate.decide("SPEC-P1", "approve", by="human:po")
     orch.run()
-    assert not orch.deferred and "PLAN-P1-1" in orch.gate.pending and "PLAN-P1-1" in orch.plans
-    assert not orch.lead.tickets, "chưa dispatch khi plan chưa duyệt"
+    assert "PLAN-P1-1" in orch.plans and not orch.plans["PLAN-P1-1"]["problems"]
+    assert "PLAN-P1-1" not in orch.gate.pending, "ADR-0037: kế hoạch không qua gate nữa"
+    assert orch.lead.tickets, "plan sạch problem → dispatch ngay trong cùng lượt"
 
 
 # ---------- bảng route ----------
@@ -145,7 +157,6 @@ def test_full_lifecycle_stops_at_gates_and_humans():
     assert _topics(bus)[:6] == ["research-requests", "research-findings", "research-findings", "requirements-draft",
                                 "requirements-draft", "clarification-questions"]
 
-    orch.gate.decide("PLAN-P1-1", "approve", by="human:pm")
     orch.run()
     st = orch.lead.state
     # T1: backend → reviewer+qa pass → approved → REL-001 staging → merged → QA staging pass → gate 3 chờ
@@ -180,16 +191,17 @@ def test_full_lifecycle_stops_at_gates_and_humans():
 def test_resume_from_sqlite_does_not_redo_work(tmp_path):
     db = tmp_path / "c.sqlite"
     bus1 = SQLiteBus(db); c1 = FakeClient(handler=handler); o1 = Orchestrator(bus1, c1)
-    _drive_to_plan(bus1, o1)
-    o1.gate.decide("PLAN-P1-1", "approve", by="human:pm")
-    o1.run(max_steps=2)  # dispatch T1, backend làm PR rồi "tắt máy" (review chưa chạy)
+    _drive_to_spec_gate(bus1, o1)
+    o1.gate.decide("SPEC-P1", "approve", by="human:po")
+    o1.run(max_steps=4)  # lập kế hoạch + giao T1, backend làm PR rồi "tắt máy" (review chưa chạy)
     n_calls, n_events = len(c1.calls), len(bus1)
     assert o1.lead.state["T1"] == "in_review"
     bus1.close()
 
     bus2 = SQLiteBus(db); c2 = FakeClient(handler=handler); o2 = Orchestrator(bus2, c2)
     assert o2.lead.state == o1.lead.state and o2.lead.tickets.keys() == o1.lead.tickets.keys()
-    assert o2.lead.waiting() == {"T2": ["T1"]} and "PLAN-P1-1" in o2.plans and o2.gate.is_approved("PLAN-P1-1")
+    assert o2.lead.waiting() == {"T2": ["T1"]} and "PLAN-P1-1" in o2.plans
+    assert "PLAN-P1-1" in o2.lead.plans_ok, "ADR-0037: dựng lại từ `plan.proposed`, không từ một gate.decide"
     assert len(bus2) == n_events, "khôi phục không phát lại event"
     assert [e.event_id for e in o2.queue] == [e.event_id for e in o1.queue]
     o2.run()
@@ -203,11 +215,11 @@ def test_poll_picks_up_gate_decision_from_other_process(tmp_path):
     from company.gate_cli import main as gate_main
     db = tmp_path / "c.sqlite"
     bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=handler))
-    _drive_to_plan(bus, orch)
-    assert gate_main(["--db", str(db), "approve", "PLAN-P1-1", "--by", "human:pm"]) == 0  # tiến trình khác
-    assert "PLAN-P1-1" in orch.gate.pending, "chưa poll thì chưa thấy"
+    _drive_to_spec_gate(bus, orch)
+    assert gate_main(["--db", str(db), "approve", "SPEC-P1", "--by", "human:pm"]) == 0  # tiến trình khác
+    assert "SPEC-P1" in orch.gate.pending, "chưa poll thì chưa thấy"
     orch.tick()
-    assert orch.gate.is_approved("PLAN-P1-1") and orch.lead.state["T1"] == "merged"
+    assert orch.gate.is_approved("SPEC-P1") and orch.lead.state["T1"] == "merged"
 
 
 def test_run_polls_foreign_gate_decision_while_queue_is_busy(tmp_path):
@@ -216,26 +228,26 @@ def test_run_polls_foreign_gate_decision_while_queue_is_busy(tmp_path):
     from company.gate_cli import main as gate_main
     db = tmp_path / "c.sqlite"
     bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=handler))
-    _drive_to_plan(bus, orch)
+    _drive_to_spec_gate(bus, orch)
     # Mô phỏng "đang bận": xử lý event đầu tiên trong hàng đợi thì tiến trình khác ký gate.
     _pub(bus, "research-requests", "P2", "human:pm", {"project_id": "P2", "description": "việc khác đang chạy"})
     orig = orch.process
     def busy(env):
         if env.topic == "research-requests":
-            assert gate_main(["--db", str(db), "approve", "PLAN-P1-1", "--by", "human:pm"]) == 0  # tiến trình khác
+            assert gate_main(["--db", str(db), "approve", "SPEC-P1", "--by", "human:pm"]) == 0  # tiến trình khác
         return orig(env)
     orch.process = busy
     orch.run()
-    assert orch.gate.is_approved("PLAN-P1-1") and orch.lead.state["T1"] == "merged",         "quyết định ký giữa lúc hàng đợi bận phải được áp trong cùng lượt run(), không chờ tick() sau"
+    assert orch.gate.is_approved("SPEC-P1") and orch.lead.state["T1"] == "merged",         "quyết định ký giữa lúc hàng đợi bận phải được áp trong cùng lượt run(), không chờ tick() sau"
 
 
 # ---------- supervisor pause / resume ----------
 
 def test_paused_ticket_is_deferred_until_resume():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
-    _drive_to_plan(bus, orch)
-    orch.gate.decide("PLAN-P1-1", "approve", by="human:pm")
+    _drive_to_spec_gate(bus, orch)
     _pub(bus, "supervisor-actions", "T1", "supervisor", SupervisorAction(target="T1", action="pause", reason="test").model_dump())
+    orch.gate.decide("SPEC-P1", "approve", by="human:po")
     orch.run()
     assert orch.lead.state["T1"] == "dispatched" and next(iter(orch.deferred.values()))[1] == "paused:T1"
     _pub(bus, "supervisor-actions", "T1", "supervisor", SupervisorAction(target="T1", action="resume", reason="ok").model_dump())
@@ -274,7 +286,7 @@ def test_loi_agent_khong_nhanh_nao_nhan_thi_mo_gate_chu_khong_im_lang():
         return handler(system, user)
 
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=reviewer_hong))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     _pub(bus, "pull-requests", "T1", "backend",
          {"ticket_id": "T1", "project_id": "P1", "branch": "ticket/T1", "pr_ref": "#1", "summary": "s",
           "impact": {"files": ["a.py"]}, "local_checks": {"lint": True, "tests": True, "verified_by": "workspace"}})
@@ -390,7 +402,7 @@ def test_trang_thai_blocked_song_sot_qua_restart(tmp_path):
 
     db = tmp_path / "c.sqlite"
     bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=hong_luon))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.state["T1"] == "blocked", "hết retry thì ticket phải blocked"
 
     orch2 = Orchestrator(SQLiteBus(db), FakeClient(handler=hong_luon))
@@ -421,7 +433,7 @@ def test_ticket_bi_chan_lan_hai_van_phai_mo_gate(tmp_path):
         return handler(system, user)
 
     bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient(handler=hong_luon))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.state["T1"] == "blocked" and orch.gate.pending.get("T1"), "lần chặn đầu phải mở gate"
 
     orch.gate.decide("T1", "approve", by="human:lead", reason="thử lại")  # duyệt → pending rỗng, retry về 0
@@ -445,7 +457,7 @@ def test_duyet_escalation_do_reviewer_loi_thi_review_con_thieu_duoc_chay_lai(tmp
         return handler(system, user)
 
     bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient(handler=reviewer_hong_lan_dau))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.state["T1"] == "in_review" and orch.gate.pending.get("T1"), "reviewer lỗi → escalation, PR đã có"
     assert "agent_error_unhandled" in [e.payload["action"] for e in bus.replay(topic="audit-log")]
 
@@ -465,7 +477,7 @@ def test_mo_lai_bus_khi_gate_decide_chua_duoc_xu_ly_khong_mo_gate_trung(tmp_path
         return handler(system, user)
 
     bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient(handler=hong_luon))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.state["T1"] == "blocked" and orch.gate.pending.get("T1")
     # một event của T1 vào hàng đợi TRƯỚC quyết định (thực tế: task/PR hoãn vì paused), rồi người duyệt
     bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=orch.lead.tickets["T1"].model_dump()))
@@ -494,7 +506,7 @@ def test_status_canh_bao_khi_khong_con_viec_nao_chay_duoc(tmp_path):
         return handler(system, user)
 
     bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient(handler=hong_luon))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
 
     # ticket blocked NHƯNG gate escalation đang mở: người đã được hỏi, không phải bế tắc
     assert orch.gate.pending, "kịch bản phải có gate mở thì mới kiểm được chiều 'im lặng đúng'"
@@ -626,7 +638,7 @@ def _thuoc_tinh_lech(a, b) -> list[str]:
 
 def _chay_het_vong_doi(bus, o):
     _drive_to_plan(bus, o)
-    o.gate.decide("PLAN-P1-1", "approve", by="human:pm"); o.run()
+    o.run()
     o.gate.decide("REL-001", "approve", by="human:release-manager"); o.run()
     _pub(bus, "acceptance-results", "REL-001", "account-manager",
          {"release_id": "REL-001", "project_id": "P1", "verdict": "accepted", "signed_by": "customer:po"})
@@ -675,7 +687,7 @@ def test_state_song_sot_qua_restart_ca_khi_co_escalation(tmp_path):
     db = tmp_path / "c.sqlite"
     bus = SQLiteBus(db)
     o = Orchestrator(bus, FakeClient(handler=reviewer_hong))
-    _drive_to_plan(bus, o); o.gate.decide("PLAN-P1-1", "approve", by="human:pm"); o.run()
+    _drive_to_plan(bus, o); o.run()
     n_live = sum(1 for a in o.supervisor.actions if a.action in {"escalate", "budget_cut"})
     assert n_live > 0, "kịch bản phải sinh ra escalation thì mới kiểm được nhánh này"
 
@@ -746,7 +758,7 @@ def test_release_engineer_khong_tu_khai_duoc_env_production():
             return {**handler(system, user), "env": "production"}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=sneaky))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     envs = [e.payload["env"] for e in bus.replay(topic="release-events")]
     assert envs and all(x == "staging" for x in envs), f"model không tự khai được production, nhận: {envs}"
     assert any(e.payload["action"] == "release.env_overridden" for e in bus.replay(topic="audit-log")),         "ghi đè phải để lại dấu vết, không im lặng"
@@ -762,7 +774,7 @@ def test_review_tren_release_khong_tu_khai_duoc_ticket_id():
             return {"ticket_id": p["tickets"][0], "source": "security", "verdict": "pass"}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=sneaky))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     reviews = [(e.key, e.payload["ticket_id"], e.payload["source"]) for e in bus.replay(topic="review-results")]
     assert ("REL-002", "REL-002", "security") in reviews, f"review release phải mang release_id, nhận: {reviews}"
     assert "REL-002" in orch.gate.pending, "đủ nguồn (qa + security) thì Gate 3 của REL-002 phải mở"
@@ -831,12 +843,14 @@ def test_agents_write_blackboard_and_threat_model_precedes_plan():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
     _drive_to_plan(bus, orch)
     bb = orch.blackboard.snapshot("P1")  # blackboard phân vùng theo dự án
-    assert {"prd", "threat-model", "architecture", "api-contract"} <= set(bb), "PRD, threat model, C4, contract lên blackboard trước gate plan"
+    assert {"prd", "threat-model", "architecture", "api-contract"} <= set(bb), "PRD, threat model, C4, contract lên blackboard trước khi _check_plan chạy"
     assert bb["threat-model"].content_ref == "docs/threat-model.md"
     tm = list(bus.replay(topic="review-results", key="SPEC-P1"))
     assert len(tm) == 1 and tm[0].payload["source"] == "security"
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
-    assert "context_written" in acts and orch.gate.pending["PLAN-P1-1"].checklist[-2:] == ["architecture", "api-contract"]
+    # ADR-0037: `architecture`/`api-contract` không còn là khoá checklist của một gate plan; chúng là điều kiện
+    # `_check_plan` — thiếu là `problems`, và plan không bao giờ tới `plan.proposed`.
+    assert "context_written" in acts and not orch.plans["PLAN-P1-1"]["problems"]
 
 
 def test_security_block_on_spec_stops_planning():
@@ -880,7 +894,7 @@ def test_change_request_impact_then_human_decision_then_plan(tmp_path):
     orch.tick()
     cr = list(bus.replay(topic="change-requests"))[-1].payload
     assert cr["decision"] == "accepted" and cr["impact"]["estimate_tokens"] == 5000 and cr["impact"]["decided_by"] == "human:po"
-    assert "PLAN-P1-1" in orch.gate.pending, "CR accepted không đổi requirement → delivery-lead lập kế hoạch thẳng"
+    assert "PLAN-P1-1" in orch.plans, "CR accepted không đổi requirement → delivery-lead lập kế hoạch thẳng"
 
 
 def test_feedback_with_bug_opens_incident_and_requirement_incident_reopens_research():
@@ -896,7 +910,7 @@ def test_feedback_with_bug_opens_incident_and_requirement_incident_reopens_resea
 
 def test_conditional_acceptance_opens_change_request_and_lessons_recorded():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     orch.gate.decide("REL-001", "approve", by="human:rm"); orch.run()
     assert orch.blackboard.read("docs", "P1") is not None, "support-docs viết release notes sau production"
     _pub(bus, "acceptance-results", "REL-001", "account-manager",
@@ -918,7 +932,7 @@ def test_blocked_ticket_opens_escalation_gate_and_reopens_on_approve():
             return {"ticket_id": _inp(user)["ticket_id"], "source": "reviewer", "verdict": "block", "findings": [{"level": "block", "text": "sai contract"}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=failing))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     # cùng lỗi lặp 2 lần → supervisor escalate → ticket bị hoãn, gate escalation mở cho người
     assert "T1" in orch.paused and orch.gate.pending["T1"].kind == "escalation" and orch.deferred
     orch.gate.decide("T1", "approve", by="human:pm", reason="cứ làm tiếp"); orch.run()
@@ -940,7 +954,7 @@ def test_overdue_review_is_reassigned_once():
             calls.append("qa-debugger:pr"); raise LLMError("timeout")
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=lazy))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     later = datetime.now(UTC) + timedelta(hours=3)
     assert orch.lead.state["T2"] == "in_review" and orch.lead.overdue_reviews(later) == {"T2": {"qa"}}
     orch.tick(now=later)
@@ -971,7 +985,7 @@ def test_tick_nhac_va_escalate_gate_qua_han():
     orch.tick(now=later)
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert "gate.overdue" in acts
-    assert any(a.action == "escalate" and a.target == "PLAN-P1-1" for a in orch.supervisor.actions)
+    assert any(a.action == "escalate" and a.target == "REL-001" for a in orch.supervisor.actions)
     n_before = len(orch.supervisor.actions)
     orch.tick(now=later)   # lần hai: đã escalate rồi, không lặp lại
     assert len(orch.supervisor.actions) == n_before
@@ -1064,11 +1078,11 @@ def test_republished_spec_does_not_create_second_plan():
     _drive_to_plan(bus, orch)
     spec = bus.latest("approved-specs", "P1")
     _pub(bus, "approved-specs", "P1", "spec-writer", spec.payload); orch.run()
-    assert list(orch.plans) == ["PLAN-P1-1"] and list(orch.gate.pending) == ["PLAN-P1-1"]
+    assert list(orch.plans) == ["PLAN-P1-1"] and "PLAN-P1-1" not in orch.gate.pending
     a = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "plan.duplicate_spec"]
     assert a and a[0]["existing"] == ["PLAN-P1-1"]
-    orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
-    _pub(bus, "approved-specs", "P1", "spec-writer", spec.payload); orch.run()  # sau khi plan đã duyệt cũng không lập lại
+    orch.run()
+    _pub(bus, "approved-specs", "P1", "spec-writer", spec.payload); orch.run()  # sau khi ticket đã giao cũng không lập lại
     assert list(orch.plans) == ["PLAN-P1-1"] and set(orch.lead.tickets) == {"T1", "T2"}
 
 

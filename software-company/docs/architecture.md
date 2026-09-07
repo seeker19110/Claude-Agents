@@ -143,9 +143,13 @@ Read/Grep/Glob) đọc hồ sơ và in bản tóm; người ký bằng `gate_cli
 ## Orchestrator (ADR-0007, ADR-0012)
 
 `company.orchestrator` là vòng lặp nối các dòng trong bảng topic ở trên: mỗi event → tra `ROUTES` → gọi runner →
-publish → event mới. Bảng route phải khớp front matter `reads`/`writes` (kiểm lúc khởi tạo). Ba chỗ vòng lặp dừng và
-chờ người: gate `spec` (`SPEC-<project>`), gate `plan` (`PLAN-<project>-<n>`, sau khi delivery-lead sinh ticket và
-code kiểm estimate/budget/depends_on), gate `release` (`REL-xxx`, production). Ticket bị supervisor pause/budget_cut/
+publish → event mới. Bảng route phải khớp front matter `reads`/`writes` (kiểm lúc khởi tạo). Hai chỗ vòng lặp dừng và
+chờ người trên đường công đoạn: gate `spec` (`SPEC-<project>`) và gate `release` (`REL-xxx`, production); thứ ba là
+chữ ký của khách ở gate `acceptance` (`UAT-<release_id>`). Kế hoạch KHÔNG có gate (ADR-0037): sau khi delivery-lead
+sinh ticket, `_check_plan` kiểm bằng code (kích thước ticket, estimate/budget, `risk_tags`, `depends_on`, threat
+model, `architecture`/`api-contract` trên blackboard) — sạch thì `_dispatch_plan` giao ngay trong cùng lượt, có
+`problems` thì `plan_rejected` + gate `escalation` cấp dự án. Guard vẫn nằm ở code: `DeliveryLead.dispatch` chỉ
+nhận `plan_id` đã vào `lead.plans_ok`. Ticket bị supervisor pause/budget_cut/
 escalate thì event của nó bị hoãn đến `resume`; sự kiện gặp lỗi transport (`TransientError`, sau khi đã hết retry)
 cũng bị hoãn (`transient:`), tự thử lại mỗi `tick`. Đầu vào của người (`clarification-answers`, `acceptance-results`,
 `change-requests` decision, `external-feedback`) đi qua `orchestrator publish` / `decide-change`; `comment`/`takeover`

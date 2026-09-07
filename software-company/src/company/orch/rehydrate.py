@@ -11,7 +11,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from ..events import Envelope
-from ..gate_cli import trusted_decision
 from ..runner import CONTEXT_ONLY
 from .routes import ACTOR, ROUTES
 
@@ -36,7 +35,15 @@ def rehydrate(o: Orchestrator) -> None:
             if a["actor"] == ACTOR and a["action"] == "orchestrated":
                 o.processed.add(d["event_id"]); last_done[str(d["event_id"])] = i
             elif a["actor"] == ACTOR and a["action"] == "once": o.once.add(d["key"])
-            elif a["action"] == "plan.proposed": o.plans[d["plan_id"]] = d
+            elif a["action"] == "plan.proposed":
+                # ADR-0037: `plan.proposed` chỉ được ghi khi `_check_plan` không trả problem nào, và lúc đó ticket
+                # đã được giao ngay — nên dựng lại trạng thái phải giao lại ở ĐÚNG chỗ này trong log, không chờ
+                # một `gate.decide` không bao giờ tới nữa (khuôn 2 `TRAPS.md`: state chỉ sống trong RAM).
+                # Giao ở đây cũng đúng thứ tự thời gian hơn nhánh cũ: mọi `tasks`/`ticket.blocked` của kế hoạch
+                # này nằm SAU trong log nên vẫn ghi đè được trạng thái `dispatched`/`waiting` dựng ở đây.
+                o.plans[d["plan_id"]] = d
+                o.lead.plans_ok.add(str(d["plan_id"]))
+                o._dispatch_plan(str(d["plan_id"]), replaying=True)
             elif a["action"] == "release.void": o._void(d["release_id"])
             elif a["action"] == "release.staged": o.release_sha[d["release_id"]] = d["sha"]
             elif a["action"] == "delivery.done": o.delivered[d["release_id"]] = d
@@ -77,9 +84,6 @@ def rehydrate(o: Orchestrator) -> None:
                 o.spec_runtime_reworks.pop(str(d.get("subject")), None)
             elif a["action"] == "gate.decide":
                 if d.get("subject_id"): o.escalation_decided[str(d["subject_id"])] += 1
-                if d.get("decision") == "approve" and d.get("subject_id") in o.plans \
-                        and trusted_decision(env) is not None:
-                    o._dispatch_plan(d["subject_id"], replaying=True)
             elif a["action"] == "integration.conflict":
                 o.conflict_retries[str(d["ticket_id"])] += 1
             elif a["action"] == "release.finding_waived":

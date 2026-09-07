@@ -697,19 +697,18 @@ def main(argv: list[str] | None = None) -> int:
 
     # 3. Gate 1: duyệt spec
     if f"SPEC-{PID}" in s.gate.pending: s.gate.decide(f"SPEC-{PID}", "approve", by="human:po")
-    s.run("Gate spec duyệt → threat model → delivery-lead lập plan → gate plan")
+    s.run("Gate spec duyệt → threat model → delivery-lead lập plan → _check_plan → dispatch (ADR-0037)")
     if not s.stop_if_stuck("chưa có plan"): return 1
 
     return run_delivery(s)
 
 
 def run_delivery(s: Sim) -> int:
-    """Từ gate plan tới nghiệm thu: dùng cho cả chạy mới lẫn --resume."""
-    # 4. Gate 2: duyệt plan
-    for plan in [g for g in list(s.gate.pending) if g.startswith("PLAN")]:
+    """Từ kế hoạch tới nghiệm thu: dùng cho cả chạy mới lẫn --resume."""
+    # 4. ADR-0037: không còn gate plan — `_check_plan` cho đi thẳng, ở đây chỉ IN ra kế hoạch đã được giao
+    for plan in s.orch.plans:
         s.say("  plan: " + ", ".join(f"{t['ticket_id']}({t['assignee']},{t.get('estimate_tokens')}tok)" for t in s.orch.plans[plan]["tickets"]))
-        s.gate.decide(plan, "approve", by="human:pm")
-    s.run("Gate plan duyệt → dispatch ticket → code thật → review → RC → staging → QA hồi quy → gate release")
+    s.run("Ticket đã giao → code thật → review → RC → staging → QA hồi quy → gate release")
     if not s.stop_if_stuck("chưa có release chờ gate"): return 1
     if not any(g.startswith("REL") for g in s.gate.pending):
         s.say("!! Không có release chờ gate và không kẹt: xem trạng thái ở trên"); return 1

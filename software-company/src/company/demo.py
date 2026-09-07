@@ -2,7 +2,7 @@
 
 TCK-1: ticket thường → reviewer + qa pass là đủ.
 TCK-2: ticket có risk_tags → phải chờ thêm security-engineer (ADR-0003); phụ thuộc TCK-1 nên chờ ở `waiting` (ADR-0006).
-Release: candidate → staging → QA hồi quy → gate 3 → production → khách nghiệm thu → closed.
+Release: candidate → staging → QA hồi quy → gate release → production → khách nghiệm thu → closed.
 """
 from __future__ import annotations
 
@@ -41,9 +41,12 @@ def run() -> None:
     bb.write("delivery-lead", "api-contract", "openapi.yaml", "v1")
     bb.write("security-engineer", "threat-model", "docs/threat-model.md", "v1: T-01..T-06")
     bb.write("account-manager", "contract", "docs/sow.md", "SOW + kịch bản UAT map Must")
-    gate.request(GateRequest(kind="plan", subject_id="PLAN-1", checklist=["c4", "contract", "threat-model"],
-                             created_by="delivery-lead"))
-    gate.decide("PLAN-1", "approve", by="human:pm")
+    # ADR-0037: người ký gate SPEC; kế hoạch không còn gate — `_check_plan` của orchestrator cho phép giao ticket
+    # bằng cách ghi plan_id vào `lead.plans_ok` (ở đây gọi tay vì demo không chạy orchestrator).
+    gate.request(GateRequest(kind="spec", subject_id="SPEC-P1", checklist=["prd", "acceptance-criteria", "ux-flow", "risks"],
+                             created_by="spec-writer"))
+    gate.decide("SPEC-P1", "approve", by="human:pm")
+    lead.plans_ok.add("PLAN-1")
 
     t1 = Task(ticket_id="TCK-1", project_id="P1", requirement_id="REQ-1", assignee="backend",
               title="GET /orders/{id}", acceptance=["Given ... When ... Then ..."],
@@ -71,7 +74,7 @@ def run() -> None:
     rid = lead.releases[0]
     _release_event(bus, rid, "staging", "deployed")
     _review(bus, rid, "qa", "qa-debugger", metrics={"p95_ms": 212, "axe_critical": 0})
-    print(f"{rid}: staging deployed, QA pass → gate 3 pending:", rid in gate.pending, "| TCK-1:", lead.state["TCK-1"])
+    print(f"{rid}: staging deployed, QA pass → gate release pending:", rid in gate.pending, "| TCK-1:", lead.state["TCK-1"])
     gate.decide(rid, "approve", by="human:release-manager")
     _release_event(bus, rid, "production", "deployed")
     bus.publish(Envelope(topic="acceptance-results", key=rid, actor="account-manager", payload=AcceptanceResult(

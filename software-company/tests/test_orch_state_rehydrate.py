@@ -62,7 +62,8 @@ SEED = {
     "deferred": lambda bus, tmp: _hen(bus),
     "defer_until": lambda bus, tmp: _hen(bus),
     "once": lambda bus, tmp: _audit(bus, "once", {"key": "gate.remind:PLAN-1"}),
-    "plans": lambda bus, tmp: _audit(bus, "plan.proposed", {"plan_id": "PLAN-P1-1", "project_id": "P1"}),
+    # ADR-0037: `plan.proposed` vừa dựng `plans` vừa giao lại ticket, nên seed phải mang khoá `tickets`
+    "plans": lambda bus, tmp: _audit(bus, "plan.proposed", {"plan_id": "PLAN-P1-1", "project_id": "P1", "tickets": []}),
     "integrated": lambda bus, tmp: _audit(bus, "integration.merged", {"ticket_id": "T1"}),
     "conflict_retries": lambda bus, tmp: _audit(bus, "integration.conflict", {"ticket_id": "T1"}),
     "missing_threat_model": lambda bus, tmp: _audit(bus, "threat_model.missing", {"subject_id": "P1"}),

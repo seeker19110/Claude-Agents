@@ -135,11 +135,6 @@ def _by_id(g: GateSection) -> dict[str, SelfItem]:
 
 def _project_of(orch: Orchestrator, kind: str, subject: str) -> str | None:
     if kind == "spec" and subject.startswith("SPEC-"): return subject[5:]
-    if kind == "plan":
-        p = orch.plans.get(subject)
-        if p: return str(p["project_id"])
-        m = re.match(r"PLAN-(.+)-\d+$", subject)
-        return m.group(1) if m else None
     if kind == "release":
         tids = orch.lead.release_tickets.get(subject, [])
         t = orch.lead.tickets.get(tids[0]) if tids else None
@@ -246,14 +241,16 @@ def _brief_spec(orch: Orchestrator, g: GateSection, subject: str, pid: str | Non
     return out, unavailable, {}
 
 
-# ---------- gate `plan` (§5.4) ----------
+# ---------- hai mục dời từ gate `plan` cũ (ADR-0037) ----------
 
-def _brief_plan(orch: Orchestrator, g: GateSection, subject: str, pid: str | None) -> tuple[list[dict], list[dict], dict]:
-    items = _by_id(g); out: list[dict[str, Any]] = []
-    plan = orch.plans.get(subject) or {}
-    tickets: list[dict[str, Any]] = list(plan.get("tickets", []))
+def _brief_estimates(orch: Orchestrator, items: dict[str, SelfItem], pid: str | None,
+                     tickets: list[dict[str, Any]], plan_ids: list[str]) -> list[dict[str, Any]]:
+    """Ước lượng và ngân sách token — trước ADR-0037 là hai mục người-tự-kiểm của gate plan; nay đo trên chính
+    các ticket của release đang xin ký. Nguồn vẫn là audit `plan.proposed` (kế hoạch sinh ra chúng) cộng
+    `knowledge`, đúng các `id` cũ `plan.uoc-luong-co-so` / `plan.ngan-sach-token`."""
+    out: list[dict[str, Any]] = []
     plan_ev = [e for e in orch.bus.replay(topic="audit-log")
-               if e.payload.get("action") == "plan.proposed" and _evidence(e.payload).get("plan_id") == subject]
+               if e.payload.get("action") == "plan.proposed" and _evidence(e.payload).get("plan_id") in plan_ids]
     plan_src = _topic_src("audit-log", "plan.proposed", plan_ev)
     _kn, kn_src = _ns(orch, "knowledge", None)
 
@@ -274,22 +271,6 @@ def _brief_plan(orch: Orchestrator, g: GateSection, subject: str, pid: str | Non
     else: verdict = "ok"
     out.append(_item(it, verdict, facts, [plan_src] + ([kn_src] if kn_src else [])))
 
-    it = items["plan.phu-thuoc-ngoai"]
-    facts = []; srcs = []
-    for ns in ("architecture", "api-contract"):
-        content, src = _ns(orch, ns, pid)
-        if src: srcs.append(src)
-        if content is None: facts.append(f"chưa có {ns}"); continue
-        hits = [ln for ln in content.splitlines() if _DEP.search(ln)]
-        facts.append(f"{ns}: {len(hits)} dòng nhắc dependency/license/dịch vụ ngoài")
-        facts += [f"vd: {excerpt(x, 120)}" for x in hits[:2]]
-    sec = [e for e in orch.bus.replay(topic="review-results") if e.payload.get("source") == "security"
-           and e.payload.get("project_id") in {pid, None}]
-    lic = [e for e in sec if re.search(r"licen[cs]e|giấy phép", json.dumps(e.payload, ensure_ascii=False), re.I)]
-    facts.append(f"{len(lic)} review security nhắc license" + (" (chưa có ticket nào chạy nên chưa có scan)" if not sec else ""))
-    if lic: srcs.append(_topic_src("review-results", "security", lic))
-    out.append(_item(it, "unknown", facts, srcs))
-
     it = items["plan.ngan-sach-token"]
     sum_est = sum(ests); sum_budget = sum(int(t.get("budget_tokens") or 0) for t in tickets)
     facts = [f"{len(tickets)} ticket: tổng estimate {sum_est} token, tổng budget {sum_budget} token"]
@@ -304,9 +285,7 @@ def _brief_plan(orch: Orchestrator, g: GateSection, subject: str, pid: str | Non
     facts.append(f"trần tiền dự án (llm.yaml budget_usd): {pb if pb is not None else 'chưa đặt'}"
                  + (f"; đã dùng {orch.supervisor.project_cost.get(pid or '', 0.0):.2f} USD" if pid else ""))
     out.append(_item(it, "gap" if (over_cap or under) else "unknown", facts, [plan_src]))
-    return out, [], {"tickets": [{"ticket_id": t["ticket_id"], "assignee": t.get("assignee"), "estimate_tokens": t.get("estimate_tokens"),
-                                  "budget_tokens": t.get("budget_tokens"), "risk_tags": t.get("risk_tags", []),
-                                  "depends_on": t.get("depends_on", [])} for t in tickets]}
+    return out
 
 
 # ---------- gate `release` / `acceptance` (§5.5) ----------
@@ -380,6 +359,11 @@ def _brief_release(orch: Orchestrator, g: GateSection, subject: str, pid: str | 
     it = items["release.four-eyes"]
     out.append(_item(it, "ok", [f"gate do `{req.created_by}` tạo; code từ chối quyết định của chính actor đó (four-eyes)"],
                      [{"kind": "gate", "ref": subject, "created_by": req.created_by}]))
+
+    # Hai mục dời từ gate plan cũ (ADR-0037): đo trên chính ticket của release này.
+    rel_tickets = [t.model_dump() for tid in tids if (t := orch.lead.tickets.get(tid)) is not None]
+    plan_ids = sorted({orch.lead.plan_of[tid] for tid in tids if tid in orch.lead.plan_of})
+    out += _brief_estimates(orch, items, pid, rel_tickets, plan_ids)
 
     reviews = [e for e in orch.bus.replay(topic="review-results") if e.payload.get("ticket_id") == subject]
     extra = {"tickets": tids, "version": next((e.payload.get("version") for e in orch.bus.replay(topic="release-candidates", key=subject)), None),
@@ -598,7 +582,6 @@ def build(orch: Orchestrator, subject: str, *, closed: bool = False, now: dateti
     g = load_gates()[req.kind]
     pid = _project_of(orch, req.kind, subject)
     if req.kind == "spec": checks, unavailable, extra = _brief_spec(orch, g, subject, pid)
-    elif req.kind == "plan": checks, unavailable, extra = _brief_plan(orch, g, subject, pid)
     elif req.kind == "release": checks, unavailable, extra = _brief_release(orch, g, subject, pid, req)
     elif req.kind == "acceptance": checks, unavailable, extra = _brief_acceptance(orch, g, subject, pid)
     else: checks, unavailable, extra = _brief_escalation(orch, g, subject, pid, repo)
@@ -679,7 +662,7 @@ def default_out(db: Path, b: dict[str, Any]) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Hồ sơ bằng chứng cho nửa 'người tự kiểm thêm' của một human gate (chỉ đọc)")
-    ap.add_argument("subject", nargs="?", help="subject của gate (SPEC-P1, PLAN-P1-1, REL-001, UAT-REL-001, T1, P1)")
+    ap.add_argument("subject", nargs="?", help="subject của gate (SPEC-P1, REL-001, UAT-REL-001, T1, P1)")
     ap.add_argument("--all", action="store_true", help="mọi gate đang chờ")
     ap.add_argument("--db", type=Path, default=Path("company.sqlite"))
     ap.add_argument("--repo", type=Path, help="repo khách (để đọc worktree ticket / diff nhánh tích hợp)")

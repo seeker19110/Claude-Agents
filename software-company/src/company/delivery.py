@@ -34,6 +34,10 @@ class DeliveryLead:
         self.tickets: dict[str, Task] = {}
         self.state: dict[str, str] = {}
         self.plan_of: dict[str, str] = {}
+        # ADR-0037: nguồn sự thật cho phép giao ticket. Trước đây là human gate `plan`; nay là `_check_plan`
+        # (orchestrator ghi plan_id vào đây ngay sau khi kiểm không ra problem nào). Vẫn là guard bằng CODE:
+        # `dispatch` một plan_id lạ vẫn `PermissionError`, không phải "ai gọi cũng giao".
+        self.plans_ok: set[str] = set()
         self.reviews: dict[str, dict[str, ReviewResult]] = defaultdict(dict)
         self.review_since: dict[str, datetime] = {}
         self.releases: list[str] = []
@@ -112,8 +116,8 @@ class DeliveryLead:
 
     def dispatch(self, task: Task, plan_id: str) -> Task:
         """Ticket vào hàng chờ nếu phụ thuộc chưa xong; ngược lại publish ngay. Phụ thuộc phải là ticket đã biết."""
-        if not self.replaying and not self.gate.is_approved(plan_id):
-            raise PermissionError("plan chưa được human gate duyệt")
+        if not self.replaying and plan_id not in self.plans_ok:
+            raise PermissionError("plan chưa qua _check_plan")
         if task.estimate_tokens is not None and task.budget_tokens < task.estimate_tokens * BUDGET_FACTOR:
             raise ValueError(f"{task.ticket_id}: budget_tokens {task.budget_tokens} < estimate_tokens × {BUDGET_FACTOR}")
         unknown = [d for d in task.depends_on if d not in self.tickets and d != task.ticket_id]
@@ -324,8 +328,11 @@ class DeliveryLead:
         need = {"qa"} | ({"security"} if self.release_needs_security(rid) else set())
         got = {s for s, x in self.release_reviews[rid].items() if x.verdict == "pass"} | self.release_waived.get(rid, set())
         if need <= got and not self.replaying and rid not in self.gate.pending and not self._gate_kind_approved(rid, "release"):
+            # `threat-model` và `architecture` dời từ gate plan cũ (ADR-0037): bỏ gate plan thì hai khoá đó phải
+            # còn chỗ để người ký nhìn, và release là gate công đoạn cuối trước khi tiền thật đi ra.
             self.gate.request(GateRequest(kind="release", subject_id=rid, created_by="delivery-lead",
-                                          checklist=["tests", "scan", "regression-staging", "perf", "a11y", "runbook", "rollback"]))
+                                          checklist=["tests", "scan", "regression-staging", "perf", "a11y", "runbook",
+                                                     "rollback", "threat-model", "architecture"]))
 
     def _on_release_qa(self, r: ReviewResult) -> None:
         """Review trên release (ticket_id = release_id): QA hồi quy/perf/a11y trên staging, và security (DAST/license)

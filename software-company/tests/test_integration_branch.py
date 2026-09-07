@@ -10,7 +10,7 @@ from company.llm import FakeClient
 from company.orchestrator import MAX_CONFLICT_RETRIES, Orchestrator
 from company.sqlite_bus import SQLiteBus
 from company.workspace import Integration, TicketWorkspace
-from test_orchestrator import T1, T2, _agent_of, _drive_to_plan, _inp, _pub, handler
+from test_orchestrator import T1, T2, _agent_of, _drive_to_plan, _drive_to_spec_gate, _inp, _pub, handler
 from test_tools_and_agentic import _first_turn, _init_repo, _repo_tool_handler, _tc
 
 
@@ -43,7 +43,7 @@ def test_tickets_branch_from_integration_and_merge_in_order(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     bus = InMemoryBus(); client = FakeClient(handler=handler, tool_handler=_repo_tool_handler)
     orch = Orchestrator(bus, client, repo=repo, base="main")
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.state == {"T1": "merged", "T2": "merged"} and orch.stats["errors"] == 0 and not orch.void_releases
     it = orch.integration
     files = it.files()
@@ -83,8 +83,9 @@ def test_xung_dot_lap_lai_qua_nguong_moi_tinh_vao_retry_noi_dung(tmp_path):
         return _repo_tool_handler(msgs, tools)
     bus = SQLiteBus(tmp_path / "c.sqlite")
     orch = Orchestrator(bus, FakeClient(handler=lead_independent, tool_handler=th), repo=repo, base="main")
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm")
+    _drive_to_spec_gate(bus, orch)
     orch.conflict_retries["T2"] = MAX_CONFLICT_RETRIES  # giả lập đã xung đột đủ ngưỡng ở các lần trước
+    orch.gate.decide("SPEC-P1", "approve", by="human:po")   # ADR-0037: ký gate spec là ticket được giao ngay
     orch.run()
     assert orch.conflict_retries["T2"] == MAX_CONFLICT_RETRIES + 1, "vẫn tăng đúng, chỉ đổi NGƯỠNG áp dụng"
     tasks = [e.payload for e in bus.replay(topic="tasks") if e.key == "T2"]
@@ -110,7 +111,7 @@ def test_conflict_voids_release_and_ticket_redoes_on_fresh_base(tmp_path):
         return _repo_tool_handler(msgs, tools)
     db = tmp_path / "c.sqlite"; bus = SQLiteBus(db)
     orch = Orchestrator(bus, FakeClient(handler=lead_independent, tool_handler=th), repo=repo, base="main")
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.stats["conflicts"] == 1 and len(orch.void_releases) == 1
     assert orch.lead.state == {"T1": "merged", "T2": "merged"}, orch.lead.state
     tasks = [e.payload for e in bus.replay(topic="tasks") if e.key == "T2"]
@@ -167,7 +168,7 @@ def test_approved_ticket_is_merged_before_dependents_start(tmp_path):
             seen[tid] = sorted(p.name for p in (repo / ".worktrees" / tid).glob("f_*.py"))
         return _repo_tool_handler(msgs, tools)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=th), repo=repo, base="main", batch_releases=True)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert seen == {"T1": [], "T2": ["f_t1.py"]}, "T2 (depends_on T1) bắt đầu trên nền đã có code T1"
     assert orch.lead.releases == ["REL-001"] and orch.lead.release_tickets["REL-001"] == ["T1", "T2"]
     merged = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "integration.merged"]
@@ -195,7 +196,8 @@ def test_rework_state_survives_restart_and_empty_branch_is_not_integrated(tmp_pa
             return [_tc("write_file", path="shared.py", content=f"X = '{tid}'\n")]
         return _repo_tool_handler(msgs, tools)
     bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=lead_independent, tool_handler=th), repo=repo, base="main")
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm")
+    _drive_to_spec_gate(bus, orch)
+    orch.gate.decide("SPEC-P1", "approve", by="human:po")   # ADR-0037: ký gate spec là ticket được giao ngay
     # chạy tới đúng lúc T2 bị trả về vì xung đột (task với hint "xung đột" đã publish) rồi "tắt máy". Xung đột KHÔNG
     # tính vào retry nội dung (`request_changes_no_retry_bump`) nên tín hiệu chờ là hint, không phải retry==1.
     while orch.queue and not any(e.topic == "tasks" and "xung đột" in (e.payload.get("hint") or "") for e in bus.replay()):
@@ -244,7 +246,7 @@ def test_dependents_start_only_after_dependency_is_integrated(tmp_path):
             order.append("t2_sees_t1" if tid == "T2" and (repo / ".worktrees" / "T2" / "f_t1.py").exists() else f"files:{tid}")
         return _repo_tool_handler(msgs, tools)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=th), repo=repo, base="main", batch_releases=True)
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.require_integration
     b = orch.supervisor.budgets["T1"]
     assert "T1" not in orch.paused and b.review_used > 0 and b.used < b.limit, "F16: review không làm ticket bị cắt ngân sách"
@@ -257,7 +259,7 @@ def test_dependents_start_only_after_dependency_is_integrated(tmp_path):
 
 def test_without_repo_dependents_start_on_approve():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert not orch.lead.require_integration and orch.lead.state["T2"] == "merged"
 
 
@@ -287,7 +289,7 @@ def test_integrate_approved_merge_lai_ticket_da_integrated_khi_co_commit_moi(tmp
     repo = _init_repo(tmp_path / "repo")
     bus = InMemoryBus(); client = FakeClient(handler=handler, tool_handler=_repo_tool_handler)
     orch = Orchestrator(bus, client, repo=repo, base="main")
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     assert "T1" in orch.integrated and orch.lead.state["T1"] == "merged"
     ws = orch.workspace("T1"); assert ws is not None
     (ws.path / "f_t1.py").write_text("BAN_SUA = 2\n", encoding="utf-8"); ws.commit_all("fix(T1): bản sửa sau khi bị trả về")
@@ -303,7 +305,7 @@ def test_branch_ahead_khong_no_khi_ref_branch_bien_mat(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     bus = InMemoryBus(); client = FakeClient(handler=handler, tool_handler=_repo_tool_handler)
     orch = Orchestrator(bus, client, repo=repo, base="main")
-    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _drive_to_plan(bus, orch); orch.run()
     ws = orch.workspace("T1"); assert ws is not None and ws.path.exists()
     _git(repo, "update-ref", "-d", f"refs/heads/{ws.branch}")
     assert orch._branch_ahead("T1") is False, "git lỗi → False, không ném"

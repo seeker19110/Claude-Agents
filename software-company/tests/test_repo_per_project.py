@@ -22,12 +22,11 @@ def _git(repo, *a) -> str:
 
 
 def _drive(bus, orch, pid: str, req_extra: dict) -> None:
-    """research-request (kèm repo) → ... → gate spec → plan → gate plan → approve → chạy tới cùng."""
+    """research-request (kèm repo) → ... → gate spec → approve → plan (ADR-0037: giao ngay) → chạy tới cùng."""
     _pub(bus, "research-requests", pid, "human:sales", {"project_id": pid, "description": "app đặt lịch", **req_extra})
     orch.run()
     _pub(bus, "clarification-answers", pid, "human:po", {"project_id": pid, "answers": [{"question_id": "Q1", "answer": "a"}]})
     orch.run(); orch.gate.decide(f"SPEC-{pid}", "approve", by="human:po"); orch.run()
-    orch.gate.decide(f"PLAN-{pid}-1", "approve", by="human:pm"); orch.run()
 
 
 def _audits(bus, action: str) -> list[dict]:

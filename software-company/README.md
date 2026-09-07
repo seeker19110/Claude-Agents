@@ -15,7 +15,7 @@ cô lập workspace theo ticket, prompt là code. Đây là "công ty AI" đầu
 | 4 | Chất lượng | reviewer, qa-debugger, security-engineer | Review; test + tìm nguyên nhân; threat model, DAST, license, PII |
 | 5 | Vận hành | release-engineer, support-docs, account-manager | Merge, staging, deploy; tài liệu, incident; SOW, UAT, change request, nghiệm thu |
 | 6 | Giám sát | supervisor | Watchdog, ngân sách token, knowledge base, version prompt |
-| 7 | Human gate | (con người) | Duyệt spec, plan, release; ký rủi ro/license/PII; khách ký nghiệm thu |
+| 7 | Human gate | (con người) | Duyệt spec, release; ký rủi ro/license/PII; khách ký nghiệm thu (kế hoạch do `_check_plan` kiểm, ADR-0037) |
 
 ## Luồng chính
 
@@ -35,7 +35,7 @@ docs/          kiến trúc, tiêu chuẩn, ADR (0001–0037); reports/ = báo c
 agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
-gates/         checklist 4 human gate + gate bất thường `escalation` (ticket và cấp dự án); GateKind = spec|plan|release|acceptance|escalation
+gates/         checklist 2 gate công đoạn + nghiệm thu + gate bất thường `escalation` (ticket và cấp dự án); GateKind = spec|release|acceptance|escalation
                — nửa "Người tự kiểm thêm" của mỗi gate được `gate_checklists.py` parse thành trợ lý `sc-gate-<kind>` và hồ sơ `gate_brief`
 templates/     PRD, ticket, PR, bug report, postmortem, ADR, threat model, data contract
 topics/        19 JSON Schema topic + bảng owner namespace
@@ -54,7 +54,7 @@ examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--rela
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng intake cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 21 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
-tests/         pytest 1001 ca / 58 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+tests/         pytest 1006 ca / 59 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, release tự dừng → gate, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
                guard/blackboard, schema consistency, golden 21 agent + 5 hồ sơ gate, bộ sinh subagent, hồ sơ gate, rà soát bảo mật);
                coverage fail_under=100 (phủ 100% dòng)
@@ -101,7 +101,7 @@ uv run python -m company.orchestrator run --repo ../khach --base main   # làm T
 #   trình phục vụ nhiều khách, mỗi khách một repo; console giao việc kèm "nơi lưu dự án"
                                                                         # trong worktree ticket/<id>, PR mang lint/test thật;
                                                                         # ticket rẽ từ và merge vào company/integration (--integration)
-uv run python -m company.gate_cli approve SPEC-P1 --by human:po   # gate spec → plan → release → acceptance
+uv run python -m company.gate_cli approve SPEC-P1 --by human:po   # gate spec → (kế hoạch tự đi) → release → acceptance
 #   quyết định: approve | request_changes | reject | hold | rollback; `request KIND SUBJECT --by --checklist` mở gate tay
 uv run python -m company.gate_brief REL-001 [--repo ../khach]   # hoặc: make gate-brief SUBJECT=REL-001 — hồ sơ bằng chứng CHỈ ĐỌC
 #   cho nửa "người tự kiểm thêm" của gate (SQLite mode=ro, verdict chỉ ok|gap|unknown, không khuyến nghị); `--all` mọi gate chờ;
@@ -145,7 +145,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-04)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0037; 21 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0037; 21 system prompt có version; 45 skill có version; 14 template; checklist 3 gate + escalation.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),
@@ -166,7 +166,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 - **Eval prompt** (`evals/*.yaml`, `evals.py`): ca đầu vào + tiêu chí chấm; chạy với provider bất kỳ.
 - **Orchestrator** (`orchestrator.py`, ADR-0007): vòng lặp tự động theo bảng ROUTES khớp front matter; agent ghi blackboard
   qua `context_writes`; security-engineer làm threat model từ spec đã duyệt trước khi delivery-lead sinh ticket (C4 + contract
-  lên blackboard) → gate plan → dispatch; clarifier hết câu hỏi thì spec-writer đi thẳng; change request: delivery-lead ước
+  lên blackboard) → `_check_plan` → dispatch NGAY (ADR-0037: không còn gate plan); clarifier hết câu hỏi thì spec-writer đi thẳng; change request: delivery-lead ước
   lượng impact → người `decide-change` → accepted đi lập kế hoạch (hoặc intake nếu đổi requirement); nghiệm thu conditional
   → change request; support-docs viết docs sau production, mở incident từ feedback, incident requirement → nghiên cứu lại;
   ticket blocked/escalate → gate `escalation` (approve = mở lại với hint, reject = đóng); agent chuỗi nghiên cứu lỗi → dự án
@@ -213,7 +213,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 - **Tool cho researcher**: đọc repo khách chỉ đọc (không `run`, không ghi) + `web_search`/`fetch_url` khi `--web`
   (chỉ http/https công khai, chặn host nội bộ, bóc HTML, lọc injection, URL vào audit; `COMPANY_SEARCH_URL` cho SearXNG).
 - **Chạy song song** `--workers N` trong một tiến trình: bus có RLock, phần xác định vẫn tuần tự; event đổi trạng thái
-  chung (gate, plan, RC, clarifier) chạy một mình.
+  chung (gate, kế hoạch, RC, clarifier) chạy một mình.
 - **Metrics** (`metrics.py`, `orchestrator metrics [--prometheus]`): gọi/token/USD/thời gian/cache/tool theo agent, model,
   ticket, dự án; sự kiện sức khoẻ; thời gian chờ gate; lead time ticket; xuất Prometheus text.
 - **Trace** (`trace.py`, `orchestrator trace <TICKET|REL-xxx|PROJECT> [--json]`): dòng thời gian một chủ thể từ intake
@@ -242,8 +242,9 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   không kiểm được thay vì báo pass giả.
 - **Cổng eval có răng**: CI chạy `--replay --strict`; agent trong `evals/recordings/REQUIRED.txt` thiếu bản ghi
   hoặc bản ghi ở phiên bản prompt cũ thì đỏ.
-- **Bốn human gate là gate thật**: spec, plan, release và nghiệm thu của khách (`acceptance`, ADR-0017) — cùng hạn 24h,
-  nhắc ở 12h, four-eyes, và quá hạn thì supervisor escalate chứ không im lặng.
+- **Ba human gate là gate thật**: spec, release và nghiệm thu của khách (`acceptance`, ADR-0017) — cùng hạn 24h,
+  nhắc ở 12h, four-eyes, và quá hạn thì supervisor escalate chứ không im lặng. Kế hoạch KHÔNG có gate (ADR-0037):
+  `_check_plan` chặn bằng code rồi giao ticket ngay; có `problems` thì `plan_rejected` + gate `escalation`.
 - **Cắt blackboard theo vai trò + trần prompt theo agent** (ADR-0020): `context_namespace_read` / `max_input_chars` trong
   front matter; runner cắt payload/blackboard theo `context.py` nên reviewer/QA/security không còn nhận toàn văn blackboard.
 - **Lỗi tạm thời của provider** (429, 5xx, đứt mạng) được thử lại có backoff; `Refused` và 4xx thì không. Anthropic
