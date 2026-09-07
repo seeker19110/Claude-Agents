@@ -53,6 +53,7 @@ chỉ lo `tools="rw"`). Cái rơi ra ngoài luôn rơi vào im lặng.
 | **Sửa một lỗi rồi dừng** | PR #30 sửa một khoá `once`; rà cả họ → thêm 3 khoá hỏng (#31, #32) | Rút một câu hỏi từ lỗi, áp cho mọi chỗ cùng cơ chế, ghi cả chỗ an toàn |
 | **Tin dashboard xanh** | Đêm 2026-09-05: `queue: 0, blocked: [], gates: {}` trong khi 18/19 release không đi đâu; `delivery: {}` nghĩa là chưa giao gì; nhãn `merged` ≠ đã gộp | Hỏi "còn việc nào chạy được không?"; tách sự thật git khỏi nhãn FSM. Ghi nhận thiết kế lại: `console/TRAPS.md` |
 | **Bốn gate xanh, sản phẩm không chạy** | 2026-09-06 QLKH: 389 test pass, 25 release, 0 điểm vào — `deployed` là lời khai, `regression-staging` là verdict đọc diff | "Chạy cho tôi xem" trước khi tin. Vá: ADR-0029 smoke do orchestrator chạy (PR #90) |
+| **Tin test canh quy ước kiểu grep** | 2026-09-07 (#127): test khuôn 3 canh "mọi khoá `once` có thế hệ" xanh suốt #125→#126 trong khi `gate.escalate:{sid}` vẫn hỏng — mẫu chỉ bắt `once=`, mà chuỗi `"once_key="` KHÔNG chứa chuỗi con `"once="` | Test grep xanh chỉ chứng minh **những gì mẫu nhìn thấy** là sạch. Chạy mẫu trên một vi phạm đã biết trước khi tin nó; và kiểm lại LÝ DO từng mục trong danh sách miễn, đừng kế thừa |
 
 ## 3. Bẫy thao tác git / CI
 
