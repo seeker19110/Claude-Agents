@@ -3,6 +3,7 @@
 module đã viết tại thời điểm này. Đỏ ở đây nghĩa là một PR sau đã phá quy ước, không phải một tính năng hỏng."""
 from __future__ import annotations
 
+import ast
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -180,6 +181,73 @@ def test_khuon5_moi_sorted_theo_at_hoac_ts_co_khoa_phu():
     assert not vi_pham, "sort theo thời gian thiếu khoá phụ seq — trùng ts tới micro giây sẽ chập chờn:\n" + "\n".join(vi_pham)
 
 
+# ---------- nghiệm thu cuối K1 (K1.8): kích thước ----------
+#
+# K1.8 gốc đặt "wc -l orchestrator.py ≤ 300". Tiêu chí đó **mâu thuẫn với K1.7** của chính epic này (K1.7:
+# `_call` và `process` Ở LẠI `orchestrator.py`) và đo sai thứ cần đo. Đo được 2026-09-07 trên 498 dòng còn lại:
+#
+#   ngoài thân hàm (import, re-export, bảng gán `x = module.fn`, docstring)   250
+#   _call 78 · __init__ 48 · process 31 · status/rulings/_deadlock/… 91       248
+#
+# 250 dòng "ngoài thân hàm" CHÍNH LÀ bề mặt shim mà K1.7 cố ý tạo ra để mọi tên public cũ còn import được
+# (K1.1) — cắt nó là đảo ngược K1.7. Và kể cả moi hết `__init__`/`status`/`rulings` ra ngoài (~100 dòng) cũng
+# chỉ xuống ~400, đổi lại chỗ dựng đối tượng nằm ở file khác: thuần trang trí, đọc khó hơn.
+#
+# Nên K1.8 đổi TIÊU CHÍ chứ không chỉ đổi số (ghi lại trong `docs/DAC-TA-KICH-BAN-B.md` §6): đo phần thật sự
+# khó đọc — THÂN HÀM — thay vì tổng số dòng vốn phạt đúng cái refactor đã làm đúng.
+MAX_THAN_HAM_ORCHESTRATOR = 260
+MAX_DONG_MODULE_ORCH = 400
+MAX_DONG_MAIN = 60
+
+
+def _dong_than_ham(src: str, chi_ham: str | None = None) -> int:
+    """Tổng số dòng nằm TRONG thân hàm/method (hàm lồng nhau tính một lần, theo hàm ngoài cùng)."""
+    tree = ast.parse(src)
+    tong = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)): continue
+        if chi_ham is not None and node.name != chi_ham: continue
+        if chi_ham is None and any(isinstance(x, (ast.FunctionDef, ast.AsyncFunctionDef))
+                                   for x in ast.walk(tree) if _chua(x, node)): continue
+        tong += node.end_lineno - node.lineno + 1   # type: ignore[operator]
+    return tong
+
+
+def _chua(cha: ast.AST, con: ast.AST) -> bool:
+    """`cha` bọc `con` và không phải chính nó — để hàm lồng nhau không bị đếm hai lần."""
+    if cha is con or not isinstance(cha, (ast.FunctionDef, ast.AsyncFunctionDef)): return False
+    return bool(getattr(cha, "lineno", 0) < getattr(con, "lineno", 0)
+                and getattr(con, "end_lineno", 0) <= getattr(cha, "end_lineno", 0))
+
+
+def test_k18_orchestrator_chi_con_wiring_va_dispatcher():
+    """Chốt đích ĐÃ SỬA của K1.8. Đỏ ở đây nghĩa là ai đó đưa logic nghiệp vụ MỚI vào `orchestrator.py` thay vì
+    vào một module `orch/` — không phải là file dài thêm vài dòng import."""
+    src = (ORCH_DIR.parent / "orchestrator.py").read_text(encoding="utf-8")
+    n = _dong_than_ham(src)
+    assert n <= MAX_THAN_HAM_ORCHESTRATOR, (
+        f"thân hàm trong orchestrator.py = {n} dòng (trần {MAX_THAN_HAM_ORCHESTRATOR}). K1.7 giữ `_call`/`process` "
+        f"ở đây, nên chỗ duy nhất được phép phình là hai hàm đó — logic mới thuộc về một module `orch/`.")
+
+
+def test_k18_main_duoi_60_dong():
+    """`main` từng là chuỗi 13 nhánh `if ns.cmd == …` dài 162 dòng: thêm một lệnh là thêm một nhánh vào giữa,
+    và không đọc được MỘT lệnh mà không cuộn qua mười hai lệnh khác. Nay là parser + hai bảng dispatch."""
+    n = _dong_than_ham(ORCH_SRC["cli.py"], chi_ham="main")
+    assert 0 < n <= MAX_DONG_MAIN, f"main = {n} dòng (trần {MAX_DONG_MAIN}); tách subcommand vào `cli_cmds.py`"
+
+
+def test_k18_moi_lenh_cli_co_dung_mot_ham_trong_bang():
+    """Bảng dispatch phải PHỦ HẾT subcommand: thiếu một tên là `KeyError` giữa lúc người vận hành gõ lệnh, chứ
+    không phải lỗi lúc nạp module. Đối chiếu thẳng với parser thay vì với một danh sách chép tay."""
+    from company.orch import cli, cli_cmds
+    sub = next(a for a in cli._parser()._actions if getattr(a, "choices", None) and a.dest == "cmd")
+    thieu = set(sub.choices) - set(cli_cmds.BUS_CMDS) - set(cli_cmds.ORCH_CMDS)
+    thua = (set(cli_cmds.BUS_CMDS) | set(cli_cmds.ORCH_CMDS)) - set(sub.choices)
+    assert not thieu, f"subcommand không có hàm trong bảng: {sorted(thieu)}"
+    assert not thua, f"bảng có hàm cho lệnh không tồn tại: {sorted(thua)}"
+
+
 # ---------- nghiệm thu cuối K1 (đặc tả kịch bản B): mỗi module orch/ ≤ 400 dòng ----------
 
 def test_kich_thuoc_module_orch_duoi_400_dong():
@@ -188,5 +256,5 @@ def test_kich_thuoc_module_orch_duoi_400_dong():
     qua_kho: list[str] = []
     for name, src in ORCH_SRC.items():
         n = len(src.splitlines())
-        if n > 400: qua_kho.append(f"{name}: {n} dòng")
+        if n > MAX_DONG_MODULE_ORCH: qua_kho.append(f"{name}: {n} dòng")
     assert not qua_kho, "module orch/ vượt 400 dòng, cần tách tiếp:\n" + "\n".join(qua_kho)

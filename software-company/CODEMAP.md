@@ -55,7 +55,7 @@
 
 | Muốn | Sửa |
 |---|---|
-| Lệnh CLI orchestrator (`run`, `status`, `diagnose`, `publish`, `redeploy`, `takeover`…) | `main()` cuối `src/company/orchestrator.py`; tự khởi động lại khi mã đổi: `run --watch` |
+| Lệnh CLI orchestrator (`run`, `status`, `diagnose`, `publish`, `redeploy`, `takeover`…) | cờ và subcommand: `_parser()` trong `src/company/orch/cli.py`; **thân từng lệnh**: `src/company/orch/cli_cmds.py` (`BUS_CMDS` chỉ cần bus, `ORCH_CMDS` cần `Orchestrator`) — thêm lệnh mới là thêm parser + một hàm + một dòng bảng; tự khởi động lại khi mã đổi: `run --watch` |
 | Hồ sơ bằng chứng gate (`make gate-brief`, `/gate-brief`) | `src/company/gate_brief.py`; slash command `../.claude/commands/gate-brief.md` |
 | Trợ lý kiểm duyệt `sc-*` | `src/company/subagents.py` sinh từ agents + skills + checklists — không sửa tay đầu ra |
 | Quét tài sản prompt, ngân sách prompt tĩnh | `src/company/assetscan.py` (ADR-0022) |
