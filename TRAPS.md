@@ -60,6 +60,7 @@ chỉ lo `tools="rw"`). Cái rơi ra ngoài luôn rơi vào im lặng.
 
 | Bẫy | Đã xảy ra | Lần sau |
 |---|---|---|
+| **PR không có check nào chạy** | 2026-09-07 (#134): `statusCheckRollup` rỗng, `actions/runs?branch=…` rỗng, PR khác cùng lúc vẫn chạy. Nghi file workflow mới bị từ chối; bỏ nó ra đẩy lại — **vẫn không chạy**. Thật ra `mergeStateStatus = DIRTY`: PR xung đột với `main` | GitHub chạy check trên commit **merge** — PR không merge được thì không có gì để chạy. Kiểm `gh pr view <n> --json mergeStateStatus` TRƯỚC khi nghi Actions hỏng; `DIRTY` = rebase, `BLOCKED` = đang chờ check |
 | Hai phiên chung một clone | 2026-09-06 15:07: phiên B checkout `main`, commit của phiên A rơi vào `main`, nhánh A rỗng (#86) | `git worktree add` cho mỗi phiên; `git worktree list` trước khi bắt đầu |
 | Push sau khi auto-merge đã bật | #77 thiếu sweep, commit rơi khỏi PR, phải mở #78 | `gh pr view --json commits` sau push; hoặc bật auto-merge sau commit cuối |
 | Chạy test không `--cov` rồi tin là xanh | CI Linux đỏ coverage (#78) | Chạy đúng lệnh CI: `pytest -n auto --cov` |
