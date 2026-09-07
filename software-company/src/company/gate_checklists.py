@@ -135,7 +135,7 @@ EXPERTS: dict[str, tuple[str, ...]] = {
     "spec": (f"sc-{ROLE.PRODUCT}", f"sc-{ROLE.RISK}"),
     "release": (f"sc-{ROLE.QA}", f"sc-{ROLE.SECURITY}", f"sc-{ROLE.OPS}", f"sc-{ROLE.LEAD}"),
     "acceptance": (f"sc-{ROLE.OPS}",),
-    "escalation": (f"sc-{ROLE.QA}", "sc-<assignee> — trợ lý theo góc nhìn agent chủ quản ticket"),
+    "escalation": (f"sc-{ROLE.QA}", f"sc-{ROLE.BUILDER}"),  # ADR-0037: một agent viết code, không còn "sc-<assignee>"
 }
 
 # Gate đóng bằng tiền thật (production, khách ký) dùng model mạnh; còn lại standard.

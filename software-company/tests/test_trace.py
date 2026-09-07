@@ -70,12 +70,12 @@ def test_ticket_khac_cung_du_an_khong_lan_vao(tmp_path):
     _db, bus, orch = _scenario(tmp_path, to="plan")
     orch.run()
     # ticket T9 cùng dự án nhưng không nằm trong câu chuyện của T1
-    bus.publish(Envelope(topic="tasks", key="T9", actor="delivery-lead", payload={"ticket_id": "T9", "project_id": "P1", "requirement_id": "REQ-9", "assignee": "backend",
+    bus.publish(Envelope(topic="tasks", key="T9", actor="delivery-lead", payload={"ticket_id": "T9", "project_id": "P1", "requirement_id": "REQ-9", "assignee": "builder",
                                   "title": "khác", "acceptance": ["x"], "retry": 0}))
-    _audit(bus, "backend", "invalid_output", {"error": "sai schema"}, ticket_id="T9", project_id="P1")
-    _audit(bus, "backend", "tools_used", {"turns": 2, "mode": "loop", "calls": {"read_file": 3, "run": 1}}, ticket_id="T1", project_id="P1")
-    _audit(bus, "backend", "llm_retry", {"attempts": 2, "notes": ["đi backend b (model m) cho tier standard"]}, ticket_id="T1")
-    _audit(bus, "backend", "llm_error", {"error": "hết quota"}, ticket_id="T1")
+    _audit(bus, "builder", "invalid_output", {"error": "sai schema"}, ticket_id="T9", project_id="P1")
+    _audit(bus, "builder", "tools_used", {"turns": 2, "mode": "loop", "calls": {"read_file": 3, "run": 1}}, ticket_id="T1", project_id="P1")
+    _audit(bus, "builder", "llm_retry", {"attempts": 2, "notes": ["đi backend b (model m) cho tier standard"]}, ticket_id="T1")
+    _audit(bus, "builder", "llm_error", {"error": "hết quota"}, ticket_id="T1")
     _audit(bus, "orchestrator", "once", {"key": "x"}, ticket_id="T1")
     _audit(bus, "orchestrator", "integration.merged", {"release_id": "REL-001", "ticket_id": "T1", "sha": "abc"}, ticket_id="T1")
     t1 = TR.trace(bus, "T1", orch.agents)
@@ -118,11 +118,11 @@ def test_render_cho_thoi_gian_dai_va_tier_mac_dinh(tmp_path):
     assert TR._wait(5) == "+5s" and TR._wait(600) == "+10m" and TR._wait(7200) == "+2.0h"
     assert TR._plan_of("P1", "PLAN-P1-3") and not TR._plan_of("P1", None)
     # payload lạ: tools_used không phải dict, produced không có model → không nổ
-    _audit(bus, "backend", "tools_used", {"calls": ["x"]}, project_id="P1")
-    _audit(bus, "backend", "produced:pull-requests", {"duration_ms": 5}, project_id="P1", tokens=7, cost_usd=0.01)
+    _audit(bus, "builder", "tools_used", {"calls": ["x"]}, project_id="P1")
+    _audit(bus, "builder", "produced:pull-requests", {"duration_ms": 5}, project_id="P1", tokens=7, cost_usd=0.01)
     t2 = TR.trace(bus, "P1", _orch.agents)
     last = t2["rows"][-2:]
-    assert last[0]["tools"] is None and last[1]["model"] is None and last[1]["tokens"] == 7 and last[1]["agent"] == "backend"
+    assert last[0]["tools"] is None and last[1]["model"] is None and last[1]["tokens"] == 7 and last[1]["agent"] == "builder"
     md = TR.render(t2)
     assert "[?/" not in md and "7 tok $0.0100" in md and "[light/fake-light]" in md and "[light]" in md
     assert TR.trace(bus, "P1", {})["rows"][-1]["agent"] is None, "không có registry thì không đoán agent/tier"

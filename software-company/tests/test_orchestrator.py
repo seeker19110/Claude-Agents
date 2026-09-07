@@ -25,7 +25,7 @@ from company.orchestrator import main as orch_main
 from company.registry import Phase, load_agents
 from company.sqlite_bus import SQLiteBus
 
-T1 = {"ticket_id": "T1", "project_id": "P1", "requirement_id": "REQ-1", "assignee": "backend", "title": "GET /orders",
+T1 = {"ticket_id": "T1", "project_id": "P1", "requirement_id": "REQ-1", "assignee": "builder", "title": "GET /orders",
       "acceptance": ["given/when/then"], "estimate_tokens": 4_000, "budget_tokens": 6_000, "retry": 0}
 T2 = {**T1, "ticket_id": "T2", "requirement_id": "REQ-2", "title": "POST /payments", "depends_on": ["T1"],
       "risk_tags": ["payment"], "priority": 1}
@@ -78,7 +78,7 @@ def handler(system: str, user: str) -> dict:
         return {"ticket_id": p["ticket_id"], "branch": f"ticket/{p['ticket_id']}", "pr_ref": "#1", "local_checks": {"lint": True, "tests": True}}
     if a == "qa" and _qa_phase(system) == "author":
         # ADR-0028 + ADR-0037: pha `author` viết bộ test, đầu ra là `test-suites` chứ không phải review
-        return {"ticket_id": p["ticket_id"], "assignee": p.get("assignee", "backend"), "files": ["tests/test_t.py"],
+        return {"ticket_id": p["ticket_id"], "assignee": p.get("assignee", "builder"), "files": ["tests/test_t.py"],
                 "acceptance_covered": [{"acceptance": "A1", "tests": ["tests/test_t.py::t"]}], "blind": True}
     if a in {"qa", "security"}:
         # ADR-0037: `source` là NHÃN chấm, không phải id agent — lượt PR của `qa` chấm dưới nhãn `reviewer`,
@@ -157,22 +157,44 @@ def test_check_routes_bat_route_khai_pha_agent_khong_co(monkeypatch):
     assert routes_mod.phase_for(lac, agents["qa"], _pub_env()) == "khong-co", "route khai pha thì dùng pha đó"
 
 
+def _task_env(**payload) -> Envelope:
+    return Envelope(topic="tasks", key="T1", actor="delivery-lead",
+                    payload={"ticket_id": "T1", "assignee": "builder", **payload})
+
+
 def test_phase_for_lay_stack_cua_ticket_cho_route_sua_code():
     """Route `tools="rw"` không khai pha: pha lấy theo `stack` của ticket (ADR-0013 + ADR-0037), và chỉ khi agent
-    thật sự khai pha ấy — agent kỹ thuật cũ (không pha nào) phải chạy y như trước."""
+    thật sự khai pha ấy — `stack` lạ hoặc thiếu thì chạy bằng prompt chung chứ không ném lỗi giữa ticket."""
     agents = load_agents()
     rw = next(r for r in ROUTES if r.tools == "rw")
-    env = Envelope(topic="tasks", key="T1", actor="delivery-lead",
-                   payload={"ticket_id": "T1", "stack": "backend", "assignee": "backend"})
-    assert routes_mod.phase_for(rw, agents["backend"], env) is None, "agent chưa chia pha: không pha"
-    co_pha = replace(agents["backend"], phases={"backend": Phase()})
-    assert routes_mod.phase_for(rw, co_pha, env) == "backend"
+    assert routes_mod.phase_for(rw, agents["builder"], _task_env(stack="frontend")) == "frontend"
+    assert routes_mod.phase_for(rw, agents["builder"], _task_env()) is None, "ticket không khai stack: prompt chung"
+    assert routes_mod.phase_for(rw, agents["builder"], _task_env(stack="cobol")) is None, "stack lạ: prompt chung"
+    khong_pha = replace(agents["builder"], phases={})
+    assert routes_mod.phase_for(rw, khong_pha, _task_env(stack="frontend")) is None, "agent không chia pha: không pha"
+    co_pha = replace(agents["builder"], phases={"backend": Phase()})
+    assert routes_mod.phase_for(rw, co_pha, _task_env(stack="backend")) == "backend"
     khong_rw = next(r for r in ROUTES if r.tools is None and r.phase is None)
-    assert routes_mod.phase_for(khong_rw, co_pha, env) is None, "route không sửa code: stack không phải pha"
+    assert routes_mod.phase_for(khong_rw, co_pha, _task_env(stack="backend")) is None, \
+        "route không sửa code: stack không phải pha"
+
+
+def test_ticket_frontend_nap_dung_skill_cua_mang_khong_nap_mang_khac():
+    """ADR-0037 PR-5d, bất biến của việc gộp sáu agent thành một: prompt của lượt phải là prompt của ĐÚNG mảng
+    ghi trong `stack`. Đo trên chuỗi thật (route `tools="rw"` → `phase_for` → `system_prompt`) chứ không đo
+    `phases` trong front matter: front matter đúng mà đường lấy pha sai thì builder vẫn viết React bằng skill
+    backend, và không ai thấy — PR mang đúng `ticket_id` nên mọi chỉ số vẫn xanh."""
+    agents = load_agents()
+    rw = next(r for r in ROUTES if r.tools == "rw")
+    fe = agents["builder"].system_prompt(routes_mod.phase_for(rw, agents["builder"], _task_env(stack="frontend")))
+    be = agents["builder"].system_prompt(routes_mod.phase_for(rw, agents["builder"], _task_env(stack="backend")))
+    assert "Skill: frontend" in fe and "Skill: backend" not in fe, "ticket frontend không được mang skill backend"
+    assert "Skill: backend" in be and "Skill: frontend" not in be
+    assert "Skill: engineering-common" in fe and "Skill: engineering-common" in be, "skill cấp agent nạp ở mọi pha"
 
 
 def _pub_env() -> Envelope:
-    return Envelope(topic="pull-requests", key="T1", actor="backend", payload={"ticket_id": "T1"})
+    return Envelope(topic="pull-requests", key="T1", actor="builder", payload={"ticket_id": "T1"})
 
 
 # ---------- vòng đời đầy đủ trong bộ nhớ ----------
@@ -313,7 +335,7 @@ def test_loi_agent_khong_nhanh_nao_nhan_thi_mo_gate_chu_khong_im_lang():
 
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=reviewer_hong))
     _drive_to_plan(bus, orch); orch.run()
-    _pub(bus, "pull-requests", "T1", "backend",
+    _pub(bus, "pull-requests", "T1", "builder",
          {"ticket_id": "T1", "project_id": "P1", "branch": "ticket/T1", "pr_ref": "#1", "summary": "s",
           "impact": {"files": ["a.py"]}, "local_checks": {"lint": True, "tests": True, "verified_by": "workspace"}})
     orch.run()

@@ -44,7 +44,7 @@ def review(tid: str, source: str, verdict: str) -> Envelope:
 
 
 def task(tid: str = "T1", pid: str = "P1") -> Task:
-    return Task(ticket_id=tid, project_id=pid, requirement_id="R1", assignee="backend", title="x",
+    return Task(ticket_id=tid, project_id=pid, requirement_id="R1", assignee="builder", title="x",
                 acceptance=["ok"], estimate_tokens=1, budget_tokens=2)
 
 
@@ -169,7 +169,7 @@ def test_c5_liet_ke_dung_tung_nguon_bi_cat_va_so_ky_tu_mat() -> None:
 def _pr(tid: str, sandbox: str | None, *, ts: datetime = NOW) -> Envelope:
     lc: dict[str, Any] = {"lint": True, "tests": True, "verified_by": "workspace"}
     if sandbox is not None: lc["sandbox"] = sandbox
-    return Envelope(topic="pull-requests", key=tid, actor="backend", ts=ts,
+    return Envelope(topic="pull-requests", key=tid, actor="builder", ts=ts,
                     payload={"ticket_id": tid, "branch": f"ticket/{tid}", "local_checks": lc})
 
 
@@ -179,7 +179,7 @@ def test_k27_dem_theo_ten_sandbox_tu_ca_ba_nguon_bang_chung() -> None:
     đã khác cấu hình lúc lượt đó chạy."""
     env = [_pr("T1", "subprocess"),
            rel_event("REL-1", "staging", "deployed", smoke={"ok": True, "sandbox": "container:python:3.12-slim"}),
-           audit("backend", "tools_used", {"run": 2, "sandbox": "subprocess"})]
+           audit("builder", "tools_used", {"run": 2, "sandbox": "subprocess"})]
     sb = Truth(env, lead_stub(), HumanGate(), NOW).sandbox()
     assert sb["runs"] == 3 and sb["unsandboxed"] == 2
     assert sb["by_name"] == {"container:python:3.12-slim": 1, "subprocess": 2}

@@ -149,7 +149,7 @@ def test_quyet_dinh_da_ky_chua_ap_dung() -> None:
 
 def test_hang_doi_va_event_dau_hang() -> None:
     t0 = NOW - timedelta(minutes=9)
-    task = Task(ticket_id="T1", project_id="P1", requirement_id="R1", assignee="backend", title="x", acceptance=["ok"],
+    task = Task(ticket_id="T1", project_id="P1", requirement_id="R1", assignee="builder", title="x", acceptance=["ok"],
                 estimate_tokens=1, budget_tokens=2)
     e_task = Envelope(topic="tasks", key="T1", actor="delivery-lead", ts=t0, payload=task.model_dump())
     e_done = Envelope(topic="tasks", key="T0", actor="delivery-lead", ts=t0 - timedelta(minutes=1), payload={**task.model_dump(), "ticket_id": "T0"})
@@ -191,7 +191,7 @@ def test_be_tac_im_lang() -> None:
 def test_ticket_extra_va_review_trimmed() -> None:
     gate = HumanGate()
     gate.request(GateRequest(kind="escalation", subject_id="T1", created_by="supervisor", checklist=[]))
-    task = Task(ticket_id="T1", project_id="P1", requirement_id="R1", assignee="backend", title="x", acceptance=["ok"],
+    task = Task(ticket_id="T1", project_id="P1", requirement_id="R1", assignee="builder", title="x", acceptance=["ok"],
                 estimate_tokens=1, budget_tokens=2, hint="máy", human_hint="người: sửa authz")
     lead = lead_stub(tickets={"T1": task}, state={"T1": "escalated"})
     rv = review("T1", "security", "block", ts=NOW)

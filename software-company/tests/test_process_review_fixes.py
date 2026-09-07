@@ -20,7 +20,7 @@ from company.metrics import collect
 from company.tools import ToolError
 from company.web import check_url, resolve_host
 
-T1 = {"ticket_id": "T1", "project_id": "P1", "requirement_id": "REQ-1", "assignee": "backend", "title": "GET /orders",
+T1 = {"ticket_id": "T1", "project_id": "P1", "requirement_id": "REQ-1", "assignee": "builder", "title": "GET /orders",
       "acceptance": ["given/when/then"], "estimate_tokens": 4_000, "budget_tokens": 6_000}
 PR = {"ticket_id": "T1", "branch": "ticket/T1", "pr_ref": "#1", "local_checks": {"lint": True, "tests": True}}
 
@@ -43,7 +43,7 @@ def test_review_tre_khong_pha_trang_thai_ticket_da_approved():
     """Review đến sau khi ticket đã rời vòng review (người review chậm, hoặc bị giao lại) bị bỏ qua.
     Trước đây nó được gộp vào rồi ép `approved → approved` và ném ValueError ra khỏi bus.publish."""
     bus = InMemoryBus(); lead = _lead(bus)
-    bus.publish(Envelope(topic="pull-requests", key="T1", actor="backend", payload=PR))
+    bus.publish(Envelope(topic="pull-requests", key="T1", actor="builder", payload=PR))
     _review(bus, "reviewer"); _review(bus, "qa")
     assert lead.state["T1"] == "approved"
     _review(bus, "reviewer")  # bản sao đến trễ
@@ -54,7 +54,7 @@ def test_review_tre_khi_ticket_da_changes_requested_khong_lam_no_approved():
     bus = InMemoryBus(); lead = _lead(bus)
     T2 = {**T1, "risk_tags": ["payment"]}  # cần thêm security
     lead.tickets["T1"] = Task.model_validate(T2)
-    bus.publish(Envelope(topic="pull-requests", key="T1", actor="backend", payload=PR))
+    bus.publish(Envelope(topic="pull-requests", key="T1", actor="builder", payload=PR))
     _review(bus, "reviewer"); _review(bus, "qa", "fail"); _review(bus, "security")
     assert lead.state["T1"] != "approved"
 
@@ -63,9 +63,9 @@ def test_pr_thu_hai_thay_pr_cu_thay_vi_ném_loi():
     """PR mới khi ticket đang in_review = PR thay thế: vòng review làm lại, không phải chuyển trạng thái sai."""
     bus = InMemoryBus(); lead = _lead(bus)
     lead.tickets["T1"] = lead.tickets["T1"].model_copy(update={"risk_tags": ["pii"]})  # cần thêm qa + security
-    bus.publish(Envelope(topic="pull-requests", key="T1", actor="backend", payload=PR))
+    bus.publish(Envelope(topic="pull-requests", key="T1", actor="builder", payload=PR))
     _review(bus, "reviewer")
-    bus.publish(Envelope(topic="pull-requests", key="T1", actor="backend", payload={**PR, "pr_ref": "#2"}))
+    bus.publish(Envelope(topic="pull-requests", key="T1", actor="builder", payload={**PR, "pr_ref": "#2"}))
     assert lead.state["T1"] == "in_review"
     assert lead.reviews["T1"] == {}, "review của PR cũ không được tính cho PR mới"
 
@@ -92,7 +92,7 @@ def test_hai_chu_namespace_ghi_song_song_khong_mat_ban_ghi(monkeypatch):
     def w(actor: str) -> None:
         bb.write(actor, "api-contract", "openapi.yaml", actor, content=actor * 50, project_id="P1")
 
-    ts = [threading.Thread(target=w, args=(a,)) for a in ("delivery-lead", "backend")]
+    ts = [threading.Thread(target=w, args=(a,)) for a in ("delivery-lead", "builder")]
     for t in ts: t.start()
     for t in ts: t.join()
     versions = [e.payload["version"] for e in bus.replay(topic="shared-context")]

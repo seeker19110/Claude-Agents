@@ -14,7 +14,7 @@ from .bus import InMemoryBus
 from .delivery import DeliveryLead
 from .events import AcceptanceResult, AuditLog, Envelope, PullRequest, ReviewResult, Task
 from .gates import GateRequest, HumanGate
-from .roles import ROLE, SOURCE
+from .roles import ROLE, SOURCE, STACK
 from .supervisor import Supervisor
 
 
@@ -49,23 +49,23 @@ def run() -> None:
     gate.decide("SPEC-P1", "approve", by="human:pm")
     lead.plans_ok.add("PLAN-1")
 
-    t1 = Task(ticket_id="TCK-1", project_id="P1", requirement_id="REQ-1", assignee=ROLE.BACKEND,
+    t1 = Task(ticket_id="TCK-1", project_id="P1", requirement_id="REQ-1", assignee=ROLE.BUILDER, stack=STACK.BACKEND,
               title="GET /orders/{id}", acceptance=["Given ... When ... Then ..."],
               estimate_tokens=6_000, budget_tokens=10_000)
-    t2 = Task(ticket_id="TCK-2", project_id="P1", requirement_id="REQ-2", assignee=ROLE.BACKEND,
+    t2 = Task(ticket_id="TCK-2", project_id="P1", requirement_id="REQ-2", assignee=ROLE.BUILDER, stack=STACK.BACKEND,
               title="POST /payments", acceptance=["Given ... When ... Then ..."], depends_on=["TCK-1"], priority=1,
               estimate_tokens=20_000, budget_tokens=30_000, risk_tags=["payment", "pii"])
     lead.dispatch(t1, "PLAN-1"); lead.dispatch(t2, "PLAN-1")
     print("sau dispatch:", lead.state["TCK-1"], "/", lead.state["TCK-2"], "| waiting:", lead.waiting())
 
-    bus.publish(Envelope(topic="audit-log", key=ROLE.BACKEND, actor=ROLE.BACKEND,
-                         payload=AuditLog(actor=ROLE.BACKEND, action="code", ticket_id="TCK-1", tokens=8_500).model_dump()))
-    _pr(bus, "TCK-1", ROLE.BACKEND)
+    bus.publish(Envelope(topic="audit-log", key=ROLE.BUILDER, actor=ROLE.BUILDER,
+                         payload=AuditLog(actor=ROLE.BUILDER, action="code", ticket_id="TCK-1", tokens=8_500).model_dump()))
+    _pr(bus, "TCK-1", ROLE.BUILDER)
     _review(bus, "TCK-1", SOURCE.REVIEWER, ROLE.QA)
     _review(bus, "TCK-1", SOURCE.QA, ROLE.QA, metrics={"mutation": 0.74})
     print("TCK-1 approved → TCK-2 tự dispatch:", lead.state["TCK-1"], "/", lead.state["TCK-2"])
 
-    _pr(bus, "TCK-2", ROLE.BACKEND)
+    _pr(bus, "TCK-2", ROLE.BUILDER)
     _review(bus, "TCK-2", SOURCE.REVIEWER, ROLE.QA)
     _review(bus, "TCK-2", SOURCE.QA, ROLE.QA)
     state_before_security = lead.state["TCK-2"]

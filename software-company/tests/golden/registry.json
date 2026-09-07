@@ -1,8 +1,13 @@
 {
-  "backend": {
+  "builder": {
     "block": "engineering",
     "budget_tokens_per_task": 120000,
-    "context_namespace_write": "api-contract",
+    "context_namespace_write": [
+      "api-contract",
+      "schema",
+      "infra",
+      "analytics"
+    ],
     "max_retries": 3,
     "model_tier": "strong",
     "reads": [
@@ -10,21 +15,15 @@
       "test-suites"
     ],
     "skills": [
-      "engineering-common",
-      "backend",
-      "api-contract",
-      "ai-feature-engineering",
-      "event-driven-architecture"
+      "engineering-common"
     ],
     "skills_core": [
       "observability",
-      "i18n",
       "testing",
-      "security",
-      "database"
+      "security"
     ],
     "timeout_minutes": 180,
-    "version": 9,
+    "version": 1,
     "writes": [
       "pull-requests"
     ]
@@ -49,57 +48,6 @@
     "version": 8,
     "writes": [
       "clarification-questions"
-    ]
-  },
-  "data": {
-    "block": "engineering",
-    "budget_tokens_per_task": 100000,
-    "context_namespace_write": "analytics",
-    "max_retries": 3,
-    "model_tier": "strong",
-    "reads": [
-      "tasks",
-      "test-suites"
-    ],
-    "skills": [
-      "engineering-common",
-      "data-engineering"
-    ],
-    "skills_core": [
-      "database",
-      "privacy-compliance",
-      "observability",
-      "event-driven-architecture"
-    ],
-    "timeout_minutes": 180,
-    "version": 7,
-    "writes": [
-      "pull-requests"
-    ]
-  },
-  "database": {
-    "block": "engineering",
-    "budget_tokens_per_task": 80000,
-    "context_namespace_write": "schema",
-    "max_retries": 3,
-    "model_tier": "strong",
-    "reads": [
-      "tasks",
-      "test-suites"
-    ],
-    "skills": [
-      "engineering-common",
-      "database"
-    ],
-    "skills_core": [
-      "observability",
-      "privacy-compliance",
-      "performance-testing"
-    ],
-    "timeout_minutes": 120,
-    "version": 8,
-    "writes": [
-      "pull-requests"
     ]
   },
   "delivery-lead": {
@@ -132,40 +80,11 @@
       "customer-acceptance"
     ],
     "timeout_minutes": 120,
-    "version": 12,
+    "version": 13,
     "writes": [
       "tasks",
       "release-candidates",
       "audit-log"
-    ]
-  },
-  "frontend": {
-    "block": "engineering",
-    "budget_tokens_per_task": 120000,
-    "context_namespace_write": null,
-    "max_retries": 3,
-    "model_tier": "strong",
-    "reads": [
-      "tasks",
-      "test-suites"
-    ],
-    "skills": [
-      "engineering-common",
-      "frontend",
-      "accessibility",
-      "i18n"
-    ],
-    "skills_core": [
-      "ui-ux-design",
-      "observability",
-      "testing",
-      "performance-testing",
-      "security"
-    ],
-    "timeout_minutes": 180,
-    "version": 13,
-    "writes": [
-      "pull-requests"
     ]
   },
   "intake": {
@@ -190,35 +109,6 @@
     "version": 9,
     "writes": [
       "research-findings"
-    ]
-  },
-  "mobile": {
-    "block": "engineering",
-    "budget_tokens_per_task": 120000,
-    "context_namespace_write": null,
-    "max_retries": 3,
-    "model_tier": "strong",
-    "reads": [
-      "tasks",
-      "test-suites"
-    ],
-    "skills": [
-      "engineering-common",
-      "mobile",
-      "accessibility"
-    ],
-    "skills_core": [
-      "ui-ux-design",
-      "observability",
-      "i18n",
-      "testing",
-      "performance-testing",
-      "security"
-    ],
-    "timeout_minutes": 180,
-    "version": 10,
-    "writes": [
-      "pull-requests"
     ]
   },
   "ops": {
@@ -249,36 +139,6 @@
       "research-requests",
       "change-requests",
       "acceptance-results"
-    ]
-  },
-  "platform": {
-    "block": "engineering",
-    "budget_tokens_per_task": 120000,
-    "context_namespace_write": "infra",
-    "max_retries": 3,
-    "model_tier": "strong",
-    "reads": [
-      "tasks",
-      "test-suites"
-    ],
-    "skills": [
-      "engineering-common",
-      "iac-platform",
-      "devops",
-      "observability",
-      "disaster-recovery",
-      "resilience-testing",
-      "secrets-management"
-    ],
-    "skills_core": [
-      "finops",
-      "security",
-      "incident-management"
-    ],
-    "timeout_minutes": 180,
-    "version": 8,
-    "writes": [
-      "pull-requests"
     ]
   },
   "qa": {

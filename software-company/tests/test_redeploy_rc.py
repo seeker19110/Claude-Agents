@@ -22,7 +22,7 @@ def _setup(tmp_path, rid="REL-001", tid="T1"):
     bus = SQLiteBus(tmp_path / "c.sqlite")
     client = FakeClient(handler=handler)
     orch = Orchestrator(bus, client, repo=None)
-    orch.lead.tickets[tid] = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="backend",
+    orch.lead.tickets[tid] = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="builder",
                                   title=tid, acceptance=["a"])
     orch.lead.state[tid] = "approved"
     orch.lead.releases.append(rid); orch.lead.release_tickets[rid] = [tid]

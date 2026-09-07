@@ -49,16 +49,16 @@ def _produced(bus, envelope_cls, audit_cls, *, actor: str, topic_out: str, token
 def build_company_db(path: Path) -> Path:
     """Một ticket đi tới in_review + PR + review block, một gate `plan` 30 giờ và một gate `spec` đã quyết."""
     bus = CompanySQLiteBus(path)
-    task = Task(ticket_id="TCK-112", project_id="P1", requirement_id="R1", assignee="backend",
+    task = Task(ticket_id="TCK-112", project_id="P1", requirement_id="R1", assignee="builder",
                 title="API đăng nhập", acceptance=["ok"], estimate_tokens=78_000, budget_tokens=120_000)
     bus.publish(CompanyEnvelope(topic="tasks", key="TCK-112", actor="delivery-lead", payload=task.model_dump()))
     pr = PullRequest(ticket_id="TCK-112", branch="ticket/TCK-112", pr_ref="PR-1", summary="thêm login",
                      local_checks={"lint": True, "tests": True, "verified_by": "workspace"})
-    bus.publish(CompanyEnvelope(topic="pull-requests", key="TCK-112", actor="backend", payload=pr.model_dump()))
+    bus.publish(CompanyEnvelope(topic="pull-requests", key="TCK-112", actor="builder", payload=pr.model_dump()))
     review = ReviewResult(ticket_id="TCK-112", source="reviewer", verdict="block",
                           findings=[{"level": "block", "text": "thiếu kiểm tra quyền"}], root_cause="thiếu authz")
     bus.publish(CompanyEnvelope(topic="review-results", key="TCK-112", actor="qa", payload=review.model_dump()))
-    _produced(bus, CompanyEnvelope, CompanyAudit, actor="backend", topic_out="pull-requests", tokens=8_420, cost=0.21,
+    _produced(bus, CompanyEnvelope, CompanyAudit, actor="builder", topic_out="pull-requests", tokens=8_420, cost=0.21,
               ticket_id="TCK-112", project_id="P1")
     _produced(bus, CompanyEnvelope, CompanyAudit, actor="qa", topic_out="review-results", tokens=2_100, cost=0.05,
               age_days=3, ticket_id="TCK-112", project_id="P1")

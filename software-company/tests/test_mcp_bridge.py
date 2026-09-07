@@ -130,7 +130,7 @@ def test_runner_binds_toolbox_and_cli_runs_the_whole_tool_loop_once(tmp_path):
                            "usage": {"input_tokens": 20, "cache_read_input_tokens": 15, "output_tokens": 5}})
 
     bus = InMemoryBus()
-    g = AgentRunner(bus, _cc(runner)).generate("backend", _task_env(), "pull-requests", tools=tb)
+    g = AgentRunner(bus, _cc(runner)).generate("builder", _task_env(), "pull-requests", tools=tb)
     assert (ws.path / "feature.py").read_text(encoding="utf-8") == "F = 1\n"
     assert len(seen) == 1 and g.turns == 1, "cả vòng tool chỉ tốn một tiến trình CLI"
     assert g.tool_calls == {"read_file": 1, "write_file": 1}   # đếm từ ToolBox thật, không từ lời khai của model

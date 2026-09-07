@@ -157,7 +157,7 @@ def _retry_con_can(o: Orchestrator, log: list[Envelope], idx: int, rec: dict[str
     Cách nhận biết: tra ROUTES xem event đó lẽ ra sinh ra topic nào; nếu topic đó đã có event mới cho cùng
     khoá SAU thời điểm ra lệnh, thì việc đã xong."""
     outs = {r.topic_out for r in ROUTES
-            if r.topic_in == rec.get("topic") and r.agent in {rec.get("agent"), "$assignee"}}
+            if r.topic_in == rec.get("topic") and r.agent == rec.get("agent")}
     outs.discard(CONTEXT_ONLY)
     if not outs: return True          # không suy ra được route → giữ nguyên hành vi cũ, thà chạy lại còn hơn kẹt
     key = str(rec.get("project_id") or "")

@@ -35,16 +35,12 @@
         },
         "assignee": {
           "enum": [
-            "backend",
-            "frontend",
-            "mobile",
-            "database",
-            "platform",
-            "data"
-          ]
+            "builder"
+          ],
+          "description": "ADR-0037 PR-5d: một agent viết code cho mọi mảng; mảng kỹ thuật nằm ở `stack`"
         },
         "stack": {
-          "description": "ADR-0037: mảng kỹ thuật của ticket = pha của agent làm ticket; chưa khai thì lấy theo `assignee`",
+          "description": "ADR-0037: mảng kỹ thuật của ticket = PHA của `builder` (skill của mảng nạp theo trường này); thiếu thì builder chạy bằng prompt chung",
           "enum": [
             "backend",
             "frontend",

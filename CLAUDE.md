@@ -18,7 +18,7 @@ Luật đầy đủ nằm ở `AGENTS.md` (nhập ở dòng đầu). Dưới đ�
 ## Skill và trợ lý có sẵn trong repo
 
 - `/gate-brief <subject>` — hồ sơ bằng chứng chỉ đọc cho một human gate của software-company; không ký thay người.
-- `.claude/agents/sc-*` — 21 trợ lý kiểm duyệt chỉ đọc (một per agent + một per gate), sinh tự động; gọi khi cần
+- `.claude/agents/sc-*` — 16 trợ lý kiểm duyệt chỉ đọc (một per agent + một per gate), sinh tự động; gọi khi cần
   góc nhìn chuyên môn về một PR/spec/release. Chúng **chỉ đọc**, không quyết định.
 - `.claude/launch.json` — cấu hình dev server cho browser pane.
 

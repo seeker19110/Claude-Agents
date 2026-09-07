@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..events import Envelope
 from ..registry import AgentSpec
-from ..roles import ENGINEERING, ROLE, SOURCE
+from ..roles import BUILD_PHASES, ROLE, SOURCE
 from ..runner import CONTEXT_ONLY
 from ..smoke import parse_runtime
 from ..workspace import WorkspaceError
@@ -50,7 +50,7 @@ Enrich = Callable[[Envelope, "Orchestrator"], dict[str, Any]]
 @dataclass(frozen=True)
 class Route:
     topic_in: str
-    agent: str  # id agent, hoặc "$assignee" = lấy từ payload.assignee (khối kỹ thuật)
+    agent: str  # id agent
     topic_out: str  # topic, hoặc CONTEXT_ONLY = chỉ ghi blackboard
     when: When | None = None
     target_env: str | None = None  # route release: đầu ra phải có env đúng như yêu cầu
@@ -61,21 +61,18 @@ class Route:
     # trừ route sửa code: pha lấy theo `stack` của ticket lúc chạy, xem `phase_for`.
     phase: str | None = None
 
-    def agents(self) -> tuple[str, ...]:
-        return ENGINEERING if self.agent == "$assignee" else (self.agent,)
-
 
 def phase_for(r: Route, spec: AgentSpec, inp: Envelope) -> str | None:
     """Pha của một lượt (ADR-0037). Route khai sẵn thì dùng; route sửa code lấy theo `stack` của ticket (ADR-0013)
     vì cùng một `builder` làm cả sáu stack.
 
     `stack` là DỮ LIỆU trong payload chứ không phải bảng route, nên nó chỉ được nhận khi agent thật sự khai pha
-    đó — trong lúc chuyển đổi (một số agent đã gộp, một số chưa) `stack=backend` gửi cho agent `backend` cũ,
-    vốn không có pha nào, phải chạy như trước chứ không được ném lỗi. Pha do ROUTE khai thì `check_routes` đã
-    đối chiếu với front matter lúc khởi động."""
+    đó: ticket không khai `stack` (hoặc khai một chuỗi lạ) chạy bằng prompt chung của `builder` thay vì ném lỗi
+    — mất skill của mảng là mất chất lượng, còn ném lỗi ở đây là ticket đứng im. Pha do ROUTE khai thì
+    `check_routes` đã đối chiếu với front matter lúc khởi động."""
     if r.phase is not None: return r.phase
     if r.tools != "rw": return None
-    stack = str(inp.payload.get("stack") or inp.payload.get("assignee") or "")
+    stack = str(inp.payload.get("stack") or "")
     return stack if stack in spec.phases else None
 
 
@@ -272,8 +269,10 @@ ROUTES: tuple[Route, ...] = (
     # tới khi xanh mà KHÔNG ghi được file test. Không phân vùng được (stack lạ, không repo) → đường cũ, và PR mang
     # `tests_authored_by: "assignee"` để reviewer biết bộ test này không độc lập.
     Route("tasks", ROLE.QA, "test-suites", _can_author_tests, tools="tests", phase="author"),
-    Route("tasks", "$assignee", "pull-requests", _no_test_author, tools="rw"),
-    Route("test-suites", "$assignee", "pull-requests", enrich=_with_task, tools="rw"),
+    # ADR-0037 PR-5d: một agent `builder` cho cả sáu mảng; pha KHÔNG khai ở route mà lấy theo `stack` của ticket
+    # lúc chạy (`phase_for`) — `stack` là dữ liệu của ticket, không phải của bảng route.
+    Route("tasks", ROLE.BUILDER, "pull-requests", _no_test_author, tools="rw"),
+    Route("test-suites", ROLE.BUILDER, "pull-requests", enrich=_with_task, tools="rw"),
     # Assignee không sửa được test (tool chặn): nó ghi `test_dispute` và việc quay về pha `author` — lượt DUY NHẤT
     # bộ test được đổi sau khi đã viết, và lượt duy nhất pha `author` được xem diff.
     Route("pull-requests", ROLE.QA, "test-suites", _has_dispute, enrich=_with_diff, tools="tests", phase="author"),
@@ -327,14 +326,18 @@ def check_routes(agents: dict[str, AgentSpec]) -> list[str]:
     """Bảng route phải khớp front matter reads/writes; trả về danh sách vi phạm (rỗng = ổn)."""
     bad = []
     for r in (*ROUTES, PROD_ROUTE, THREAT_ROUTE):
-        for a in r.agents():
-            spec = agents[a]
-            if r.topic_in not in spec.reads and "*" not in spec.reads: bad.append(f"{a} không đọc {r.topic_in}")
-            if r.phase is not None and r.phase not in spec.phases:
-                bad.append(f"{a} không có pha {r.phase} (front matter khai: {sorted(spec.phases) or 'không pha nào'})")
-            if r.topic_out == CONTEXT_ONLY:
-                if not spec.namespaces_write: bad.append(f"{a} không có namespace để ghi blackboard")
-            elif r.topic_out not in spec.writes: bad.append(f"{a} không ghi {r.topic_out}")
+        a = r.agent
+        spec = agents[a]
+        if r.topic_in not in spec.reads and "*" not in spec.reads: bad.append(f"{a} không đọc {r.topic_in}")
+        if r.phase is not None and r.phase not in spec.phases:
+            bad.append(f"{a} không có pha {r.phase} (front matter khai: {sorted(spec.phases) or 'không pha nào'})")
+        if r.topic_out == CONTEXT_ONLY:
+            if not spec.namespaces_write: bad.append(f"{a} không có namespace để ghi blackboard")
+        elif r.topic_out not in spec.writes: bad.append(f"{a} không ghi {r.topic_out}")
+    # Route sửa code không khai `phase`: pha lấy theo `stack` lúc chạy, nên bảng pha của `builder` phải phủ đúng
+    # sáu `stack` hợp lệ — lệch một tên là ticket mảng ấy chạy bằng prompt chung mà không ai thấy.
+    build = agents[ROLE.BUILDER]
+    bad += [f"{ROLE.BUILDER} không có pha {p} (stack của ticket)" for p in BUILD_PHASES if p not in build.phases]
     lead = agents[ROLE.LEAD]
     bad += [f"{ROLE.LEAD} không đọc {t}" for t in PLAN_INPUTS if t not in lead.reads]
     return bad

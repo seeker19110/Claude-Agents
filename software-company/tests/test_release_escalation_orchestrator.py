@@ -16,7 +16,7 @@ from test_orchestrator import handler
 
 def _blocked_release(orch, rid="REL-001", tid="T1"):
     """Dựng trạng thái: ticket đã merged, release chứa nó bị qa chặn, gate escalation của RELEASE đang chờ."""
-    t = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="backend", title=tid, acceptance=["a"])
+    t = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="builder", title=tid, acceptance=["a"])
     orch.lead.tickets[tid] = t
     orch.lead.state[tid] = "merged"
     orch.lead.releases.append(rid)
@@ -87,7 +87,7 @@ def test_escalation_cua_ticket_van_di_duong_cu(tmp_path):
     bus = SQLiteBus(tmp_path / "c.sqlite")
     orch = Orchestrator(bus, FakeClient(handler=handler))
     tid = "T9"
-    orch.lead.tickets[tid] = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="backend",
+    orch.lead.tickets[tid] = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="builder",
                                   title=tid, acceptance=["a"])
     orch.lead.state[tid] = "blocked"
     orch.gate.request(GateRequest(kind="escalation", subject_id=tid, created_by="supervisor",
@@ -106,7 +106,7 @@ def test_release_bi_chan_khong_con_tu_dong_day_ticket_ve_rework(tmp_path):
     bus = SQLiteBus(tmp_path / "c.sqlite")
     orch = Orchestrator(bus, FakeClient(handler=handler))
     tid, rid = "T1", "REL-001"
-    orch.lead.tickets[tid] = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="backend",
+    orch.lead.tickets[tid] = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="builder",
                                   title=tid, acceptance=["a"])
     orch.lead.state[tid] = "merged"
     orch.lead.releases.append(rid); orch.lead.release_tickets[rid] = [tid]

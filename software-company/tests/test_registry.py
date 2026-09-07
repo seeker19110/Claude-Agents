@@ -11,8 +11,9 @@ EXPECTED = {
     "intake", "researcher", "synthesizer", "risk", "clarifier", "spec-writer",
     # delivery (1)
     "delivery-lead",
-    # engineering (6)
-    "backend", "frontend", "mobile", "database", "platform", "data",
+    # engineering (1) — ADR-0037 PR-5d: backend + frontend + mobile + database + platform + data gộp thành
+    # `builder`, sáu tên cũ thành PHA chọn theo `stack` của ticket
+    "builder",
     # quality (2) — ADR-0037 PR-5c: test-author + reviewer + qa-debugger gộp thành `qa` (pha `author`/`review`)
     "qa", "security",
     # operations (1) — ADR-0037 PR-5b: release-engineer + support-docs + account-manager gộp thành `ops`
@@ -21,10 +22,10 @@ EXPECTED = {
     "supervisor",
 }
 
-def test_all_17_agents_load():
+def test_all_12_agents_load():
     agents = load_agents()
     assert set(agents) == EXPECTED
-    assert len(agents) == 17
+    assert len(agents) == 12
 
 def test_prompts_have_skills_and_dod():
     for a in load_agents().values():

@@ -6,16 +6,11 @@
 # thay đổi prompt/skill của agent ấy buộc phải chạy lại eval mới merge được.
 #
 # Ghi ngày 2026-09-03 bằng gói Claude trên máy qua provider claude-code.
-backend
+builder
 clarifier
-data
-database
 delivery-lead
-frontend
 intake
-mobile
 ops
-platform
 qa
 researcher
 risk

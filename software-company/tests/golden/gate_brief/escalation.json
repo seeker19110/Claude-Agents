@@ -31,27 +31,27 @@
         "detail": ""
       },
       {
-        "action": "backend: invalid_output",
+        "action": "builder: invalid_output",
         "at": "<…>",
         "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id': 'T1', 'nonsense': True}, input_type=dict] For further inform…"
       },
       {
         "action": "tasks retry=1",
         "at": "<…>",
-        "detail": "lần trước lỗi: backend: đầu ra không hợp lệ cho pull-requests: payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id…"
+        "detail": "lần trước lỗi: builder: đầu ra không hợp lệ cho pull-requests: payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id…"
       },
       {
-        "action": "backend: invalid_output",
+        "action": "builder: invalid_output",
         "at": "<…>",
         "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id': 'T1', 'nonsense': True}, input_type=dict] For further inform…"
       },
       {
         "action": "tasks retry=2",
         "at": "<…>",
-        "detail": "lần trước lỗi: backend: đầu ra không hợp lệ cho pull-requests: payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id…"
+        "detail": "lần trước lỗi: builder: đầu ra không hợp lệ cho pull-requests: payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id…"
       },
       {
-        "action": "backend: invalid_output",
+        "action": "builder: invalid_output",
         "at": "<…>",
         "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id': 'T1', 'nonsense': True}, input_type=dict] For further inform…"
       },
@@ -64,8 +64,8 @@
     "rulings": [],
     "scope": "ticket",
     "ticket": {
-      "assignee": "backend",
-      "hint": "lần trước lỗi: backend: đầu ra không hợp lệ cho pull-requests: payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id…",
+      "assignee": "builder",
+      "hint": "lần trước lỗi: builder: đầu ra không hợp lệ cho pull-requests: payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id…",
       "retry": 2,
       "risk_tags": [],
       "state": "blocked",

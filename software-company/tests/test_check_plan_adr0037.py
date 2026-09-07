@@ -16,7 +16,7 @@ def _orch() -> Orchestrator:
 
 
 def _task(**kw) -> Task:
-    base = dict(ticket_id="T1", project_id="P1", requirement_id="REQ-1", assignee="backend", title="x",
+    base = dict(ticket_id="T1", project_id="P1", requirement_id="REQ-1", assignee="builder", title="x",
                 acceptance=["given/when/then"], estimate_tokens=4_000, budget_tokens=6_000)
     base.update(kw)
     return Task(**base)

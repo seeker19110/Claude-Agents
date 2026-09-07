@@ -38,7 +38,7 @@ def test_hai_xuong_deu_co_du_lieu(company_db: Path, studio_db: Path) -> None:
     assert [v["id"] for v in s["videos"]] == ["vid-042"]
     assert s["perf"] == [{"id": "vid-042", "imp": 41_200, "views": 7_840, "ctr": 0.19, "avd": 284}]
     assert s["retention"]["video_id"] == "vid-042" and s["retention"]["points"][0] == [0.0, 100.0]
-    assert dict(s["agents"])["backend"] == 0.21
+    assert dict(s["agents"])["builder"] == 0.21
     assert {g["xuong"] for g in s["gates"]} == {COMPANY, STUDIO}
     assert [r["ac"] for r in s["log"]]  # audit `produced:*`, mới nhất trước
     assert len(s["cost_days"]["days"]) == len(s["cost_days"]["series"]) == 14

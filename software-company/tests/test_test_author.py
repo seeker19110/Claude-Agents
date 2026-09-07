@@ -24,7 +24,7 @@ SRC_BODY = "def f():\n    return 1\n"
 
 def _ts(p: dict, **extra) -> dict:
     """Đầu ra tối thiểu hợp lệ của test-author; `files`/`branch`/`tests_status` sẽ bị CODE ghi đè."""
-    return {"ticket_id": p["ticket_id"], "assignee": p.get("assignee", "backend"), "files": ["model khai bừa"],
+    return {"ticket_id": p["ticket_id"], "assignee": p.get("assignee", "builder"), "files": ["model khai bừa"],
             "acceptance_covered": [{"acceptance": a, "tests": ["test_f"]} for a in p.get("acceptance", ["x"])],
             "notes": "viết từ acceptance", **extra}
 
@@ -100,7 +100,7 @@ def test_assignee_khong_sua_duoc_test_cua_nguoi_khac(tmp_path: Path) -> None:
         seen.extend(m["content"] for m in msgs if m["role"] == "tool")
         return []
     g = AgentRunner(InMemoryBus(), FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=th)).generate_in_workspace(
-        "backend", _task(), ws, write_scope="src")
+        "builder", _task(), ws, write_scope="src")
     assert all(x.startswith("lỗi: không được ghi file test") for x in seen[:2])
     assert (ws.path / TEST_FILE).read_text(encoding="utf-8") == TEST_BODY, "bộ test còn nguyên: nới lẫn xoá đều bị chặn"
     # PR vẫn mang cả file test (nó nằm trên nhánh ticket từ commit của test-author) — nhưng nội dung là của họ.
@@ -185,7 +185,7 @@ def test_tranh_chap_test_quay_ve_test_author_va_lan_nay_co_diff(tmp_path: Path) 
     bus = InMemoryBus()
     orch = Orchestrator(bus, FakeClient(handler=lambda s, u: _ts({**_inp(u), "acceptance": ["x"]}), tool_handler=th),
                         repo=repo, base="main", test_author=True)
-    pr = Envelope(topic="pull-requests", key="T1", actor="backend",
+    pr = Envelope(topic="pull-requests", key="T1", actor="builder",
                   payload={"ticket_id": "T1", "project_id": "P1", "branch": "ticket/T1", "pr_ref": "abc1234",
                            "local_checks": {"lint": True, "tests": False},
                            "test_dispute": "test khẳng định f() == 1 nhưng acceptance nói 2"})
@@ -310,7 +310,7 @@ def test_qa_hai_route_khac_tool(tmp_path: Path) -> None:
     assert (r_author.phase, r_review.phase) == ("author", "review")
 
     orch._call("qa", _task(hint="reviewer bảo dùng dict", retry=2), r_author, StepResult("e1", "tasks", "T1"))
-    pr = Envelope(topic="pull-requests", key="T1", actor="backend",
+    pr = Envelope(topic="pull-requests", key="T1", actor="builder",
                   payload=_pr({"ticket_id": "T1"}, branch="ticket/T1"))
     orch._call("qa", pr, r_review, StepResult("e2", "pull-requests", "T1"))
 
@@ -344,4 +344,4 @@ def test_review_route_khong_co_thi_gay_to() -> None:
 
     assert review_route("qa").phase == "review"
     with pytest.raises(KeyError, match="không có route chấm pull-requests"):
-        review_route("backend")
+        review_route("builder")

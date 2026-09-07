@@ -59,7 +59,7 @@ def _orch(tmp_path):
     bus = SQLiteBus(tmp_path / "c.sqlite")
     client = FakeClient(handler=handler)
     orch = Orchestrator(bus, client, repo=None)
-    orch.lead.tickets["T1"] = Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="backend",
+    orch.lead.tickets["T1"] = Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="builder",
                                    title="T1", acceptance=["a"])
     orch.lead.state["T1"] = "approved"
     # K1.5 (ADR-0036): các ca dưới đây đo GATE, chạy không repo nên không bao giờ smoke được. Spec nền khai

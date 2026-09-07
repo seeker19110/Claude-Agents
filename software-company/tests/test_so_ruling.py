@@ -32,7 +32,7 @@ def _orch(tmp_path, h=_handler_co_ruling):
 
 
 def _dispatch(bus, orch, tid="T1"):
-    orch.lead.tickets[tid] = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="backend", title=tid, acceptance=["a"])
+    orch.lead.tickets[tid] = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="builder", title=tid, acceptance=["a"])
     orch.lead.state[tid] = "dispatched"
     bus.publish(Envelope(topic="tasks", key=tid, actor="delivery-lead", payload=orch.lead.tickets[tid].model_dump()))
 
@@ -42,11 +42,11 @@ def test_ruling_vao_audit_va_doc_lai_duoc(tmp_path):
     _dispatch(bus, orch)
     orch.run()
     rows = [e for e in bus.replay(topic="audit-log") if e.payload["action"] == "ruling"]
-    assert len(rows) == 1 and rows[0].payload["actor"] == "backend" and rows[0].payload["ticket_id"] == "T1"
+    assert len(rows) == 1 and rows[0].payload["actor"] == "builder" and rows[0].payload["ticket_id"] == "T1"
     d = json.loads(rows[0].payload["evidence"])
     assert d["decision"] == RUL[0]["decision"] and d["topic"] == "pull-requests" and d["key"] == "T1" and d["event_id"]
     r = orch.rulings()
-    assert len(r) == 1 and r[0]["by"] == "backend" and r[0]["cost_if_wrong"].startswith("đổi adapter")
+    assert len(r) == 1 and r[0]["by"] == "builder" and r[0]["cost_if_wrong"].startswith("đổi adapter")
     assert orch.rulings(ticket_id="T1") and not orch.rulings(ticket_id="T9") and orch.rulings(project_id="P")
     assert orch.status()["rulings"] == 1
 
@@ -102,14 +102,14 @@ def test_schema_moi_topic_deu_nhan_rulings_va_bat_buoc_ba_phan():
     bus = InMemoryBus()
     ok = Ruling(decision="a", why="b", cost_if_wrong="c").model_dump()
     bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead",
-                         payload={**Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="backend", title="t",
+                         payload={**Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="builder", title="t",
                                          acceptance=["a"]).model_dump(), "rulings": [ok]}))
     import pytest
 
     from company.bus import BusError
     with pytest.raises(BusError):
         bus.publish(Envelope(topic="tasks", key="T2", actor="delivery-lead",
-                             payload={**Task(ticket_id="T2", project_id="P", requirement_id="R1", assignee="backend", title="t",
+                             payload={**Task(ticket_id="T2", project_id="P", requirement_id="R1", assignee="builder", title="t",
                                              acceptance=["a"]).model_dump(), "rulings": [{"decision": "a"}]}))
 
 

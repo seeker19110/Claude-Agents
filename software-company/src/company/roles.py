@@ -7,6 +7,7 @@ từ PR-5a là `"security"`, code gọi nó không biết gì.
 
 Ba nhóm hằng, cố ý tách:
 - `ROLE.*` — id agent (khớp `id:` trong front matter; `tests/test_roles.py` đối chiếu hai chiều với `load_agents()`).
+- `BUILD_PHASES` — sáu mảng kỹ thuật: `stack` của TICKET và pha của `builder`, KHÔNG phải id agent (PR-5d).
 - `SOURCE.*` — nhãn `source` của `review-results` (`reviewer|qa|security`). KHÔNG phải id agent, dù trùng chữ:
   `REVIEW_AGENT` mới là bảng nguồn → agent chấm.
 - `LEAD_ACTOR` — actor của event do `delivery.py` (code, không phải model) phát: `tasks`, `release-candidates`,
@@ -29,13 +30,11 @@ class ROLE:
     RISK: Final = "risk"
     CLARIFIER: Final = "clarifier"
     LEAD: Final = "delivery-lead"
-    # → `builder` (PR-5d): sáu agent kỹ thuật thành một agent, sáu tên thành pha (`BUILD_PHASES` = `Task.stack`)
-    BACKEND: Final = "backend"
-    FRONTEND: Final = "frontend"
-    MOBILE: Final = "mobile"
-    DATABASE: Final = "database"
-    PLATFORM: Final = "platform"
-    DATA: Final = "data"
+    # → `builder` (PR-5d: xong) — sáu agent kỹ thuật GỘP thành một hằng, sáu tên cũ thành PHA của nó
+    # (`BUILD_PHASES` bên dưới = `Task.stack`). Như PR-5b/5c, `test_hang_role_khop_front_matter_hai_chieu` cấm
+    # hai hằng cùng giá trị nên năm hằng cũ không còn; sáu id cũ vào `MIGRATED` trỏ về `"builder"`.
+    # Sáu tên ấy vẫn tồn tại trong hệ, nhưng là `stack` của TICKET (dữ liệu, ADR-0013), không phải id agent.
+    BUILDER: Final = "builder"
     # → `qa` (PR-5c: xong) — test-author (pha `author`) + reviewer + qa-debugger (pha `review`) GỘP thành một
     # hằng, như `ops` ở PR-5b: `test_hang_role_khop_front_matter_hai_chieu` cấm hai hằng cùng giá trị nên
     # `TEST_AUTHOR` và `REVIEWER` không còn; ba id cũ vào `MIGRATED` trỏ về `"qa"`. Nhãn `source` của
@@ -62,10 +61,30 @@ class SOURCE:
 
 LEAD_ACTOR: Final = "delivery-lead"  # actor của event do delivery.py phát — không phải agent
 
-# Sáu agent kỹ thuật; thứ tự là thứ tự khai trong `Assignee`. `orch/routes.py::ENGINEERING` tham chiếu bảng này.
-ENGINEERING: tuple[str, ...] = (ROLE.BACKEND, ROLE.FRONTEND, ROLE.MOBILE, ROLE.DATABASE, ROLE.PLATFORM, ROLE.DATA)
+# Agent viết code; từ PR-5d chỉ còn một (`bus.ENGINEERING_ACTORS` là producer hợp lệ của `pull-requests`).
+ENGINEERING: tuple[str, ...] = (ROLE.BUILDER,)
 
-# `Literal` bắt buộc viết chuỗi tay (typing không nhận biến), nên hai kiểu này sống ở đây cùng chuỗi gốc của chúng;
-# `tests/test_roles.py` khoá `get_args(Assignee) == ENGINEERING` và `get_args(ReviewSource)` khớp `SOURCE`.
-Assignee = Literal["backend", "frontend", "mobile", "database", "platform", "data"]
+class STACK:
+    """Mảng kỹ thuật của một TICKET (ADR-0013), đồng thời là tên pha của `builder` (ADR-0037).
+
+    Sáu chuỗi này trùng sáu id agent cũ (PR-5d gộp chúng), nên `tests/test_roles.py` chặn chúng ở mọi file `src/`
+    khác — ai cần một stack thì tham chiếu hằng ở đây. Không phải id agent: `Task.stack` là dữ liệu do product
+    điền khi chia ticket, còn `Task.assignee` luôn là `builder`.
+    """
+
+    BACKEND: Final = "backend"
+    FRONTEND: Final = "frontend"
+    MOBILE: Final = "mobile"
+    DATABASE: Final = "database"
+    PLATFORM: Final = "platform"
+    DATA: Final = "data"
+
+
+BUILD_PHASES: tuple[str, ...] = (STACK.BACKEND, STACK.FRONTEND, STACK.MOBILE, STACK.DATABASE, STACK.PLATFORM, STACK.DATA)
+
+# `Literal` bắt buộc viết chuỗi tay (typing không nhận biến), nên ba kiểu này sống ở đây cùng chuỗi gốc của chúng;
+# `tests/test_roles.py` khoá `get_args(Assignee) == ENGINEERING`, `get_args(BuildPhase) == BUILD_PHASES` và
+# `get_args(ReviewSource)` khớp `SOURCE`.
+Assignee = Literal["builder"]
+BuildPhase = Literal["backend", "frontend", "mobile", "database", "platform", "data"]
 ReviewSource = Literal["reviewer", "qa", "security"]

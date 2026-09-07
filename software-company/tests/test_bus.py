@@ -6,7 +6,7 @@ from company.events import Envelope, Task
 
 def test_publish_valid_task():
     bus = InMemoryBus()
-    t = Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="backend", title="x", acceptance=["a"])
+    t = Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="builder", title="x", acceptance=["a"])
     bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=t.model_dump()))
     assert len(bus) == 1
 
@@ -30,24 +30,26 @@ def test_schema_required_fields():
 def test_namespace_owner_enforced():
     bus = InMemoryBus()
     with pytest.raises(PermissionDenied):
-        bus.publish(Envelope(topic="shared-context", key="schema", actor="frontend",
+        bus.publish(Envelope(topic="shared-context", key="schema", actor="qa",
                              payload={"namespace": "schema", "version": 1, "content_ref": "x"}))
 
 def test_new_namespaces_writable_by_owner():
     bus = InMemoryBus()
+    # ADR-0037 PR-5d: `infra` và `analytics` đổi chủ từ platform/data sang `builder` (một agent cho cả sáu mảng)
     for actor, ns in (("researcher", "design"), ("security", "threat-model"),
-                      ("platform", "infra"), ("data", "analytics")):
+                      ("builder", "infra"), ("builder", "analytics")):
         bus.publish(Envelope(topic="shared-context", key=ns, actor=actor,
                              payload={"namespace": ns, "version": 1, "content_ref": "x"}))
     assert len(bus) == 4
     with pytest.raises(PermissionDenied):
-        bus.publish(Envelope(topic="shared-context", key="design", actor="frontend",
+        bus.publish(Envelope(topic="shared-context", key="design", actor="qa",
                              payload={"namespace": "design", "version": 2, "content_ref": "y"}))
 
 def test_task_accepts_new_assignees_and_risk_tags():
+    # ADR-0037 PR-5d: `assignee` chỉ còn `builder`; mảng kỹ thuật của ticket nằm ở `stack`
     bus = InMemoryBus()
     for who in ("platform", "data"):
-        t = Task(ticket_id=f"T-{who}", project_id="P", requirement_id="R1", assignee=who, title="x",
+        t = Task(ticket_id=f"T-{who}", project_id="P", requirement_id="R1", assignee="builder", stack=who, title="x",
                  acceptance=["a"], risk_tags=["pii"], estimate_tokens=10_000, budget_tokens=15_000)
         bus.publish(Envelope(topic="tasks", key=t.ticket_id, actor="delivery-lead", payload=t.model_dump()))
     assert len(bus) == 2

@@ -239,7 +239,7 @@ def test_release_uoc_luong_ok_khi_co_bai_hoc_cho_moi_assignee(tmp_path):
     assert orch.supervisor.lessons(), "sau nghiệm thu có bài học estimate-vs-actual"
     b = GB.build(GB.load_state(db), "REL-001", closed=True)
     it = next(x for x in b["self_check"] if x["id"] == "plan.uoc-luong-co-so")
-    assert it["verdict"] == "ok" and any("backend×" in f for f in it["facts"])
+    assert it["verdict"] == "ok" and any("builder×" in f for f in it["facts"])
 
 
 # ---------- release ----------
@@ -249,11 +249,11 @@ def test_release_dashboard_doi_chieu_contract_voi_infra(tmp_path):
     b = GB.build(GB.load_state(db), "REL-001")
     it = next(x for x in b["self_check"] if x["id"] == "release.dashboard-alert")
     assert it["verdict"] == "unknown" and "chưa có namespace infra" in it["facts"][0]
-    orch.blackboard.write("platform", "infra", "infra/dash.md", content="Dashboard + alert cho /orders, runbook ở docs/", project_id="P1")
+    orch.blackboard.write("builder", "infra", "infra/dash.md", content="Dashboard + alert cho /orders, runbook ở docs/", project_id="P1")
     b = GB.build(GB.load_state(db), "REL-001")
     it = next(x for x in b["self_check"] if x["id"] == "release.dashboard-alert")
     assert it["verdict"] == "gap" and any("/payments" in f for f in it["facts"])
-    orch.blackboard.write("platform", "infra", "infra/dash.md", content="Dashboard + alert cho /orders và /payments", project_id="P1")
+    orch.blackboard.write("builder", "infra", "infra/dash.md", content="Dashboard + alert cho /orders và /payments", project_id="P1")
     b = GB.build(GB.load_state(db), "REL-001")
     assert _verdicts(b)["release.dashboard-alert"] == "ok" and _verdicts(b)["release.four-eyes"] == "ok"
     assert {u["id"] for u in b["unavailable"]} == {"release.changelog-docs-notice", "release.error-budget"}

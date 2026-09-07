@@ -91,7 +91,7 @@ def test_causation_chains_through_a_real_agent_run():
     from company.runner import AgentRunner
 
     bus = InMemoryBus()
-    root = bus.publish(Envelope(topic="pull-requests", key="T1", actor="backend",
+    root = bus.publish(Envelope(topic="pull-requests", key="T1", actor="builder",
                                 payload={"ticket_id": "T1", "branch": "ticket/T1", "pr_ref": "abc1234",
                                          "local_checks": {"lint": True, "tests": True}}))
     client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "source": "reviewer", "verdict": "pass"})
