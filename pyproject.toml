@@ -11,6 +11,7 @@ dependencies = [
     "gateway",
     "software-company",
     "video-creators",
+    "xagents-core",
 ]
 
 [project.optional-dependencies]
@@ -31,10 +32,11 @@ dev = [
 package = false
 
 [tool.uv.workspace]
-members = ["console", "gateway", "software-company", "Studio-creators"]
+members = ["console", "gateway", "software-company", "Studio-creators", "xagents-core"]
 
 [tool.uv.sources]
 console = { workspace = true }
 gateway = { workspace = true }
 software-company = { workspace = true }
 video-creators = { workspace = true }
+xagents-core = { workspace = true }

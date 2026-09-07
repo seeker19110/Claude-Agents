@@ -294,6 +294,48 @@ jobs:
       - run: uv run pytest -q --cov --cov-report=term-missing
         working-directory: console
 
+  # Lõi chung của mọi công ty (ADR gốc 0001). `strict = true` từ ngày đầu (K6.1): core là chỗ hai công ty
+  # tin cậy, nó không được lỏng hơn nơi gọi nó.
+  core-static:
+    name: core-static
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.13"
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
+      - run: uv run ruff check src tests
+        working-directory: xagents-core
+      # KHÔNG có --ignore-missing-imports như bốn package kia: `strict` mà bỏ qua import thiếu thì mất đúng
+      # phần bảo đảm vừa bật.
+      - run: uv run mypy src/xagents_core
+        working-directory: xagents-core
+
+  core-unit:
+    name: core-unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]   # cận dưới của requires-python và bản mới nhất đang dùng
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
+      - run: uv run pytest -q --cov --cov-report=term-missing
+        working-directory: xagents-core
+
   # Tài sản prompt của repo là chuỗi cung ứng (ADR-0022): injection, ký tự ẩn, lệnh nguy hiểm, khóa lộ
   # trong `agents/ skills/ templates/ gates/ topics/` của CẢ HAI công ty. Miễn trừ: assetscan-waivers.txt.
   asset-scan:
@@ -390,7 +432,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    needs: [static, unit, eval-replay, audit, studio-static, studio-unit, studio-eval-replay, golden-check, gateway-static, gateway-unit, console-static, console-unit, asset-scan, protection-guard]
+    needs: [static, unit, eval-replay, audit, studio-static, studio-unit, studio-eval-replay, golden-check, gateway-static, gateway-unit, console-static, console-unit, core-static, core-unit, asset-scan, protection-guard]
     if: always()
     steps:
       - name: Kiểm mọi job con đã success
