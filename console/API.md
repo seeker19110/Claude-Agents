@@ -31,6 +31,11 @@ công ty đó bao giờ).
 ```jsonc
 {
   "generated_at": "2026-09-03T08:41:12+07:00",
+  // K7.5: phần mô tả HÌNH DẠNG dữ liệu dưới đây là bản rút gọn cho người đọc, KHÔNG phải nguồn sự thật.
+  // Nguồn sự thật là `topics/schemas/*.json` của hai công ty + hai test canh mối nối:
+  //   `tests/test_hop_dong_schema.py`  — trường console đọc phải có trong schema (K7.4)
+  //   `tests/test_es_module.py`        — mọi module được nạp, mọi tên nhập đều được export (K7.1)
+  // Chỗ nào ở đây lệch với test thì TEST đúng. Xoá dần phần mô tả này khi test phủ hết.
   // Mọi trường payload console đọc từ hai công ty đều bị `tests/test_hop_dong_schema.py` (K7.4) canh: nó quét
   // `collect.py`/`truth.py` và khẳng định từng tên có trong `topics/schemas/` của công ty. Đổi schema bên công
   // ty mà quên sửa console → test console ĐỎ, thay vì ô hiện rỗng mà không ai biết.
