@@ -51,6 +51,7 @@ from xagents_core.llm import CLI_SUBTYPE_ERRORS as CLI_SUBTYPE_ERRORS
 from xagents_core.llm import CODEX_EFFORT as CODEX_EFFORT
 from xagents_core.llm import TIERS as TIERS
 from xagents_core.llm import TRANSIENT_HTTP as TRANSIENT_HTTP
+from xagents_core.llm import Completion as Completion
 from xagents_core.llm import LLMConfig as CoreLLMConfig
 from xagents_core.llm import LLMError as LLMError
 from xagents_core.llm import Refused as Refused
@@ -59,8 +60,11 @@ from xagents_core.llm import cli_effort_args as cli_effort_args
 from xagents_core.llm import find_codex_binary as find_codex_binary
 from xagents_core.llm import load_config as core_load_config
 from xagents_core.llm import neutral_messages as neutral_messages
+from xagents_core.llm import object_before_trailing_junk as object_before_trailing_junk
+from xagents_core.llm import object_in_prose as object_in_prose
 from xagents_core.llm import reported_model as reported_model
 from xagents_core.llm import strict_schema as strict_schema
+from xagents_core.llm import strip_code_fence as strip_code_fence
 from xagents_core.llm import system_prompt_args as system_prompt_args
 
 from .core import CORE
@@ -69,84 +73,6 @@ from .tools import ToolCall, ToolSpec
 # Giữ tên cũ vì console (`collect.py`) và test đọc chúng từ module này; nguồn nay là `CORE`.
 ROOT = CORE.root
 CONFIG_FILE = CORE.config_file
-@dataclass
-class Completion:
-    """`input_tokens` LUÔN là tổng input đã tính tiền, kể cả phần đọc từ cache và phần ghi cache — mỗi adapter
-    tự quy đổi về nghĩa này vì provider đếm khác nhau (Anthropic tách cache ra khỏi `input_tokens`, OpenAI gộp vào
-    `prompt_tokens`). `cached_input_tokens` và `cache_write_tokens` chỉ để báo cáo hiệu quả cache, không cộng thêm."""
-    text: str
-    input_tokens: int
-    output_tokens: int
-    model: str
-    stop_reason: str = "end_turn"
-    cached_input_tokens: int = 0  # phần input phục vụ từ cache (đã nằm trong input_tokens)
-    cache_write_tokens: int = 0   # phần input ghi vào cache lần đầu (đã nằm trong input_tokens)
-    tool_calls: list[ToolCall] = field(default_factory=list)  # model muốn gọi tool (rỗng = trả lời cuối)
-    # Ai đã chạy vòng tool của lượt này: "" = vòng lặp của runner (mọi provider API); "mcp" = CLI chạy, gọi ngược
-    # tool của công ty qua cầu MCP (ADR-0024); "cli" = CLI chạy bằng tool RIÊNG của nó (ADR-0023). Runner ghi vào
-    # audit `tools_used` để người vận hành biết lượt vừa rồi đi hàng rào nào, không phải đoán từ cấu hình.
-    tool_mode: str = ""
-
-    @property
-    def tokens(self) -> int:
-        return self.input_tokens + self.output_tokens
-
-    @property
-    def cache_hit_ratio(self) -> float:
-        return self.cached_input_tokens / self.input_tokens if self.input_tokens else 0.0
-
-    def json(self) -> dict[str, Any]:
-        text = _strip_code_fence(self.text)
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError as e:
-            if (obj := _object_before_trailing_junk(text)) is not None:
-                return obj
-            # chỉ trích đoạn quanh vị trí lỗi, không đổ cả đầu ra vào log
-            near = text[max(0, e.pos - 120):e.pos + 120]
-            raise LLMError(f"đầu ra không phải JSON: {e} — gần vị trí lỗi: ...{near}...") from e
-
-
-def _object_before_trailing_junk(text: str) -> dict[str, Any] | None:
-    """Một object HOÀN CHỈNH rồi thừa dấu đóng ở cuối → trả object đó; mọi trường hợp khác → None.
-
-    Trượt quan sát được của model khi đầu ra dài (đo 2026-09-05 trên bản ghi eval `researcher`: 14.5k ký tự
-    JSON, thừa đúng một `}` ở cuối). Object đứng trước đã đóng đủ và không mơ hồ — bỏ cả lượt vì một dấu thừa
-    là phí, y như chuyện chuỗi "null" ở `runner._normalize_nulls`.
-
-    Ranh giới hẹp có chủ đích: chỉ chấp nhận phần dư gồm khoảng trắng và `}`/`]`. JSON hỏng GIỮA cấu trúc
-    (model đóng sớm rồi viết tiếp `,{...}`) thì không cứu được nếu không đoán ý — chỗ đó vẫn phải đỏ."""
-    try:
-        obj, end = json.JSONDecoder().raw_decode(text)
-    except json.JSONDecodeError:
-        return None
-    thua = "".join(text[end:].split())  # bỏ mọi khoảng trắng, kể cả ở giữa các dấu đóng
-    if not isinstance(obj, dict) or not thua or set(thua) - {"}", "]"}:
-        return None
-    return obj
-
-
-def _strip_code_fence(raw: str) -> str:
-    """Bóc code fence bao quanh JSON (model nhỏ hay bọc ```json ... ```).
-
-    Chỉ bỏ fence MỞ ở đầu và fence ĐÓNG ở CUỐI; fence nằm giữa là nội dung thật (research findings hay trích
-    đoạn config) — cắt theo nó sẽ chặt cụt JSON giữa chừng. Không có fence thì trả nguyên văn.
-    """
-    text = raw.strip()
-    if not text.startswith("```"):
-        return text
-    if "\n" in text:
-        text = text.split("\n", 1)[1]          # bỏ cả dòng mở (``` hoặc ```json)
-    else:
-        text = text[3:].lstrip()                # fence một dòng: ```{...}``` hoặc ```json {...}```
-        if not text.startswith(("{", "[")):     # bỏ nhãn ngôn ngữ dính liền (```json {...}```)
-            text = text.split(None, 1)[1] if len(text.split(None, 1)) > 1 else text
-    text = text.rstrip()
-    if text.endswith("```"):                    # fence đóng chỉ khi thật sự ở cuối
-        text = text[:-3]
-    return text.strip()
-
-
 class ModelClient(Protocol):
     """Một lời gọi = system + user + JSON Schema đầu ra + tier. Provider nào cũng phải trả `Completion`.
 
