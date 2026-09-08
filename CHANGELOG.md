@@ -6,6 +6,10 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(core): **4L-2 — vết từng lời gọi tool vào audit, trace in được** (#183). `ToolBox.trace()` (args_hash/
+  out_hash/ms, `content` chỉ ghi độ dài); audit `tools_trace` mỗi lượt tool ở company + studio, song song
+  `tools_used` cũ. `company.trace` in dòng `↳`, gộp `×N` khi ≥3 call liên tiếp cùng hash. Mode `cli` không có vết
+  → nói rõ, không im lặng.
 - feat(company): **4L-1a — ngưỡng eval theo agent, CI chặn tụt điểm** (#182). `evals/thresholds.yaml` (6 agent,
   đo 100% hôm 2026-09-08 làm tròn xuống 0.05); `Threshold`/`load_thresholds`/`check_thresholds` trong `evals.py`;
   cờ `--thresholds`/`--no-thresholds`. Trước đây CI chỉ đỏ khi bản ghi eval thiếu/lệch phiên bản prompt, không

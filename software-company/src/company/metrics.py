@@ -20,7 +20,7 @@ from typing import Any
 from .bus import InMemoryBus
 
 HEALTH = ("llm_error", "invalid_output", "budget_exhausted", "injection_detected", "injection_sanitized", "llm_retry",
-          "context_trimmed", "handler_error", "tools_used", "local_checks.unverified")
+          "context_trimmed", "handler_error", "tools_used", "tools_trace", "local_checks.unverified")
 
 
 def _ev(a: dict[str, Any]) -> dict[str, Any]:

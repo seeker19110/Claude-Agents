@@ -278,6 +278,13 @@ class AgentRunner:
         self._audit(spec, "tools_used", inp,
                     evidence=json.dumps({"turns": turn, "mode": c.tool_mode or "loop", "calls": tools.summary(),
                                          **({"urls": urls} if urls else {})}, ensure_ascii=False))
+        # 4L-2: vết TỪNG lời gọi tool (`ToolBox.trace()`), một audit `tools_trace` mỗi lượt tool — riêng với
+        # `tools_used` ở trên (đếm gộp theo tên, hình đó `metrics` đang parse, không đổi). mode "cli" (ADR-0023)
+        # tự chạy tool bên trong CLI, không đi qua `ToolBox` của company → `tools.calls` RỖNG ở lượt đó; đây là
+        # giới hạn đã biết, không phải lỗi — `company.trace` phải nói rõ "không có vết" thay vì im lặng in rỗng.
+        self._audit(spec, "tools_trace", inp,
+                    evidence=json.dumps({"turns": turn, "mode": c.tool_mode or "loop", "calls": tools.trace()},
+                                        ensure_ascii=False))
         return c, total, turn, usd, produced
 
     def _context(self, project_id: str | None = None, spec: AgentSpec | None = None) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:

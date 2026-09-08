@@ -140,9 +140,11 @@ def test_runner_binds_toolbox_and_cli_runs_the_whole_tool_loop_once(tmp_path):
     assert "Read(**/.env)" in args[args.index("--settings") + 1], "deny file bí mật là lớp chặn thứ hai"
     assert args[args.index("--allowedTools") + 1] == ",".join(tool_full_name(n) for n in
                                                               ["read_file", "write_file", "delete_file", "list_files", "search", "run"])
-    assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["tools_used"]
+    assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["tools_used", "tools_trace"]
     ev = json.loads(next(iter(bus.replay(topic="audit-log"))).payload["evidence"])
     assert ev["calls"] == {"read_file": 1, "write_file": 1}
+    tr = json.loads(next(e.payload["evidence"] for e in bus.replay(topic="audit-log") if e.payload["action"] == "tools_trace"))
+    assert tr["mode"] == "mcp" and [c["name"] for c in tr["calls"]] == ["read_file", "write_file"]
 
 
 def test_old_cli_falls_back_to_cli_tools_or_says_why(tmp_path):

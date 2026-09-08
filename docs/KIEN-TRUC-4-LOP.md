@@ -42,7 +42,7 @@ Checklist 9 mục cuối đặc tả: company **6 ✅ 3 ◐**, studio **3 ✅ 6 
 | L2 chốt duyệt tool tác dụng phụ | ✅* | ✅* | *thay bằng không cấp tool + gate `gates.py:9` | 2 | **8** |
 | L2 lỗi tool có hướng dẫn | ✅ | ✅ | `tools.py:196,97,118,138` | | |
 | L2 giới hạn phiên | ✅ | ✅ | `max_turns=25` `runner.py:299`; budget output `:243`; timeout 600/900s | | |
-| L2 nhật ký tool call | ◐ | ◐ | `tools_used` đếm theo tên (`runner.py:274-280`), không args | 7 | **2** |
+| L2 nhật ký tool call | ✅ | ✅ | audit `tools_trace` từng lời gọi (name/args_hash/out_hash/ms), `company.trace` in `↳` | 7 | **2** |
 | L2 nội dung ngoài = dữ liệu | ✅ | ✅ | `runner.py:90-96`; `sanitize_tool_output` `:254-256`; guard K3.4 | 6 | |
 | L3 kiểm bằng máy | ✅ | ✅ | `ws.run_checks()` → `verified_by=workspace` `runner.py:450-462`; `qc.py` | | |
 | L3 trần cứng | ✅ | ✅ | `max_retries=3` `delivery.py:28`; `MAX_REPAIR_ROUNDS=3` `studio/events.py:41` | 3 | |
@@ -75,7 +75,7 @@ không nâng mức C1.
 |---|---|---|---|---|---|---|---|
 | **1a** | `evals/thresholds.yaml` + CI đỏ khi điểm dưới ngưỡng | L1 | `feat(company)` | C2 | lần đầu biết chỉnh prompt là cải thiện hay hồi quy | ngưỡng sai → đỏ vì nhiễu; ngưỡng = **bẫy hồi quy**, không phải chỉ tiêu | xong #182 |
 | **1b** | security 2 → ≥ 10 ca, ghi lại model thật | L1 | `chore(company)` | C2 + người | ngưỡng có nghĩa | cần máy có key, 7 bước | đợt 2, sau 1a |
-| **2** | audit `tools_trace` từng lời gọi tool (hash, ms, args cắt) | L2 | `feat(core)` | C2 | nhìn thấy gọi lặp; tiền đề 3 | args có dữ liệu khách → hash/cắt, `content` không ghi | đợt 1 |
+| **2** | audit `tools_trace` từng lời gọi tool (hash, ms, args cắt) | L2 | `feat(core)` | C2 | nhìn thấy gọi lặp; tiền đề 3 | args có dữ liệu khách → hash/cắt, `content` không ghi | xong #183 |
 | **3** | cắt vòng tool khi không tiến bộ (nhắc ở 3, cắt ở 5) | L3 | `feat(company)` | **C3** | cắt sớm ticket kiểu 956k token | dương tính giả nếu không loại tool ghi xen giữa; mỗi cắt +1 retry | đợt 2, sau 2 |
 | **4** | tỉa tool output cũ trong vòng (ADR-0040) | L3 | `docs` + `feat(core)` | **C3** | lượt cuối không đắt gấp mười lượt đầu | **đổi hành vi agent**; lệch hash mọi bản ghi eval | **chỉ trong K3.6**, một lần cho hai công ty |
 | **5** | `metrics.loops` p50/p90/capped + ô console | L3 | `feat(company)` | C2 | rẻ nhất, số đã có | ô mới phải theo console ADR-0003 (rỗng = xám) | đợt 2 |
