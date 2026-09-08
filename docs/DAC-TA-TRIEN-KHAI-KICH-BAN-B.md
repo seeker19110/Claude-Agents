@@ -435,7 +435,7 @@ package đang gọi `company.llm.load_config()` không đổi.
 >   company, 1 dòng test đổi. (3) **Bật validate envelope làm lộ 19 schema studio lỗi thời từ K3.5a** — chúng
 >   `additionalProperties: false` mà chưa biết ba trường K3.5a thêm vào; K3.5a không thấy được vì studio khi ấy
 >   chưa validate envelope. `_extra_publish_checks` là điểm mở duy nhất, cho luật `gate.decide` riêng của company.
-> - **K3.5c — `sqlite_bus`: XONG (#PR).** Bước DUY NHẤT của K3.5 mà "lấy bản company" là mô tả đúng:
+> - **K3.5c — `sqlite_bus`: XONG (#187).** Bước DUY NHẤT của K3.5 mà "lấy bản company" là mô tả đúng:
 >   `difflib` 0.442, cùng `_DDL`, cùng cách nạp `_log`, cùng `INSERT`, cùng `replay`; sáu hàm chỉ company có
 >   (`latest`, `_persist_only`, `__del__`, `_alive`, `Lease.acquire/release`) là company đi xa hơn trên cùng
 >   con đường, không phải hai miền khác nhau. Ba quyết định hợp nhất ở docstring core; đáng nhớ nhất là

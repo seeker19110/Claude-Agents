@@ -7,7 +7,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 ## Chưa phát hành
 
 - refactor(core): **K3.5c — `sqlite_bus` lên `xagents_core`; studio nhận khoá, `latest()` và bus dùng được từ
-  thread khác** (#PR). `difflib` giữa hai `sqlite_bus.py` là **0.442** — cao nhất trong ba module của K3.5, và
+  thread khác** (#187). `difflib` giữa hai `sqlite_bus.py` là **0.442** — cao nhất trong ba module của K3.5, và
   lần này con số ấy đúng theo nghĩa đen: cùng `_DDL`, cùng cách nạp lại `_log` khi mở, cùng câu `INSERT`, cùng
   `replay` ghép `WHERE`. Chỗ lệch là **company đã đi xa hơn trên cùng con đường** (6 hàm chỉ company có:
   `latest`, `_persist_only`, `__del__`, `Lease.acquire/release`, `_alive`), nên đây là bước duy nhất của K3.5
