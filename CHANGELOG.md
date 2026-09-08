@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- refactor(core): **K3.6a — `registry` lên `xagents_core`; K3.6 tách làm bốn bước** (#PR). Đặc tả gộp
+- refactor(core): **K3.6a — `registry` lên `xagents_core`; K3.6 tách làm bốn bước** (#188). Đặc tả gộp
   `registry` + `blackboard` + `runner` + `evals` vào MỘT PR. Đo `difflib` trước khi làm cho thấy bốn module
   lệch rất khác nhau — `evals` **0.556**, `registry` **0.429**, `blackboard` **0.092**, `runner` **0.036**
   (631 dòng company vs 336 studio, 13 hàm chỉ company có) — nên gộp cả bốn là đúng thứ K3.3a và K3.5 đã học

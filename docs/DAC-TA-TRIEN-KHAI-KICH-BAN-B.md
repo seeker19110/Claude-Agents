@@ -464,12 +464,12 @@ package đang gọi `company.llm.load_config()` không đổi.
   `core.root/"evals"`; giữ `if not c.tool_calls` của studio khi ghi.
 - Studio recording không cần ghi lại (format giống nhau, `prompt_version` đã khớp).
 
-> **Trạng thái: K3.6 TÁCH BỐN BƯỚC; bước a XONG (#PR).** Lý do tách giống hệt K3.5: đo `difflib` trước khi làm
+> **Trạng thái: K3.6 TÁCH BỐN BƯỚC; bước a XONG (#188).** Lý do tách giống hệt K3.5: đo `difflib` trước khi làm
 > cho thấy bốn module lệch rất khác nhau — `evals` **0.556**, `registry` **0.429**, `blackboard` **0.092**,
 > `runner` **0.036** (631 dòng company vs 336 studio, 13 hàm chỉ company có). Gộp cả bốn vào một PR là đổi
 > registry + blackboard + vòng lặp tool + đường ghi eval cùng lúc, đúng thứ K3.3a và K3.5 đã học được là không nên.
 >
-> - **K3.6a — `registry`: XONG (#PR).** Hình dạng lệch ở đây là hình dạng THỨ TƯ, chưa gặp trong K3.3–K3.5:
+> - **K3.6a — `registry`: XONG (#188).** Hình dạng lệch ở đây là hình dạng THỨ TƯ, chưa gặp trong K3.3–K3.5:
 >   **một bên là TẬP CON của bên kia**. Ba hàm chỉ company có (`_load_phases`, `owned_skills`, `reads_full`)
 >   đều là *thêm vào*, không phải *khác đi*; phần còn lại của studio giống company gần như từng ký tự. Nên core
 >   = bản company đúng như đặc tả, và studio chỉ khai thêm cái nó có riêng.
