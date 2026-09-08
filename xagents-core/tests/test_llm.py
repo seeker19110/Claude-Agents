@@ -209,9 +209,15 @@ def test_pham_vi_bon_adapter_chua_len_core():
     for ten in ("AnthropicClient", "CodexClient", "FakeClient"):
         assert hasattr(m, ten), f"K3.3c2 đã mang {ten} lên core (eval replay 78 ca giống hệt bản trước)"
     assert hasattr(m, "OpenAICompatClient"), "K3.3c3 bước 1 (difflib 0.73, company là tập cha)"
-    assert not hasattr(m, "ClaudeCodeClient"), (
-        "`ClaudeCodeClient` là K3.3c3 bước 2 và là cái lệch nhất còn lại (0.39): company hơn 83 dòng và ba "
-        "method của cầu MCP (`_toolbox`, `bind_toolbox`, `_complete_mcp`, ADR-0024). Đó KHÔNG phải 'studio "
-        "thiếu một tính năng' mà là thứ studio không có khái niệm tương đương — nên nó là quyết định kiến trúc "
-        "(MCP lên core hay ở lại company?), không phải chuyển mã. Ai mang sang thì đổi ca này, và đổi nó là "
-        "lúc phải hỏi 'eval replay đâu?'")
+    # K3.3c3 bước 2: `ClaudeCodeClient` lên core dưới dạng LỚP CƠ SỞ chỉ có transport. `complete()` cố ý ở lại
+    # mỗi công ty — ba chiến lược tool khác nhau thật (studio web / company cli / company mcp), gộp lại cần năm
+    # móc để giấu một khác biệt có thật, đúng thứ `tools.py` đã từ chối làm cho `tools_prompt`.
+    assert hasattr(m, "ClaudeCodeClient")
+    assert "complete" not in vars(m.ClaudeCodeClient), (
+        "core KHÔNG được có `complete()` mặc định: một bản 'không tool' sẽ im lặng nuốt mất chiến lược tool của "
+        "bên nào quên ghi đè. Ai thêm nó vào thì phải trả lời: nó thay thế được cả ba chiến lược, hay chỉ đang "
+        "giấu một trong ba?")
+    _bo_qua = (
+        "Cầu MCP (`_toolbox`, `bind_toolbox`, `_complete_mcp`, ADR-0024) ở LẠI company: studio không có khái "
+        "niệm tương đương, đưa lên core là bắt một bên mang 255 dòng `mcp_bridge.py` nó không bao giờ gọi.")
+    assert not hasattr(m, "_complete_mcp") and not hasattr(m.ClaudeCodeClient, "bind_toolbox"), _bo_qua

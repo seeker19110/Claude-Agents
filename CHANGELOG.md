@@ -6,6 +6,36 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(core): K3.3c3 **bước 2** — `ClaudeCodeClient` lên `xagents_core.llm` dưới dạng **lớp cơ sở chỉ có
+  transport**, kèm `cli_exit_error`. Đây là bước cuối của K3.3c, và điều đáng ghi nhất là **nó KHÔNG hợp nhất cả
+  lớp — có chủ đích**. Đo từng method: `_parse` 0.82 (28 dòng trùng nguyên văn), `_subprocess` 0.64, `__init__`
+  khác đúng một dòng cuối → lên core; `complete` **0.20** → ở lại mỗi công ty. `complete` lệch vì ba chiến lược
+  tool khác nhau THẬT, không phải một bên chậm tiến: studio uỷ quyền web tool của CLI (ADR-0007), company
+  `cli_tools` uỷ quyền file/bash tool trong worktree khách (ADR-0023), company `mcp_tools` đưa đúng bảng tool của
+  công ty vào CLI qua cầu MCP (ADR-0024). Gộp ba cái đó cần **năm móc** để GIẤU một khác biệt có thật — đúng thứ
+  `xagents_core/tools.py` đã từ chối làm cho `tools_prompt` (*"gộp lại là thêm một tham số mà một bên không bao
+  giờ dùng"*). Nên core giữ transport, chính sách tool ở lại nơi nó thuộc về; cầu MCP (255 dòng `mcp_bridge.py`)
+  **không** lên core.
+  **Hợp nhất hai chiều, không bên nào là gốc** — như `reported_model` ở K3.3a. Company nâng studio:
+  `TransientError` khi timeout và khi `is_error` nhắc quota; `cli_exit_error` đọc JSON thay vì soi 500 ký tự cuối;
+  `cache_write_tokens`; `tool_mode`; tham số `cwd`. **Studio nâng company**: bắt `OSError` ("argv quá dài, không
+  có quyền chạy, pipe vỡ") — company KHÔNG bắt, nên một `OSError` thoát ra ngoài dưới dạng exception thô mà
+  không lớp nào phân loại được.
+  **Một đính chính quan trọng**: phiên này ban đầu tin rằng studio có bug ở nhánh không-tool (`--max-turns 1`
+  cộng `--json-schema`), dựa trên ghi chú đo được của company ngày 2026-09-05. **Đo lại thật trên CLI 2.1.263
+  thì không tái hiện**: cả prompt tầm thường lẫn schema nặng (6 mục lồng, hai mảng bắt buộc) đều `subtype:
+  success`, `num_turns: 2` với cap 1 và `3` với cap 6. Trần là giới hạn TRÊN, không phải lượt bị tiêu. Bài học
+  mới: **số đo trong comment có hạn dùng** — nó nói về một công cụ NGOÀI repo, công cụ đổi thì số đo hết đúng,
+  nhưng comment không tự hết hạn; ai dựa vào nó để kết luận thì phải đo lại trước.
+  **Bằng chứng**: eval replay hai công ty, PASS/FAIL giống hệt từng dòng (50 + 28 ca). Đo hai chiều 8 đột biến —
+  và **hai trong số đó SỐNG SÓT ở lần đo đầu**: "bỏ ưu tiên `structured_output`" (vì ca cũ để `result` và
+  `structured_output` cho ra cùng chuỗi, nên xanh dù đọc nhầm cái nào) và "đọc `subtype` sau `result`" (vì
+  `match=<tên subtype>` khớp cả thông điệp dự phòng). Đã siết hai ca ấy rồi đo lại: 8/8 bị bắt. Không sửa MỘT
+  DÒNG test nào của hai công ty — 1023 và 471 xanh nguyên.
+  Số đo từ đĩa: `company/llm.py` 552→471, `studio/llm.py` 235→186, dòng trùng khối ≥ 8 giữa hai bên **62→42**
+  (từ đầu phiên: 194→42). Đã chạy: core 147 test / 100%; company 1023 / 100%; studio 471 + 5 skip / 100%;
+  gateway 251, console 233.
+
 - refactor(core): K3.3c3 **bước 1** — `OpenAICompatClient` lên `xagents_core.llm`. difflib 0.73 sau c2: company
   là **tập cha** của studio — cùng hình dạng, cùng thứ tự, hơn đúng một method và 46 dòng. Tách khỏi
   `ClaudeCodeClient` (0.39) theo đúng ghi chú của phiên K3.3c1: *"mỗi cái một quyết định hợp nhất riêng, đừng gộp

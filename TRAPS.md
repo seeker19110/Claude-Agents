@@ -69,9 +69,20 @@ chỉ lo `tools="rw"`). Cái rơi ra ngoài luôn rơi vào im lặng.
 | **Tin dashboard xanh** | Đêm 2026-09-05: `queue: 0, blocked: [], gates: {}` trong khi 18/19 release không đi đâu; `delivery: {}` nghĩa là chưa giao gì; nhãn `merged` ≠ đã gộp | Hỏi "còn việc nào chạy được không?"; tách sự thật git khỏi nhãn FSM. Ghi nhận thiết kế lại: `console/TRAPS.md` |
 | **Bốn gate xanh, sản phẩm không chạy** | 2026-09-06 QLKH: 389 test pass, 25 release, 0 điểm vào — `deployed` là lời khai, `regression-staging` là verdict đọc diff | "Chạy cho tôi xem" trước khi tin. Vá: ADR-0029 smoke do orchestrator chạy (PR #90) |
 | **Tin test canh quy ước kiểu grep** | 2026-09-07 (#127): test khuôn 3 canh "mọi khoá `once` có thế hệ" xanh suốt #125→#126 trong khi `gate.escalate:{sid}` vẫn hỏng — mẫu chỉ bắt `once=`, mà chuỗi `"once_key="` KHÔNG chứa chuỗi con `"once="` | Test grep xanh chỉ chứng minh **những gì mẫu nhìn thấy** là sạch. Chạy mẫu trên một vi phạm đã biết trước khi tin nó; và kiểm lại LÝ DO từng mục trong danh sách miễn, đừng kế thừa |
+| **Số đo trong comment có hạn dùng** | 2026-09-08 (K3.3c3): `company/llm.py` ghi `CLI_NO_TOOL_TURNS = 6` kèm số đo thật ngày 2026-09-05 — `--max-turns 1` + `--json-schema` bị `error_max_turns`, reviewer chết 3/4 lượt. Studio dùng `--max-turns 1`, nên phiên này kết luận "studio có bug đang sống" và suýt mở PR vá. **Đo lại trên CLI 2.1.263 thì KHÔNG tái hiện**: cả prompt tầm thường lẫn schema nặng đều `success`, cap 1 dùng 2 lượt, cap 6 dùng 3 | Comment mô tả hành vi của một công cụ NGOÀI repo là ảnh chụp một phiên bản, không phải bất biến. Dựa vào nó để kết luận thì **đo lại trước**; ghi kèm phiên bản công cụ vào comment thì người sau biết nó đã cũ tới đâu. Cùng khuôn "suy từ thông điệp lỗi" ở dòng đầu bảng, chỉ khác là suy từ ghi chú của người khác |
 | **Tiêu chí nghiệm thu cũng có thể là proxy sai** | 2026-09-07 (#131): K1.8 đặt `wc -l orchestrator.py ≤ 300`, nhưng 250/498 dòng là import + re-export + bảng gán method — chính bề mặt shim mà K1.7 của cùng epic CỐ Ý tạo ra; hai tiêu chí không thể cùng đúng | Tiêu chí không đạt được mà không phá một tiêu chí khác của cùng epic → nghi tiêu chí sai, đừng nghi việc chưa xong. Đo lại rồi đổi **tiêu chí**, và ghi lý do ở nơi người sau đọc (đặc tả + file test) — khác hẳn lặng lẽ hạ số |
 
 ## 3. Bẫy thao tác git / CI
+
+**`quality` đỏ với 0 failure — run đã bị thay thế, không phải lỗi.** Mắc ba lần trong phiên 2026-09-08 (#172,
+#173, #174). Luật 10 bắt điền `(#<n>)` vào chính PR đó, mà số PR chỉ có sau khi tạo PR — nên luôn có commit thứ
+hai đẩy sau commit thứ nhất vài chục giây. `concurrency: cancel-in-progress` cắt run đầu, và `quality` **cố ý**
+coi `cancelled` là đỏ (job bị bỏ qua không được tính là qua cổng). Kết quả: mỗi PR sinh đúng một `quality` đỏ
+trên head CŨ. *Cách nhận ra*: mở log job `quality` và đọc mảng `RESULTS` — có `failure` mới là lỗi thật; toàn
+`success` + `cancelled` là run đã bị thay thế, và bản đúng là run trên head hiện tại. Nó **không chặn merge**
+(required check chấm trên head SHA hiện tại), nên đừng đi tìm lỗi trong diff. Đã cân nhắc sửa `ci.yml` hoặc luật
+10 và **quyết định không**: cả hai đánh đổi đều tệ hơn cái giá vài phút CI.
+
 
 | Bẫy | Đã xảy ra | Lần sau |
 |---|---|---|
