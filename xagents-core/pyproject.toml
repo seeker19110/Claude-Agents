@@ -51,6 +51,14 @@ python_version = "3.11"
 # Core là chỗ mọi công ty tin cậy — nó không được lỏng hơn nơi gọi nó (ADR-0001 §6).
 strict = true
 
+# Ngoại lệ DUY NHẤT, và hẹp đúng một module: SDK `anthropic` là extra tuỳ chọn (`uv sync --extra anthropic`),
+# không cài trong CI. Đây không phải nới `strict` — `ignore_missing_imports` chỉ nói "không có stub thì đừng
+# đỏ", mọi luật strict khác vẫn áp cho mã của ta. Không dùng cờ toàn cục `--ignore-missing-imports` như bốn
+# package kia, vì cờ đó biến MỌI import thiếu thành `Any` im lặng, kể cả import gõ sai tên.
+[[tool.mypy.overrides]]
+module = "anthropic.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
