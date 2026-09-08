@@ -78,7 +78,7 @@ không nâng mức C1.
 | **2** | audit `tools_trace` từng lời gọi tool (hash, ms, args cắt) | L2 | `feat(core)` | C2 | nhìn thấy gọi lặp; tiền đề 3 | args có dữ liệu khách → hash/cắt, `content` không ghi | xong #183 |
 | **3** | cắt vòng tool khi không tiến bộ (nhắc ở 3, cắt ở 5) | L3 | `feat(company)` | **C3** | cắt sớm ticket kiểu 956k token | dương tính giả nếu không loại tool ghi xen giữa; mỗi cắt +1 retry | xong #184 |
 | **4** | tỉa tool output cũ trong vòng (ADR-0040) | L3 | `docs` + `feat(core)` | **C3** | lượt cuối không đắt gấp mười lượt đầu | **đổi hành vi agent**; lệch hash mọi bản ghi eval | **chỉ trong K3.6**, một lần cho hai công ty |
-| **5** | `metrics.loops` p50/p90/capped + ô console | L3 | `feat(company)` | C2 | rẻ nhất, số đã có | ô mới phải theo console ADR-0003 (rỗng = xám) | đợt 2 |
+| **5** | `metrics.loops` p50/p90/capped + ô console | L3 | `feat(company)` | C2 | rẻ nhất, số đã có | ô mới phải theo console ADR-0003 (rỗng = xám) | xong #185 |
 | **6** | studio validate trước rẽ nhánh (4 chỗ) | L4 | `refactor(studio)` | **C3** | đóng lỗ L4 còn lại của studio | chạm `events.py` lúc dời bus | gộp K3.5b/c |
 | **7** | `xagents_core.trace` + `studio.trace` + `deferred` bền | L4 | `feat(studio)` | **C3** | studio ngang company | copy = thêm fork → phải lên core | sau K3.5c |
 | **8** | ARCHITECTURE: "vì sao không chốt mức tool", năm package; bảng K3 cập nhật | — | `docs` | C1 | chặn hiểu nhầm | — | xong #181 |
