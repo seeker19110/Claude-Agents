@@ -6,6 +6,41 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(core): **K3.3d — `routing.py` lên `xagents_core`, và studio HOÃN lỗi vận chuyển thay vì tính lỗi
+  agent**. Bước cuối của K3.3; **K5 nay mở khoá**. `routing.py` là module dễ nhất của cả chuỗi — nó không đọc
+  `llm.yaml`, không biết tiền tố env, không chạm đĩa, nên khác `llm.py` ở chỗ shim là `import *` thuần chứ không
+  phải hàm bọc `CORE`. Bản vào core là bản company (`difflib` 0.62); studio được nâng **bốn điểm**, mỗi điểm có
+  một ca canh riêng ở `xagents-core/tests/test_routing.py`: (1) phân loại theo `LLMError.status` trước, regex chỉ
+  còn là đường lùi cho CLI/gateway không mã; (2) `QUOTA_PATTERNS` có **ranh giới từ** — bản studio khớp
+  `insufficient` và `429` trần nên "gói unlimited", "billingham@…", mã nội bộ 4290 đều đọc ra "hết quota" và cho
+  một backend còn tốt đi nghỉ nguyên tiếng, đây là **bug thật** chứ không phải khác biệt phong cách;
+  (3) `is_auth_error` (401/403) — studio không có, nên khoá sai đọc ra "lỗi nội dung" và ném thẳng cho agent thay
+  vì cho backend hỏng nghỉ ra một bên; (4) mọi backend đều nghỉ nay ném `TransientError` chứ không `LLMError`
+  trần. `TRANSIENT_PATTERNS`/`is_transient_error` của studio **bị xoá**, không re-export: đoán "lỗi tạm thời"
+  bằng regex trên thông điệp là đúng việc `TransientError` sinh ra để thay — adapter biết chắc lỗi của mình là
+  loại gì, người đọc chuỗi thì không.
+  **Phần đắt nhất không nằm ở chỗ chuyển mã mà ở `studio/orchestrator.py`.** Trước bước này studio chỉ có
+  `except (RunnerError, LLMError)`: một nhịp mạng chập, một backend hết quota, một CLI timeout đều đọc ra "agent
+  trả lời sai" → ghi `agent_failed`, desk đếm một lần hỏng (đủ số lần thì video `blocked`, cần người gỡ), và
+  `_done` đóng dấu `orchestrated` nên **việc chưa bao giờ được làm lại**. Nay `TransientError` được bắt riêng và
+  event bị HOÃN, nhịp `tick` sau thử lại, tôn trọng hẹn "thử lại sau Ns" của backend (`defer_until` + audit
+  `defer.until`; hỏi lại mỗi nhịp trong lúc pool cạn là thứ company đo được 60 bản ghi lỗi/phút hồi 2026-09-04).
+  **Ba chỗ gọi model chứ không một**: đặc tả K3.3 chỉ nói `_call`, nhưng `_plan` (channel-strategist) và
+  `_decide` (publisher, ADR-0008) là hai bản sao của cùng một bước — vá một chỗ là để lại hai chỗ y hệt
+  (TRAPS.md §1 khuôn 3). **Và một chỗ thứ tư mà không đặc tả nào nhắc**: `_decide` chạy trong nhánh `audit-log`
+  của `process()`, nhánh có `return` sớm riêng — nếu chỉ vá cuối hàm thì một lỗi vận chuyển ở đây làm **mất luôn
+  lần đăng đã được người ký gate**, im lặng, tệ hơn cả trước khi vá (trước ít ra còn `agent_failed` trong log).
+  Chạy lại an toàn nhờ hai cơ chế có sẵn: nhánh `PUB-` giữ nguyên trạng thái khi video đã `approved`, và
+  `_publish_video` dùng lại upload trước qua `_prior_upload`.
+  Đo hai chiều **7 đột biến**, mỗi cái đỏ đúng ca đo nó: bỏ nhánh hoãn cuối `process()` → 4 ca đỏ; bỏ nhánh hoãn
+  trong `audit-log` → đúng ca `_decide` đỏ; bỏ `_retry_deferred(only="transient:")` khỏi `tick` → 4 ca đỏ; bỏ
+  `wait_s` → ca hẹn giờ đỏ; ở core: ném `LLMError` thay `TransientError`, bỏ ranh giới từ, bỏ `is_auth_error` →
+  mỗi cái đỏ đúng ca điểm nâng của nó. Ca đối chứng `test_loi_noi_dung_van_la_loi_agent` canh chiều ngược lại:
+  `LLMError` trần vẫn phải là lỗi agent, bản vá không được nuốt cả lỗi thật. Đã chạy: core 162 test / phủ 100%;
+  studio 477 + 5 skip / phủ 100%; company 1023; console 233 (không sửa một dòng — shim giữ nguyên bề mặt
+  `company.routing`/`studio.routing`, `console/collect.py` nhập qua đó). `routing` thêm vào `SHIM` của
+  `test_shim_core.py` hai bên (#176)
+
 - refactor(core): K3.3c3 **bước 2** — `ClaudeCodeClient` lên `xagents_core.llm` dưới dạng **lớp cơ sở chỉ có
   transport**, kèm `cli_exit_error`. Đây là bước cuối của K3.3c, và điều đáng ghi nhất là **nó KHÔNG hợp nhất cả
   lớp — có chủ đích**. Đo từng method: `_parse` 0.82 (28 dòng trùng nguyên văn), `_subprocess` 0.64, `__init__`

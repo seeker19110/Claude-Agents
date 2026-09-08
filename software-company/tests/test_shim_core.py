@@ -11,7 +11,8 @@ import importlib
 import pytest
 
 # (tên module company, tên module core)
-SHIM: list[tuple[str, str]] = [("company.context", "xagents_core.context")]
+SHIM: list[tuple[str, str]] = [("company.context", "xagents_core.context"),
+                               ("company.routing", "xagents_core.routing")]   # K3.3d
 
 # K3.2: shim CÓ một phần cấu hình. `company.sandbox` giữ `sandbox_from_config` vì đó là chỗ duy nhất biết mình
 # phục vụ công ty nào (biến `COMPANY_SANDBOX*`, `cfg.sandbox`, mặc định `auto`) — đưa vào core là đưa một câu

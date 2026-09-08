@@ -369,6 +369,15 @@ package đang gọi `company.llm.load_config()` không đổi.
   chuỗi/prefix; thêm test studio `test_transient_hoan_khong_dung`.
 - **K5 mở khoá sau PR này.**
 
+> **Trạng thái: K3.3 XONG** (a #150 · c1 #152 · c2 #173 · c3 bước 1 #174 · c3 bước 2 #175 · **d #176**). K3.3 không đi
+> một PR như đặc tả viết mà tách năm bước theo *mức rủi ro* — lý do và số đo `difflib` từng bước ghi ở
+> `xagents-core/src/xagents_core/llm.py` (docstring) và `docs/sessions/2026-09-08.md`.
+>
+> Hai chỗ đặc tả trên **đã lỗi thời, giữ nguyên làm biên bản**: (a) "một PR, có chu trình import" — thực tế
+> năm PR, không gặp chu trình nào vì `routing` chỉ nhập từ `llm`/`tools` chứ không ngược lại; (b) bốn adapter
+> và `Completion` lệch quá xa để tham số hoá như mục "Tham số hoá" hình dung — `MCP` ở lại company, `complete()`
+> của `ClaudeCodeClient` ở lại mỗi công ty. **K5 nay mở khoá.**
+
 ### PR K3.4 `refactor(core): K3.4 — guard.py`
 
 - `EXTERNAL_TOPICS/DERIVED_TOPICS:51-54` → `core.external_topics/derived_topics`.
