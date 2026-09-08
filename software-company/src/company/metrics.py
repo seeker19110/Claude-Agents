@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import statistics
 from collections import defaultdict
 from datetime import datetime
 from typing import Any
@@ -44,10 +45,13 @@ def collect(bus: InMemoryBus) -> dict[str, Any]:
     topics: dict[str, int] = defaultdict(int)
     gate_req: dict[str, datetime] = {}; gate_wait: list[tuple[str, str, float]] = []
     t_open: dict[str, datetime] = {}; t_close: dict[str, datetime] = {}
+    loop_records: list[dict[str, Any]] = []            # 4L-5: một bản ghi mỗi audit `tools_used`
+    tickets_with_tasks: set[str] = set(); tickets_blocked: set[str] = set()
     for env in bus.replay():
         topics[env.topic] += 1
         if env.topic == "tasks":
             t_open.setdefault(env.key, env.ts)
+            tickets_with_tasks.add(str(env.key))
         if env.topic == "acceptance-results" and env.payload.get("verdict") == "accepted":
             pass  # đóng ticket ghi ở audit của orchestrator (orchestrated) — dùng closed_at bên dưới
         if env.topic != "audit-log": continue
@@ -69,6 +73,14 @@ def collect(bus: InMemoryBus) -> dict[str, Any]:
                 if a.get("ticket_id"): tickets[a["ticket_id"]]["errors"] += 1
             if act == "llm_retry":
                 agents[a["actor"]]["retries"] += int(d.get("attempts") or 1)
+            if act == "tools_used":
+                # `capped`/`max_turns` (4L-5) vắng mặt ở audit cũ (trước bản này) → coi là không chạm trần, không
+                # phải lỗi thiếu dữ liệu — cùng cách `d.get(...)` vẫn dùng cho mọi trường tuỳ chọn khác trong file.
+                loop_records.append({"turns": int(d.get("turns") or 0), "capped": bool(d.get("capped") or False),
+                                     "has_calls": bool(d.get("calls"))})
+        elif act == "ticket.blocked":
+            tid = d.get("ticket_id") or a.get("ticket_id")
+            if tid: tickets_blocked.add(str(tid))
         elif act == "gate.request":
             gate_req[d.get("subject_id", "")] = env.ts
         elif act == "gate.decide":
@@ -98,7 +110,45 @@ def collect(bus: InMemoryBus) -> dict[str, Any]:
             "gates": {"decided": len(gate_wait), "pending": len(gate_req),
                       "wait_seconds_avg": round(sum(w for _, _, w in gate_wait) / len(gate_wait)) if gate_wait else None,
                       "wait_seconds_max": round(max((w for _, _, w in gate_wait), default=0))},
-            "ticket_lead_seconds": lead}
+            "ticket_lead_seconds": lead,
+            "loops": _loops(loop_records, tickets_with_tasks, tickets_blocked)}
+
+
+def _percentile(vals: list[int], p: int) -> float:
+    """`p`-th percentile thuần `statistics` chuẩn (không numpy — kiểm `pyproject.toml` trước khi thêm phụ thuộc mới).
+    `quantiles(n=100)` đòi ≥ 2 điểm dữ liệu; `n == 1` thì chính điểm đó là mọi percentile."""
+    if len(vals) == 1: return float(vals[0])
+    qs = statistics.quantiles(vals, n=100, method="inclusive")
+    return qs[max(0, min(len(qs) - 1, p - 1))]
+
+
+def _loops(records: list[dict[str, Any]], tickets_with_tasks: set[str], tickets_blocked: set[str]) -> dict[str, Any]:
+    """Đặc tả L3 "cách đo": số vòng tới hội tụ (`turns_*`), tỉ lệ chạm trần (`capped_ratio`).
+
+    `empty=True` khi không có bản ghi `tools_used` nào (`n == 0`) — KHÔNG suy ra từ `capped_ratio == 0`, vì
+    `capped_ratio == 0` nhìn giống "0% chạm trần, tốt" trong khi thật ra là "không đo được gì" (bẫy "số xanh vì
+    rỗng", console/TRAPS.md). Người đọc (kể cả console) phải luôn kiểm `empty` trước khi đọc bất kỳ số nào khác.
+    """
+    n = len(records)
+    if n == 0:
+        return {"turns_p50": None, "turns_p90": None, "turns_max": None, "capped_ratio": None,
+                "no_progress_ratio": None, "retry_max_ratio": None, "n": 0, "empty": True}
+    turns = [r["turns"] for r in records]
+    capped = [r for r in records if r["capped"]]
+    # "không tiến triển": chạm trần MÀ lượt cuối không gọi tool nào — hết lượt trong khi vẫn đứng yên, khác với
+    # chạm trần nhưng ít nhất còn đang thử (có gọi tool). Xem TASK-PACK 4L-5 mục 5 (ràng buộc percentile thuần).
+    no_progress = [r for r in capped if not r["has_calls"]]
+    denom = len(tickets_with_tasks)
+    return {
+        "turns_p50": round(_percentile(turns, 50), 1),
+        "turns_p90": round(_percentile(turns, 90), 1),
+        "turns_max": max(turns),
+        "capped_ratio": round(len(capped) / n, 4),
+        "no_progress_ratio": round(len(no_progress) / len(capped), 4) if capped else 0.0,
+        "retry_max_ratio": round(len(tickets_blocked & tickets_with_tasks) / denom, 4) if denom else None,
+        "n": n,
+        "empty": False,
+    }
 
 
 def prometheus(m: dict[str, Any], prefix: str = "company") -> str:
@@ -128,6 +178,17 @@ def prometheus(m: dict[str, Any], prefix: str = "company") -> str:
     if g["wait_seconds_avg"] is not None: emit("gate_wait_seconds_avg", g["wait_seconds_avg"], "thời gian chờ gate trung bình")
     for tid, sec in m["ticket_lead_seconds"].items():
         emit("ticket_lead_seconds", sec, "lead time ticket (tasks đầu → closed)", {"ticket": tid})
+    lp = m["loops"]
+    # `empty=True`: không phát gauge nào trong sáu gauge `loop_*` — 0/None giả làm "0% chạm trần, tốt" là đúng bẫy
+    # "số xanh vì rỗng" (console/TRAPS.md); scrape thiếu các gauge này CHÍNH LÀ tín hiệu "chưa có dữ liệu vòng tool".
+    if not lp["empty"]:
+        emit("loop_turns_p50", lp["turns_p50"], "trung vị số vòng tool tới hội tụ (một lượt sản xuất)")
+        emit("loop_turns_p90", lp["turns_p90"], "vòng tool p90 tới hội tụ")
+        emit("loop_turns_max", lp["turns_max"], "vòng tool nhiều nhất quan sát được")
+        emit("loop_capped_ratio", lp["capped_ratio"], "tỉ lệ lượt chạm trần max_turns")
+        emit("loop_no_progress_ratio", lp["no_progress_ratio"], "tỉ lệ lượt chạm trần MÀ không gọi tool nào ở lượt cuối")
+        if lp["retry_max_ratio"] is not None:
+            emit("loop_retry_max_ratio", lp["retry_max_ratio"], "tỉ lệ ticket có task bị ticket.blocked")
     return "\n".join(lines) + "\n"
 
 

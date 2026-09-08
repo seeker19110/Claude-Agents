@@ -49,6 +49,9 @@ from studio.supervisor import Supervisor as StudioSupervisor
 from console.git_truth import INTEGRATION_BRANCH, ahead_count
 from console.truth import Truth, gate_effect, gate_next_agent, gate_reject_effect
 
+_LOOPS_EMPTY = {"turns_p50": None, "turns_p90": None, "turns_max": None, "capped_ratio": None,
+                "no_progress_ratio": None, "retry_max_ratio": None, "n": 0, "empty": True}
+
 COMPANY = "software-company"
 STUDIO = "Studio-creators"
 TIERS = ("strong", "standard", "light")
@@ -615,5 +618,8 @@ def collect(company_db: Path | None, studio_db: Path | None,
         "backends": backends,
         "supervisor": [a for v in views for a in v.supervisor_actions()],
         "log": log,
+        # 4L-5: đo vòng tool (`company.metrics`, đặc tả L3 "cách đo") — xưởng phần mềm, giống truth_block();
+        # dùng lại nguyên `metrics.loops`, không dựng bản riêng cho studio (studio đã tái dùng company.metrics.collect).
+        "loops": company.metrics.get("loops", _LOOPS_EMPTY) if company.ok else _LOOPS_EMPTY,
         **company.truth_block(),
     }

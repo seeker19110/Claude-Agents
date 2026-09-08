@@ -213,6 +213,9 @@ def test_tool_loop_runs_tools_then_final_answer(tmp_path):
     assert "# Tool" in client.calls[0]["user"] and "run test" in client.calls[0]["user"]
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert acts == ["tools_used", "tools_trace"], "4L-2: một audit tools_trace mỗi lượt, ngay sau tools_used"
+    used = json.loads(next(e.payload["evidence"] for e in bus.replay(topic="audit-log") if e.payload["action"] == "tools_used"))
+    # 4L-5: model tự chốt ở lượt 2 (không hết `max_turns`=25 mặc định) → không chạm trần
+    assert used["capped"] is False and used["max_turns"] == 25
     tr = json.loads(next(e.payload["evidence"] for e in bus.replay(topic="audit-log") if e.payload["action"] == "tools_trace"))
     assert tr["mode"] == "loop" and tr["turns"] == 2
     calls = tr["calls"]
@@ -324,12 +327,16 @@ def test_van_xuoi_o_luot_cuoi_bi_ep_chot_lai_bang_json(tmp_path):
 def test_tool_loop_max_turns_forces_final_json(tmp_path):
     ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
     client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=lambda m, t: [_tc("read_file", path="mod.py")])
-    g = AgentRunner(InMemoryBus(), client).generate("builder", _task_env(), "pull-requests",
-                                                     tools=WorkspaceTools(ws).toolbox(), max_turns=2)
+    bus = InMemoryBus()
+    g = AgentRunner(bus, client).generate("builder", _task_env(), "pull-requests",
+                                          tools=WorkspaceTools(ws).toolbox(), max_turns=2)
     assert g.turns == 3 and len(client.calls) == 3 and client.calls[-1]["tools"] == []
     last = client.calls[-1]["messages"]
     assert last[-1]["role"] == "user" and "Hết lượt tool" in last[-1]["content"]
     assert last[-2]["role"] == "tool" and "hết lượt" in last[-2]["content"]
+    # 4L-5: model vẫn còn muốn gọi tool khi vòng while hết `max_turns`=2 → chạm trần
+    used = json.loads(next(e.payload["evidence"] for e in bus.replay(topic="audit-log") if e.payload["action"] == "tools_used"))
+    assert used["capped"] is True and used["max_turns"] == 2
 
 
 def test_tool_error_is_returned_to_model_not_raised(tmp_path):
