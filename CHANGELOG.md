@@ -6,6 +6,10 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(company): **4L-3 — cắt vòng tool khi không tiến bộ** (#184). `_stagnant()` đếm lời gọi tool liên tiếp
+  cùng `(name, args_hash, out_hash)` (4L-2); lặp 3 lần cảnh báo, 5 lần cắt (audit `no_progress`), không ném
+  exception — đi vào đúng nhánh ép chốt JSON có sẵn cho case hết lượt. Chỉ tool ghi thành công mới reset đếm.
+  Đo được: giảm 77% token trên vòng lặp đứng yên hoàn toàn (26→6 lượt).
 - feat(core): **4L-2 — vết từng lời gọi tool vào audit, trace in được** (#183). `ToolBox.trace()` (args_hash/
   out_hash/ms, `content` chỉ ghi độ dài); audit `tools_trace` mỗi lượt tool ở company + studio, song song
   `tools_used` cũ. `company.trace` in dòng `↳`, gộp `×N` khi ≥3 call liên tiếp cùng hash. Mode `cli` không có vết
