@@ -424,8 +424,17 @@ package đang gọi `company.llm.load_config()` không đổi.
 >   đưa cả bốn lên core là bắt company mang một trường nó không bao giờ ghi. Cùng lý do, `topic`/`namespace` ở
 >   core là `str`, lớp con thu hẹp về Literal của mình nên kiểm tra topic KHÔNG mất, chỉ chuyển xuống nơi biết
 >   đủ để làm việc ấy.
-> - **K3.5b — `bus`**: chưa làm. Đây là bước đáng sợ nhất: bus company 206 dòng có validator + ACL topic, bus
->   studio 61 dòng không có gì tương đương. Studio sẽ nhận một lớp kiểm quyền nó chưa từng chạy.
+> - **K3.5b — `bus`: XONG (#PRNUM).** Cơ chế lên core **toàn bộ**; thứ mỗi công ty đưa vào là DỮ LIỆU
+>   (`CoreConfig.topic_acl`/`payload_models`/`namespace_owners`). Khác K3.5a: ở đây `difflib` 0.06 KHÔNG nghĩa
+>   là hai bus khác bản chất, mà là bus studio 61 dòng chưa làm phần lớn việc bus company 206 dòng đã làm —
+>   lệch vì MỘT BÊN THIẾU, nên hợp nhất là đúng, không phải gộp hai miền.
+>   Ba điểm lệch so với đặc tả: (1) **`topic_acl` của studio ĐO chứ không suy** — front matter `writes` thiếu
+>   năm actor là CODE (`renderer`, `desk`, `orchestrator`, `adapter:youtube`, `chapters`); đo 76 cặp
+>   `(actor, topic)` kèm khung ngăn xếp, 26 cặp production thành bảng, 14 cặp test-only sửa fixture chứ không
+>   mở lối. (2) **Console KHÔNG phải 0 dòng**: câu lỗi thiếu trường của studio nay là câu `jsonschema` giống
+>   company, 1 dòng test đổi. (3) **Bật validate envelope làm lộ 19 schema studio lỗi thời từ K3.5a** — chúng
+>   `additionalProperties: false` mà chưa biết ba trường K3.5a thêm vào; K3.5a không thấy được vì studio khi ấy
+>   chưa validate envelope. `_extra_publish_checks` là điểm mở duy nhất, cho luật `gate.decide` riêng của company.
 > - **K3.5c — `sqlite_bus`**: chưa làm.
 >
 > Hai điểm khác lời đặc tả ở bước a: (a) `can_transition` **không** chỉ là `dst in transitions[src]` — cả hai
