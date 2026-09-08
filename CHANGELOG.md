@@ -6,6 +6,48 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(core): **K3.4 — `guard.py` lên `xagents_core`; hợp nhất HAI CHIỀU chứ không phải chuyển mã**. Đặc tả
+  viết K3.4 trong ba gạch đầu dòng ("chuyển `guard.py`, xoá `studio/runner.py:29-81`"), nhưng studio **không có**
+  `guard.py` — nó có một bộ mẫu *khác* nằm lẫn trong `runner.py`. Đo chéo 23 câu thử trước khi gõ phím cho thấy
+  **mỗi bên đều có lỗ**: company trượt 4 mẫu studio bắt được, studio trượt 8 mẫu company bắt được. Nên "lấy bản
+  company" là làm mất bốn thứ ở cả hai bên — khác hẳn K3.3, nơi company đúng là tập cha.
+  **Ba quyết định hợp nhất, mỗi cái có số đo, không có cái nào là gộp mù**: (1) `<|im_end|>` từ bảng studio vào
+  bảng CHUNG — ký hiệu khung hội thoại, không bên nào dùng hợp lệ. (2) `developer mode`/`jailbreak` **KHÔNG** vào
+  bảng chung mà thành mẫu RIÊNG của studio (`CoreConfig.extra_injection_patterns`): với phòng làm video đó là câu
+  tấn công, với công ty gia công PHẦN MỀM đó là từ vựng nghiệp vụ — bằng chứng đo được chứ không phải lo xa,
+  `software-company/skills/mobile.md` dùng "jailbreak" hợp lệ cho yêu cầu bảo mật app di động, nên thêm mẫu ấy là
+  làm một ticket bảo mật mobile `injection_detected` và không chạy được. (3) Mẫu tiếng Việt **viết lại, tốt hơn cả
+  hai bản cũ**: bản company đòi bắt buộc một từ bổ nghĩa đứng sau nên trượt "bỏ qua mọi hướng dẫn"; bản studio
+  không đòi gì nên báo nhầm 3/3 câu hoàn toàn bình thường ("tôi quên hướng dẫn cài đặt rồi"). Bản mới đòi HOẶC từ
+  chỉ lượng HOẶC từ bổ nghĩa sau: 5/5 câu lành sạch, 6/6 câu tấn công bắt được, gồm hai câu mà *cả hai* bản cũ đều
+  trượt (`bỏ qua mọi hướng dẫn`, `gạt bỏ tất cả các chỉ thị`).
+  **Studio được nâng ba điểm**, đáng kể nhất là **một lỗ hổng thật**: bản cũ không chuẩn hoá ký tự vô hình, nên
+  `igno\u200bre previous instructions` đi thẳng qua bộ lọc. Cộng bảng mẫu rộng hơn 8 mẫu và hết báo nhầm tiếng
+  Việt. `sanitize_*` nay trả **danh sách tên mẫu** thay vì một con số — audit `injection_sanitized` của studio
+  trước chỉ ghi "3 đoạn", người trực đọc log không biết chuyện gì đã xảy ra.
+  **Cơ chế ở core, nghĩa ở package** (nguyên tắc 2): `CoreConfig` nhận hai trường mới ngoài hai trường K3.0 đã
+  đặt trước — `untrusted_fields` (tên trường là của từng công ty vì topic hai bên khác nhau) và
+  `extra_injection_patterns`. Luật bỏ TỪNG bình luận của lô `audience-comments` ở lại `studio.runner` vì company
+  không có gì tương đương. Hai shim là shim **ràng buộc** (`functools.partial(..., core=CORE)`) chứ không
+  `import *`, nên `test_shim_core.py` có nhóm thứ ba với ca riêng: cùng tên, cùng hành vi, KHÔNG cùng đối tượng.
+  **Một lỗ hổng test có sẵn bị lộ ra và đã vá**: xoá sạch `untrusted_fields` khỏi `company/core.py` mà **không ca
+  nào của company đỏ** — vì ca duy nhất chạm `diff` dùng topic `pull-requests`, một topic *dẫn xuất*, nên nó đi
+  nhánh khác với nhánh nó tưởng đang đo. Một PR sau có thể làm rỗng danh sách ấy trong im lặng và mọi ticket có
+  `diff` trích comment độc trong repo khách sẽ chết đứng. Nay có ca dùng `tasks` (nội bộ THUẦN, chỉ một đường đi);
+  bài học vào `TRAPS.md` của company.
+  Đo hai chiều **7 đột biến**, mỗi cái đỏ đúng ca đo nó — trong đó hai đột biến lùi mẫu tiếng Việt về *từng* bản
+  cũ: lùi về company → 4 ca đỏ (trượt câu tấn công), lùi về studio → 5 ca đỏ (báo nhầm câu lành). Đã chạy: core
+  204 test / phủ 100%; studio 501 + 5 skip / phủ 100%; company 1027 / phủ 100%; console 233 và gateway 251 (không
+  sửa dòng nào). `assetscan` đọc `guard.COMPILED` công khai thay cho tên riêng tư `guard._COMPILED`.
+  **`studio.runner` nay theo chính sách NGUỒN thay vì "khớp mẫu ở đâu cũng từ chối"** — bản cũ từ chối MỌI topic,
+  nghĩa là một người viết `channel-briefs`, hay một trang web bị trích vào `trend-reports`, chỉ cần một câu là
+  tắt được một bước của phòng ban, và event ấy bị từ chối MÃI vì payload không bao giờ tự đổi. Nửa `extra`
+  (dữ liệu `enrich` do route tự dựng) **giữ luật cũ** có chủ ý: nó không mang topic/actor riêng nên không phân
+  loại được nguồn, nới chỗ đó cần biết từng `enrich` lấy dữ liệu ở đâu — ngoài phạm vi K3.4.
+  **Lỗ hổng test thứ hai, cùng khuôn với lỗ đầu**: ca gọi thẳng `guard_payload` chốt *hàm* đúng nhưng không chốt
+  *runner có gọi hàm ấy* — thay `guard_payload` trong runner bằng luật cũ mà không ca nào đỏ. Nay có hai ca đi
+  qua `AgentRunner` thật (#PRNUM)
+
 - refactor(core): **K3.3d — `routing.py` lên `xagents_core`, và studio HOÃN lỗi vận chuyển thay vì tính lỗi
   agent**. Bước cuối của K3.3; **K5 nay mở khoá**. `routing.py` là module dễ nhất của cả chuỗi — nó không đọc
   `llm.yaml`, không biết tiền tố env, không chạm đĩa, nên khác `llm.py` ở chỗ shim là `import *` thuần chứ không

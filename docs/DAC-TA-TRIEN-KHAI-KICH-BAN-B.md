@@ -384,6 +384,18 @@ package đang gọi `company.llm.load_config()` không đổi.
 - Xoá `studio/runner.py:29-81` + dòng 265; runner studio gọi `guard.guard_payload`/`sanitize_tool_output`.
 - `assetscan.py` (company) import guard qua shim — job `asset-scan` không đổi.
 
+> **Trạng thái: XONG (#PRNUM).** Ba gạch trên viết K3.4 như một lần chuyển mã; **thực tế nó là hợp nhất HAI
+> CHIỀU**. Studio không có `guard.py` — nó có một bộ mẫu *khác* nằm lẫn trong `runner.py`, và đo chéo 23 câu thử
+> cho thấy **mỗi bên đều có lỗ**: company trượt 4 mẫu studio bắt được, studio trượt 8 mẫu company bắt được. Nên
+> "lấy bản company" là làm mất bốn thứ ở cả hai bên. Ba quyết định hợp nhất, mỗi cái kèm số đo, ghi ở docstring
+> `xagents-core/src/xagents_core/guard.py`; đáng nhớ nhất là mẫu tiếng Việt được **viết lại tốt hơn cả hai bản
+> cũ** (bản company trượt "bỏ qua mọi hướng dẫn", bản studio báo nhầm "tôi quên hướng dẫn cài đặt rồi").
+>
+> Hai điểm khác lời đặc tả: (a) `CoreConfig` cần **hai trường mới** ngoài hai trường đã đặt trước —
+> `untrusted_fields` (danh sách trường là của từng công ty vì topic hai bên khác nhau) và
+> `extra_injection_patterns` (mẫu riêng); (b) `assetscan.py` không "import guard qua shim" mà đọc bảng mẫu ĐÃ
+> BIÊN DỊCH — trước đây qua tên riêng tư `guard._COMPILED`, nay là `guard.COMPILED` công khai.
+
 ### PR K3.5 `refactor(core): K3.5 — events chung + bus + sqlite_bus (rủi ro cao nhất)`
 
 - Core `events.py`: `Envelope` (bản company: `schema_version`, `correlation_id`, `causation_id`,

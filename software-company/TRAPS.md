@@ -26,6 +26,7 @@ Bốn khuôn lỗi chung và bẫy thao tác ở `../TRAPS.md`. Ở đây là ch
 | Diff bị cắt mà reviewer không biết | security chặn QLKH-012 "thiếu diff" — openapi 804 dòng | `diff()` xếp mã nguồn trước, nói rõ file bị bỏ (#67); reviewer có tool đọc (#87) |
 | `local_checks` pass giả từ lệnh không liên quan | frontend PR "pass" bằng ruff+pytest | `stacks.py` theo stack; không nhận ra stack → `unverified` (ADR-0013) |
 | Test xanh trước khi có code | TDD chỉ là lời dặn | `qa` pha `author` chạy lượt mù (ADR-0028); `tests_green_before_code` audit |
+| Ca test đi qua nhánh KHÁC với nhánh nó tưởng đang đo | Ca duy nhất chạm `diff` dùng topic `pull-requests` — một topic **dẫn xuất**, nên nó được lọc bởi nhánh `derived_topics` chứ không bởi danh sách trường. Xoá sạch `untrusted_fields` khỏi `core.py` mà **không ca nào đỏ** (đo được khi làm K3.4) | `test_truong_khong_tin_cay_tren_topic_NOI_BO_THUAN_van_duoc_loc` dùng `tasks` — nội bộ THUẦN, chỉ có một đường đi. Bài học chung: chọn dữ liệu thử sao cho nó **chỉ** đi qua nhánh mình định đo |
 
 ## Prompt / eval
 

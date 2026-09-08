@@ -48,6 +48,13 @@ class CoreConfig:
     transitions: Mapping[str, frozenset[str]] = field(default_factory=dict)
     external_topics: frozenset[str] = frozenset()
     derived_topics: frozenset[str] = frozenset()
+    # Trường mang nội dung không tin cậy dù event là NỘI BỘ (diff repo khách, kết quả tool, nội dung web). Tên
+    # trường là của từng công ty vì topic của hai bên khác nhau, nên nó ở đây chứ không phải hằng số trong guard.
+    untrusted_fields: frozenset[str] = frozenset()
+    # Mẫu injection RIÊNG của một công ty, nối sau bảng chung của `guard.PATTERNS`. Có mặt vì một câu là tấn công
+    # ở công ty này lại là từ vựng nghiệp vụ ở công ty kia: "jailbreak" với phòng làm video là câu tấn công, với
+    # công ty gia công phần mềm là yêu cầu bảo mật app di động (`skills/mobile.md`). Xem `guard.py` quyết định 2.
+    extra_injection_patterns: tuple[tuple[str, str], ...] = ()
 
     @property
     def config_file(self) -> Path:
