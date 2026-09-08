@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- refactor(core): **K3.5b — `bus` lên `xagents_core`; studio lần đầu có ACL topic, bảng ACL ĐO chứ không suy**.
+- refactor(core): **K3.5b — `bus` lên `xagents_core`; studio lần đầu có ACL topic, bảng ACL ĐO chứ không suy**. (#179)
   `difflib` giữa hai `bus.py` là **0.06**, nhưng con số ấy không nói "hai bus khác bản chất" — nó nói bus studio
   61 dòng **chưa làm phần lớn việc** mà bus company 206 dòng đã làm (không validate envelope, không ACL topic,
   không `latest`, không khoá, không `_notify_safely`). Lệch vì MỘT BÊN THIẾU, khác hẳn K3.5a nơi lệch vì mỗi

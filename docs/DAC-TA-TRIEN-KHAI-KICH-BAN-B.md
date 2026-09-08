@@ -424,7 +424,7 @@ package đang gọi `company.llm.load_config()` không đổi.
 >   đưa cả bốn lên core là bắt company mang một trường nó không bao giờ ghi. Cùng lý do, `topic`/`namespace` ở
 >   core là `str`, lớp con thu hẹp về Literal của mình nên kiểm tra topic KHÔNG mất, chỉ chuyển xuống nơi biết
 >   đủ để làm việc ấy.
-> - **K3.5b — `bus`: XONG (#PRNUM).** Cơ chế lên core **toàn bộ**; thứ mỗi công ty đưa vào là DỮ LIỆU
+> - **K3.5b — `bus`: XONG (#179).** Cơ chế lên core **toàn bộ**; thứ mỗi công ty đưa vào là DỮ LIỆU
 >   (`CoreConfig.topic_acl`/`payload_models`/`namespace_owners`). Khác K3.5a: ở đây `difflib` 0.06 KHÔNG nghĩa
 >   là hai bus khác bản chất, mà là bus studio 61 dòng chưa làm phần lớn việc bus company 206 dòng đã làm —
 >   lệch vì MỘT BÊN THIẾU, nên hợp nhất là đúng, không phải gộp hai miền.
