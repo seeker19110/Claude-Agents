@@ -22,6 +22,7 @@ import pytest
 
 from xagents_core.llm import (
     ARGV_LIMIT,
+    CLI_SUBTYPE_ERRORS,
     AnthropicClient,
     CodexClient,
     FakeClient,
@@ -575,3 +576,144 @@ def test_openai_gui_prompt_cache_key_va_tool_theo_dung_dinh_dang(monkeypatch):
     seen.clear()
     c.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong", cache_key="agent-x")
     assert "prompt_cache_key" not in seen[0]
+
+
+# ---------- ClaudeCodeClient: TRANSPORT dùng chung (K3.3c3 bước 2) ----------
+#
+# Core chỉ giữ transport; `complete()` ở lại mỗi công ty vì ba chiến lược tool khác nhau THẬT (xem ghi chú dài
+# trong `llm.py`). Nên ca ở đây đo đúng transport: dựng tiến trình, đọc JSON, kế toán token, phân loại lỗi —
+# và đo cả hai chiều của bản hợp nhất, vì lần này KHÔNG bên nào là gốc.
+
+from xagents_core.llm import ClaudeCodeClient, cli_exit_error  # noqa: E402
+
+
+class _CC(ClaudeCodeClient):
+    """Lớp con tối thiểu: core cố ý không có `complete()` mặc định, nên test phải tự khai một cái."""
+    def complete(self, **kw): raise NotImplementedError
+
+
+def _cc(**kw):
+    return _CC(LLMConfig(provider="claude-code", models={"strong": "claude-x", "standard": "claude-x"}, **kw),
+               binary="claude")
+
+
+OUT_OK = json.dumps({
+    # `result` cố ý KHÁC `structured_output`: nếu hai cái giống nhau thì ca dưới xanh dù `_parse` đọc nhầm cái
+    # nào — đo hai chiều đã lộ đúng lỗ đó (đột biến "bỏ ưu tiên structured_output" sống sót ở lần đo đầu).
+    "subtype": "success", "result": '{"a": "BAN CHU CHUA QUA KIEM"}', "structured_output": {"a": 1},
+    "stop_reason": "end_turn",
+    "usage": {"input_tokens": 10, "output_tokens": 4, "cache_read_input_tokens": 2, "cache_creation_input_tokens": 3},
+    "modelUsage": {"claude-x": {"outputTokens": 4}}})
+
+
+def test_claude_parse_uu_tien_structured_output_va_cong_du_token_cache():
+    """`--json-schema` → `structured_output` đã parse VÀ đã qua kiểm của CLI: ưu tiên nó, `result` chỉ là bản chữ.
+    Token cache của Anthropic nằm NGOÀI `input_tokens` nên phải cộng vào, y như `anthropic_input_tokens`."""
+    c = _cc()
+    out = c._parse(OUT_OK, "claude-x", tool_mode="mcp")
+    assert json.loads(out.text) == {"a": 1}, "phải lấy `structured_output` (đã qua kiểm của CLI), không phải `result`"
+    assert out.input_tokens == 15 and out.cached_input_tokens == 2 and out.cache_write_tokens == 3
+    assert out.tool_mode == "mcp" and out.output_tokens == 4
+
+
+def test_claude_parse_is_error_nhac_han_muc_la_transient_con_lai_la_llm_error():
+    """Hợp nhất: bản studio ném `LLMError` cho MỌI `is_error`, nên hết quota (chờ được) và lỗi cấu hình (chờ bao
+    lâu cũng thế) đi chung một đường, orchestrator dừng ở cả hai."""
+    c = _cc()
+    with pytest.raises(TransientError, match="rate limit"):
+        c._parse(json.dumps({"is_error": True, "result": "rate limit exceeded"}), "claude-x")
+    with pytest.raises(LLMError) as ei:
+        c._parse(json.dumps({"is_error": True, "result": "cau hinh sai"}), "claude-x")
+    assert not isinstance(ei.value, TransientError)
+
+
+def test_claude_parse_cac_the_hong_khac():
+    c = _cc()
+    # Có `{` nhưng vỡ giữa chừng → "không phải JSON". KHÔNG có `{` thì `data = {}` và rơi vào nhánh thiếu
+    # `result` — hai thông điệp khác nhau cho hai thể hỏng khác nhau, đúng tinh thần khuôn 1 của TRAPS §1.
+    with pytest.raises(LLMError, match="không phải JSON"):
+        c._parse('log lang nhang {"result": ', "claude-x")
+    with pytest.raises(LLMError, match="thiếu trường result"):
+        c._parse("khong co dau ngoac nao", "claude-x")
+    with pytest.raises(LLMError, match="thiếu trường result"):
+        c._parse(json.dumps({"subtype": "success"}), "claude-x")
+    with pytest.raises(Refused):
+        c._parse(json.dumps({"result": "x", "stop_reason": "refusal"}), "claude-x")
+    # Subtype phải đọc TRƯỚC `result` — các subtype này có thể không có `result`, và nếu đọc sau thì lượt ấy
+    # báo "thiếu trường result", giấu mất nguyên nhân thật. Khẳng định LỜI GIẢI THÍCH, không chỉ tên subtype:
+    # tên subtype có mặt trong cả hai thông điệp nên `match=sub` xanh ở cả hai chiều (đo hai chiều đã lộ).
+    sub, giai_thich = next(iter(CLI_SUBTYPE_ERRORS.items()))
+    with pytest.raises(LLMError) as ei:
+        c._parse(json.dumps({"subtype": sub}), "claude-x")
+    assert giai_thich in str(ei.value) and "thiếu trường result" not in str(ei.value)
+
+
+def test_claude_subprocess_phan_loai_dung_bon_the_hong(monkeypatch):
+    """Bốn nhánh, và hai trong số đó là hai NỬA của bản hợp nhất hai chiều:
+    - timeout → `TransientError` (company nâng studio: studio ném `LLMError` nên orchestrator dừng thay vì hoãn)
+    - `OSError` → `LLMError` có tên (studio nâng company: company KHÔNG bắt, nên nó thoát ra thô)."""
+    import subprocess
+    c = _cc()
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError()))
+    with pytest.raises(LLMError, match="không tìm thấy"):
+        c._subprocess(["claude"], "p")
+
+    def to(*a, **k): raise subprocess.TimeoutExpired(cmd="claude", timeout=1)
+    monkeypatch.setattr(subprocess, "run", to)
+    with pytest.raises(TransientError, match="quá"):
+        c._subprocess(["claude"], "p")
+
+    def oserr(*a, **k): raise OSError("argv qua dai")
+    monkeypatch.setattr(subprocess, "run", oserr)
+    with pytest.raises(LLMError, match="không chạy được") as ei:
+        c._subprocess(["claude"], "p")
+    assert not isinstance(ei.value, TransientError), "OSError là lỗi hẳn, chờ thêm không làm nó đúng lên"
+
+    class Fail: returncode, stdout, stderr = 1, json.dumps({"result": "rate limit"}), ""
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: Fail())
+    with pytest.raises(TransientError, match="rate limit"):
+        c._subprocess(["claude"], "p")   # thoát mã ≠ 0 đi qua `cli_exit_error`, không phải một LLMError chung
+
+    class Ok: returncode, stdout, stderr = 0, "day la stdout", ""
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: Ok())
+    assert c._subprocess(["claude"], "p", cwd="/tmp") == "day la stdout"
+
+
+def test_cli_exit_error_doc_JSON_thay_vi_soi_duoi_output():
+    """Đo được 2026-09-05: đuôi JSON của CLI là telemetry (`"refused":{"depth_limit":0,...}`), nên soi 500 ký tự
+    cuối tìm "limit" biến MỌI lần thoát mã 1 thành "hết quota" — routing cho backend nghỉ, tick sau thử lại, lặp
+    20 phút mỗi 44s với một lỗi thật không ai đọc được, trong khi `claude -p` gọi tay chạy bình thường."""
+    telemetry = json.dumps({"subtype": "error", "result": "schema field 'x' invalid",
+                            "refused": {"depth_limit": 0, "concurrency_limit": 0}})
+    e = cli_exit_error(1, telemetry, "")
+    assert not isinstance(e, TransientError), "telemetry chứa chữ 'limit' không được biến lỗi schema thành hết quota"
+    assert "invalid" in str(e)
+
+    assert isinstance(cli_exit_error(1, json.dumps({"result": "rate limit"}), ""), TransientError)
+    assert isinstance(cli_exit_error(1, json.dumps({"api_error_status": 529, "result": "x"}), ""), TransientError)
+    # Không có JSON thì mới dùng stderr
+    assert isinstance(cli_exit_error(1, "", "overloaded"), TransientError)
+    assert not isinstance(cli_exit_error(1, "", "loi la"), TransientError)
+    # JSON hỏng / không phải object → rơi về đường stderr
+    assert isinstance(cli_exit_error(1, "{khong phai json", "rate limit"), TransientError)
+    assert not isinstance(cli_exit_error(1, "[1, 2]", "loi la"), TransientError)
+
+
+def test_claude_init_loc_env_va_config_dir_rieng(monkeypatch, tmp_path):
+    """Nhiều tài khoản Claude trên một máy: mỗi backend một `CLAUDE_CONFIG_DIR`. Và env phải đã lọc — khoá của
+    công ty không đi vào tiến trình con."""
+    monkeypatch.setenv("COMPANY_LLM_API_KEY", "x")
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "x")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "giu")
+    c = _cc(config_dir=str(tmp_path / "acc2"))
+    assert c.env["CLAUDE_CONFIG_DIR"].endswith("acc2")
+    assert "COMPANY_LLM_API_KEY" not in c.env and "ELEVENLABS_API_KEY" not in c.env
+    assert c.env["ANTHROPIC_API_KEY"] == "giu"
+    assert _cc().env.get("CLAUDE_CONFIG_DIR") is None
+
+
+def test_claude_core_khong_co_complete_mac_dinh():
+    """Cố ý: một `complete()` "không tool" mặc định sẽ im lặng nuốt mất chiến lược tool của bên nào quên ghi đè,
+    mà im lặng đúng là thứ TRAPS.md §1 cấm. Lớp con phải tự khai."""
+    assert "complete" not in vars(ClaudeCodeClient)

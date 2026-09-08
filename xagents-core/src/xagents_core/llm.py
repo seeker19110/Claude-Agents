@@ -50,6 +50,7 @@ __all__ = [
     "TIERS",
     "TRANSIENT_HTTP",
     "AnthropicClient",
+    "ClaudeCodeClient",
     "CodexClient",
     "Completion",
     "FakeClient",
@@ -63,6 +64,7 @@ __all__ = [
     "check_argv",
     "cli_effort_args",
     "cli_env",
+    "cli_exit_error",
     "find_codex_binary",
     "load_config",
     "neutral_messages",
@@ -883,3 +885,126 @@ CLI_TOOL_MAP = {"read_file": ["Read"], "list_files": ["Glob"], "search": ["Grep"
 CLI_DENY_GLOBS = ("**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/*.keystore",
                   "**/id_rsa*", "**/.netrc", "**/.npmrc", "**/.pypirc", "**/.git-credentials",
                   "**/*secret*", "**/*credential*", "**/llm.yaml", "**/.aws/**", "**/.kube/**", "**/.docker/**")
+
+
+def cli_exit_error(code: int, stdout: str, stderr: str) -> LLMError:
+    """Lỗi cho `claude -p` thoát mã ≠ 0: phân loại tạm thời/hẳn theo CHÍNH thông điệp lỗi, không theo đuôi output.
+
+    CLI in một JSON kết quả rồi mới thoát mã 1; đuôi JSON đó là telemetry (`"refused":{"depth_limit":0,
+    "concurrency_limit":0,...}`) nên soi 500 ký tự cuối tìm "limit" là MỌI lần thoát mã 1 đều thành "hết quota":
+    routing cho backend nghỉ, tick sau thử lại, lặp mãi với cùng một lỗi thật không ai đọc được. Đo được
+    (2026-09-05): 20 phút `TransientError: hết quota` mỗi 44s trong khi `claude -p` gọi tay chạy bình thường.
+    Đọc JSON: `result`/`error` là thông điệp, `api_error_status` là mã HTTP; không có JSON thì mới dùng stderr."""
+    data: dict[str, Any] = {}
+    if "{" in stdout:
+        try:
+            parsed = json.loads(stdout[stdout.index("{"):])
+            if isinstance(parsed, dict): data = parsed
+        except json.JSONDecodeError:
+            data = {}
+    if data:
+        msg = str(data.get("result") or data.get("error") or "")[:300]
+        status = data.get("api_error_status")
+        head = (f"claude -p thoát mã {code} (subtype={data.get('subtype') or '?'}, api_error_status={status}): "
+                f"{msg or '(không có thông điệp)'}")
+        if status in (429, 502, 503, 529) or any(s in msg.lower() for s in ("limit", "rate", "overloaded", "quota")):
+            return TransientError(head)
+        return LLMError(head)
+    err = (stderr or stdout)[-500:]
+    if any(s in err.lower() for s in ("limit", "rate", "overloaded", "529", "503")):
+        return TransientError(f"claude -p thoát mã {code}: {err}")
+    return LLMError(f"claude -p thoát mã {code}: {err}")
+
+
+# ---------- K3.3c3 bước 2: phần CHUNG của ClaudeCodeClient ----------
+#
+# Đây KHÔNG phải bản hợp nhất cả lớp, và đó là quyết định có chủ đích. Đo từng method (difflib sau c3 bước 1):
+#
+#     _parse       0.82  (28 dòng trùng nguyên văn)      -> lên core
+#     _subprocess  0.64                                   -> lên core
+#     __init__     khác đúng một dòng cuối                -> lên core
+#     complete     0.20                                   -> Ở LẠI mỗi công ty
+#
+# `complete` lệch 0.20 vì ba chiến lược tool KHÁC NHAU THẬT, không phải một bên chậm tiến:
+#   studio      — uỷ quyền web tool sẵn có của CLI (`--tools WebFetch,WebSearch`, ADR-0007)
+#   company cli — uỷ quyền file/bash tool của CLI ngay trong worktree khách (ADR-0023)
+#   company mcp — đưa ĐÚNG bảng tool của công ty vào CLI qua cầu MCP (ADR-0024, `mcp_bridge.py`)
+#
+# Gộp ba cái đó vào một `complete()` cần năm móc (`_schema_json`, `_extra_args`, `_tool_args`, `_exit_error`,
+# `_run_delegated`) để GIẤU một khác biệt có thật — đúng thứ `xagents_core/tools.py` đã từ chối làm cho
+# `tools_prompt`: "gộp lại là thêm một tham số mà một bên không bao giờ dùng". Nên core giữ **transport**
+# (dựng tiến trình, đọc JSON, kế toán token, phân loại lỗi); **chính sách tool** ở lại nơi nó thuộc về.
+#
+# Hợp nhất HAI CHIỀU, không bên nào là gốc — như `reported_model` ở K3.3a:
+#   company nâng studio: `TransientError` khi timeout và khi `is_error` nhắc quota; `cli_exit_error` đọc JSON
+#     thay vì soi 500 ký tự cuối (đo 2026-09-05: soi đuôi biến MỌI lần thoát mã 1 thành "hết quota" — routing
+#     cho backend nghỉ rồi thử lại mỗi 44s suốt 20 phút, trong khi `claude -p` gọi tay chạy bình thường);
+#     `cache_write_tokens`; `tool_mode`; tham số `cwd`.
+#   studio nâng company: bắt `OSError` — "argv quá dài, không có quyền chạy, pipe vỡ". Company KHÔNG bắt, nên
+#     một OSError thoát ra ngoài dưới dạng exception thô mà không lớp nào phân loại được.
+
+
+class ClaudeCodeClient:
+    """Transport dùng chung cho `claude -p --output-format json`: dựng tiến trình con, đọc JSON trả về, kế toán
+    token, phân loại lỗi. **Chính sách tool không ở đây** — mỗi công ty ghi đè `complete()` của mình.
+
+    Lớp con PHẢI hiện thực `complete()`. Lớp này cố ý không có bản mặc định: một bản "không tool" mặc định sẽ
+    im lặng nuốt mất chiến lược tool của bên nào quên ghi đè, mà im lặng đúng là thứ TRAPS.md §1 cấm."""
+
+    def __init__(self, cfg: LLMConfig, binary: str = "claude", timeout: float = 900.0,
+                 runner: Callable[..., str] | None = None):   # (args, stdin) hoặc (args, stdin, cwd) khi cli_tools
+        self.cfg = cfg
+        self.binary = shutil.which(self.cfg.binary or binary) or self.cfg.binary or binary
+        self.timeout = timeout
+        # Env cho `claude -p`: bỏ khoá của công ty và mọi biến trông như bí mật (ở chế độ cli_tools + cli_bash, Bash của
+        # CLI kế thừa env này). Giữ ANTHROPIC_*/CLAUDE_* vì CLI có thể cần chúng để đăng nhập/chọn endpoint.
+        self.env = cli_env(keep_prefixes=("ANTHROPIC_", "CLAUDE_"))
+        if self.cfg.config_dir:   # nhiều tài khoản Claude trên một máy: mỗi backend một thư mục đăng nhập riêng
+            self.env["CLAUDE_CONFIG_DIR"] = str(Path(self.cfg.config_dir).expanduser())
+        self._run = runner or self._subprocess  # test thay bằng hàm giả (args, stdin) → stdout
+
+    def _subprocess(self, args: list[str], stdin: str, cwd: str | None = None) -> str:
+        import subprocess
+        try:
+            r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                               input=stdin, timeout=self.timeout, env=self.env, cwd=cwd)
+        except FileNotFoundError as e:
+            raise LLMError(f"không tìm thấy `{self.binary}` (cài Claude Code hoặc đổi provider)") from e
+        except subprocess.TimeoutExpired as e:
+            raise TransientError(f"claude -p quá {self.timeout}s") from e
+        except OSError as e:   # argv quá dài, không có quyền chạy, pipe vỡ… (bản studio bắt, company thì không)
+            raise LLMError(f"không chạy được `{self.binary}`: {e}") from e
+        if r.returncode != 0:
+            raise cli_exit_error(r.returncode, r.stdout or "", r.stderr or "")
+        return r.stdout
+
+    def _parse(self, out: str, model: str, tool_mode: str = "") -> Completion:
+        """JSON của `claude -p` → Completion (dùng chung cho cả ba chế độ tool)."""
+        try:
+            data = json.loads(out[out.index("{"):]) if "{" in out else {}
+        except json.JSONDecodeError as e:
+            raise LLMError(f"claude -p trả về không phải JSON: {out[:300]}") from e
+        # `data` luôn là dict: chuỗi được cắt từ dấu `{` đầu tiên nên json.loads chỉ ra object hoặc ném lỗi;
+        # nhánh "không phải object JSON" trước đây là code chết, đã bỏ.
+        subtype = str(data.get("subtype") or "")
+        if subtype in CLI_SUBTYPE_ERRORS:   # đọc TRƯỚC `result`: các subtype này có thể không có result
+            raise LLMError(f"claude -p {subtype}: {CLI_SUBTYPE_ERRORS[subtype]}; {str(data.get('result') or '')[:200]}")
+        if "result" not in data:
+            raise LLMError(f"claude -p thiếu trường result (subtype={subtype or '?'}): {out[:300]}")
+        if data.get("is_error"):
+            msg = str(data.get("result"))[:300]
+            if any(s in msg.lower() for s in ("limit", "rate", "overloaded", "quota")):
+                raise TransientError(f"claude -p lỗi: {msg}")
+            raise LLMError(f"claude -p lỗi: {msg}")
+        if data.get("stop_reason") == "refusal":
+            raise Refused("model từ chối")
+        u = data.get("usage") or {}
+        read = int(u.get("cache_read_input_tokens", 0) or 0); write = int(u.get("cache_creation_input_tokens", 0) or 0)
+        used = reported_model(data.get("modelUsage") or {}, model)
+        # `--json-schema` → `structured_output` đã parse và đã qua kiểm của CLI: ưu tiên nó, `result` chỉ là bản chữ.
+        so = data.get("structured_output")
+        text = json.dumps(so, ensure_ascii=False) if isinstance(so, dict) else str(data["result"])
+        return Completion(text=text, input_tokens=int(u.get("input_tokens", 0) or 0) + read + write,
+                          output_tokens=int(u.get("output_tokens", 0) or 0), model=used,
+                          stop_reason=str(data.get("stop_reason") or "end_turn"), cached_input_tokens=read,
+                          cache_write_tokens=write, tool_mode=tool_mode)
