@@ -54,6 +54,7 @@ từng package ở `<pkg>/CODEMAP.md`.
 | Cooldown, xoay tài khoản, refresh token | `src/gateway/auth.py` |
 | Dịch OpenAI ⇄ Google Code Assist, retry, stream | `src/gateway/client.py` |
 | Endpoint HTTP, daemon | `src/gateway/server.py` |
+| Hàng rào `Host`/`Origin` (chống DNS rebinding + CSRF) | `guard_middleware` trong `src/gateway/server.py`; `tests/test_guard_host_origin.py` |
 | CLI `start/stop/status/login/setup/models` | `src/gateway/manage.py`, `__main__.py` |
 
 ## console — đầy đủ ở `console/CODEMAP.md`

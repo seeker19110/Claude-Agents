@@ -66,7 +66,7 @@ Còn lại là lời khai — hữu ích, nhưng chỉ ký gate trên bằng ch�
 
 | Công ty | Gate | Gác cái gì |
 |---|---|---|
-| software-company | `spec` → `plan` → `release` → `acceptance` (+ `escalation`) | PRD; plan ticket; production; khách ký UAT |
+| software-company | `spec` → `release` → `acceptance` (+ `escalation`) | PRD; production; khách ký UAT (kế hoạch ticket do `_check_plan` chặn bằng code, không còn gate `plan` từ ADR-0037) |
 | Studio-creators | `plan` → `publish` → `replies` (+ `escalation`) | kế hoạch biên tập; đăng video; trả lời bình luận |
 
 Gate là thật: hạn 24h, nhắc 12h, quá hạn escalate, four-eyes. Mỗi gate của software-company có trợ lý kiểm duyệt
@@ -96,4 +96,4 @@ software-company AI agent framework")**; `d4abda1` cùng ngày gỡ MEP-Agents. 
 | Git: nhánh, PR, CI, worktree | `docs/QUY-TRINH-GIT.md` |
 | Sửa agent/skill phải chạy lại gì | `CONTRIBUTING.md` |
 | Bảo mật: bí mật, phòng thủ, báo lỗi | `SECURITY.md` |
-| Vì sao quyết định thế này | `software-company/docs/adr/` (0001–0029), `Studio-creators/docs/adr/` (0001–0009), `console/docs/adr/` |
+| Vì sao quyết định thế này | `software-company/docs/adr/` (0001–0038), `Studio-creators/docs/adr/` (0001–0009), `console/docs/adr/` |

@@ -636,6 +636,32 @@ def test_gate_qua_han_phai_vao_audit_du_da_nhac_truoc_do(tmp_path):
     assert "gate.overdue" in actions, "gate quá hạn phải vào audit-log, không được bị lần nhắc nuốt mất"
 
 
+def test_gate_khong_nhac_lai_va_escalate_lai_sau_khi_mo_lai_bus(tmp_path):
+    """Thế hệ trong khoá `once` của gate là `GateRequest.created_at` (`_the_he` trong `orch/scheduler.py`), nên
+    nó phải là CÙNG MỘT giá trị ở mọi tiến trình. Trước bản sửa thì không: tiến trình tạo gate giữ mốc dựng
+    dataclass, còn tiến trình dựng lại từ replay đặt `created_at=env.ts` của envelope `gate.request` — hai mốc
+    lệch nhau vài trăm micro giây. Hệ quả im lặng: mở lại bus là mọi gate đang chờ đổi thế hệ, khoá `once` cũ
+    không còn khớp, và gate đã nhắc/đã escalate bị nhắc lại + escalate lại — mỗi lần khởi động lại một lần.
+
+    Đo hai chiều (2026-09-08): bỏ `r.created_at = env.ts` trong `PersistentGate.request` → assert `== 1` đỏ
+    (thành 2); trả lại → xanh."""
+    from company.gates import GateRequest
+
+    db = tmp_path / "c.sqlite"
+    bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient())
+    orch.gate.request(GateRequest(kind="escalation", subject_id="G-RESTART", created_by="supervisor",
+                                  checklist=["root_cause", "decision:reopen|close", "hint"]))
+    created = orch.gate.pending["G-RESTART"].created_at
+    orch.tick(now=datetime.now(UTC) + orch.gate.timeout + timedelta(minutes=1))
+
+    orch2 = Orchestrator(SQLiteBus(db), FakeClient())
+    assert orch2.gate.pending["G-RESTART"].created_at == created, "cùng một gate phải có một mốc tạo duy nhất"
+    orch2.tick(now=datetime.now(UTC) + orch2.gate.timeout + timedelta(minutes=2))
+
+    overdue = [e for e in SQLiteBus(db).replay(topic="audit-log") if e.payload["action"] == "gate.overdue"]
+    assert len(overdue) == 1, f"mở lại bus không được nhắc lại gate cũ, nhận được {len(overdue)} bản ghi"
+
+
 # Trạng thái chỉ sống trong RAM là nguồn lỗi lặp lại nhiều nhất: nó không hỏng ồn ào, nó chỉ lặng lẽ biến mất
 # khi mở lại bus, rồi dự án đứng im trong khi mọi chỉ số vẫn xanh. Test dưới đây chốt bất biến chung thay vì
 # chạy theo từng ca: chạy hết một vòng đời rồi so TỪNG thuộc tính giữa đối tượng đang sống và đối tượng dựng
