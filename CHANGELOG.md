@@ -6,6 +6,9 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs: **4L-8 — ranh giới tin cậy nói rõ vì sao không chốt mức tool; bảng K3 cập nhật** (#181).
+  `ARCHITECTURE.md` thêm `xagents-core` vào sơ đồ Năm package + đoạn giải thích lựa chọn "không chốt duyệt mức
+  tool". `docs/DAC-TA-KICH-BAN-B.md` bảng K3: K3.3c2–d/K3.4/K3.5a/K3.5b = xong (#173-#179). Chỉ tài liệu.
 - docs: **đối chiếu bốn lớp LLM (Prompt/Agent/Loop/Graph) với repo, khuôn thi hành một lệnh và `/thi-hanh`** (#180).
   `docs/KIEN-TRUC-4-LOP.md`: company đạt 6/9 mục checklist đặc tả, studio 3/9; tám việc `4L-1…4L-8` (cổng eval
   chấm điểm, vết từng tool call, cắt vòng tool khi không tiến bộ, tỉa hội thoại — ADR-0040 dự kiến ở K3.6, đo
