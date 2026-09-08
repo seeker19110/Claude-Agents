@@ -105,7 +105,7 @@ def scan_text(text: str, path: str) -> list[Finding]:
     """Bốn rule nặng + cảnh báo URL, trên nội dung một file tài sản."""
     out: list[Finding] = []
     norm = guard.normalize(text)  # né mẫu bằng ký tự vô hình là cách rẻ nhất; dò trên bản đã chuẩn hoá
-    for name, rx in guard._COMPILED:
+    for name, rx in guard.COMPILED:
         for m in rx.finditer(norm):
             out.append(Finding(path, "injection", f"{name}: {m.group(0)[:80]!r}", _line_of(norm, m.start())))
     for m in _HIDDEN.finditer(text):

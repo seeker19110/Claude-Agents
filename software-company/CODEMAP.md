@@ -41,7 +41,7 @@
 | PR thật cho khách review trước UAT (`--deliver-pr`): mở/dùng lại, không merge; lý do bỏ qua/lỗi | `github_pr.open_pr` (+ `github_slug`, `_gh`); `orch/release_fsm.py::_delivery_pr` → trường `pr` trong `delivery.done`, audit `delivery.pr_*`; `Integration.remote_url/base_branch`; mục `acceptance.pr-giao-hang` (`gate_brief`, `gate_checklists`); ADR-0038 | `tests/test_delivery_real.py` §ADR-0038, `test_gate_brief.py::test_acceptance_pr_giao_hang…` |
 | Tool agent được cấp, allowlist `run`, khoá đường dẫn, lọc env | `src/company/tools.py`; `SECRET_ENV`, `NO_HOOKS`, `clean_env` trong `workspace.py` |
 | Vùng ghi của `qa[author]` vs `builder` (ADR-0028) | `Stack.test_globs` (`stacks.py`); phân quyền trong `tools.py`; lượt mù ở `runner.py` |
-| Chống prompt injection | `src/company/guard.py`; gọi từ `runner.py` |
+| Chống prompt injection | Bảng mẫu + lọc: `xagents-core/src/xagents_core/guard.py` (K3.4, chung hai công ty). CHÍNH SÁCH của company — topic nào ngoài/dẫn xuất, trường nào không tin cậy — ở `src/company/core.py` (`CORE`); `src/company/guard.py` chỉ còn là shim gắn `CORE`. Gọi từ `runner.py`, `web.py`, `supervisor.py`, `mcp_bridge.py`; `assetscan.py` quét file prompt bằng `guard.COMPILED` | `tests/test_adr0012.py`, `xagents-core/tests/test_guard.py` |
 | Hạn mức ngữ cảnh, cắt | `src/company/context.py` |
 
 ## Model và chi phí
