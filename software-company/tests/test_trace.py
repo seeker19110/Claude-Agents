@@ -92,6 +92,39 @@ def test_ticket_khac_cung_du_an_khong_lan_vao(tmp_path):
     assert "T9" in p["tickets"]
 
 
+def test_tools_trace_render_gop_lap(tmp_path):
+    """4L-2: `tools_trace` in một dòng `↳` mỗi call; ≥3 call liên tiếp cùng bộ ba hash gộp thành `×N`, khác
+    hash thì không gộp."""
+    _db, bus, orch = _scenario(tmp_path, to="plan")
+    orch.run()
+    lap = [{"i": i, "name": "read_file", "args": {"path": "a.py"}, "args_hash": "h1", "out_hash": "o1",
+            "ok": True, "chars": 12, "ms": 1.0} for i in range(5)]
+    khac_nhau = [{"i": i, "name": "read_file", "args": {"path": f"f{i}.py"}, "args_hash": f"h{i}", "out_hash": f"o{i}",
+                  "ok": True, "chars": 3, "ms": 0.5} for i in range(5)]
+    _audit(bus, "builder", "tools_trace", {"turns": 1, "mode": "loop", "calls": lap}, ticket_id="T1", project_id="P1")
+    _audit(bus, "builder", "tools_trace", {"turns": 2, "mode": "loop", "calls": khac_nhau}, ticket_id="T1", project_id="P1")
+    t1 = TR.trace(bus, "T1", orch.agents)
+    rows = [r for r in t1["rows"] if r["action"] == "tools_trace"]
+    assert len(rows) == 2
+    assert rows[0]["sub"] == [{**lap[0], "n": 5}], "5 call cùng hash gộp thành một dòng ×5"
+    assert rows[1]["sub"] == khac_nhau, "5 call khác hash mỗi call giữ một dòng riêng"
+    md = TR.render(t1)
+    assert "    ↳ read_file(path=a.py) ok 12c 1.0ms ×5" in md
+    assert md.count("    ↳ read_file(path=f") == 5
+
+
+def test_tools_trace_mode_cli_khong_co_vet(tmp_path):
+    """mode `cli` (ADR-0023) không đi qua `ToolBox` của company → `calls` rỗng; `company.trace` phải NÓI RÕ,
+    không được im lặng in một khối rỗng."""
+    _db, bus, orch = _scenario(tmp_path, to="plan")
+    orch.run()
+    _audit(bus, "builder", "tools_trace", {"turns": 1, "mode": "cli", "calls": []}, ticket_id="T1", project_id="P1")
+    t1 = TR.trace(bus, "T1", orch.agents)
+    row = next(r for r in t1["rows"] if r["action"] == "tools_trace")
+    assert row["sub"] is None and row["note"] == "(tool do CLI chạy, không có vết)"
+    assert "(tool do CLI chạy, không có vết)" in TR.render(t1)
+
+
 def test_khong_ton_tai_va_cli(tmp_path, capsys):
     db, bus, orch = _scenario(tmp_path, fail_handler, to="escalation")
     with pytest.raises(TR.TraceError, match="KHONG-CO"):

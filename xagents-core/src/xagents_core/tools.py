@@ -17,13 +17,26 @@ bên nào muốn khác phải nói ra.
 """
 from __future__ import annotations
 
+import hashlib
+import json
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-__all__ = ["MAX_OUTPUT", "ToolBox", "ToolCall", "ToolError", "ToolSpec"]
+__all__ = ["MAX_OUTPUT", "OPAQUE_ARGS", "ToolBox", "ToolCall", "ToolError", "ToolSpec"]
 
 MAX_OUTPUT = 6_000  # ký tự trả về cho model mỗi lần gọi tool
+
+# Tham số tool mà GIÁ TRỊ có thể là nội dung khách thật (vd. `write_file(content=...)`) — vết chỉ ghi ĐỘ DÀI của
+# giá trị, không bao giờ ghi chính nội dung (AGENTS.md luật cấm 3: không commit dữ liệu khách thật).
+OPAQUE_ARGS = frozenset({"content"})
+
+
+def _h(x: Any) -> str:
+    """Băm ổn định bất kể thứ tự khoá dict (`sort_keys=True`) — dùng để nhận ra hai lần gọi tool "giống hệt
+    nhau" (cùng args, cùng đầu ra) mà không phải lưu lại đối số/đầu ra thật trong vết dài hạn."""
+    return hashlib.sha256(json.dumps(x, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")).hexdigest()[:12]
 
 
 class ToolError(Exception): ...
@@ -63,6 +76,7 @@ class ToolBox:
         return [s for s, _ in self._tools.values()]
 
     def call(self, tc: ToolCall) -> str:
+        t0 = time.monotonic()
         if tc.name not in self._tools:
             raise ToolError(f"tool không tồn tại: {tc.name}")
         spec, fn = self._tools[tc.name]
@@ -80,9 +94,15 @@ class ToolBox:
             except (TypeError, ValueError) as e:
                 out = f"lỗi tham số: {e}"
         out = str(out)
+        # `out_hash` băm đầu ra THẬT SỰ của tool, TRƯỚC khi cắt `max_output` ở đây và TRƯỚC khi runner
+        # `sanitize_tool_output` lọc payload injection (bước đó chạy sau `call()` trả về) — vết ổn định qua cả
+        # hai bước cắt/lọc phía sau, đúng nghĩa "tool này thật sự trả gì".
+        out_hash = _h(out)
+        ms = round((time.monotonic() - t0) * 1000, 1)
         if self.max_output is not None and len(out) > self.max_output:
             out = out[:self.max_output] + f"\n… (cắt, còn {len(out) - self.max_output} ký tự)"
-        self.calls.append({"name": tc.name, "args": args, "ok": not out.startswith("lỗi"), "chars": len(out)})
+        self.calls.append({"name": tc.name, "args": args, "ok": not out.startswith("lỗi"), "chars": len(out),
+                            "args_hash": _h(args), "out_hash": out_hash, "ms": ms})
         return out
 
     def summary(self) -> dict[str, int]:
@@ -95,3 +115,21 @@ class ToolBox:
         gate biết kết luận dựa trên trang nào."""
         return [str(x["args"].get("url")) for x in self.calls
                 if x["name"] == "web_fetch" and x["ok"] and x["args"].get("url")]
+
+    def trace(self, max_args: int = 200) -> list[dict[str, Any]]:
+        """Vết đọc được cho audit `tools_trace` (4L-2): mỗi lần gọi một dòng `{i,name,args,args_hash,out_hash,
+        ok,chars,ms}`. `args` cắt theo TỪNG GIÁ TRỊ ở `max_args` ký tự (không cắt cả dict thành một chuỗi, để
+        vẫn đọc được tên tham số nào dài); khoá trong `OPAQUE_ARGS` chỉ ghi độ dài, không bao giờ ghi nội dung
+        thật — an toàn để đưa thẳng vào evidence audit dù nội dung gốc là dữ liệu khách."""
+        out: list[dict[str, Any]] = []
+        for i, x in enumerate(self.calls):
+            clipped: dict[str, Any] = {}
+            for k, v in x["args"].items():
+                if k in OPAQUE_ARGS:
+                    clipped[k] = f"<{len(str(v))} ký tự>"
+                else:
+                    s = str(v)
+                    clipped[k] = s if len(s) <= max_args else s[:max_args] + "…"
+            out.append({"i": i, "name": x["name"], "args": clipped, "args_hash": x["args_hash"],
+                        "out_hash": x["out_hash"], "ok": x["ok"], "chars": x["chars"], "ms": x["ms"]})
+        return out

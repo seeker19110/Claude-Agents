@@ -7,7 +7,7 @@ import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import pytest
 
@@ -16,7 +16,16 @@ from company.bus import InMemoryBus
 from company.evals import RecordingClient, ReplayClient, recording_path, run_eval, stale_recordings
 from company.evals import main as evals_main
 from company.events import Envelope
-from company.llm import AnthropicClient, FakeClient, LLMConfig, LLMError, OpenAICompatClient, Refused, TransientError
+from company.llm import (
+    AnthropicClient,
+    Completion,
+    FakeClient,
+    LLMConfig,
+    LLMError,
+    OpenAICompatClient,
+    Refused,
+    TransientError,
+)
 from company.orchestrator import Orchestrator, _cycle
 from company.runner import AgentRunner, RunnerError
 from company.tools import ToolBox, ToolCall, ToolError, ToolSpec, WorkspaceTools, _clean_env
@@ -203,7 +212,61 @@ def test_tool_loop_runs_tools_then_final_answer(tmp_path):
     assert [c["tools"] for c in client.calls] == [["read_file", "write_file", "delete_file", "list_files", "search", "run"]] * 2
     assert "# Tool" in client.calls[0]["user"] and "run test" in client.calls[0]["user"]
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
-    assert acts == ["tools_used"]
+    assert acts == ["tools_used", "tools_trace"], "4L-2: một audit tools_trace mỗi lượt, ngay sau tools_used"
+    tr = json.loads(next(e.payload["evidence"] for e in bus.replay(topic="audit-log") if e.payload["action"] == "tools_trace"))
+    assert tr["mode"] == "loop" and tr["turns"] == 2
+    calls = tr["calls"]
+    assert [c["name"] for c in calls] == ["read_file", "write_file"]
+    assert calls[0]["args"] == {"path": "mod.py"}
+    # `content` là OPAQUE_ARGS: vết không bao giờ lộ nội dung khách thật, chỉ độ dài
+    assert calls[1]["args"] == {"path": "feature.py", "content": "<6 ký tự>"}
+    assert "F = 1" not in json.dumps(tr, ensure_ascii=False)
+    assert all(isinstance(c["args_hash"], str) and len(c["args_hash"]) == 12 for c in calls)
+    assert all(isinstance(c["out_hash"], str) and len(c["out_hash"]) == 12 for c in calls)
+    assert all(isinstance(c["ms"], float) for c in calls)
+
+
+def test_tools_trace_evidence_duoi_20k_o_25_luot_x_4_call(tmp_path):
+    """Ca đo bắt buộc 4L-2: 25 lượt tool, mỗi lượt 4 call → evidence `tools_trace` MỖI LƯỢT phải < 20.000 ký tự
+    (đủ nhỏ để không nuốt ngữ cảnh model / DB audit khi lặp nhiều)."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    luot = {"n": 0}
+
+    def th(msgs, tools):
+        luot["n"] += 1
+        if luot["n"] > 25: return []
+        return [_tc("read_file", path="mod.py"), _tc("read_file", path="test_mod.py"),
+                _tc("list_files", path="."), _tc("search", pattern="def")]
+
+    client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=th)
+    bus = InMemoryBus()
+    AgentRunner(bus, client).generate("builder", _task_env(), "pull-requests",
+                                      tools=WorkspaceTools(ws).toolbox(), max_turns=30)
+    traces = [e.payload["evidence"] for e in bus.replay(topic="audit-log") if e.payload["action"] == "tools_trace"]
+    assert traces, "phải có ít nhất một audit tools_trace"
+    for ev in traces:
+        assert len(ev) < 20_000, f"evidence tools_trace {len(ev)} ký tự, vượt trần 20k"
+
+
+class _CliOnlyClient(FakeClient):
+    """Mô phỏng mode `cli` (ADR-0023): CLI tự cầm tool bên trong tiến trình của nó, trả lời cuối ngay lượt 1
+    với `tool_calls` rỗng — runner KHÔNG BAO GIỜ gọi qua `ToolBox` ở lượt này."""
+    def complete(self, **kw: Any) -> Completion:
+        return Completion(text=json.dumps(_pr({"ticket_id": "T1"}), ensure_ascii=False),
+                          input_tokens=1_000, output_tokens=300, model="fake", tool_mode="cli")
+
+
+def test_tools_trace_mode_cli_khong_co_vet(tmp_path):
+    """4L-2 bẫy đã biết: mode `cli` không đi qua `ToolBox` của company → `tools.trace()` RỖNG. `tools_trace`
+    vẫn phải được ghi (một lần/lượt như mọi mode khác), chỉ là `calls` rỗng — người đọc audit thấy `mode: cli`
+    và biết đây là giới hạn của ADR-0023, không phải lỗi mất vết."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    bus = InMemoryBus()
+    AgentRunner(bus, _CliOnlyClient()).generate("builder", _task_env(), "pull-requests", tools=WorkspaceTools(ws).toolbox())
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert acts == ["tools_used", "tools_trace"]
+    tr = json.loads(next(e.payload["evidence"] for e in bus.replay(topic="audit-log") if e.payload["action"] == "tools_trace"))
+    assert tr["mode"] == "cli" and tr["calls"] == []
 
 
 def test_tool_loop_stops_when_budget_exhausted(tmp_path):
@@ -291,7 +354,7 @@ def test_generate_in_workspace_overrides_model_claims_with_git_evidence(tmp_path
     log = subprocess.run(["git", "-C", str(repo), "log", "--oneline", "ticket/T1"], capture_output=True, text=True, encoding="utf-8").stdout
     assert "feat(T1): thêm f" in log and "+def f():" in ws.diff()
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
-    assert acts == ["tools_used", "local_checks"]
+    assert acts == ["tools_used", "tools_trace", "local_checks"]
 
 
 def test_generate_in_workspace_reports_failing_tests_truthfully(tmp_path):
@@ -308,7 +371,7 @@ def test_generate_in_workspace_rejects_pr_without_changes(tmp_path):
     bus = InMemoryBus()
     with pytest.raises(RunnerError, match="không sửa file"):
         AgentRunner(bus, client).generate_in_workspace("builder", _task_env(), ws)
-    assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["tools_used", "invalid_output"]
+    assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["tools_used", "tools_trace", "invalid_output"]
 
 
 # ---------- orchestrator với repo thật ----------

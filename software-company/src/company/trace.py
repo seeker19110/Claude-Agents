@@ -85,12 +85,33 @@ def _belongs(e: Envelope, scope: dict[str, Any]) -> bool:
     return _plan_of(pid, d.get("subject_id")) or _plan_of(pid, e.key)
 
 
+def _gop_lap(calls: list[Any]) -> list[dict[str, Any]]:
+    """Gộp các lần gọi LIÊN TIẾP cùng bộ ba (name, args_hash, out_hash) — vd. vòng lặp tool poll trạng thái gọi
+    lại y hệt nhiều lần — thành MỘT dòng `×N` khi N ≥ 3. Dưới 3 lần thì để riêng: 2 lần giống nhau vẫn còn ít để
+    người đọc tự thấy, gộp sớm chỉ làm mất thứ tự thật."""
+    out: list[dict[str, Any]] = []
+    i = 0
+    while i < len(calls):
+        j = i + 1
+        key = (calls[i].get("name"), calls[i].get("args_hash"), calls[i].get("out_hash"))
+        while j < len(calls) and (calls[j].get("name"), calls[j].get("args_hash"), calls[j].get("out_hash")) == key:
+            j += 1
+        n = j - i
+        if n >= 3:
+            row = dict(calls[i]); row["n"] = n
+            out.append(row)
+        else:
+            out.extend(calls[i:j])
+        i = j
+    return out
+
+
 def _row(e: Envelope, prev: datetime | None, agents: dict[str, Any]) -> dict[str, Any]:
     p = e.payload
     row: dict[str, Any] = {"at": e.ts.isoformat(), "wait_s": round((e.ts - prev).total_seconds(), 3) if prev else 0.0,
                            "topic": e.topic, "action": None, "actor": e.actor, "agent": None, "tier": None, "model": None,
-                           "tokens": 0, "cost_usd": 0.0, "tools": None, "gate": None, "retry": None, "error": None,
-                           "note": None, "event_id": e.event_id}
+                           "tokens": 0, "cost_usd": 0.0, "tools": None, "sub": None, "gate": None, "retry": None,
+                           "error": None, "note": None, "event_id": e.event_id}
     spec = agents.get(e.actor)
     if spec is not None:
         row["agent"] = e.actor; row["tier"] = getattr(spec, "model_tier", None)
@@ -110,6 +131,15 @@ def _row(e: Envelope, prev: datetime | None, agents: dict[str, Any]) -> dict[str
     elif act == "tools_used":
         calls = d.get("calls") or {}
         row["tools"] = {str(k): int(v) for k, v in calls.items()} if isinstance(calls, dict) else None
+    elif act == "tools_trace":
+        # 4L-2: vết TỪNG lời gọi (`ToolBox.trace()`), một dòng `↳` mỗi call ở render() — riêng với `tools_used`
+        # (đếm gộp) ở trên. mode "cli" (ADR-0023) không đi qua `ToolBox` → `calls` rỗng: nói rõ bằng `note`,
+        # không im lặng in một khối `sub` rỗng.
+        calls = d.get("calls") or []
+        if isinstance(calls, list) and calls:
+            row["sub"] = _gop_lap(calls)
+        elif d.get("mode") == "cli":
+            row["note"] = "(tool do CLI chạy, không có vết)"
     elif act == "llm_retry":
         row["retry"] = int(d.get("attempts") or 1); row["note"] = "; ".join(str(x) for x in d.get("notes") or [])[:120] or None
     elif act in {"gate.request", "gate.decide"}:
@@ -186,6 +216,11 @@ def render(t: dict[str, Any]) -> str:
         if r["error"]: parts.append(f"LỖI {r['error']}")
         if r["note"]: parts.append(r["note"])
         out.append("  | ".join(parts))
+        if r["sub"]:
+            for c in r["sub"]:
+                args = " ".join(f"{k}={v}" for k, v in (c.get("args") or {}).items())
+                rep = f" ×{c['n']}" if c.get("n") else ""
+                out.append(f"    ↳ {c['name']}({args}) {'ok' if c['ok'] else 'LỖI'} {c['chars']}c {c['ms']}ms{rep}")
     return "\n".join(out)
 
 

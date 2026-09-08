@@ -46,7 +46,7 @@ def test_author_tests_dien_bang_chung_that_va_do_la_dung(tmp_path: Path) -> None
     assert p["files"] == [TEST_FILE], "danh sách file do git nói, không phải model khai"
     assert p["branch"] == "ticket/T1" and len(p["commit"]) >= 7 and p["blind"] is True
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
-    assert acts == ["tools_used", "tests_red_as_expected"]
+    assert acts == ["tools_used", "tools_trace", "tests_red_as_expected"]
 
 
 def test_author_tests_khong_ghi_duoc_file_nguon(tmp_path: Path) -> None:
