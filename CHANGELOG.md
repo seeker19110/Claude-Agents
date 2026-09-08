@@ -39,7 +39,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   `LLMError` trần vẫn phải là lỗi agent, bản vá không được nuốt cả lỗi thật. Đã chạy: core 162 test / phủ 100%;
   studio 477 + 5 skip / phủ 100%; company 1023; console 233 (không sửa một dòng — shim giữ nguyên bề mặt
   `company.routing`/`studio.routing`, `console/collect.py` nhập qua đó). `routing` thêm vào `SHIM` của
-  `test_shim_core.py` hai bên (#PRNUM)
+  `test_shim_core.py` hai bên (#176)
 
 - refactor(core): K3.3c3 **bước 2** — `ClaudeCodeClient` lên `xagents_core.llm` dưới dạng **lớp cơ sở chỉ có
   transport**, kèm `cli_exit_error`. Đây là bước cuối của K3.3c, và điều đáng ghi nhất là **nó KHÔNG hợp nhất cả

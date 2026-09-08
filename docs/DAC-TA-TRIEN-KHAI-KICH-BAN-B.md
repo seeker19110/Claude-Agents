@@ -369,7 +369,7 @@ package đang gọi `company.llm.load_config()` không đổi.
   chuỗi/prefix; thêm test studio `test_transient_hoan_khong_dung`.
 - **K5 mở khoá sau PR này.**
 
-> **Trạng thái: K3.3 XONG** (a #150 · c1 #152 · c2 #173 · c3 bước 1 #174 · c3 bước 2 #175 · **d #PRNUM**). K3.3 không đi
+> **Trạng thái: K3.3 XONG** (a #150 · c1 #152 · c2 #173 · c3 bước 1 #174 · c3 bước 2 #175 · **d #176**). K3.3 không đi
 > một PR như đặc tả viết mà tách năm bước theo *mức rủi ro* — lý do và số đo `difflib` từng bước ghi ở
 > `xagents-core/src/xagents_core/llm.py` (docstring) và `docs/sessions/2026-09-08.md`.
 >
