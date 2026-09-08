@@ -85,6 +85,11 @@ def _release(o: Orchestrator, agent: str, rc: Envelope, r: Route) -> Envelope:
         p = {**p, "version": want}
     if r.target_env == "staging" and p.get("status") == "deployed":
         p = o._smoke(agent, rc, rid, p, integ)
+    if p.get("status") == "deployed" and r.target_env is not None:
+        # ADR-0039: lời khai `deployed` mới chỉ là yêu cầu đi tiếp. Orchestrator dựng compose file của khách rồi
+        # TỰ kết luận (`deployed` | `deploy_failed`); `skipped` giữ nguyên hành vi cũ. `r.target_env` là env của
+        # ROUTE — production chỉ tới đây qua `PROD_ROUTE` (sau Gate 3), không có cổng nào khác.
+        p = o._deploy_release(agent, rc, rid, p, integ, r.target_env)
     return o.runner.publish(agent, rc, r.topic_out, p, key=rid, tokens=g.tokens, model=g.model, generated=g)
 
 def _deliver(o: Orchestrator, env: Envelope, res: StepResult) -> None:

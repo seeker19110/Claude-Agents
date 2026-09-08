@@ -8,7 +8,9 @@ import {$, Q, esc, hay, hl, num, sortRows} from "./util.js";
 
 /* ---------- sự thật giao hàng ---------- */
 export const TONE={void:"void",rc:"wait",staging_failed:"bad",staging_pending_human:"bad",staging_deployed:"wait",qa_failed:"bad",gate3_missing:"bad",
-  gate3:"wait",gate3_approved:"wait",production_failed:"bad",production_pending_human:"bad",production:"done",delivered:"done"};
+  gate3:"wait",gate3_approved:"wait",production_failed:"bad",production_pending_human:"bad",production:"done",delivered:"done",
+  /* ADR-0039: deploy hỏng = container không chạy được. Cũng đỏ, nhưng là bậc riêng — ticket không bị trả về làm lại. */
+  staging_deploy_failed:"bad",production_deploy_failed:"bad"};
 /* C1 — phễu SẢN PHẨM. Quy tắc duy nhất đáng nhớ: n===0 thì ô XÁM. Cả trang đêm 05/09 xanh trong khi
    0 release ra production, vì "không có gì" và "không có vấn đề" được vẽ giống hệt nhau. */
 export const PF_SMOKE={ok:"smoke ✓ máy chạy thật",fail:"smoke THẤT BẠI",unverified:"smoke KHÔNG kiểm được"};

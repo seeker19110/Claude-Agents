@@ -314,6 +314,11 @@ class DeliveryLead:
                 raise PermissionError(f"{rid}: deploy production khi human gate chưa duyệt")
             for tid in self.release_tickets[rid]:
                 if self.state.get(tid) == "merged": self._set(tid, "released")
+        # ADR-0039: `deploy_failed` CỐ Ý không nằm trong tập dưới. `failed`/`rolled_back` nói "sản phẩm hỏng" nên
+        # ticket quay về `changes_requested` cho kỹ sư làm lại; `deploy_failed` nói "chưa dựng được môi trường
+        # chạy" — thường là hạ tầng máy trực (thiếu docker, cổng bận, compose của khách sai) chứ không phải code.
+        # Trả 14 ticket về rework vì một cổng bận là đúng hình dạng lỗi mà ADR-0039 sinh ra để chấm dứt. Ticket
+        # nằm yên, gate escalation của RC là chỗ người quyết (`verify.deploy_release`).
         elif p["status"] in {"rolled_back", "failed"}:
             for tid in self.release_tickets[rid]:
                 if self.state.get(tid) in {"merged", "released"}:

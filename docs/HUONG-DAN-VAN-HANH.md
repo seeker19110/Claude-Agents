@@ -540,6 +540,61 @@ con đã lọc `GH_*`/`GITHUB_*`, nên token trong biến môi trường không 
 và audit `delivery.pr_opened | pr_reused | pr_skipped | pr_failed`; `gh` lỗi hay remote không phải GitHub thì bản giao
 vẫn xong, chỉ thiếu PR (mở tay). Hồ sơ `gate_brief UAT-<rid>` có mục "PR giao hàng" để người duyệt đối chiếu số PR.
 
+#### Deploy thật bằng `docker compose` (ADR-0039)
+
+Trước ADR-0039, `status=deployed` chỉ là lời khai của `ops`: không tiến trình nào của sản phẩm còn sống sau lượt
+ấy (smoke ADR-0029 khởi động — probe — **giết**). Nay orchestrator dựng compose file **của khách** rồi tự kết
+luận, và `deployed` nghĩa là *container đang chạy*.
+
+Ba biến/khoá người vận hành cần biết:
+
+| Đặt ở đâu | Tên | Giá trị | Nghĩa |
+|---|---|---|---|
+| env máy trực | `COMPANY_DEPLOY` | `auto` (mặc định) \| `compose` \| `off` | `auto`: có runtime trên PATH thì deploy, không có thì **bỏ qua kèm lý do**. `compose`: khai đích danh — thiếu binary là **lỗi**, không tụt về "coi như xong". `off`: giữ hành vi trước ADR-0039. |
+| env máy trực | `COMPANY_DEPLOY_RUNTIME` | mặc định `docker` | Đổi khi runtime tên khác (`podman`). Chỉ bốn lệnh con được chạy: `up -d`, `ps`, `logs --tail`, `down`. |
+| spec (`approved-specs.runtime.deploy`) | đường dẫn compose file trong repo khách | vd. `deploy/compose.yaml` | Không khai thì dò `docker-compose.yml`, `compose.yaml`. Khai một file **không tồn tại** → bỏ qua kèm lý do, **không** lặng lẽ rơi về file dò được. |
+
+Kết luận của orchestrator, đọc ở `release-events.evidence.deploy` (và audit `release.deploy` /
+`release.deploy_failed` / `release.deploy_skipped`):
+
+- **`status=deployed`** — `up -d` thoát 0 **và** mọi service `running` **và** smoke vào cổng đã map trả đúng
+  `expect_status`. Bằng chứng kèm `container_ids`, `port`, `started_at`, `smoke`, `verified_by: orchestrator`.
+  Container **không** bị giết sau lượt: sản phẩm phải còn sống.
+- **`status=deploy_failed`** — thiếu bất kỳ phần nào. Evidence nói phần nào hỏng + `logs_tail`; container đã được
+  `compose down` tự động. RC dừng lại, gate escalation mở cho người quyết. **Khác `failed`**: ticket của RC không
+  bị trả về làm lại — đây thường là chuyện hạ tầng máy trực (thiếu docker, cổng bận, compose sai), không phải code.
+- **bỏ qua (`evidence.deploy.skipped`)** — chưa bật, không có compose file, spec không khai `runtime`, không có
+  worktree. Hành vi y như trước ADR-0039; nhưng "bỏ qua" **không phải** "đã deploy", và evidence nói rõ lý do.
+
+Mỗi môi trường là một compose project riêng do code đặt tên: `company-<project_id>-<env>`. Production vẫn **chỉ**
+tới được qua đường cũ — `PROD_ROUTE` sau khi người ký gate release; ADR-0039 không thêm cổng nào. Cổng là của
+compose file khách; lệnh dừng khẩn container và cảnh báo tranh cổng ở `TRUC-VA-DUNG-KHAN.md` §1 mức 4.
+
+**Chạy thật một lần rồi ghi báo cáo (nghiệm thu D1).** CI không dựng container thật được (ma trận còn
+`windows-latest`), nên D1 **chưa đóng** cho tới khi có `docs/reports/2026-09-xx-deploy-that.md`. Người vận hành làm
+đúng các bước sau trên máy trực rồi dán kết quả vào báo cáo đó:
+
+```bash
+docker info | head -3                       # 1. có daemon thật (không chỉ có CLI); không có thì dừng ở đây
+export COMPANY_DEPLOY=compose               # 2. khai đích danh: thiếu binary phải LỖI, không im lặng bỏ qua
+cd software-company
+# 3. repo khách có compose file, và spec của dự án khai runtime.deploy trỏ đúng file đó
+uv run python -m company.orchestrator --repo ../khach --integration company/integration --deliver run --watch 5
+# 4. duyệt gate release khi tới:
+uv run python -m company.gate_cli approve REL-00x --by human:<tên> --reason "<root_cause — decision — hint>"
+# 5. bằng chứng máy sinh:
+uv run python -m company.orchestrator trace REL-00x          # dòng thời gian: release.deploy / release.deploy_failed
+sqlite3 company.sqlite "select body from events where topic='release-events' order by seq desc limit 1;"
+docker ps --filter "name=company-" --format "{{.Names}}\t{{.Status}}\t{{.Ports}}"
+curl -i http://127.0.0.1:<port đã map>/<health>
+# 6. dọn khi xong đo:
+docker compose -p company-<project_id>-production down
+```
+
+Báo cáo phải có: output bước 5 (dán nguyên văn), tên project, id container, cổng, `smoke.http_status`, thời gian
+`up -d`, và **một ca hỏng cố ý** (sửa compose cho service chết) để chứng minh `deploy_failed` + `down` tự động chạy
+thật chứ không chỉ chạy trong test.
+
 Thêm `--test-author` để **bộ test do một lượt khác viết** (ADR-0028): `qa` chạy pha `author`, đọc `acceptance` của
 ticket (không thấy code, không thấy diff, không thấy `hint` của vòng trước), ghi **chỉ** file test và commit vào nhánh
 ticket; rồi `builder` viết code cho tới khi bộ test đó xanh mà **không ghi và không xoá được** file test — ranh giới
