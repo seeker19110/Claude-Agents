@@ -206,5 +206,9 @@ def test_pham_vi_bon_adapter_chua_len_core():
     import xagents_core.llm as m
 
     assert hasattr(m, "Completion"), "K3.3c1 đã mang Completion lên core"
-    for ten in ("AnthropicClient", "OpenAICompatClient", "ClaudeCodeClient", "CodexClient", "FakeClient"):
-        assert not hasattr(m, ten), f"{ten} lên core là bước sau (K3.3c2/c3), không phải chuyển mã thuần"
+    for ten in ("AnthropicClient", "CodexClient", "FakeClient"):
+        assert hasattr(m, ten), f"K3.3c2 đã mang {ten} lên core (eval replay 78 ca giống hệt bản trước)"
+    for ten in ("OpenAICompatClient", "ClaudeCodeClient"):
+        assert not hasattr(m, ten), (
+            f"{ten} là K3.3c3 — hai cái này lệch nhất (0.72 / 0.39 đo sau c1) và mỗi cái là MỘT quyết định hợp "
+            "nhất riêng, không gộp một PR. Ai mang sang thì đổi ca này, và đổi nó là lúc phải hỏi 'eval replay đâu?'")

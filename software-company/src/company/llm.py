@@ -38,12 +38,9 @@ import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar, Protocol
+from typing import Any, ClassVar
 
 from xagents_core.config import CoreConfig
-
-# K3.3a: nền chung ở `xagents_core.llm`. Re-export TỪNG tên vì 14 module và test của company nhập chúng từ
-# `company.llm` — đổi nơi nhập của người gọi là sửa code cạnh bên, không thuộc PR chuyển mã.
 from xagents_core.llm import ARGV_LIMIT as ARGV_LIMIT
 from xagents_core.llm import CLAUDE_EFFORT as CLAUDE_EFFORT
 from xagents_core.llm import CLI_BASE_FLAGS as CLI_BASE_FLAGS
@@ -51,12 +48,22 @@ from xagents_core.llm import CLI_SUBTYPE_ERRORS as CLI_SUBTYPE_ERRORS
 from xagents_core.llm import CODEX_EFFORT as CODEX_EFFORT
 from xagents_core.llm import TIERS as TIERS
 from xagents_core.llm import TRANSIENT_HTTP as TRANSIENT_HTTP
+
+# K3.3a: nền chung ở `xagents_core.llm`. Re-export TỪNG tên vì 14 module và test của company nhập chúng từ
+# `company.llm` — đổi nơi nhập của người gọi là sửa code cạnh bên, không thuộc PR chuyển mã.
+from xagents_core.llm import AnthropicClient as AnthropicClient
+from xagents_core.llm import CodexClient as CodexClient
 from xagents_core.llm import Completion as Completion
+from xagents_core.llm import FakeClient as FakeClient
 from xagents_core.llm import LLMConfig as CoreLLMConfig
 from xagents_core.llm import LLMError as LLMError
+from xagents_core.llm import ModelClient as ModelClient
 from xagents_core.llm import Refused as Refused
 from xagents_core.llm import TransientError as TransientError
+from xagents_core.llm import anthropic_input_tokens as anthropic_input_tokens
+from xagents_core.llm import check_argv as check_argv
 from xagents_core.llm import cli_effort_args as cli_effort_args
+from xagents_core.llm import cli_env as cli_env
 from xagents_core.llm import find_codex_binary as find_codex_binary
 from xagents_core.llm import load_config as core_load_config
 from xagents_core.llm import neutral_messages as neutral_messages
@@ -73,23 +80,6 @@ from .tools import ToolCall, ToolSpec
 # Giữ tên cũ vì console (`collect.py`) và test đọc chúng từ module này; nguồn nay là `CORE`.
 ROOT = CORE.root
 CONFIG_FILE = CORE.config_file
-class ModelClient(Protocol):
-    """Một lời gọi = system + user + JSON Schema đầu ra + tier. Provider nào cũng phải trả `Completion`.
-
-    `cache_key` (thường là agent id) giúp provider định tuyến request cùng một system prompt vào cùng một
-    cache; provider không hỗ trợ thì bỏ qua.
-
-    Tool-use (ADR-0010): `tools` là bảng tool trung lập; `messages` là hội thoại nhiều lượt theo định dạng trung lập
-    (thay cho `user`): {"role": "user", "content"}, {"role": "assistant", "content", "tool_calls": [...]},
-    {"role": "tool", "tool_call_id", "content"}. Model muốn gọi tool thì `Completion.tool_calls` khác rỗng.
-
-    Tuỳ chọn `bind_toolbox(tb)` (ADR-0024): runner đưa cả `ToolBox` thật cho client nào chạy được vòng tool bên trong
-    provider mà vẫn gọi ngược lại tool của công ty. Client không có phương thức này thì runner chạy vòng tool như cũ."""
-    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
-                 cache_key: str | None = None, tools: list[ToolSpec] | None = None,
-                 messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion: ...
-
-
 # ---------- cấu hình ----------
 
 @dataclass
@@ -275,80 +265,6 @@ def make_client(cfg: LLMConfig | None = None) -> ModelClient:
 
 # ---------- provider: Anthropic ----------
 
-def anthropic_input_tokens(usage: Any) -> tuple[int, int, int]:
-    """(tổng input tính tiền, đọc từ cache, ghi vào cache) từ `usage` của Anthropic.
-
-    Anthropic để token cache RA NGOÀI `input_tokens`. Không cộng lại thì `audit-log.tokens` bỏ sót gần hết
-    system prompt (phần lặp giữa các lượt nằm hết trong cache) và hạn mức của supervisor sẽ không bao giờ chạm."""
-    read = getattr(usage, "cache_read_input_tokens", 0) or 0
-    write = getattr(usage, "cache_creation_input_tokens", 0) or 0
-    return usage.input_tokens + read + write, read, write
-
-class AnthropicClient:
-    """Claude qua SDK chính thức: streaming, adaptive thinking, structured output theo JSON Schema."""
-
-    def __init__(self, cfg: LLMConfig | None = None, timeout: float = 600.0):
-        try:
-            import anthropic
-        except ImportError as e:  # pragma: no cover
-            raise RuntimeError("cài SDK: uv sync --extra anthropic") from e
-        self.cfg = cfg or load_config()
-        self._anthropic = anthropic
-        # Không có timeout thì một request treo giữ luôn cả orchestrator (vòng lặp tuần tự, một tiến trình).
-        self._client = anthropic.Anthropic(timeout=timeout)
-
-    @staticmethod
-    def _messages(msgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Định dạng trung lập → content block của Anthropic (tool_use / tool_result)."""
-        out: list[dict[str, Any]] = []
-        for m in msgs:
-            if m["role"] == "assistant":
-                blocks: list[dict[str, Any]] = [{"type": "text", "text": m["content"]}] if m.get("content") else []
-                blocks += [{"type": "tool_use", "id": t["id"], "name": t["name"], "input": t["args"]} for t in m.get("tool_calls", [])]
-                out.append({"role": "assistant", "content": blocks})
-            elif m["role"] == "tool":
-                block = {"type": "tool_result", "tool_use_id": m["tool_call_id"], "content": m["content"]}
-                if out and out[-1]["role"] == "user" and isinstance(out[-1]["content"], list):
-                    out[-1]["content"].append(block)  # nhiều tool_result cùng một lượt user
-                else:
-                    out.append({"role": "user", "content": [block]})
-            else:
-                out.append({"role": "user", "content": m["content"]})
-        return out
-
-    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
-                 cache_key: str | None = None, tools: list[ToolSpec] | None = None,
-                 messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion:
-        kwargs: dict[str, Any] = dict(
-            model=self.cfg.model_for(model_tier), max_tokens=self.cfg.max_tokens,
-            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-            messages=self._messages(neutral_messages(user, messages)),
-            thinking={"type": "adaptive"},
-            output_config={"effort": self.cfg.effort.get(model_tier, "medium"),
-                           "format": {"type": "json_schema", "schema": strict_schema(schema)}},
-            **self.cfg.extra,
-        )
-        if tools:
-            kwargs["tools"] = [{"name": t.name, "description": t.description, "input_schema": t.parameters} for t in tools]
-        try:
-            with self._client.messages.stream(**kwargs) as stream:
-                msg = stream.get_final_message()
-        except self._anthropic.APIConnectionError as e:
-            raise TransientError(f"lỗi mạng: {e}") from e
-        except self._anthropic.APIStatusError as e:
-            if e.status_code in TRANSIENT_HTTP:
-                raise TransientError(f"API {e.status_code}: {e.message}", status=e.status_code) from e
-            raise LLMError(f"API {e.status_code}: {e.message}", status=e.status_code) from e
-        if msg.stop_reason == "refusal":
-            raise Refused(f"model từ chối: {getattr(getattr(msg, 'stop_details', None), 'category', None)}")
-        text = next((b.text for b in msg.content if b.type == "text"), "")
-        calls = [ToolCall(id=b.id, name=b.name, args=dict(b.input or {})) for b in msg.content if b.type == "tool_use"]
-        inp, read, write = anthropic_input_tokens(msg.usage)
-        return Completion(text=text, input_tokens=inp, output_tokens=msg.usage.output_tokens,
-                          model=msg.model, stop_reason=msg.stop_reason or "end_turn",
-                          cached_input_tokens=read, cache_write_tokens=write, tool_calls=calls)
-
-
 # ---------- provider: OpenAI-compatible (không cần SDK) ----------
 
 class OpenAICompatClient:
@@ -497,16 +413,6 @@ class OpenAICompatClient:
 
 # ---------- provider CLI: giới hạn argv ----------
 
-def check_argv(args: list[str]) -> None:
-    """Prompt dài không được đi qua argv (đã chuyển sang stdin); phần còn lại vượt trần thì báo rõ thay vì để hệ điều
-    hành thoát với `Argument list too long` / `The command line is too long` khó hiểu (system prompt tự nó đi qua
-    `--system-prompt-file`, xem `system_prompt_args`, nên không còn là nguồn chính gây vượt trần)."""
-    total = sum(len(a) + 1 for a in args)
-    if total > ARGV_LIMIT:
-        raise LLMError(f"argv của CLI dài {total} ký tự > {ARGV_LIMIT} (system prompt quá lớn; rút gọn prompt/skill hoặc "
-                       "đổi provider API)")
-
-
 # ---------- provider: Claude Code CLI (gói Claude Pro/Max đã đăng nhập trên máy, không cần API key) ----------
 
 # ---------- provider claude-code: chế độ tool CLI ----------
@@ -606,18 +512,6 @@ def cli_lacks_mcp(err: str) -> bool:
 # vẫn chạm error_max_turns khi model cần sửa JSON nhiều vòng (đo được 2026-09-05: reviewer trên QLKH-011, effort
 # low, review-results có payload lớn/nhiều trường enum) — nâng 6 để còn dư khi model sửa JSON 2-3 lần.
 CLI_NO_TOOL_TURNS = 6
-
-def cli_env(keep_prefixes: tuple[str, ...] = ()) -> dict[str, str]:
-    """Env cho tiến trình CLI model (claude/codex): lọc như lệnh con của workspace (`clean_env`), trừ các tiền tố mà
-    CLI cần để đăng nhập; khoá `COMPANY_LLM_*`/`STUDIO_LLM_*` của công ty không bao giờ đi theo."""
-    from .workspace import SECRET_ENV
-    out = {}
-    for k, v in os.environ.items():
-        if k.upper().startswith(("COMPANY_LLM", "STUDIO_LLM")): continue
-        if SECRET_ENV.search(k) and not k.upper().startswith(tuple(p.upper() for p in keep_prefixes)): continue
-        out[k] = v
-    return out
-
 
 def cli_settings_json() -> str:
     """Settings tạm cho `claude -p`: chặn đọc/ghi file bí mật. `--restricted` bỏ qua settings user/project nhưng
@@ -800,122 +694,5 @@ class ClaudeCodeClient:
 
 # ---------- provider: Codex CLI (gói ChatGPT Plus/Pro đã `codex login` trên máy, không cần API key) ----------
 
-class CodexClient:
-    """Gọi `codex exec --json` như một model backend: mỗi lượt một tiến trình con, sandbox read-only trong
-    thư mục rỗng (không tool của công ty; Codex có thể tự đọc thư mục rỗng đó, vô hại), system prompt ghép vào đầu prompt vì
-    CLI không có cờ system riêng. Schema nhúng vào prompt, không dùng `--output-schema` (strict mode của OpenAI bắt mọi thuộc
-    tính phải `required`, không hợp schema topic có trường tuỳ chọn). Đầu ra JSONL: `item.completed` (agent_message) là câu trả lời, `turn.completed` mang
-    `usage` (input đã gồm phần cache như OpenAI), `error` / `turn.failed` là lỗi (CLI vẫn thoát mã 0).
-    Nhiều tài khoản ChatGPT trên một máy: `config_dir` → CODEX_HOME riêng (`CODEX_HOME=~/.codex-acc2 codex login`)."""
-
-    def __init__(self, cfg: LLMConfig | None = None, binary: str | None = None, timeout: float = 900.0,
-                 runner: Callable[[list[str], str], str] | None = None):
-        import shutil
-        import tempfile
-        self.cfg = cfg or load_config()
-        explicit = binary or self.cfg.binary
-        self.binary = (shutil.which(explicit) or explicit) if explicit else find_codex_binary()
-        self.timeout = timeout
-        self.workdir = Path(tempfile.mkdtemp(prefix="codex-empty-"))
-        self.env = cli_env(keep_prefixes=("OPENAI_", "CODEX_"))  # như ClaudeCodeClient: không mang khoá công ty vào CLI
-        if self.cfg.config_dir:
-            self.env["CODEX_HOME"] = str(Path(self.cfg.config_dir).expanduser())
-        self._run = runner or self._subprocess
-
-    def _subprocess(self, args: list[str], stdin: str) -> str:
-        import subprocess
-        try:
-            r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                               input=stdin, timeout=self.timeout, env=self.env)
-        except FileNotFoundError as e:
-            raise LLMError(f"không tìm thấy `{self.binary}` (cài Codex CLI hoặc đặt `binary:` cho backend)") from e
-        except subprocess.TimeoutExpired as e:
-            raise TransientError(f"codex exec quá {self.timeout}s") from e
-        if r.returncode != 0:
-            detail = (r.stdout[-600:] + "\n" + r.stderr[-300:]).strip()
-            raise LLMError(f"codex exec thoát mã {r.returncode}: {detail}")
-        return r.stdout
-
-    def _args(self, model: str, effort: str) -> list[str]:
-        # Không có prompt vị trí: `codex exec` đọc prompt từ stdin (system + user + schema đều nằm trong đó).
-        return [self.binary, "exec", "--ignore-user-config", "--ephemeral", "--skip-git-repo-check", "-s", "read-only",
-                "-C", str(self.workdir), "--json", "-m", model,
-                "-c", f"model_reasoning_effort={CODEX_EFFORT.get(effort, 'medium')}"]
-
-    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
-                 cache_key: str | None = None, tools: list[ToolSpec] | None = None,
-                 messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion:
-        if tools:
-            raise LLMError("codex không hỗ trợ tool-use của công ty; agent cần tool phải đi backend anthropic/openai")
-        model = self.cfg.model_for(model_tier)
-        msgs = neutral_messages(user, messages)
-        body = msgs[0]["content"] if len(msgs) == 1 else "\n\n".join(f"[{m['role']}]\n{m.get('content') or ''}" for m in msgs)
-        hint = "# JSON Schema bắt buộc cho câu trả lời\n```json\n" + json.dumps(schema, ensure_ascii=False) + "\n```"
-        prompt = (f"# Vai trò và quy tắc\n{system}\n\n# Yêu cầu\n{body}\n\n{hint}\n\n"
-                  "Trả lời DUY NHẤT một JSON đúng schema trên, không giải thích, không đọc hay chạy gì trong thư mục làm việc.")
-        args = self._args(model, self.cfg.effort.get(model_tier, "medium"))
-        check_argv(args)
-        out = self._run(args, prompt)
-        texts: list[str] = []; usage: dict[str, Any] = {}; errors: list[str] = []
-        for line in out.splitlines():
-            line = line.strip()
-            if not line.startswith("{"): continue
-            try: ev = json.loads(line)
-            except json.JSONDecodeError: continue
-            t = ev.get("type")
-            if t == "item.completed":
-                item = ev.get("item") or {}
-                if item.get("type") == "agent_message": texts.append(str(item.get("text") or ""))
-                elif item.get("type") == "error": errors.append(str(item.get("message") or ""))
-            elif t == "turn.completed": usage = ev.get("usage") or {}
-            elif t == "error": errors.append(str(ev.get("message") or ""))
-            elif t == "turn.failed": errors.append(str((ev.get("error") or {}).get("message") or ""))
-        fatal = [e for e in errors if "Defaulting to fallback metadata" not in e]   # cảnh báo metadata model không phải lỗi
-        if fatal and not texts:
-            msg = " | ".join(fatal)[:400]
-            low = msg.lower()
-            if any(s in low for s in ("429", "rate", "limit", "quota", "overloaded", "usage", "503", "502", "timeout")):
-                raise TransientError(f"codex exec: {msg}")
-            if "not logged in" in low or "login" in low:
-                raise LLMError(f"codex exec: chưa đăng nhập (CODEX_HOME={self.env.get('CODEX_HOME', '~/.codex')}): {msg}")
-            raise LLMError(f"codex exec lỗi: {msg}")
-        if not texts:
-            raise LLMError(f"codex exec không trả agent_message: {out[:300]}")
-        inp = int(usage.get("input_tokens", 0) or 0); cached = int(usage.get("cached_input_tokens", 0) or 0)
-        write = int(usage.get("cache_write_input_tokens", 0) or 0)
-        return Completion(text=texts[-1], input_tokens=inp, output_tokens=int(usage.get("output_tokens", 0) or 0),
-                          model=model, cached_input_tokens=cached, cache_write_tokens=write)
-
-
 # ---------- provider: giả (test / eval offline) ----------
 
-@dataclass
-class FakeClient:
-    """`responses` là hàng đợi dict trả về theo thứ tự, hoặc `handler(system, user)` sinh payload."""
-    responses: list[dict[str, Any]] = field(default_factory=list)
-    handler: Callable[[str, str], dict[str, Any]] | None = None
-    tokens_per_call: tuple[int, int] = (1_000, 300)
-    calls: list[dict[str, Any]] = field(default_factory=list)
-    # tool_handler(messages, tools) → danh sách ToolCall; rỗng = model trả lời cuối (qua handler/responses như thường)
-    tool_handler: Callable[[list[dict[str, Any]], list[ToolSpec]], list[ToolCall]] | None = None
-
-    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
-                 cache_key: str | None = None, tools: list[ToolSpec] | None = None,
-                 messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion:
-        msgs = neutral_messages(user, messages)
-        user = next(m["content"] for m in msgs if m["role"] == "user")
-        self.calls.append({"system": system, "user": user, "schema": schema, "model_tier": model_tier,
-                           "cache_key": cache_key, "tools": [t.name for t in tools or []], "messages": msgs})
-        if tools and self.tool_handler:
-            wanted = self.tool_handler(msgs, tools)
-            if wanted:
-                return Completion(text="", input_tokens=self.tokens_per_call[0], output_tokens=self.tokens_per_call[1],
-                                  model=f"fake-{model_tier}", stop_reason="tool_use", tool_calls=list(wanted))
-        if self.handler:
-            payload = self.handler(system, user)
-        elif self.responses:
-            payload = self.responses.pop(0)
-        else:
-            raise LLMError("FakeClient hết câu trả lời")
-        return Completion(text=json.dumps(payload, ensure_ascii=False), input_tokens=self.tokens_per_call[0],
-                          output_tokens=self.tokens_per_call[1], model=f"fake-{model_tier}")
