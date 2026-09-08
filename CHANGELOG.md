@@ -6,6 +6,28 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(core): **K3.5b — `bus` lên `xagents_core`; studio lần đầu có ACL topic, bảng ACL ĐO chứ không suy**. (#179)
+  `difflib` giữa hai `bus.py` là **0.06**, nhưng con số ấy không nói "hai bus khác bản chất" — nó nói bus studio
+  61 dòng **chưa làm phần lớn việc** mà bus company 206 dòng đã làm (không validate envelope, không ACL topic,
+  không `latest`, không khoá, không `_notify_safely`). Lệch vì MỘT BÊN THIẾU, khác hẳn K3.5a nơi lệch vì mỗi
+  miền có trường riêng. Nên core giữ **toàn bộ cơ chế**, thứ mỗi công ty đưa vào là **dữ liệu** (`CoreConfig`):
+  `topic_acl`, `payload_models`, `namespace_owners` — ba trường khai sẵn từ K3.1 nay mới điền.
+  **Bảng ACL của studio đo từ event thật, không đọc từ front matter `writes`.** Bọc `publish`, chạy cả suite,
+  ghi `(actor, topic)` kèm khung ngăn xếp: **76 cặp**, 40 cặp ngoài `open_topics` — **26 cặp production**
+  (thành bảng) và **14 cặp chỉ có trong `tests/`**. Nguồn hiển nhiên là nguồn sai: quá nửa event studio do CODE
+  phát, và `writes` không biết `renderer`, `desk`, `orchestrator`, `adapter:youtube`, `chapters` — viết ACL từ
+  `writes` là chặn cả năm ngay lần chạy đầu. 14 cặp test-only **sửa tên actor trong fixture** (4 file, ~12 dòng),
+  không mở lối cho chúng: mở lối là chọc thủng đúng lớp vừa thêm vào — và nay chính test cấm mở
+  (`test_producer_agent_la_tap_con_cua_front_matter_writes` đỏ nếu ai thêm một actor không phải agent, không
+  phải code).
+  **Việc bật validate envelope làm lộ một thứ K3.5a để lại**: 19 schema `topics/` của studio có
+  `additionalProperties: false` mà chưa biết ba trường `schema_version`/`correlation_id`/`causation_id` K3.5a
+  thêm vào — studio khi ấy không validate envelope nên không ai thấy. 143 ca đỏ cùng lúc, sửa bằng một lượt vá
+  19 schema, và nay có một ca nói thẳng điều đó thay vì 143 ca đỏ khó đọc.
+  **Company không sửa một dòng test nào** (1027 xanh). Console sửa **1 dòng**: câu lỗi thiếu trường của studio
+  nay là câu của `jsonschema` giống company, không còn là vòng lặp `required` tự viết — đặc tả đoán "console 0
+  dòng", chỗ lệch đã ghi. Đo hai chiều 8 đột biến.
+
 - refactor(core): **K3.5a — khung event lên `xagents_core`; K3.5 tách làm ba bước**. Đặc tả gộp `events` + `bus`
   + `sqlite_bus` vào một PR và tự gắn nhãn "rủi ro cao nhất". Đo `difflib` trước khi làm cho thấy ba module lệch
   rất khác nhau — `sqlite_bus` **0.44**, `events` **0.14**, `bus` **0.06**. Ở mức 0.06 hai file gần như không có

@@ -13,10 +13,12 @@ dependencies = [
 [dependency-groups]
 dev = [
     "mypy>=1.10",
-    # `types-PyYAML` chỉ cần ở core: bốn package kia chạy mypy với `--ignore-missing-imports` nên thư viện
-    # không có stub im lặng thành `Any`; core cố ý KHÔNG có cờ đó (ADR gốc 0001 §6 — lõi không được lỏng hơn
-    # nơi gọi nó), nên nó phải khai stub thật.
+    # `types-PyYAML`/`types-jsonschema` chỉ cần ở core: bốn package kia chạy mypy với `--ignore-missing-imports`
+    # nên thư viện không có stub im lặng thành `Any`; core cố ý KHÔNG có cờ đó (ADR gốc 0001 §6 — lõi không được
+    # lỏng hơn nơi gọi nó), nên nó phải khai stub thật. `types-jsonschema` vào ở K3.5b cùng `bus.py`: company
+    # dùng `jsonschema` từ lâu mà không cần stub vì nó CÓ cờ ấy — đúng cái bẫy "chạy sạch ở nơi gọi, đỏ ở lõi".
     "types-PyYAML>=6",
+    "types-jsonschema>=4.21",
     "pytest>=8",
     "pytest-cov>=5",
     "ruff>=0.5",

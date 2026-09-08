@@ -21,7 +21,7 @@
 | Khung event chung (`Envelope`, `AuditLog`, `SharedContext`, `SupervisorAction`, `can_transition`) | `xagents-core/src/xagents_core/events.py` — **LỚP CƠ SỞ** từ K3.5a; `src/company/events.py` kế thừa và thêm trường phạm vi của mình, thu hẹp `topic`/`namespace` về Literal. Model miền, `PAYLOAD_MODELS`, `TRANSITIONS` ở LẠI package | `xagents-core/tests/test_events.py` |
 | Thêm/đổi trường của một topic | `topics/schemas/<topic>.json` **và** model trong `src/company/events.py` (`PAYLOAD_MODELS`) | `tests/test_schema_consistency.py` |
 | Ai được ghi namespace blackboard nào | `NAMESPACE_OWNERS` trong `events.py`; bảng `topics/README.md` | — |
-| Ai được publish topic nào | `bus.py` `_check_publish` (producer hợp lệ theo registry) | `tests/test_bus.py` |
+| Ai được publish topic nào | bảng `TOPIC_PRODUCERS`/`HUMAN_TOPICS` ở `core.py`; cơ chế ở `xagents_core/bus.py` `_check_publish` | `tests/test_bus.py`, `xagents-core/tests/test_bus.py` |
 | Trạng thái ticket và chuyển đổi | `TicketState`, `TRANSITIONS` trong `events.py`; máy trạng thái `src/company/delivery.py` | `tests/test_delivery_and_gates.py` |
 | Review nào bắt buộc cho ticket | `DeliveryLead.required_reviews` (`delivery.py`); `RISK_TAGS` trong `events.py` | `tests/test_release_flow.py` |
 | Checklist human gate | `gates/checklists.md` → nguồn bằng chứng `src/company/gate_checklists.py` → `make subagents` | `tests/test_gate_brief.py`, `test_subagents.py` |

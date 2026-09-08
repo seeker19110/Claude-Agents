@@ -44,7 +44,9 @@ class CoreConfig:
     # `type[BaseModel]` để `Any`: nhập pydantic ở đây chỉ để chú kiểu sẽ buộc mọi thứ dùng CoreConfig phải có
     # pydantic trong đồ thị nhập, kể cả phần không đụng tới payload. Hợp đồng thật nằm ở nơi validate.
     payload_models: Mapping[str, Any] = field(default_factory=dict)
-    namespace_owners: Mapping[str, str] = field(default_factory=dict)
+    # ns → tập actor được ghi. Một namespace có thể có HAI chủ (`api-contract` của company: product + builder),
+    # nên giá trị là tập chứ không phải một chuỗi.
+    namespace_owners: Mapping[str, frozenset[str] | set[str]] = field(default_factory=dict)
     transitions: Mapping[str, frozenset[str]] = field(default_factory=dict)
     external_topics: frozenset[str] = frozenset()
     derived_topics: frozenset[str] = frozenset()

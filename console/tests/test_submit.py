@@ -117,8 +117,10 @@ def test_payload_sai_schema_company_thanh_submit_error(dbs) -> None:
 
 def test_payload_thieu_truong_bat_buoc_studio_thanh_submit_error(dbs) -> None:
     # Bus Studio kiểm trường bắt buộc theo JSON Schema (channel-briefs không có pydantic model nên không kiểm kiểu).
+    # K3.5b: studio dùng chung bus core nên câu lỗi nay là câu của `jsonschema`, giống hệt company — bản cũ
+    # ("thiếu trường bắt buộc") là của vòng lặp `required` tự viết trong bus studio 61 dòng, nay không còn.
     company_db, studio_db = dbs
-    with pytest.raises(sm.SubmitError, match="thiếu trường bắt buộc") as ei:
+    with pytest.raises(sm.SubmitError, match="không hợp lệ theo JSON Schema") as ei:
         sm.submit(company_db, studio_db, xuong=sm.STUDIO, topic="channel-briefs",
                   payload={"channel_id": "CH1", "goals": ["g"], "audience": "a"},   # thiếu pillars
                   actor="human")

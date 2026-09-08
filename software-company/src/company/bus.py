@@ -1,206 +1,44 @@
+"""Bus của company — cơ chế ở `xagents_core.bus`, dữ liệu ở `core.CORE` (K3.5b của ADR gốc 0001).
+
+Còn lại ở đây đúng ba thứ mà core không được biết: lớp `Envelope` của company, một luật riêng
+(`audit-log` mở cho mọi actor, nhưng `action="gate.decide"` chỉ người ghi), và các tên cũ được tái xuất để
+mọi nơi đang `from .bus import TOPIC_PRODUCERS` không phải đổi ở PR này.
+"""
 from __future__ import annotations
 
-import json
-import threading
-from collections import defaultdict
-from collections.abc import Callable, Iterable
-from pathlib import Path
+from typing import Any
 
-from jsonschema import Draft202012Validator, FormatChecker
-from pydantic import ValidationError
+from xagents_core.bus import BusError as BusError
+from xagents_core.bus import InMemoryBus as CoreInMemoryBus
+from xagents_core.bus import PermissionDenied as PermissionDenied
+from xagents_core.bus import is_human as is_human
+from xagents_core.bus import producer_allowed as _producer_allowed
 
-from .events import NAMESPACE_OWNERS, PAYLOAD_MODELS, Envelope
-from .roles import ENGINEERING, LEAD_ACTOR, ROLE, SOURCE
+from .core import CORE
+from .core import ENGINEERING_ACTORS as ENGINEERING_ACTORS
+from .core import HUMAN_TOPICS as HUMAN_TOPICS
+from .core import OPEN_TOPICS as OPEN_TOPICS
+from .core import REVIEW_PRODUCERS as REVIEW_PRODUCERS
+from .core import TOPIC_PRODUCERS as TOPIC_PRODUCERS
+from .events import Envelope
 
-SCHEMA_DIR = Path(__file__).resolve().parents[2] / "topics" / "schemas"
-
-class BusError(Exception): ...
-class PermissionDenied(BusError): ...
-
-
-# Producer hợp lệ của mỗi topic — rút từ bảng topic trong docs/architecture.md và front matter `writes` của agent.
-# Người (`human` / `human:<tên>`) chỉ được phát các topic đầu vào của khách/người duyệt (HUMAN_TOPICS); agent chỉ phát
-# topic mình khai `writes`. `audit-log` ai cũng ghi; `shared-context` kiểm theo NAMESPACE_OWNERS. Bus là chốt chặn
-# cuối: runner đã kiểm `writes`, nhưng CLI `publish` hay code gọi thẳng `bus.publish` cũng không được vượt quyền.
-ENGINEERING_ACTORS = frozenset(ENGINEERING)
-REVIEW_PRODUCERS = frozenset({ROLE.QA, ROLE.SECURITY, SOURCE.QA, SOURCE.SECURITY})  # tên agent hoặc `source`
-TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
-    "research-requests": frozenset({ROLE.OPS}),
-    "research-findings": frozenset({ROLE.PRODUCT}),
-    "requirements-draft": frozenset({ROLE.PRODUCT}),
-    "clarification-questions": frozenset({ROLE.PRODUCT}),
-    "clarification-answers": frozenset(),
-    "approved-specs": frozenset({ROLE.PRODUCT}),
-    # ADR-0037 PR-5e: HAI producer, hai vai khác nhau — `LEAD_ACTOR` là CODE (`delivery.py`) đóng vòng dispatch
-    # sau `_check_plan`, `product` là AGENT sinh danh sách ticket (front matter `writes: tasks`, và `runner`
-    # publish dưới danh nghĩa agent trong eval). Trước PR-5e hai thứ này tình cờ cùng một chuỗi nên không ai
-    # phải nói ra. Chốt chặn "ticket chỉ ra đời sau khi kế hoạch qua kiểm" KHÔNG nằm ở đây mà ở
-    # `DeliveryLead.dispatch` (`plans_ok`, PR-2) — bảng này chỉ nói ai được phát topic, không nói khi nào.
-    "tasks": frozenset({LEAD_ACTOR, ROLE.PRODUCT}),
-    "pull-requests": ENGINEERING_ACTORS,
-    "test-suites": frozenset({ROLE.QA}),  # ADR-0028: bộ test do một vai KHÁC người viết code phát (qa, pha `author`)
-    "review-results": REVIEW_PRODUCERS,
-    "release-candidates": frozenset({LEAD_ACTOR}),
-    "release-events": frozenset({ROLE.OPS}),
-    "incidents": frozenset({ROLE.OPS}),
-    "external-feedback": frozenset(),
-    "change-requests": frozenset({ROLE.OPS}),
-    "acceptance-results": frozenset({ROLE.OPS}),
-    "supervisor-actions": frozenset({ROLE.SUPERVISOR}),
-}
-# Topic người được phát: đầu vào của khách (`orchestrator publish`), quyết định change request (`decide-change`),
-# PR khi tiếp quản ticket (`takeover`), resume sau gate escalation (supervisor-actions).
-HUMAN_TOPICS = frozenset({"research-requests", "clarification-answers", "external-feedback", "acceptance-results",
-                          "change-requests", "pull-requests", "supervisor-actions"})
-OPEN_TOPICS = frozenset({"audit-log", "shared-context"})  # audit: ai cũng ghi; shared-context: kiểm theo namespace
-
-
-def is_human(actor: str) -> bool:
-    return actor == "human" or actor.startswith("human:")
+SCHEMA_DIR = CORE.schema_dir
 
 
 def producer_allowed(topic: str, actor: str) -> bool:
-    if topic in OPEN_TOPICS: return True
-    if is_human(actor): return topic in HUMAN_TOPICS
-    return actor in TOPIC_PRODUCERS.get(topic, frozenset())
+    """Chữ ký cũ (topic, actor) — bảng ACL nay đến từ `CORE`, không phải tham số."""
+    return _producer_allowed(CORE.topic_acl, topic, actor)
 
-class InMemoryBus:
-    """Bus tối giản: partition theo key, validate payload, subscriber theo topic.
-    Thay bằng Redis Streams / Kafka bằng cách giữ nguyên interface publish/subscribe/replay.
 
-    `publish` giữ một RLock: subscriber (delivery-lead, supervisor, orchestrator) chạy tuần tự dù nhiều thread gọi
-    model song song (ADR-0012); handler được phép publish lồng nhau (RLock)."""
+class InMemoryBus(CoreInMemoryBus[Envelope]):
+    envelope_cls = Envelope
 
-    def __init__(self, enforce_owners: bool = True):
-        self._lock = threading.RLock()
-        self._log: list[Envelope] = []
-        self._subs: dict[str, list[Callable[[Envelope], None]]] = defaultdict(list)
-        self.enforce_owners = enforce_owners
-        self._schemas = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in SCHEMA_DIR.glob("*.json")}
-        self._validators = {t: Draft202012Validator(s, format_checker=FormatChecker()) for t, s in self._schemas.items()}
-        self._payload_validators = {t: Draft202012Validator(s["properties"]["payload"], format_checker=FormatChecker())
-                                    for t, s in self._schemas.items()}
+    def __init__(self, enforce_owners: bool = True, cfg: Any = CORE):
+        super().__init__(cfg, enforce_owners=enforce_owners)
 
-    def _check(self, topic: str, validator: Draft202012Validator | None, data: dict) -> None:
-        if validator is None:
-            raise BusError(f"không có schema cho topic {topic}")
-        errs = sorted(validator.iter_errors(data), key=lambda e: list(e.absolute_path))
-        if errs:
-            detail = "; ".join(f"{'/'.join(str(x) for x in e.absolute_path) or '$'}: {e.message}" for e in errs[:5])
-            raise BusError(f"{topic} không hợp lệ theo JSON Schema: {detail}")
-
-    def nullable_fields(self, topic: str) -> frozenset[str]:
-        """Trường ở tầng đầu của payload mà schema cho phép giá trị `null`.
-
-        Dùng để nhận ra một kiểu trượt cố hữu của model: nó muốn nói "không đo được" nhưng viết CHUỖI `"null"`
-        thay vì JSON `null`. Chỉ những trường được liệt kê ở đây mới được sửa (xem `normalize_nulls`)."""
-        props = (self._schemas.get(topic, {}).get("properties", {}).get("payload", {}).get("properties", {}))
-        out = set()
-        for name, spec in props.items():
-            if not isinstance(spec, dict): continue
-            t = spec.get("type")
-            alts = spec.get("anyOf") or spec.get("oneOf") or []
-            enum = spec.get("enum") or []
-            if t == "null" or (isinstance(t, list) and "null" in t) \
-                    or any(isinstance(x, dict) and x.get("type") == "null" for x in alts) \
-                    or None in enum:
-                out.add(name)
-        return frozenset(out)
-
-    def validate(self, topic: str, payload: dict) -> None:
-        """Kiểm payload theo pydantic model (nếu có) và TOÀN BỘ JSON Schema của topic (type, enum, required...);
-        ném BusError. Schema là nguồn sự thật; pydantic là lớp tiện dụng cho code."""
-        model = PAYLOAD_MODELS.get(topic)
-        if model is not None:
-            try:
-                model.model_validate(payload)
-            except ValidationError as e:
-                raise BusError(f"payload không hợp lệ cho {topic}: {e}") from e
-        self._check(topic, self._payload_validators.get(topic), payload)
-
-    def validate_envelope(self, env: Envelope) -> None:
-        """Kiểm cả envelope (event_id, key, actor, ts, schema_version, correlation/causation) theo schema topic."""
-        self._check(env.topic, self._validators.get(env.topic), json.loads(env.model_dump_json()))
-
-    def _deny(self, env: Envelope, reason: str) -> None:
-        """Từ chối publish: ghi audit (actor=bus) rồi ném PermissionDenied — vượt quyền phải hiện ra, không im lặng."""
-        self.publish(Envelope(topic="audit-log", key="bus", actor="bus", payload={
-            "actor": "bus", "action": "publish_denied",
-            "evidence": json.dumps({"topic": env.topic, "key": env.key, "actor": env.actor, "reason": reason}, ensure_ascii=False)}))
-        raise PermissionDenied(reason)
-
-    def _check_publish(self, env: Envelope) -> None:
-        """Validate payload + envelope và kiểm quyền producer; dùng chung cho mọi bus (bộ nhớ, SQLite)."""
-        self.validate(env.topic, env.payload)
-        self.validate_envelope(env)
-        if not self.enforce_owners: return
+    def _extra_publish_checks(self, env: Envelope) -> None:
         if env.topic == "audit-log" and env.payload.get("action") == "gate.decide" \
                 and not (is_human(env.actor) or env.actor == "orchestrator"):
             # audit-log mở cho mọi actor, nhưng quyết định gate là của người: agent không được ghi `gate.decide`
             # (orchestrator chỉ ghi khi đóng gate nghiệm thu từ chữ ký khách — gate_cli.trusted_decision kiểm tiếp)
             self._deny(env, f"agent {env.actor} không được ghi quyết định gate (gate.decide) — chỉ người (human:*)")
-        if env.topic == "shared-context":
-            ns = env.payload["namespace"]
-            if env.actor not in NAMESPACE_OWNERS.get(ns, set()):
-                raise PermissionDenied(f"{env.actor} không được ghi namespace {ns}")
-        elif not producer_allowed(env.topic, env.actor):
-            who = "người" if is_human(env.actor) else "agent"
-            self._deny(env, f"{who} {env.actor} không được phát topic {env.topic} "
-                            f"(producer hợp lệ: {sorted(HUMAN_TOPICS) if is_human(env.actor) else sorted(TOPIC_PRODUCERS.get(env.topic, ()))})")
-
-    def _notify(self, subs: dict[str, list[Callable[[Envelope], None]]], env: Envelope) -> None:
-        for fn in list(subs.get(env.topic, [])) + list(subs.get("*", [])):
-            fn(env)
-
-    def _persist_only(self, env: Envelope) -> Envelope:
-        """Ghi log nhưng không báo subscriber: audit về handler hỏng không được đi qua chính handler đó."""
-        self._check_publish(env)
-        with self._lock: self._log.append(env)
-        return env
-
-    def _notify_safely(self, env: Envelope, reraise: bool = False) -> None:
-        """Báo MỌI subscriber dù một handler ném lỗi: event đã ghi rồi, subscriber sau (supervisor, orchestrator) không
-        được mất nó — nếu không, trạng thái lúc chạy khác trạng thái dựng lại từ log (poll/replay báo đủ). Lỗi ghi
-        audit `subscriber_error`; `reraise=True` (publish) ném lại lỗi đầu tiên cho người phát biết mà xử lý."""
-        first: Exception | None = None
-        for fn in list(self._subs.get(env.topic, [])) + list(self._subs.get("*", [])):
-            try:
-                fn(env)
-            except Exception as e:  # mọi lỗi handler đều phải hiện ra audit, không nuốt im lặng
-                first = first or e
-                self._persist_only(Envelope(topic="audit-log", key="bus", actor="bus", payload={
-                    "actor": "bus", "action": "subscriber_error",
-                    "evidence": json.dumps({"event_id": env.event_id, "topic": env.topic, "key": env.key,
-                                            "handler": getattr(fn, "__qualname__", repr(fn)), "error": str(e)[:300]},
-                                           ensure_ascii=False)}))
-        if reraise and first is not None: raise first
-
-    def publish(self, env: Envelope) -> Envelope:
-        self._check_publish(env)
-        with self._lock:
-            self._log.append(env)
-            self._notify_safely(env, reraise=True)
-        return env
-
-    def subscribe(self, topic: str, fn: Callable[[Envelope], None]) -> None:
-        self._subs[topic].append(fn)
-
-    def replay(self, topic: str | None = None, key: str | None = None) -> Iterable[Envelope]:
-        with self._lock:
-            snapshot = list(self._log)  # thread khác có thể publish trong lúc duyệt
-        for e in snapshot:
-            if (topic is None or e.topic == topic) and (key is None or e.key == key):
-                yield e
-
-    def latest(self, topic: str, key: str) -> Envelope | None:
-        """Event mới nhất của một (topic, key). Tách riêng khỏi `replay` vì đây là đường nóng: orchestrator hỏi
-        "bản draft/PR/RC gần nhất" cho gần như mọi event, và dựng cả danh sách chỉ để lấy phần tử cuối là O(N)
-        mỗi lần — trên bus bền vững còn kèm parse lại từng envelope."""
-        with self._lock:
-            for e in reversed(self._log):
-                if e.topic == topic and e.key == key:
-                    return e
-        return None
-
-    def __len__(self) -> int:
-        return len(self._log)
