@@ -337,6 +337,7 @@ Nếu chỉ làm được một nửa: **K0, K1, K2, K3.0–K3.5, K8.3, K9.1**. 
 | K3.4 | **xong** | #177 | `guard.py` lên xagents_core, hợp nhất hai chiều |
 | K3.5a | **xong** | #178 | khung event lên xagents_core, K3.5 tách làm ba bước |
 | K3.5b | **xong** | #179 | bus lên xagents_core, studio lần đầu có ACL topic |
+| K3.5c | **xong** | #PR | `sqlite_bus` lên xagents_core (`difflib` 0.442 — bước duy nhất của K3.5 thật sự "lấy bản company"); studio nhận khoá, `check_same_thread=False`, `latest()`, `_persist_only`, `__del__`; `BUSY_TIMEOUT_S` của studio thành hằng chung; `Lease`/`_alive` lên core. Thứ tự tham số `InMemoryBus.__init__` đổi thành `(cfg, enforce_owners)` vì MRO của lớp con hai cha |
 | K3.6–K3.7 | chưa | | K3.6 đợi ≥ 5 ngày lịch sau K3.5 (K3.e) |
 | K4.1–K4.5 | chưa | | ADR gốc 0002 |
 | K5.1–K5.5 | xong | #134 | `.github/workflows/eval-record.yml` (`workflow_dispatch`: package/agents/provider/jobs, timeout 45', key từ Secrets, tên model từ Variables) → PR `chore(<package>): ghi lại eval <agents>` nhãn `no-changelog` qua `peter-evans/create-pull-request`, KHÔNG push thẳng `main`; `--jobs N` ở CẢ HAI package (`ThreadPoolExecutor`, thứ tự in vẫn theo id); bảng điểm vào `$GITHUB_STEP_SUMMARY`, cổng vẫn là `gate_ok`; `CONTRIBUTING.md` §3 bước 3 ghi hai đường. Bảng theo dõi ghi "sau K3.3" là sai — K5 không phụ thuộc K3 |

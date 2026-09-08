@@ -6,6 +6,35 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(core): **K3.5c — `sqlite_bus` lên `xagents_core`; studio nhận khoá, `latest()` và bus dùng được từ
+  thread khác** (#PR). `difflib` giữa hai `sqlite_bus.py` là **0.442** — cao nhất trong ba module của K3.5, và
+  lần này con số ấy đúng theo nghĩa đen: cùng `_DDL`, cùng cách nạp lại `_log` khi mở, cùng câu `INSERT`, cùng
+  `replay` ghép `WHERE`. Chỗ lệch là **company đã đi xa hơn trên cùng con đường** (6 hàm chỉ company có:
+  `latest`, `_persist_only`, `__del__`, `Lease.acquire/release`, `_alive`), nên đây là bước duy nhất của K3.5
+  thật sự "lấy bản company" như đặc tả hình dung.
+  **Ba quyết định hợp nhất**, ghi ở docstring `xagents-core/src/xagents_core/sqlite_bus.py`: (1) **khoá** —
+  bản studio ghi đĩa không khoá và tháo `_subs` ra để ép "ghi trước, báo sau"; core làm cùng việc ấy trong một
+  `RLock` nên mẹo tháo bảng biến mất; (2) **`check_same_thread=False`** — bản studio thiếu cờ này, một
+  `SQLiteBus` truyền sang thread khác là `ProgrammingError`, nó mới chưa nổ vì runner studio chạy một thread;
+  (3) **`BUSY_TIMEOUT_S` là hằng chung** — company viết thẳng `timeout=30` trong lời gọi, studio đặt tên và
+  giải thích; lấy cái có tên. Đây là chỗ DUY NHẤT bản studio thắng.
+  **Đổi hành vi studio, có chủ ý**: thêm khoá, `latest()` tìm trên index `(topic, key)` thay vì quét log,
+  `_persist_only` ghi đĩa, `__del__` đóng kết nối, và lỗi subscriber nay thành một `audit-log`
+  `subscriber_error` thay vì làm rơi các subscriber sau. Bốn ca ở `Studio-creators/tests/test_sqlite_bus_core.py`
+  đo đúng bốn thứ ấy tới được studio.
+  `"company.sqlite"` viết cứng ở `sqlite_bus.py:26` nay đọc từ `CORE.db_name`. `Lease`/`LeaseError`/`_alive`
+  lên core cùng mã chúng phục vụ; 4 ca của `test_coverage_100.py` chuyển theo sang
+  `xagents-core/tests/test_sqlite_bus.py`, và công ty giả dùng chung của core tách ra `tests/conftest.py`
+  (hai module test nay dùng nó). **Một điểm khác lời đặc tả**: thứ tự tham số của `InMemoryBus.__init__` ở cả
+  hai công ty đổi thành `(cfg, enforce_owners)` theo core — `SQLiteBus` kế thừa CẢ hai lớp, nên
+  `super().__init__(cfg, ...)` của core đi qua lớp công ty theo MRO; giữ thứ tự cũ là `cfg` rơi vào
+  `enforce_owners` im lặng. Không nơi gọi nào truyền vị trí (đã grep). Ca
+  `test_sqlite_bus_van_giu_luat_rieng_gate_decide_cua_company` canh chính MRO ấy: ghép sai thứ tự hai lớp cha
+  là mất `_extra_publish_checks` mà không có gì đỏ.
+  Nghiệm thu: `make demo` hai công ty xanh; company 1057 ca / studio 542 / core 259 / console 237 / gateway 251,
+  coverage 100% cả năm package. Đo hai chiều: bỏ `check_same_thread=False` → `test_bus_dung_duoc_tu_thread_khac`
+  đỏ, bật lại → xanh.
+
 - docs: **4l — đợt 3-5 chờ K3.5c/K3.6 merge, kết phiên thi hành** (#186). `/thi-hanh 4l` đợt 1-2 xong (#181-#185);
   4L-1b chờ người (key model thật); 4L-4/6/7 chờ K3.5c/K3.6 (kịch bản B, ngoài phạm vi mã 4l). `make test` gốc
   xanh cả năm package. Chỉ tài liệu.

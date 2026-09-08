@@ -78,3 +78,35 @@ def test_blackboard_isolates_projects_but_shares_knowledge():
     assert "knowledge" in bb.snapshot("PB")
     assert bb.all()["PA/prd"].content_ref == "A/prd.md" and "knowledge" in bb.all()
     assert bb.overview()["PA/prd"] == "A/prd.md" and bb.overview()["knowledge"] == "lesson:1"
+
+
+def test_sqlite_bus_van_giu_luat_rieng_gate_decide_cua_company(tmp_path):
+    """K3.5c: `SQLiteBus` nay kế thừa CẢ `xagents_core.sqlite_bus.SQLiteBus` lẫn `company.bus.InMemoryBus`.
+    Ghép sai thứ tự hai lớp cha là mất `_extra_publish_checks` — luật "agent không được ghi `gate.decide`"
+    biến mất im lặng, vì core gọi nó qua `self` chứ không có cách nào biết nó tồn tại. Ca này giữ MRO ấy."""
+    from company.sqlite_bus import SQLiteBus
+
+    bus = SQLiteBus(tmp_path / "c.sqlite")
+    try:
+        with pytest.raises(PermissionDenied, match=r"gate\.decide"):
+            bus.publish(Envelope(topic="audit-log", key="SPEC-1", actor="qa",
+                                 payload={"actor": "qa", "action": "gate.decide"}))
+        # người thì được, và ghi xuống đĩa thật
+        bus.publish(Envelope(topic="audit-log", key="SPEC-1", actor="human:po",
+                             payload={"actor": "human:po", "action": "gate.decide"}))
+        assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["publish_denied", "gate.decide"]
+    finally:
+        bus.close()
+
+
+def test_sqlite_bus_mac_dinh_lay_ten_file_tu_core(tmp_path, monkeypatch):
+    """`"company.sqlite"` nay ở `CORE.db_name`, không viết cứng trong `sqlite_bus.py` nữa."""
+    from company.core import CORE
+    from company.sqlite_bus import SQLiteBus
+
+    monkeypatch.chdir(tmp_path)
+    bus = SQLiteBus()
+    try:
+        assert bus.path.name == CORE.db_name == "company.sqlite"
+    finally:
+        bus.close()

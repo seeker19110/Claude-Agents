@@ -435,7 +435,17 @@ package đang gọi `company.llm.load_config()` không đổi.
 >   company, 1 dòng test đổi. (3) **Bật validate envelope làm lộ 19 schema studio lỗi thời từ K3.5a** — chúng
 >   `additionalProperties: false` mà chưa biết ba trường K3.5a thêm vào; K3.5a không thấy được vì studio khi ấy
 >   chưa validate envelope. `_extra_publish_checks` là điểm mở duy nhất, cho luật `gate.decide` riêng của company.
-> - **K3.5c — `sqlite_bus`**: chưa làm.
+> - **K3.5c — `sqlite_bus`: XONG (#PR).** Bước DUY NHẤT của K3.5 mà "lấy bản company" là mô tả đúng:
+>   `difflib` 0.442, cùng `_DDL`, cùng cách nạp `_log`, cùng `INSERT`, cùng `replay`; sáu hàm chỉ company có
+>   (`latest`, `_persist_only`, `__del__`, `_alive`, `Lease.acquire/release`) là company đi xa hơn trên cùng
+>   con đường, không phải hai miền khác nhau. Ba quyết định hợp nhất ở docstring core; đáng nhớ nhất là
+>   `check_same_thread=False`: bản studio thiếu cờ ấy, và nó chưa nổ chỉ vì runner studio chạy một thread.
+>   Hai điểm khác lời đặc tả: (a) `"company.sqlite":26` → `core.db_name` đúng như đặc tả, nhưng `BUSY_TIMEOUT_S`
+>   **thay luôn `timeout=30` của company** chứ không chỉ "thành hằng chung" — hai bên cùng một con số, một bên
+>   có tên; (b) thứ tự tham số `InMemoryBus.__init__` của CẢ HAI công ty phải đổi thành `(cfg, enforce_owners)`:
+>   `SQLiteBus` kế thừa cả bus công ty lẫn `SQLiteBus` core, nên `super().__init__(cfg, ...)` đi qua lớp công ty
+>   theo MRO và thứ tự cũ làm `cfg` rơi vào `enforce_owners` **im lặng**. Đặc tả không lường được điều này vì
+>   nó viết K3.5 như một PR gộp, nơi bus công ty không còn là lớp cha thứ hai.
 >
 > Hai điểm khác lời đặc tả ở bước a: (a) `can_transition` **không** chỉ là `dst in transitions[src]` — cả hai
 > công ty có cửa thoát `dst in {"blocked","escalated"}`, và quên nó làm **12 ca của company đỏ**; nay nó là
