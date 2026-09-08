@@ -17,13 +17,18 @@ thể: `CODEMAP.md`.
    │ 3 human gate + escalation            │   │ 4 human gate                           │
    │ code thật trên git worktree của khách│   │ render thật: TTS + ảnh + ffmpeg        │
    └────────────────┬─────────────────────┘   └────────────────┬───────────────────────┘
-                    │  llm.yaml: backends + routing theo tier    │
-                    └──────────────────┬─────────────────────────┘
-                                       ▼
+                    │                          │
+                    └──────────────┬───────────┘
+                                   ▼
+                    xagents-core/  (package xagents_core)
+                    lõi chung: bus, llm, runner, guard, gate, trace, metrics, context, sandbox
+                                   ▲
+                    ┌──────────────┴───────────┐
+                    │  llm.yaml: backends      │
         claude-code CLI · codex CLI · gateway/ (127.0.0.1:1123, xoay tài khoản Google) · model local · API
 ```
 
-Bốn package là bốn thành viên của một **uv workspace** — một `.venv`, một `uv.lock`. Không có `[project.scripts]`:
+Năm package là năm thành viên của một **uv workspace** — một `.venv`, một `uv.lock`. Không có `[project.scripts]`:
 mọi entry point là `python -m <package>.<module>`. Repo khách nằm **ngoài** repo này (`--repo <đường dẫn>`).
 
 ## Kiến trúc chung của một "công ty"
@@ -59,6 +64,8 @@ Mọi trường mang nghĩa "đã làm được" phải do **code** điền, kh�
   (ADR-0029).
 - Identity của event (`env`, `release_id`, `ticket_id`) lấy từ ROUTE, model lệch thì `*_overridden` (#72, #75).
 - Studio: `platform_ref`/`url` do adapter YouTube điền từ API; số liệu do `sync-*` nạp; agent chỉ diễn giải.
+
+**Không chốt duyệt mức tool — có chủ đích**: thay bằng "không cấp tool thì không có hành động" (`allow_write/allow_run/write_scope`, sandbox, bốn gate công đoạn). Chi tiết: `docs/KIEN-TRUC-4-LOP.md` §A1 mục 4 (A1.4).
 
 Còn lại là lời khai — hữu ích, nhưng chỉ ký gate trên bằng chứng.
 
