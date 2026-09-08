@@ -413,11 +413,11 @@ package đang gọi `company.llm.load_config()` không đổi.
   không cần đổi nhưng có thể đơn giản hoá sau).
 - Nghiệm thu: `make demo` hai công ty; `console` test xanh; chạy thật company ≥ 5 ngày trước K3.6.
 
-> **Trạng thái: K3.5 TÁCH BA BƯỚC; bước a XONG (#PRNUM).** Lý do tách: đo `difflib` cho thấy ba module lệch rất
+> **Trạng thái: K3.5 TÁCH BA BƯỚC; bước a XONG (#178).** Lý do tách: đo `difflib` cho thấy ba module lệch rất
 > khác nhau — `sqlite_bus` 0.44, `events` 0.14, **`bus` 0.06**. Ở mức 0.06 hai file gần như không có gì chung;
 > gộp cả ba vào một PR là đúng thứ K3.3a đã học được là không nên.
 >
-> - **K3.5a — `events` chung: XONG (#PRNUM).** `Envelope`, `SharedContext`, `AuditLog`, `SupervisorAction`,
+> - **K3.5a — `events` chung: XONG (#178).** `Envelope`, `SharedContext`, `AuditLog`, `SupervisorAction`,
 >   `can_transition` lên core. **Không phải như đặc tả hình dung**: chúng lên dưới dạng **LỚP CƠ SỞ**, mỗi công
 >   ty kế thừa (tiền lệ `LLMConfig` ở K3.3b). Lý do đo được: chỗ lệch không phải "một bên thiếu" mà là *trường
 >   phạm vi của từng miền* — `AuditLog` company có `ticket_id`/`project_id`, studio có `video_id`/`channel_id`;

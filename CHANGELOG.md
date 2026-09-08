@@ -37,7 +37,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   bỏ cửa thoát `blocked`/`escalated`; bỏ `model_post_init`; và cho core mang luôn `video_id`/`channel_id` của
   studio (rò nghĩa lên core). Đã chạy: core 216 test / phủ 100%; studio 508 + 5 skip / phủ 100%; company 1027 /
   phủ 100% — **company không sửa một ca test nào**, subclassing giữ nguyên hành vi; console 233 và gateway 251
-  cũng không sửa dòng nào (#PRNUM)
+  cũng không sửa dòng nào (#178)
 
 - refactor(core): **K3.4 — `guard.py` lên `xagents_core`; hợp nhất HAI CHIỀU chứ không phải chuyển mã**. Đặc tả
   viết K3.4 trong ba gạch đầu dòng ("chuyển `guard.py`, xoá `studio/runner.py:29-81`"), nhưng studio **không có**
