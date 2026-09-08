@@ -6,6 +6,9 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(company): **4L-5 — metrics vòng tool và tỉ lệ chạm trần** (#185). `metrics.collect()["loops"]`
+  (turns_p50/p90/max, capped_ratio, no_progress_ratio, retry_max_ratio, empty) + 6 gauge `company_loop_*`;
+  console ô "Vòng tool (trung vị)" mới, RỖNG → XÁM chứ không xanh giả (ADR-0003).
 - feat(company): **4L-3 — cắt vòng tool khi không tiến bộ** (#184). `_stagnant()` đếm lời gọi tool liên tiếp
   cùng `(name, args_hash, out_hash)` (4L-2); lặp 3 lần cảnh báo, 5 lần cắt (audit `no_progress`), không ném
   exception — đi vào đúng nhánh ép chốt JSON có sẵn cho case hết lượt. Chỉ tool ghi thành công mới reset đếm.

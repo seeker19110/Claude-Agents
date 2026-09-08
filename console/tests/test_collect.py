@@ -57,7 +57,7 @@ def test_moi_khoa_luon_co_mat_va_khong_nem_khi_thieu_db(tmp_path: Path, studio_d
     assert [g["xuong"] for g in s["gates"]] == [STUDIO, STUDIO]  # phần của xưởng hỏng rỗng, xưởng kia vẫn đủ
     assert s["videos"] and s["tiles"]["events"] == 5
     for key in ("generated_at", "sources", "tiles", "gates", "tickets", "prs", "reviews", "videos", "perf",
-                "retention", "cost_days", "agents", "backends", "supervisor", "log"):
+                "retention", "cost_days", "agents", "backends", "supervisor", "log", "loops"):
         assert key in s
 
 

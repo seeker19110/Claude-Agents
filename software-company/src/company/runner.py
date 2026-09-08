@@ -309,6 +309,12 @@ class AgentRunner:
                              f"Bạn đã gọi {last['name']} {n} lần cùng tham số cùng kết quả — lặp thêm không đưa "
                              f"ticket tiến thêm bước nào. Đổi cách làm (ghi file, chạy lệnh khác) hoặc chốt JSON "
                              f"cuối cùng ngay; lặp tới lần {NO_PROGRESS_STOP} thì vòng tool bị cắt."})
+        # 4L-5: "chạm trần" = vòng while thoát vì hết `max_turns` TRONG KHI model vẫn còn muốn gọi tool (không phải
+        # thoát vì `break` — model tự chốt, và không phải vì 4L-3 `stopped` cắt sớm). Đo Ở ĐÂY, trước khối ép-chốt
+        # JSON dưới, vì khối đó có thể tăng `turn` thêm một lượt cho lời chốt cuối — tăng đó không phải "chạm trần
+        # vòng tool", ghi nhầm sẽ lẫn hai nguyên nhân. `stopped` (4L-3) luôn cắt trước khi chạm `max_turns` thật
+        # (ngưỡng 5 < mọi `max_turns` thực dùng), nhưng vẫn loại trừ tường minh cho đúng nghĩa "chạm trần".
+        capped = turn >= max_turns and not stopped and c is not None and bool(c.tool_calls)
         # Vòng tool đã có cơ chế "ép chốt bằng JSON", nhưng trước đây chỉ kích hoạt khi hết lượt hoặc lượt cuối
         # RỖNG. Model trả VĂN XUÔI thì lọt qua và runner báo "đầu ra không phải JSON" — dẫn người đọc đi sửa
         # schema, trong khi chỉ cần bảo model chốt lại.
@@ -335,6 +341,7 @@ class AgentRunner:
         # biết lượt vừa rồi đi hàng rào nào, thay vì suy từ llm.yaml.
         self._audit(spec, "tools_used", inp,
                     evidence=json.dumps({"turns": turn, "mode": c.tool_mode or "loop", "calls": tools.summary(),
+                                         "capped": capped, "max_turns": max_turns,
                                          **({"urls": urls} if urls else {})}, ensure_ascii=False))
         # 4L-2: vết TỪNG lời gọi tool (`ToolBox.trace()`), một audit `tools_trace` mỗi lượt tool — riêng với
         # `tools_used` ở trên (đếm gộp theo tên, hình đó `metrics` đang parse, không đổi). mode "cli" (ADR-0023)

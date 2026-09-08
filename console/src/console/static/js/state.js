@@ -9,7 +9,8 @@ import {$, esc, setQ} from "./util.js";
 export const SC="software-company", ST="Studio-creators", GW="gateway";
 export const BLANK={generated_at:null,sources:{},tiles:{},gates:[],tickets:[],prs:[],reviews:[],videos:[],perf:[],
   retention:null,cost_days:{days:[],series:[]},agents:[],backends:[],supervisor:[],log:[],
-  delivery:null,pending_decisions:[],running:null,deadlocks:[],product_funnel:[],silent_deadlocks:[],sandbox:null};
+  delivery:null,pending_decisions:[],running:null,deadlocks:[],product_funnel:[],silent_deadlocks:[],sandbox:null,
+  loops:null};
 export let S=null;                    // dữ liệu tốt lần cuối đọc được — giữ nguyên khi lỗi
 export let firstLoad=true, paused=false, drawerOpen=false, lastOk=null, timer=null;
 export const st=()=>S||BLANK;

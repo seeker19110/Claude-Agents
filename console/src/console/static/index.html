@@ -167,6 +167,10 @@ main{min-width:0;display:flex;flex-direction:column}
 .tile .k{font-size:11.5px;color:var(--ink-muted)}
 .tile .v{font-family:var(--mono);font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.15}
 .tile .n{font-size:11.5px;color:var(--ink-2)}
+/* 4L-5 (ADR-0003): ô KHÔNG có dữ liệu là ô XÁM, không bao giờ xanh giả — nền trong, viền gạch đứt, giống
+   `.pf .step.zero`/`.frow.zero` đã có. Ô rỗng khác ô "0% chạm trần" phải nhìn khác nhau từ xa. */
+.tile.zero{background:transparent;border:1px dashed var(--line)}
+.tile.zero .v{color:var(--ink-muted)}
 
 /* tables */
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -465,6 +469,7 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
         <div class="tile"><span class="k">Token đã dùng</span><span class="v" id="t-tok">—</span><span class="n" id="t-tok-n">—</span></div>
         <div class="tile"><span class="k">Tỉ lệ làm lại</span><span class="v" id="t-rework">—</span><span class="n" id="t-rework-n">—</span></div>
         <div class="tile"><span class="k">PR chưa kiểm</span><span class="v" id="t-prs">—</span><span class="n">lint + test chạy thật</span></div>
+        <div class="tile" id="t-loop-tile"><span class="k">Vòng tool (trung vị)</span><span class="v" id="t-loop">—</span><span class="n" id="t-loop-n">—</span></div>
       </div>
 
       <div class="sect">

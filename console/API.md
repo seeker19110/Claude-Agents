@@ -106,7 +106,13 @@ công ty đó bao giờ).
   },
   "pending_decisions": [{"id":"REL-020","decision":"approve","by":"human:lead","kind":"escalation","minutes":12,"reason":"…"}],
   "running": {"queue": 7, "head": {"topic":"tasks","key":"TCK-…","minutes": 5}, "last_event_minutes": 1, "topics": ["tasks"]},
-  "deadlocks": [{"kind":"ticket|release|idle","id":"QLKH-010","state":"blocked","why":"…","integrated":true}]
+  "deadlocks": [{"kind":"ticket|release|idle","id":"QLKH-010","state":"blocked","why":"…","integrated":true}],
+  // 4L-5: đo vòng tool (`company.metrics.collect()["loops"]`, đặc tả L3 "cách đo"). `empty=true` (không có
+  // audit `tools_used` nào) → MỌI trường số khác là `null`, KHÔNG phải 0 — 0 thật (vd `capped_ratio: 0`) và
+  // "chưa đo được" (`empty: true`) là hai trạng thái khác nhau, trang phải tô khác nhau (ADR-0003, xem `.tile.zero`
+  // ở `static/index.html`). Xưởng phần mềm; không có bản riêng cho studio (đã dùng chung `company.metrics`).
+  "loops": {"turns_p50": 6.5, "turns_p90": 15.0, "turns_max": 25, "capped_ratio": 0.08,
+             "no_progress_ratio": 0.0, "retry_max_ratio": 0.12, "n": 40, "empty": false}
 }
 ```
 
@@ -123,6 +129,7 @@ Nguồn của từng phần:
 | `log` | `audit-log`, mới nhất trước, tối đa 200 bản ghi |
 | `delivery`, `pending_decisions`, `running`, `deadlocks` | `truth.py`: `release-candidates` + `release-events` + audit (`delivery.done`, `release.void`, `release.staged`, `integration.merged`, `orchestrated`, `gate.decide`) + `gate.pending/history` |
 | `tickets[].integrated/sha/human_hint/hint/gate`, `reviews[].trim/at`, `gates[].effect` | `truth.py` — sự thật git (merge commit), hint agent đang cầm, ngữ cảnh bị cắt khi chấm, hậu quả khi duyệt |
+| `loops` | `company.metrics.collect(bus)["loops"]` — audit `tools_used` (`turns`, `capped`, `max_turns`) + `ticket.blocked` trên ticket có `tasks` |
 
 `hours` làm tròn xuống. `sev`: `over` khi ≥ 24 giờ (quá hạn), `warn` khi ≥ 12 giờ
 (đến hạn nhắc), còn lại `calm` — khớp `GATE_TIMEOUT_H` / `GATE_REMIND_H` của repo.
