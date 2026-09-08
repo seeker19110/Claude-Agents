@@ -82,6 +82,19 @@ tin vào `--by`.
 Gateway lắng nghe `127.0.0.1:1123` và **không có xác thực người dùng**. Đừng bind nó ra địa chỉ công khai; muốn
 dùng từ máy khác thì đi qua SSH tunnel.
 
+Vì không có xác thực, hai header là toàn bộ hàng rào giữa pool tài khoản Google và một trang web bất kỳ người dùng
+đang mở (`guard_middleware` trong `gateway/server.py`, đối xứng với `console/server.py::_guard`):
+
+- `Host` không phải loopback → **404** (không xác nhận có server ở đây). Chặn DNS rebinding: trình duyệt gửi tên
+  miền kẻ tấn công điều khiển dù bản ghi A của nó trỏ về 127.0.0.1.
+- `Origin` có mặt mà không phải loopback → **403**. Vắng `Origin` (curl, SDK OpenAI) thì cho qua; origin loopback ở
+  cổng bất kỳ cũng cho qua, vì một trang dev cục bộ gọi sang gateway là việc hợp lệ.
+
+Chỉ dựa vào CORS là **không đủ**: CORS chặn trang lạ ĐỌC phản hồi, nhưng request vẫn chạy — `POST
+/v1/chat/completions` đốt quota thật và `POST /auth/login` mở luồng thêm tài khoản. Hai luật trên chạy ở
+middleware, trước handler. Khi bind ra ngoài loopback thì chúng tự tắt (`Host`/`Origin` hợp lệ lúc đó là tên miền
+thật) — đó là chế độ đã cảnh báo ở trên và đòi firewall/reverse proxy lo xác thực.
+
 ## Chạy code do agent sinh ra
 
 Agent trong `software-company` sinh và chạy code trong repo bạn trỏ tới bằng `--repo`. Hãy coi đó là chạy code chưa
