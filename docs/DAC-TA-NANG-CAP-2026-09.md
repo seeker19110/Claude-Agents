@@ -177,15 +177,23 @@ Tổng khoảng 20–22 ngày-phiên tuần tự, rút còn ~12 ngày lịch n�
 
 ## 8. Bảng theo dõi
 
+Đo lại ngày 08/09 trên `main` (`c46ed19`), không chép từ lần cập nhật trước. Ba ô từng ghi "chưa" thực ra đã
+xong — chúng được làm dưới **kế hoạch khác**: `docs/DAC-TA-TRIEN-KHAI-KICH-BAN-B.md` (chuỗi K0–K8) là bản
+"PR theo PR" đang chạy, còn bảng này là bản chiến lược. Khi hai kế hoạch cùng sống, bảng này phải đối chiếu
+với chuỗi K chứ không tự đếm.
+
 | Mã | Trạng thái | PR | Ghi chú |
 |---|---|---|---|
 | V1–V5 | V1 xong (#94 đã merge); V2 xong #98; V3 thủ công, không kiểm được từ repo; V4 xong #98; V5 xong #98 | #98 | |
-| B1–B8 | B2 xong; B3 xong — ADR-0029 mở rộng, spec có `kind`, qa-debugger v13; B4 xong; B5 xong; B7 xong | B2: #97, B3: #102, B4: #100, B5: #103, B7: #99 | B3 dùng lại `run_smoke`. B4: mục `acceptance.da-chay` + mục "Đã chạy" trong hồ sơ; cần `--repo`. B5: ADR-0032, `test_no_kien_truc_adr0032.py`, ngưỡng `llm.yaml debt_reviews`. B7: `orchestrator trace <id> [--json]`, `src/company/trace.py` |
-| B1–B8 | B6 xong — DoD ba agent điều phối + ảnh chụp của frontend; **không** thêm tool playwright (lý do + giới hạn ở ADR-0033) | B6: #111 | B6: ADR-0033, `pull-requests.payload.evidence.screenshots[]`, delivery-lead v11 / release-engineer v8 / account-manager v8 / frontend v13, `test_dod_san_pham_chay_duoc.py`. Ảnh sinh bằng lệnh khai trong `runtime` của spec, không có tool chụp → `skipped` kèm lý do |
-| B1–B8 | B1 xong, B4 xong, B5 xong, B7 xong; B2 wip (ADR-0030 nhánh `feat/so-ruling-adr-0030`) | B1: #104, B4: #100, B5: #103, B7: #99 | B1: ADR-0031, `spec_runtime_gap` chặn trước gate, spec-writer v9, gate_brief `spec.runtime`. B4: mục `acceptance.da-chay` + mục "Đã chạy" trong hồ sơ; cần `--repo`. B5: ADR-0032, `test_no_kien_truc_adr0032.py`, ngưỡng `llm.yaml debt_reviews`. B7: `orchestrator trace <id> [--json]`, `src/company/trace.py` |
-| D1–D5 | chưa | | |
+| B1–B8 | B1–B7 **xong**; **B8 chưa** (không có `docs/reports/*du-an-mau-2*`) | B1: #104, B2: #97 + ADR-0030, B3: #102, B4: #100, B5: #103, B6: #111, B7: #99 | B1: ADR-0031, `spec_runtime_gap` chặn trước gate, gate_brief `spec.runtime`. B3: ADR-0029 mở rộng, spec có `kind`, dùng lại `run_smoke`. B4: mục `acceptance.da-chay`; cần `--repo`. B5: ADR-0032, `test_no_kien_truc_adr0032.py`. B6: ADR-0033, `evidence.screenshots[]`, **không** thêm tool playwright. B7: `orchestrator trace <id> [--json]`. Ghi chú lịch sử: các version agent nêu trong PR B3/B6/B1 (`qa-debugger v13`, `delivery-lead v11`, `release-engineer v8`, `account-manager v8`, `spec-writer v9`, `frontend v13`) là tên vai **trước ADR-0037**; nay là `qa`, `product`, `ops`, `builder` |
+| D1–D5 | **D2 xong**; D1, D3, D4, D5 chưa | D2: #116 (K2.1) | D2 = ADR-0035 `sandbox.py` (SubprocessSandbox + ContainerSandbox), làm dưới chuỗi K2. **D1 chưa có ADR** — cột ADR bên §4 ghi "ADR-0034" là số **đặt trước** rồi bị dùng cho E1; viết ADR mới trước khi làm. D3 chưa có `notify.py` và chưa có ADR (số 0036 đã dùng cho việc khác). D4: xem lại phạm vi — ADR-0038 đã cho khách một mặt review (PR thật trên GitHub), có thể chỉ còn thiếu nút ký |
 | C1–C10 | C1–C8 + C10 xong; **C9 còn lại** (màn Xưởng video — chờ đợt 4 studio) | C1–C8,C10: #107 | console ADR-0003 "mỗi ô trả lời một câu hỏi, ô rỗng là ô xám": màn `#/phieu` phễu sản phẩm (bậc staging/production neo vào `smoke`), hậu quả gate hai chiều + `gate_brief` tại chỗ (`GET /api/gate/brief`), cảnh báo bế tắc im lặng đầu trang, cột commit vượt integration (`src/console/git_truth.py`), `trim_src` cạnh verdict, mẫu hint 3 dòng |
-| S1–S7 | S2 một phần (ADR-0009) | | |
-| E1–E5 | E4 xong | E4: #101 | E4: `gateway/docs/adr/0001–0003`, bộ khung 4 file dẫn `file:dòng` |
+| S1–S7 | S2 một phần (ADR-0009); **S7 chưa** (không có báo cáo video thật) | | |
+| E1–E5 | **E1 xong**, E4 xong, **E5 xong**; E3 nửa đầu xong; E2 chưa | E1: #125 (K1.7), E4: #101, E5: #109 | E1 = ADR-**0034** (không phải 0037 như cột §4 ghi — số đặt trước bị dùng cho việc gộp agent): `orchestrator.py` còn **508 dòng** (ngưỡng <900), bảng `Transition`/`step()` ở `orch/fsm.py`, test bảng `tests/test_orch_bang_chuyen.py`, khuôn lỗi ở `test_orch_khuon_loi.py`. E5 = `.github/workflows/pr-policy.yml`: thiếu dòng CHANGELOG → **đỏ**; thiếu `docs/sessions/<ngày>.md` → **cảnh báo** (cố ý không chặn merge, lý do ghi trong workflow). E3: 6/6 agent đã có bản ghi model thật trong `REQUIRED.txt` (mục tiêu cũ ghi "21 agent" — ADR-0037 rút còn 6); còn thiếu nửa sau: `evals/thresholds.yaml` và CI so trung vị 3 lần. E2 chưa có mã redis nào |
 
 Cập nhật bảng này trong cùng PR của mục. Mục "xong" phải có số PR và, với B8/S7, đường dẫn báo cáo.
+
+**Số ADR ở cột "ADR" của §4 là số ĐẶT TRƯỚC, không phải số thật.** Thực tế: 0034 → E1 (tách máy trạng thái),
+0035 → D2 (sandbox), 0036 → việc khác (`unverified` không phải trung lập), 0037 → gộp 21 agent thành 5,
+0038 → PR thật cho khách. Mục nào còn ghi số đã bị dùng (D1, D3, E1, E2) thì **viết ADR mới với số kế tiếp**,
+đừng đi tìm số cũ.
