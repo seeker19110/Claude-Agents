@@ -27,6 +27,8 @@ import os
 import re
 import shutil
 import tempfile
+import urllib.error
+import urllib.request
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -39,12 +41,38 @@ from .config import CoreConfig
 from .sandbox import SECRET_ENV
 from .tools import ToolCall, ToolSpec
 
-__all__ = ["ARGV_LIMIT", "CLAUDE_EFFORT", "CLI_BASE_FLAGS", "CLI_SUBTYPE_ERRORS", "CODEX_EFFORT", "TIERS",
-           "TRANSIENT_HTTP", "AnthropicClient", "CodexClient", "Completion", "FakeClient", "LLMConfig",
-           "LLMError", "ModelClient", "Refused", "TransientError", "anthropic_input_tokens", "check_argv",
-           "cli_effort_args", "cli_env", "find_codex_binary", "load_config", "neutral_messages",
-           "object_before_trailing_junk", "object_in_prose", "reported_model", "strict_schema",
-           "strip_code_fence", "system_prompt_args"]
+__all__ = [
+    "ARGV_LIMIT",
+    "CLAUDE_EFFORT",
+    "CLI_BASE_FLAGS",
+    "CLI_SUBTYPE_ERRORS",
+    "CODEX_EFFORT",
+    "TIERS",
+    "TRANSIENT_HTTP",
+    "AnthropicClient",
+    "CodexClient",
+    "Completion",
+    "FakeClient",
+    "LLMConfig",
+    "LLMError",
+    "ModelClient",
+    "OpenAICompatClient",
+    "Refused",
+    "TransientError",
+    "anthropic_input_tokens",
+    "check_argv",
+    "cli_effort_args",
+    "cli_env",
+    "find_codex_binary",
+    "load_config",
+    "neutral_messages",
+    "object_before_trailing_junk",
+    "object_in_prose",
+    "reported_model",
+    "strict_schema",
+    "strip_code_fence",
+    "system_prompt_args",
+]
 
 C = TypeVar("C", bound="LLMConfig")
 
@@ -667,3 +695,191 @@ class FakeClient:
             raise LLMError("FakeClient hết câu trả lời")
         return Completion(text=json.dumps(payload, ensure_ascii=False), input_tokens=self.tokens_per_call[0],
                           output_tokens=self.tokens_per_call[1], model=f"fake-{model_tier}")
+
+
+# ---------- K3.3c3 bước 1: OpenAICompatClient ----------
+#
+# difflib 0.73 sau c2 — company là **tập cha** của studio: cùng hình dạng, cùng thứ tự, hơn đúng một method và
+# 46 dòng. Khác hẳn `ClaudeCodeClient` (0.39) vốn hơn 83 dòng và ba method của cầu MCP — cái đó là quyết định
+# riêng, ở PR sau.
+#
+# Năm điểm studio ĐANG THIẾU, mỗi cái là một lớp bảo vệ chứ không phải tính năng:
+#
+# 1. `_rejects` — **bug thật của studio**, không chỉ là thiếu sót. Bản studio tắt `json_schema` /
+#    `prompt_cache_key` khi gặp BẤT KỲ HTTP 400 nào. Một 400 vì prompt quá dài, hay vì một tham số khác sai, do
+#    đó tắt vĩnh viễn structured output cho cả tiến trình — và im lặng, vì lượt sau vẫn "chạy được", chỉ là
+#    chạy ở chế độ kém hơn. Bản company đòi thân lỗi phải NHẮC TỚI đúng tính năng đang dò.
+# 2. Lỗi mạng và mã HTTP tạm thời → `TransientError` (hoãn) thay vì `LLMError` (dừng) — cùng chủ đề với c2.
+#    Kèm bắt `TimeoutError`, thứ `URLError` không phủ.
+# 3. `finish_reason == "length"` được nhận diện RIÊNG. Trước đó lượt này lọt xuống dưới với `text` cụt, rồi
+#    runner báo "đầu ra không phải JSON" — người đọc đi sửa prompt trong khi việc cần làm là tăng `max_tokens`.
+#    Model "thinking" đặc biệt dễ dính: token suy nghĩ tính vào cùng hạn mức.
+# 4. Thân RỖNG với HTTP 200 được nhận diện RIÊNG. Đây là khuôn 1 của TRAPS §1 đúng nguyên văn: cả hai bên đều
+#    tưởng bình thường. Nguyên nhân thật (đo 2026-09-04): server không hiện thực `response_format: json_schema`
+#    theo chuẩn mà trả JSON qua `tool_calls`, nên `message.content` rỗng trong khi dữ liệu nằm nguyên ở
+#    `tool_calls[0].function.arguments`. Vì là 200, `_json_schema_ok` vẫn True và MỌI lượt sau hỏng y hệt.
+# 5. `cached_tokens` chỉ để báo cáo, không cộng thêm — `prompt_tokens` của OpenAI ĐÃ gồm phần cache (ngược với
+#    Anthropic, xem `anthropic_input_tokens`). Cộng lần nữa là thổi phồng số token trong audit.
+
+class OpenAICompatClient:
+    """POST {base_url}/chat/completions. Dùng `response_format: json_schema` nếu server hỗ trợ; nếu server từ chối
+    (400) thì lùi về `json_object` + schema nhúng trong prompt. Chạy với OpenAI, Ollama, Groq, vLLM, LM Studio..."""
+
+    def __init__(self, cfg: LLMConfig, timeout: float = 600.0):
+        self.cfg = cfg
+        self.base_url = (self.cfg.base_url or "https://api.openai.com/v1").rstrip("/")
+        self.api_key = self.cfg.api_key or os.environ.get("OPENAI_API_KEY", "")
+        self.timeout = timeout
+        self._json_schema_ok: bool | None = None
+        self._cache_key_ok: bool | None = None
+
+    def _post(self, body: dict[str, Any]) -> dict[str, Any]:
+        req = urllib.request.Request(f"{self.base_url}/chat/completions", data=json.dumps(body).encode("utf-8"),
+                                     headers={"Content-Type": "application/json",
+                                              **({"Authorization": f"Bearer {self.api_key}"} if self.api_key else {})})
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as r:
+                # `cast` như ba chỗ `json.loads` khác trong file: mypy `strict` của core không nhận `Any`
+                # ngầm, mà mypy lỏng của company thì bỏ qua — đúng loại chỗ core bắt được còn bốn package
+                # kia thì không.
+                return cast("dict[str, Any]", json.loads(r.read().decode("utf-8")))
+        except urllib.error.HTTPError as e:
+            msg = f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:500]}"
+            raise (TransientError if e.code in TRANSIENT_HTTP else LLMError)(msg, status=e.code) from e
+        except (urllib.error.URLError, TimeoutError) as e:
+            raise TransientError(f"lỗi mạng: {getattr(e, 'reason', e)}") from e
+
+    @staticmethod
+    def _rejects(e: LLMError, *features: str) -> bool:
+        """HTTP 400 mà thân lỗi nhắc tới tính năng đang dò (`response_format`, `prompt_cache_key`...). 400 vì lý do
+        khác (prompt quá dài, tham số khác sai) không được quy cho tính năng này rồi tắt nó vĩnh viễn."""
+        msg = str(e)
+        return msg.startswith("HTTP 400") and any(f in msg for f in features)
+
+    def _post_cacheable(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Như `_post`, nhưng nếu server từ chối vì không biết `prompt_cache_key` thì gỡ ra và thôi gửi từ lần sau.
+        Tách riêng khỏi dò `json_schema` để một lỗi 400 không bị quy sai cho tính năng kia."""
+        try:
+            data = self._post(body)
+        except LLMError as e:
+            if "prompt_cache_key" not in body or not self._rejects(e, "prompt_cache_key"):
+                raise
+            self._cache_key_ok = False
+            data = self._post({k: v for k, v in body.items() if k != "prompt_cache_key"})
+        else:
+            if "prompt_cache_key" in body:
+                self._cache_key_ok = True
+        return data
+
+    @staticmethod
+    def _messages(system: str, msgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = [{"role": "system", "content": system}]
+        for m in msgs:
+            if m["role"] == "assistant":
+                a: dict[str, Any] = {"role": "assistant", "content": m.get("content") or None}
+                if m.get("tool_calls"):
+                    a["tool_calls"] = [{"id": t["id"], "type": "function", "function": {
+                        "name": t["name"], "arguments": json.dumps(t["args"], ensure_ascii=False)}} for t in m["tool_calls"]]
+                out.append(a)
+            elif m["role"] == "tool":
+                out.append({"role": "tool", "tool_call_id": m["tool_call_id"], "content": m["content"]})
+            else:
+                out.append({"role": "user", "content": m["content"]})
+        return out
+
+    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
+                 cache_key: str | None = None, tools: list[ToolSpec] | None = None,
+                 messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion:
+        model = self.cfg.model_for(model_tier)
+        msgs = self._messages(system, neutral_messages(user, messages))
+        base: dict[str, Any] = {"model": model, "max_tokens": self.cfg.max_tokens, **self.cfg.extra, "messages": msgs}
+        if tools:
+            base["tools"] = [{"type": "function", "function": {"name": t.name, "description": t.description,
+                                                               "parameters": t.parameters}} for t in tools]
+        # Prompt cache: system prompt của mỗi agent là bất biến (ADR-0004) nên định tuyến theo agent id cho tỉ lệ
+        # hit cao nhất. Server không hiểu tham số này thì bỏ qua; nếu từ chối (400) thì gửi lại không có nó.
+        if cache_key and self._cache_key_ok is not False:
+            base["prompt_cache_key"] = cache_key
+        data: dict[str, Any] | None = None
+        if self._json_schema_ok is not False:
+            try:
+                data = self._post_cacheable({**base, "response_format": {"type": "json_schema", "json_schema": {
+                    "name": "payload", "strict": True, "schema": strict_schema(schema)}}})
+                self._json_schema_ok = True
+            except LLMError as e:
+                if not self._rejects(e, "response_format", "json_schema"): raise
+                self._json_schema_ok = False
+        if data is None:
+            hint = "\n\n# JSON Schema bắt buộc\n```json\n" + json.dumps(schema, ensure_ascii=False) + "\n```"
+            fb = [*msgs]; i = max(k for k, m in enumerate(fb) if m["role"] == "user")
+            fb[i] = {**fb[i], "content": fb[i]["content"] + hint}
+            # json_object ép mọi lượt là JSON, kể cả lượt model muốn gọi tool → có tool thì không ép; runner chốt JSON sau
+            data = self._post_cacheable({**base, "messages": fb, **({} if tools else {"response_format": {"type": "json_object"}})})
+        choice = (data.get("choices") or [{}])[0]
+        finish = choice.get("finish_reason") or "stop"
+        if finish == "content_filter":
+            raise Refused("model từ chối (content_filter)")
+        if finish == "length" and not (choice.get("message") or {}).get("tool_calls"):
+            # Hết hạn mức đầu ra là chế độ hỏng RIÊNG, phải nói rõ. Trước đây lượt này lọt xuống dưới với
+            # `text=""` (hoặc JSON cụt), rồi runner báo "đầu ra không phải JSON" — người đọc đi sửa prompt
+            # trong khi việc cần làm chỉ là tăng `max_tokens`. Model "thinking" đặc biệt dễ dính: token suy
+            # nghĩ tính vào cùng hạn mức, có lượt tiêu sạch mà chưa kịp trả lời câu nào.
+            u = data.get("usage") or {}
+            think = int((u.get("completion_tokens_details") or {}).get("reasoning_tokens", 0) or 0)
+            got = len((choice.get("message") or {}).get("content") or "")
+            raise LLMError(
+                f"model hết hạn mức đầu ra (finish_reason=length): max_tokens={self.cfg.max_tokens}, "
+                f"đã sinh {u.get('completion_tokens', '?')} token"
+                + (f" (trong đó {think} token suy nghĩ)" if think else "")
+                + f", nội dung trả về {got} ký tự"
+                + (" — RỖNG, model nghĩ hết hạn mức mà chưa trả lời" if not got else " và bị cắt giữa chừng")
+                + f". Tăng `max_tokens` trong llm.yaml (đang {self.cfg.max_tokens}) hoặc hạ `effort` cho tier này."
+            )
+        calls: list[ToolCall] = []
+        for tc in (choice.get("message") or {}).get("tool_calls") or []:
+            fn = tc.get("function") or {}
+            try: args = json.loads(fn.get("arguments") or "{}")
+            except json.JSONDecodeError: args = {"_raw": fn.get("arguments")}
+            calls.append(ToolCall(id=tc.get("id") or f"call_{len(calls)}", name=fn.get("name", ""), args=args))
+        usage = data.get("usage") or {}
+        msg = choice.get("message") or {}
+        if not calls and not (msg.get("content") or "").strip():
+            # Thân rỗng mà HTTP 200 là chế độ hỏng không tự khai báo: cả hai bên đều tưởng bình thường. Trước đây
+            # lượt này trả `text=""` xuống runner, `json.loads("")` hỏng và báo "đầu ra không phải JSON" — dẫn
+            # người đọc đi sửa schema/prompt, trong khi model có thể đã trả lời đủ.
+            #
+            # Nguyên nhân THẬT tìm được khi chạy thật (2026-09-04), sau khi đo bằng phép thử đối chứng: server
+            # OpenAI-compatible không hiện thực `response_format: json_schema` theo chuẩn mà trả JSON qua
+            # `tool_calls` (Google Code Assist hiện thực structured output bằng function call). Client đọc
+            # `message.content` thấy rỗng, còn dữ liệu nằm nguyên trong `tool_calls[0].function.arguments`.
+            # Vì là 200 chứ không phải lỗi, `_json_schema_ok` vẫn True và mọi lượt sau đều hỏng y hệt.
+            think = len(str(msg.get("reasoning_content") or ""))
+            raise TransientError(
+                f"model không trả về nội dung nào (finish_reason={finish}"
+                + (f", có {think} ký tự suy nghĩ" if think else "")
+                + "). Hay gặp khi server không hiện thực `response_format: json_schema` đúng chuẩn — kiểm bằng"
+                + " cách gọi lại cùng payload với `json_object`; ra nội dung thì lỗi nằm ở tầng structured output."
+            )
+        # OpenAI-compatible: `prompt_tokens` ĐÃ gồm phần cache, nên `cached_tokens` chỉ để báo cáo, không cộng thêm.
+        cached = int((usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0) or 0)
+        return Completion(text=msg.get("content") or "",
+                          input_tokens=int(usage.get("prompt_tokens", 0)), output_tokens=int(usage.get("completion_tokens", 0)),
+                          model=data.get("model", model), stop_reason=finish, cached_input_tokens=cached, tool_calls=calls)
+
+
+
+# ---------- provider CLI: giới hạn argv ----------
+
+# ---------- provider: Claude Code CLI (gói Claude Pro/Max đã đăng nhập trên máy, không cần API key) ----------
+
+# ---------- provider claude-code: chế độ tool CLI ----------
+
+# Tool công ty (tools.py) → tool sẵn có của Claude Code. `run` chỉ thành Bash khi cấu hình có `cli_bash`,
+# vì Bash không giới hạn mẫu là mất hẳn allowlist argv của tools.py.
+CLI_TOOL_MAP = {"read_file": ["Read"], "list_files": ["Glob"], "search": ["Grep"], "write_file": ["Edit", "Write"]}
+
+# Deny-list file bí mật cho `--settings`: bù phần `_is_secret` của tools.py mà --restricted không làm
+# (--restricted khoá tool trong workdir, nhưng .env/khoá riêng NẰM TRONG worktree vẫn đọc được).
+CLI_DENY_GLOBS = ("**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/*.keystore",
+                  "**/id_rsa*", "**/.netrc", "**/.npmrc", "**/.pypirc", "**/.git-credentials",
+                  "**/*secret*", "**/*credential*", "**/llm.yaml", "**/.aws/**", "**/.kube/**", "**/.docker/**")
