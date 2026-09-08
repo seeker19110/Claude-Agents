@@ -40,8 +40,43 @@ from .workspace import TicketWorkspace, WorkspaceError
 
 DEFAULT_MAX_INPUT_CHARS = 120_000
 
+# 4L-3: trần lặp KHÔNG TIẾN BỘ trong vòng tool. Đo được khi chạy thật (2026-09-04): 956.637 token đầu ra cho MỘT
+# ticket, phần lớn là cùng một lời gọi tool lặp lại với y nguyên tham số và y nguyên kết quả — `max_turns` và
+# `budget` đều không nhìn vào NỘI DUNG vòng lặp nên không cản được. 3 = cảnh báo (model còn cơ hội tự thoát),
+# 5 = cắt. Hai con số là đo cụ thể trên bản ghi eval, không phải ước lượng: đừng đổi mà không đo lại.
+NO_PROGRESS_WARN, NO_PROGRESS_STOP = 3, 5
+# Chỉ tool GHI mới đổi được trạng thái worktree → chỉ nó mới là "tiến bộ". Tool ĐỌC (`read_file`, `list_files`,
+# `search`, `run`) trả cùng kết quả bao nhiêu lần cũng không đưa ticket tiến thêm bước nào.
+WRITING_TOOLS = frozenset({"write_file", "delete_file"})
+
 
 class RunnerError(Exception): ...
+
+
+def _stagnant(calls: list[dict[str, Any]], window: int = 10) -> tuple[int, dict[str, Any] | None]:
+    """Số lời gọi tool lặp lại ở CUỐI `ToolBox.calls`, cùng bộ ba `(name, args_hash, out_hash)` — tức cùng tool,
+    cùng tham số, cùng kết quả (ba trường do `ToolBox.call()` ghi sẵn ở 4L-2; không băm lại ở đây). Trả về
+    `(n, call cuối cùng của chuỗi)`; `n == 0` nghĩa là vừa có tiến bộ.
+
+    Đếm theo CALL, không theo lượt hội thoại: `read_file` cùng path 5 lần trong MỘT lượt cũng là lặp cần cắt.
+
+    Hai luật, đều từ TRAPS.md khuôn 3 ("reset đếm theo tiến bộ, không theo lượt"):
+    - tool GHI chạy OK → dừng đếm ngay (`n = 0`), vì đó LÀ tiến bộ — worktree đã đổi;
+    - tool ĐỌC khác chen giữa thì BỎ QUA, không phá chuỗi đếm. Nếu không, model chỉ cần chèn một `list_files`
+      giữa hai `read_file` giống hệt là thoát hàng rào — mà nó không hề tiến thêm bước nào.
+    """
+    key: tuple[str, str, str] | None = None
+    last: dict[str, Any] | None = None
+    n = 0
+    for x in reversed(calls[-window:]):
+        if x["name"] in WRITING_TOOLS and x["ok"]:
+            break
+        k = (str(x["name"]), str(x["args_hash"]), str(x["out_hash"]))
+        if key is None:
+            key, last, n = k, x, 1
+        elif k == key:
+            n += 1
+    return n, last
 
 
 def project_of(env: Envelope) -> str | None:
@@ -223,6 +258,7 @@ class AgentRunner:
                max_turns: int, budget: int | None, msgs: list[dict[str, Any]], total: int, turn: int,
                usd: float, c: Completion | None, phase: str | None = None) -> tuple[Completion, int, int, float, int]:
         produced = 0   # output token cộng dồn — thước đo cho ngân sách, xem chú thích dưới
+        stopped = False   # 4L-3: vòng tool bị cắt vì lặp không tiến bộ (khác "hết lượt", nhưng chốt JSON y hệt)
         while turn < max_turns:
             turn += 1
             c = self._complete(spec, inp, user, schema, messages=msgs, tools=tools, tokens=total, cost=usd, phase=phase)
@@ -255,6 +291,24 @@ class AgentRunner:
                 if hits:
                     self._audit(spec, "injection_sanitized", inp, evidence=f"tool {t.name}: " + "; ".join(hits[:5]))
                 msgs.append({"role": "tool", "tool_call_id": t.id, "content": out})
+            # 4L-3: xét lặp SAU KHI đã nạp đủ kết quả của cả lượt. Chen một lượt `user` vào giữa dãy `tool`
+            # của cùng một lượt assistant làm hội thoại sai hình dạng (provider từ chối), nên chỗ duy nhất
+            # nói được mà không hỏng gì là ngay đây — vẫn đếm theo call, chỉ là xét theo mốc lượt.
+            n, last = _stagnant(tools.calls)
+            if last is not None and n >= NO_PROGRESS_STOP:
+                self._audit(spec, "no_progress", inp, tokens=total, cost=usd,
+                            evidence=json.dumps({"tool": last["name"], "args_hash": last["args_hash"],
+                                                 "n": n, "turn": turn}, ensure_ascii=False))
+                stopped = True
+                break
+            if last is not None and n == NO_PROGRESS_WARN:
+                self._audit(spec, "no_progress_warn", inp,
+                            evidence=json.dumps({"tool": last["name"], "args_hash": last["args_hash"],
+                                                 "n": n, "turn": turn}, ensure_ascii=False))
+                msgs.append({"role": "user", "content":
+                             f"Bạn đã gọi {last['name']} {n} lần cùng tham số cùng kết quả — lặp thêm không đưa "
+                             f"ticket tiến thêm bước nào. Đổi cách làm (ghi file, chạy lệnh khác) hoặc chốt JSON "
+                             f"cuối cùng ngay; lặp tới lần {NO_PROGRESS_STOP} thì vòng tool bị cắt."})
         # Vòng tool đã có cơ chế "ép chốt bằng JSON", nhưng trước đây chỉ kích hoạt khi hết lượt hoặc lượt cuối
         # RỖNG. Model trả VĂN XUÔI thì lọt qua và runner báo "đầu ra không phải JSON" — dẫn người đọc đi sửa
         # schema, trong khi chỉ cần bảo model chốt lại.
@@ -263,12 +317,16 @@ class AgentRunner:
         # Đo được khi chạy thật (2026-09-04): `qa-debugger` (tools="ro") hỏng lặp lại với
         # `...Tôi đã thu thập đủ bằng chứng. Bâ...`, chặn ticket QLKH-001 không qua nổi review.
         if c is None or c.tool_calls or not _co_ve_la_json(c.text):  # chốt bằng một lượt không tool
-            if c is not None and c.tool_calls:
+            if c is not None and c.tool_calls and not stopped:
+                # `stopped` (4L-3): tool của lượt cuối ĐÃ chạy và kết quả thật đã vào `msgs` — không đắp thêm
+                # cặp assistant/tool giả nữa, sẽ thành hai bản cho cùng một lượt.
                 msgs.append({"role": "assistant", "content": c.text,
                              "tool_calls": [{"id": t.id, "name": t.name, "args": t.args} for t in c.tool_calls]})
                 for t in c.tool_calls:
                     msgs.append({"role": "tool", "tool_call_id": t.id, "content": "lỗi: hết lượt tool, không chạy"})
-            msgs.append({"role": "user", "content": "Hết lượt tool. Trả về DUY NHẤT JSON cuối cùng ngay; phần chưa xong nêu rõ trong summary."})
+            msgs.append({"role": "user", "content":
+                         ("Dừng vòng tool: lặp lại cùng một lời gọi mà không tiến bộ. " if stopped else "Hết lượt tool. ")
+                         + "Trả về DUY NHẤT JSON cuối cùng ngay; phần chưa xong nêu rõ trong summary."})
             c = self._complete(spec, inp, user, schema, messages=msgs, tokens=total, cost=usd, phase=phase)
             total += c.tokens; produced += c.output_tokens; usd += self._cost(c)[0]; turn += 1
         urls = [x["args"]["url"] for x in tools.calls if x["name"] == "fetch_url" and x["ok"]]

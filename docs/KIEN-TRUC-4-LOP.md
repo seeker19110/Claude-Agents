@@ -46,7 +46,7 @@ Checklist 9 mục cuối đặc tả: company **6 ✅ 3 ◐**, studio **3 ✅ 6 
 | L2 nội dung ngoài = dữ liệu | ✅ | ✅ | `runner.py:90-96`; `sanitize_tool_output` `:254-256`; guard K3.4 | 6 | |
 | L3 kiểm bằng máy | ✅ | ✅ | `ws.run_checks()` → `verified_by=workspace` `runner.py:450-462`; `qc.py` | | |
 | L3 trần cứng | ✅ | ✅ | `max_retries=3` `delivery.py:28`; `MAX_REPAIR_ROUNDS=3` `studio/events.py:41` | 3 | |
-| L3 phát hiện không tiến bộ | ◐ | ◐ | ngoài vòng: `supervisor.py:150-156`, `runner.py:433-449`; **trong vòng tool: không** | 3 | **3** |
+| L3 phát hiện không tiến bộ | ✅ | ◐ | ngoài vòng: `supervisor.py`; trong vòng tool: `_stagnant()` cắt ở 5 lần lặp cùng hash (company). Studio chưa | 3 | **3** |
 | L3 giữ yêu cầu gốc qua vòng | ✅ | ✅ | rework phát lại nguyên `tasks` + `hint` | | |
 | L3 tỉa trạng thái qua vòng | ◐ | ◐ | `fit` cắt một lần trước vòng (`runner.py:325`) | | **4** |
 | L3 đo vòng (p50/p90, chạm trần) | ❌ | ❌ | số có trong audit, `metrics.py` chưa cộng | | **5** |
@@ -74,9 +74,9 @@ không nâng mức C1.
 | 4L | Việc | Lớp | PR | Mức | Ưu | Nhược / rủi ro | Khi nào |
 |---|---|---|---|---|---|---|---|
 | **1a** | `evals/thresholds.yaml` + CI đỏ khi điểm dưới ngưỡng | L1 | `feat(company)` | C2 | lần đầu biết chỉnh prompt là cải thiện hay hồi quy | ngưỡng sai → đỏ vì nhiễu; ngưỡng = **bẫy hồi quy**, không phải chỉ tiêu | xong #182 |
-| **1b** | security 2 → ≥ 10 ca, ghi lại model thật | L1 | `chore(company)` | C2 + người | ngưỡng có nghĩa | cần máy có key, 7 bước | đợt 2, sau 1a |
+| **1b** | security 2 → ≥ 10 ca, ghi lại model thật | L1 | `chore(company)` | C2 + người | ngưỡng có nghĩa | cần máy có key, 7 bước | chờ người: cần máy có key model thật + chạy đủ 7 bước CONTRIBUTING §3 |
 | **2** | audit `tools_trace` từng lời gọi tool (hash, ms, args cắt) | L2 | `feat(core)` | C2 | nhìn thấy gọi lặp; tiền đề 3 | args có dữ liệu khách → hash/cắt, `content` không ghi | xong #183 |
-| **3** | cắt vòng tool khi không tiến bộ (nhắc ở 3, cắt ở 5) | L3 | `feat(company)` | **C3** | cắt sớm ticket kiểu 956k token | dương tính giả nếu không loại tool ghi xen giữa; mỗi cắt +1 retry | đợt 2, sau 2 |
+| **3** | cắt vòng tool khi không tiến bộ (nhắc ở 3, cắt ở 5) | L3 | `feat(company)` | **C3** | cắt sớm ticket kiểu 956k token | dương tính giả nếu không loại tool ghi xen giữa; mỗi cắt +1 retry | xong #184 |
 | **4** | tỉa tool output cũ trong vòng (ADR-0040) | L3 | `docs` + `feat(core)` | **C3** | lượt cuối không đắt gấp mười lượt đầu | **đổi hành vi agent**; lệch hash mọi bản ghi eval | **chỉ trong K3.6**, một lần cho hai công ty |
 | **5** | `metrics.loops` p50/p90/capped + ô console | L3 | `feat(company)` | C2 | rẻ nhất, số đã có | ô mới phải theo console ADR-0003 (rỗng = xám) | đợt 2 |
 | **6** | studio validate trước rẽ nhánh (4 chỗ) | L4 | `refactor(studio)` | **C3** | đóng lỗ L4 còn lại của studio | chạm `events.py` lúc dời bus | gộp K3.5b/c |
