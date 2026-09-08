@@ -274,9 +274,19 @@ def test_tool_loop_stops_when_budget_exhausted(tmp_path):
     token phình theo số lượt tool (mỗi lượt gửi lại cả hội thoại). FakeClient sinh 1000 input + 300 output mỗi
     lượt, nên ngân sách 3000 phải chịu được 10 lượt rồi mới gãy ở lượt 11 — chứ không gãy ở lượt 3 như khi đếm
     cả input. Đo được khi chạy thật (2026-09-04): agent viết 21 file rồi bị giết ở `956637 > 90000`, công sức
-    bị `workspace_reset` xoá sạch, lặp ba lần mà không lần nào ra được PR."""
+    bị `workspace_reset` xoá sạch, lặp ba lần mà không lần nào ra được PR.
+
+    Đọc XOAY VÒNG ba file khác nhau chứ không đọc mãi một file: từ 4L-3 vòng tool bị cắt ở lần lặp thứ 5 cùng
+    (tool, tham số, kết quả), nên đọc mãi `mod.py` sẽ dừng vì `no_progress` trước khi chạm ngân sách — ca này
+    đo hàng rào NGÂN SÁCH, phải giữ cho hàng rào kia không nổ trước."""
     ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
-    client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=lambda m, t: [_tc("read_file", path="mod.py")])
+    vong = {"n": 0}
+
+    def _doc_xoay_vong(msgs, tools):
+        vong["n"] += 1
+        return [_tc("read_file", path=("mod.py", "test_mod.py", "pyproject.toml")[vong["n"] % 3])]
+
+    client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=_doc_xoay_vong)
     bus = InMemoryBus()
     with pytest.raises(RunnerError, match="vượt ngân sách"):
         AgentRunner(bus, client).generate("builder", _task_env(), "pull-requests", tools=WorkspaceTools(ws).toolbox(), budget=3_000)
