@@ -6,6 +6,30 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(core): K3.3c3 **bước 1** — `OpenAICompatClient` lên `xagents_core.llm`. difflib 0.73 sau c2: company
+  là **tập cha** của studio — cùng hình dạng, cùng thứ tự, hơn đúng một method và 46 dòng. Tách khỏi
+  `ClaudeCodeClient` (0.39) theo đúng ghi chú của phiên K3.3c1: *"mỗi cái một quyết định hợp nhất riêng, đừng gộp
+  một PR"*. Năm điểm studio đang thiếu, mỗi cái là một lớp bảo vệ chứ không phải tính năng:
+  **(1) `_rejects` — bug THẬT của studio, không chỉ là thiếu sót.** Bản studio tắt `json_schema` /
+  `prompt_cache_key` khi gặp BẤT KỲ HTTP 400 nào; một 400 vì prompt quá dài do đó tắt vĩnh viễn structured
+  output cho cả tiến trình, và tắt **im lặng** vì lượt sau vẫn "chạy được", chỉ là chạy ở chế độ kém hơn. Bản
+  company đòi thân lỗi phải NHẮC TỚI đúng tính năng đang dò. Test studio cũ mã hoá đúng con bug ấy (giả lập 400
+  với thân *"schema khong duoc ho tro"* — không chứa tên tính năng nào) nên nó ĐỎ khi hợp nhất; đã sửa và nói
+  rõ vì sao. (2) lỗi mạng + mã HTTP tạm thời → `TransientError` thay vì `LLMError`, kèm bắt `TimeoutError` —
+  thứ `URLError` không phủ. (3) `finish_reason == "length"` nhận diện riêng: trước đó lượt này lọt xuống dưới
+  với `text` cụt rồi runner báo "đầu ra không phải JSON", dẫn người đọc đi sửa prompt trong khi việc cần làm là
+  tăng `max_tokens`; model *thinking* đặc biệt dễ dính vì token suy nghĩ tính vào cùng hạn mức. (4) thân RỖNG
+  với HTTP 200 nhận diện riêng — khuôn 1 của `TRAPS.md` §1 đúng nguyên văn, nguyên nhân thật là server trả JSON
+  qua `tool_calls` thay vì `message.content`. (5) `cached_tokens` chỉ để báo cáo, KHÔNG cộng thêm — ngược với
+  Anthropic, `prompt_tokens` của OpenAI đã gồm phần cache; cộng lần nữa là thổi phồng token trong audit.
+  **Bằng chứng**: `evals … --replay [--strict]` trên bản trước và bản sau, hai công ty, PASS/FAIL **giống hệt
+  từng dòng** (50 + 28 ca). Đo hai chiều 7 đột biến, **7/7 bị bắt** — trong đó một đột biến cố ý hẹp: "nhánh
+  thân rỗng quên loại trừ `tool_calls`", vì bỏ vế `not calls` là mọi vòng tool của company chết ngay mà đọc diff
+  không thấy. mypy `strict` của core bắt thêm một `Any` ngầm ở `json.loads` mà mypy lỏng của company bỏ qua.
+  Số đo từ đĩa: `company/llm.py` 698→552, `studio/llm.py` 335→235, dòng trùng khối ≥ 8 giữa hai bên **128→62**.
+  Đã chạy: core 140 test / 100%; company 1023 / 100%; studio 471 + 5 skip / 100%; gateway 251, console 233,
+  không sửa một dòng.
+
 - refactor(core): K3.3c2 kịch bản B — `AnthropicClient`, `CodexClient`, `FakeClient` lên `xagents_core.llm`,
   kèm `ModelClient`, `cli_env`, `check_argv`, `anthropic_input_tokens`. Đây là bước "rẻ" mà K3.3c1 đã đặt tên và
   đo trước: ba adapter này trùng 0.81 / 0.82 / 0.88 (`difflib` từng symbol, đo lại sau c1), khác hẳn hai cái còn

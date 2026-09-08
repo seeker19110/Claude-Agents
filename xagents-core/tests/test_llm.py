@@ -208,7 +208,10 @@ def test_pham_vi_bon_adapter_chua_len_core():
     assert hasattr(m, "Completion"), "K3.3c1 đã mang Completion lên core"
     for ten in ("AnthropicClient", "CodexClient", "FakeClient"):
         assert hasattr(m, ten), f"K3.3c2 đã mang {ten} lên core (eval replay 78 ca giống hệt bản trước)"
-    for ten in ("OpenAICompatClient", "ClaudeCodeClient"):
-        assert not hasattr(m, ten), (
-            f"{ten} là K3.3c3 — hai cái này lệch nhất (0.72 / 0.39 đo sau c1) và mỗi cái là MỘT quyết định hợp "
-            "nhất riêng, không gộp một PR. Ai mang sang thì đổi ca này, và đổi nó là lúc phải hỏi 'eval replay đâu?'")
+    assert hasattr(m, "OpenAICompatClient"), "K3.3c3 bước 1 (difflib 0.73, company là tập cha)"
+    assert not hasattr(m, "ClaudeCodeClient"), (
+        "`ClaudeCodeClient` là K3.3c3 bước 2 và là cái lệch nhất còn lại (0.39): company hơn 83 dòng và ba "
+        "method của cầu MCP (`_toolbox`, `bind_toolbox`, `_complete_mcp`, ADR-0024). Đó KHÔNG phải 'studio "
+        "thiếu một tính năng' mà là thứ studio không có khái niệm tương đương — nên nó là quyết định kiến trúc "
+        "(MCP lên core hay ở lại company?), không phải chuyển mã. Ai mang sang thì đổi ca này, và đổi nó là "
+        "lúc phải hỏi 'eval replay đâu?'")

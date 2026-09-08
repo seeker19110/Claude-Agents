@@ -352,3 +352,226 @@ def test_check_argv_bao_ro_thay_vi_de_he_dieu_hanh_bao_kho_hieu():
     check_argv(["codex", "exec"])   # dưới trần: im lặng
     with pytest.raises(LLMError, match="argv của CLI dài"):
         check_argv(["codex", "x" * (ARGV_LIMIT + 1)])
+
+
+# ---------- OpenAICompatClient (K3.3c3 bước 1) ----------
+#
+# Năm điểm studio đang thiếu, mỗi cái một ca. Điểm 1 là **bug thật của studio**, không chỉ là thiếu sót: bản cũ
+# tắt `json_schema`/`prompt_cache_key` khi gặp BẤT KỲ 400 nào, kể cả 400 vì một lý do chẳng liên quan — và tắt
+# im lặng, vì lượt sau vẫn "chạy được", chỉ là chạy ở chế độ kém hơn.
+
+import urllib.error  # noqa: E402
+
+from xagents_core.llm import OpenAICompatClient  # noqa: E402
+
+
+class _Resp:
+    def __init__(self, payload): self._b = json.dumps(payload).encode("utf-8")
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def read(self): return self._b
+
+
+def _oa(**kw):
+    return OpenAICompatClient(LLMConfig(provider="openai", base_url="http://x/v1", api_key="k",
+                                        models={"strong": "m", "standard": "m"}, **kw))
+
+
+def _ok_body(content='{"a": 1}', finish="stop", **extra):
+    return {"model": "m", "choices": [{"finish_reason": finish, "message": {"content": content}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 3}, **extra}
+
+
+def test_openai_400_khong_lien_quan_KHONG_duoc_tat_json_schema(monkeypatch):
+    """Điểm nâng 1 — bug thật của studio. Một 400 vì prompt quá dài không được quy cho `json_schema` rồi tắt
+    structured output vĩnh viễn cho cả tiến trình. `_rejects` đòi thân lỗi NHẮC TỚI đúng tính năng đang dò."""
+    c = _oa()
+    def post(body):
+        if body.get("response_format", {}).get("type") == "json_schema":
+            raise LLMError("HTTP 400: prompt is too long for this model")
+        return _ok_body()
+    monkeypatch.setattr(c, "_post_cacheable", post)
+    with pytest.raises(LLMError, match="too long"):
+        c.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+    assert c._json_schema_ok is None, "400 vì lý do khác không được tắt json_schema"
+
+
+def test_openai_400_dung_tinh_nang_thi_lui_ve_json_object(monkeypatch):
+    """Mặt kia của điểm 1: 400 CÓ nhắc tính năng thì lùi thật, và lượt sau không thử lại nữa."""
+    c = _oa()
+    seen = []
+    def post(body):
+        seen.append(body)
+        if body.get("response_format", {}).get("type") == "json_schema":
+            raise LLMError("HTTP 400: response_format json_schema unsupported")
+        return _ok_body()
+    monkeypatch.setattr(c, "_post_cacheable", post)
+    assert c.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong").text == '{"a": 1}'
+    assert c._json_schema_ok is False and len(seen) == 2
+    seen.clear()
+    c.complete(system="s", user="u2", schema={"type": "object"}, model_tier="strong")
+    assert len(seen) == 1 and seen[0].get("response_format", {}).get("type") != "json_schema"
+
+
+def test_openai_prompt_cache_key_cung_theo_luat_do_rieng(monkeypatch):
+    """`_post_cacheable` tách riêng khỏi dò `json_schema` để một 400 không bị quy sai cho tính năng kia."""
+    c = _oa()
+    seen = []
+    def post(body):
+        seen.append(dict(body))
+        if "prompt_cache_key" in body:
+            raise LLMError("HTTP 400: unknown parameter prompt_cache_key")
+        return _ok_body()
+    monkeypatch.setattr(c, "_post", post)
+    c._post_cacheable({"a": 1, "prompt_cache_key": "ck"})
+    assert c._cache_key_ok is False and "prompt_cache_key" not in seen[-1]
+
+    c2 = _oa()
+    monkeypatch.setattr(c2, "_post", lambda body: _ok_body())
+    c2._post_cacheable({"a": 1, "prompt_cache_key": "ck"})
+    assert c2._cache_key_ok is True
+
+    c3 = _oa()
+    def post_khac(body): raise LLMError("HTTP 400: prompt is too long")
+    monkeypatch.setattr(c3, "_post", post_khac)
+    with pytest.raises(LLMError, match="too long"):
+        c3._post_cacheable({"a": 1, "prompt_cache_key": "ck"})
+    assert c3._cache_key_ok is None, "400 vì lý do khác không được tắt prompt_cache_key"
+
+
+def test_openai_ma_tam_thoi_va_loi_mang_la_transient(monkeypatch):
+    """Điểm nâng 2. Kèm `TimeoutError` — thứ `URLError` KHÔNG phủ, nên bản chỉ bắt `URLError` để nó thoát ra
+    ngoài dưới dạng một exception lạ không ai phân loại."""
+    c = _oa()
+
+    def http(code):
+        def f(req, timeout=None):
+            e = urllib.error.HTTPError("u", code, "bad", {}, None)
+            e.read = lambda: b"chi tiet"       # type: ignore[method-assign]
+            raise e
+        return f
+
+    monkeypatch.setattr(urllib.request, "urlopen", http(503))
+    with pytest.raises(TransientError) as ei:
+        c._post({"a": 1})
+    assert ei.value.status == 503
+
+    monkeypatch.setattr(urllib.request, "urlopen", http(400))
+    with pytest.raises(LLMError) as ei2:
+        c._post({"a": 1})
+    assert not isinstance(ei2.value, TransientError) and ei2.value.status == 400
+
+    def url_err(req, timeout=None): raise urllib.error.URLError("dut cap")
+    monkeypatch.setattr(urllib.request, "urlopen", url_err)
+    with pytest.raises(TransientError, match="lỗi mạng"):
+        c._post({"a": 1})
+
+    def to(req, timeout=None): raise TimeoutError("het gio")
+    monkeypatch.setattr(urllib.request, "urlopen", to)
+    with pytest.raises(TransientError, match="lỗi mạng"):
+        c._post({"a": 1})
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=None: _Resp({"ok": True}))
+    assert c._post({"a": 1}) == {"ok": True}
+
+
+def test_openai_het_han_muc_dau_ra_noi_ro_thay_vi_de_runner_bao_sai(monkeypatch):
+    """Điểm nâng 3, khuôn 1 của TRAPS §1. Trước đó lượt này lọt xuống dưới với `text` cụt rồi runner báo "đầu ra
+    không phải JSON" — người đọc đi sửa prompt, trong khi việc cần làm là tăng `max_tokens`. Thông điệp phải nói
+    được cả trường hợp model tiêu sạch hạn mức vào token SUY NGHĨ mà chưa trả lời câu nào."""
+    c = _oa(max_tokens=100)
+    monkeypatch.setattr(c, "_post_cacheable", lambda body: _ok_body(
+        content="", finish="length",
+        usage={"prompt_tokens": 5, "completion_tokens": 100,
+               "completion_tokens_details": {"reasoning_tokens": 98}}))
+    with pytest.raises(LLMError) as ei:
+        c.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+    m = str(ei.value)
+    assert "finish_reason=length" in m and "max_tokens=100" in m
+    assert "98 token suy nghĩ" in m and "RỖNG" in m
+
+    c2 = _oa(max_tokens=100)
+    monkeypatch.setattr(c2, "_post_cacheable", lambda body: _ok_body(
+        content='{"a": 1', finish="length", usage={"prompt_tokens": 5, "completion_tokens": 100}))
+    with pytest.raises(LLMError, match="bị cắt giữa chừng"):
+        c2.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+
+
+def test_openai_than_rong_voi_http_200_la_transient_co_ten(monkeypatch):
+    """Điểm nâng 4 — khuôn 1 đúng nguyên văn: 200 nên cả hai bên tưởng bình thường. Nguyên nhân thật (đo
+    2026-09-04): server trả JSON qua `tool_calls` thay vì `message.content`, nên content rỗng trong khi dữ liệu
+    nằm nguyên ở `tool_calls[0].function.arguments`; vì là 200, `_json_schema_ok` vẫn True và MỌI lượt sau hỏng
+    y hệt. Thông điệp phải chỉ thẳng cách kiểm."""
+    c = _oa()
+    monkeypatch.setattr(c, "_post_cacheable", lambda body: {
+        "model": "m", "choices": [{"finish_reason": "stop",
+                                   "message": {"content": "", "reasoning_content": "nghi mot chut"}}],
+        "usage": {}})
+    with pytest.raises(TransientError) as ei:
+        c.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+    m = str(ei.value)
+    assert "không trả về nội dung nào" in m and "ký tự suy nghĩ" in m and "json_object" in m
+
+
+def test_openai_tool_call_thi_than_rong_la_hop_le(monkeypatch):
+    """Ranh giới của điểm 4: content rỗng KÈM `tool_calls` là lượt gọi tool bình thường, không được báo lỗi.
+    Bỏ vế `not calls` là mọi vòng tool của company chết ngay."""
+    c = _oa()
+    monkeypatch.setattr(c, "_post_cacheable", lambda body: {
+        "model": "m", "choices": [{"finish_reason": "tool_calls", "message": {
+            "content": "", "tool_calls": [{"id": "t1", "function": {"name": "web", "arguments": '{"q": "x"}'}}]}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 2,
+                  "prompt_tokens_details": {"cached_tokens": 4}}})
+    out = c.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong",
+                     tools=[ToolSpec("web", "d", {"type": "object"})])
+    assert out.tool_calls == [ToolCall(id="t1", name="web", args={"q": "x"})]
+    # Điểm nâng 5: `prompt_tokens` của OpenAI ĐÃ gồm phần cache (ngược với Anthropic) — `cached` chỉ để báo cáo.
+    assert out.input_tokens == 10 and out.cached_input_tokens == 4
+
+
+def test_openai_content_filter_va_tool_arguments_hong(monkeypatch):
+    c = _oa()
+    monkeypatch.setattr(c, "_post_cacheable", lambda body: _ok_body(finish="content_filter"))
+    with pytest.raises(Refused, match="content_filter"):
+        c.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+
+    c2 = _oa()
+    monkeypatch.setattr(c2, "_post_cacheable", lambda body: {
+        "model": "m", "choices": [{"finish_reason": "tool_calls", "message": {
+            "content": "", "tool_calls": [{"function": {"name": "web", "arguments": "khong-phai-json"}}]}}],
+        "usage": {}})
+    out = c2.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong",
+                      tools=[ToolSpec("web", "d", {"type": "object"})])
+    # `arguments` hỏng không được nuốt: giữ nguyên văn dưới `_raw` để runner/audit còn thấy model đã định nói gì.
+    assert out.tool_calls[0].args == {"_raw": "khong-phai-json"} and out.tool_calls[0].id == "call_0"
+
+
+def test_openai_messages_dung_dinh_dang_openai_cho_ca_vong_tool(monkeypatch):
+    """`_messages` là chỗ đổi định dạng trung lập → OpenAI, và nó phải đúng cho CẢ vòng tool: assistant có
+    `tool_calls` (content rỗng thì phải là `None`, không phải `""` — vài server từ chối chuỗi rỗng), rồi
+    `role: tool` mang `tool_call_id`. Sai ở đây thì mọi lượt sau lượt đầu của company hỏng."""
+    out = OpenAICompatClient._messages("SYS", [
+        {"role": "user", "content": "hoi"},
+        {"role": "assistant", "content": "", "tool_calls": [{"id": "t1", "name": "web", "args": {"q": "x"}}]},
+        {"role": "tool", "tool_call_id": "t1", "content": "ket qua"},
+    ])
+    assert [m["role"] for m in out] == ["system", "user", "assistant", "tool"]
+    assert out[0]["content"] == "SYS"
+    assert out[2]["content"] is None and json.loads(out[2]["tool_calls"][0]["function"]["arguments"]) == {"q": "x"}
+    assert out[3]["tool_call_id"] == "t1" and out[3]["content"] == "ket qua"
+
+
+def test_openai_gui_prompt_cache_key_va_tool_theo_dung_dinh_dang(monkeypatch):
+    """`cache_key` chỉ đi kèm khi server chưa từ chối nó; `tools` đổi sang bọc `{"type": "function", ...}`."""
+    c = _oa()
+    seen = []
+    monkeypatch.setattr(c, "_post_cacheable", lambda body: (seen.append(body), _ok_body())[1])
+    c.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong", cache_key="agent-x",
+               tools=[ToolSpec("web", "tìm", {"type": "object"})])
+    assert seen[0]["prompt_cache_key"] == "agent-x"
+    assert seen[0]["tools"][0] == {"type": "function",
+                                  "function": {"name": "web", "description": "tìm", "parameters": {"type": "object"}}}
+    c._cache_key_ok = False   # đã bị server từ chối một lần thì thôi gửi
+    seen.clear()
+    c.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong", cache_key="agent-x")
+    assert "prompt_cache_key" not in seen[0]
