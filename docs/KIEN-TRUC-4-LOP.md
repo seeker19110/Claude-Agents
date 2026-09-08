@@ -49,7 +49,7 @@ Checklist 9 mục cuối đặc tả: company **6 ✅ 3 ◐**, studio **3 ✅ 6 
 | L3 phát hiện không tiến bộ | ✅ | ◐ | ngoài vòng: `supervisor.py`; trong vòng tool: `_stagnant()` cắt ở 5 lần lặp cùng hash (company). Studio chưa | 3 | **3** |
 | L3 giữ yêu cầu gốc qua vòng | ✅ | ✅ | rework phát lại nguyên `tasks` + `hint` | | |
 | L3 tỉa trạng thái qua vòng | ◐ | ◐ | `fit` cắt một lần trước vòng (`runner.py:325`) | | **4** |
-| L3 đo vòng (p50/p90, chạm trần) | ❌ | ❌ | số có trong audit, `metrics.py` chưa cộng | | **5** |
+| L3 đo vòng (p50/p90, chạm trần) | ✅ | ❌ | `metrics.collect()["loops"]` + 6 gauge + ô console (company); studio chưa | | **5** |
 | L4 nút không LLM | ✅ | ✅ | `_check_plan` `ticket_fsm.py:207-241`, smoke `verify.py:51`; `renderer.py`, `desk.py` | | |
 | L4 rẽ nhánh theo kiểu | ✅ | ◐ | `routes.py:322-324`; studio 4 chỗ so chuỗi | 5 | **6** |
 | L4 kiểm lược đồ ở biên | ✅ | ✅ | pydantic + JSON Schema lúc publish `bus.py:317-356` | 4 | |
