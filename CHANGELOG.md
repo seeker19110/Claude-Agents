@@ -24,7 +24,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   hành cố ý bind ra ngoài loopback (lúc đó `Host` hợp lệ là tên miền thật) — chế độ vốn đã cảnh báo và đòi
   firewall/reverse proxy lo xác thực. Đo hai chiều: gỡ middleware → 2 đỏ; bỏ kiểm `Host` → 1 đỏ; bỏ kiểm `Origin`
   → 1 đỏ; ép luật cả khi bind ra ngoài → 1 đỏ; bản đầy đủ → 26 xanh. gateway 251 test, coverage 100%.
-  Kèm mục mới trong `SECURITY.md` (vì sao CORS không đủ) và một dòng `CODEMAP.md`.
+  Kèm mục mới trong `SECURITY.md` (vì sao CORS không đủ) và một dòng `CODEMAP.md` (#172)
 
 - fix(studio): gate quá hạn không còn im lặng, và thế hệ khoá `once` sống sót qua restart (cả hai công ty).
   Audit sâu 2026-09-08 tìm ra `TRAPS.md` §1 khuôn 3 **vẫn sống trong studio**: `studio/orchestrator.py` dùng chung
@@ -43,7 +43,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   hai chiều từng thành phần: bỏ pha → đỏ; bỏ thế hệ → đỏ; bỏ escalate → đỏ; bỏ `r.created_at = env.ts` → đỏ ở cả
   hai package; đủ bản sửa → 980 + 476 test xanh, coverage 100% cả hai. Kèm ba chỗ tài liệu hub trôi sau ADR-0037 mà
   PR #167 chỉ sửa ở cấp package: `ARCHITECTURE.md` bảng gate còn `plan` (bỏ từ #158) và ADR "0001–0029" (thực tế
-  0038), `docs/NGON-NGU.md` cùng lỗi gate `plan`; số test trong hai README đo lại từ đĩa.
+  0039), `docs/NGON-NGU.md` cùng lỗi gate `plan`; số test trong ba README đo lại từ đĩa (#172)
 
 - docs: bảng theo dõi §8 của `docs/DAC-TA-NANG-CAP-2026-09.md` khớp lại thực tế đo trên `main`. Bảng đang nói sai ở sáu ô, tất cả đều theo hướng **báo thiếu việc đã làm**: **E1** ghi "chưa" nhưng đã xong từ #125 (ADR-**0034**, `orchestrator.py` còn 508 dòng < ngưỡng 900, bảng `Transition`/`step()` ở `orch/fsm.py`, test bảng `tests/test_orch_bang_chuyen.py`); **D2** ghi "chưa" nhưng đã xong từ #116 (ADR-0035, `sandbox.py`); **E5** ghi "chưa" nhưng `.github/workflows/pr-policy.yml` đã chặn PR thiếu dòng CHANGELOG (đỏ) và nhắc thiếu `docs/sessions/<ngày>.md` (cảnh báo, cố ý không chặn merge). Lý do bảng trôi: ba mục ấy được làm dưới **kế hoạch khác** — `docs/DAC-TA-TRIEN-KHAI-KICH-BAN-B.md` (chuỗi K0–K8) là bản "PR theo PR" đang chạy, còn bảng này là bản chiến lược; khi hai kế hoạch cùng sống mà không ai đối chiếu thì bảng chiến lược thành tài liệu chết. Ba ô còn lại sửa theo hướng ngược: **B8** và **S7** ghi rõ "chưa" (không có `docs/reports/*du-an-mau-2*`, không có báo cáo video thật) thay vì để trống, và **E3** ghi "nửa đầu xong" (6/6 agent đã có bản ghi model thật; mục tiêu cũ ghi "21 agent" đã bị ADR-0037 rút còn 6) — còn thiếu `evals/thresholds.yaml` và CI so trung vị 3 lần. Gộp ba dòng `B1–B8` mâu thuẫn nhau (một dòng ghi "B2 xong", một dòng ghi "B2 wip") thành một dòng có đủ số PR. Thêm cảnh báo ở cuối §8: **số ADR ở cột "ADR" của §4 là số ĐẶT TRƯỚC, không phải số thật** — thực tế 0034 → E1, 0035 → D2, 0036 → việc khác, 0037 → gộp 21 agent, 0038 → PR thật cho khách; nên D1, D3, E1, E2 đang trỏ vào số đã bị dùng cho việc khác, và mục nào cần ADR thì viết số kế tiếp thay vì đi tìm số cũ. Không đổi mã, không đổi phạm vi mục nào (#168)
 
