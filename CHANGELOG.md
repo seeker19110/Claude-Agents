@@ -6,6 +6,13 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs: **đối chiếu bốn lớp LLM (Prompt/Agent/Loop/Graph) với repo, khuôn thi hành một lệnh và `/thi-hanh`** (#180).
+  `docs/KIEN-TRUC-4-LOP.md`: company đạt 6/9 mục checklist đặc tả, studio 3/9; tám việc `4L-1…4L-8` (cổng eval
+  chấm điểm, vết từng tool call, cắt vòng tool khi không tiến bộ, tỉa hội thoại — ADR-0040 dự kiến ở K3.6, đo
+  vòng, studio validate trước rẽ nhánh, trace studio, tài liệu) gắn mức C1/C2/C3 → Haiku/Sonnet/Opus. Cố ý
+  **không** thêm chốt duyệt mức tool (đã có "không cấp tool + gate công đoạn"). `docs/KHUON-THI-HANH.md` +
+  `.claude/commands/thi-hanh.md`: sáu giai đoạn vào một file `docs/thi-hanh/<mã>.md`, người ra lệnh một lần,
+  song song phát triển nhưng PR tuần tự, idempotent qua file. Chỉ tài liệu.
 - refactor(core): **K3.5b — `bus` lên `xagents_core`; studio lần đầu có ACL topic, bảng ACL ĐO chứ không suy**. (#179)
   `difflib` giữa hai `bus.py` là **0.06**, nhưng con số ấy không nói "hai bus khác bản chất" — nó nói bus studio
   61 dòng **chưa làm phần lớn việc** mà bus company 206 dòng đã làm (không validate envelope, không ACL topic,
