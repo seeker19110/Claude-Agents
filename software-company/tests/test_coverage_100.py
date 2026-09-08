@@ -5,15 +5,12 @@ ngưỡng `fail_under` trong pyproject nâng theo, nên tụt lại một dòng 
 """
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
-import types
 
 import pytest
 
 from company import gate_brief as GB
-from company import sqlite_bus as SB
 from company import subagents as SA
 from company.bus import InMemoryBus
 from company.events import Envelope
@@ -40,53 +37,6 @@ def _audits(bus, prefix):
 def test_pin_url_cong_khong_hop_le():
     with pytest.raises(ToolError, match="cổng không hợp lệ"):
         pin_url("https://vi.du:99999999999/a")
-
-
-# ---------- sqlite_bus ----------
-
-def test_bus_del_nuot_loi_khi_dong_that_bai(tmp_path):
-    """`__del__` chạy lúc thông dịch tắt: `close()` hỏng thì phải nuốt, vì `__del__` không được phép ném."""
-    bus = SB.SQLiteBus(tmp_path / "b.sqlite")
-    that = bus._db   # giữ kết nối THẬT lại: bỏ rơi nó là đúng cái ResourceWarning mà `__del__` sinh ra để tránh
-                     # (trên 3.13 + filterwarnings=error, cảnh báo đó nổ ở một test khác đang chạy lúc GC)
-
-    class _Hong:
-        def close(self): raise RuntimeError("thông dịch đang tắt")
-
-    bus._db = _Hong()   # type: ignore[assignment]
-    bus.__del__()       # không được ném
-    bus._db = that
-    bus.close()
-
-
-def test_alive_tren_windows_dung_openprocess(monkeypatch):
-    calls: list[tuple] = []
-
-    class _K32:
-        def OpenProcess(self, flags, inherit, pid): calls.append((flags, pid)); return 0 if pid == 404 else 7
-        def CloseHandle(self, h): calls.append(("close", h))
-    monkeypatch.setattr(SB.os, "name", "nt")
-    monkeypatch.setitem(sys.modules, "ctypes", types.SimpleNamespace(windll=types.SimpleNamespace(kernel32=_K32())))
-    assert SB._alive(404) is False           # OpenProcess trả handle rỗng → coi như đã chết
-    assert SB._alive(123) is True and ("close", 7) in calls
-    assert calls[0] == (0x1000, 404)
-
-
-def test_alive_permission_error_la_con_song(monkeypatch):
-    monkeypatch.setattr(SB.os, "name", "posix")
-
-    def kill(pid, sig): raise PermissionError
-    monkeypatch.setattr(SB.os, "kill", kill)
-    assert SB._alive(1) is True
-
-
-def test_lease_bo_qua_file_lock_hong(tmp_path):
-    db = tmp_path / "b.sqlite"
-    lease = SB.Lease(db)
-    lease.path.write_text("không phải số", encoding="utf-8")
-    lease.acquire()          # pid không đọc được → coi như lock cũ, lấy lại được
-    assert lease.held and lease.path.read_text(encoding="utf-8") == str(os.getpid())
-    lease.release()
 
 
 # ---------- gate_checklists ----------

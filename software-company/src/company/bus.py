@@ -33,7 +33,9 @@ def producer_allowed(topic: str, actor: str) -> bool:
 class InMemoryBus(CoreInMemoryBus[Envelope]):
     envelope_cls = Envelope
 
-    def __init__(self, enforce_owners: bool = True, cfg: Any = CORE):
+    def __init__(self, cfg: Any = CORE, enforce_owners: bool = True):
+        # Thứ tự tham số theo core (`cfg` trước): `SQLiteBus` của K3.5c kế thừa CẢ lớp này lẫn
+        # `xagents_core.sqlite_bus.SQLiteBus`, và `super().__init__(cfg, ...)` của core đi qua đây theo MRO.
         super().__init__(cfg, enforce_owners=enforce_owners)
 
     def _extra_publish_checks(self, env: Envelope) -> None:

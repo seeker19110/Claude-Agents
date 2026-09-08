@@ -87,7 +87,7 @@ def test_cli_redeploy(tmp_path, capsys, monkeypatch):
     assert "không có release-candidate" in capsys.readouterr().err
 
     # lease đang bị TIẾN TRÌNH KHÁC giữ (orchestrator đang watch): không chạy chồng lên
-    import company.sqlite_bus as SB
+    from xagents_core import sqlite_bus as SB  # `_alive`/`Lease` lên core ở K3.5c
     (tmp_path / "c.sqlite.lock").write_text("999999", encoding="utf-8")
     that = SB._alive
     SB._alive = lambda pid: True
