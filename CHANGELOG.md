@@ -34,7 +34,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   DÒNG test nào của hai công ty — 1023 và 471 xanh nguyên.
   Số đo từ đĩa: `company/llm.py` 552→471, `studio/llm.py` 235→186, dòng trùng khối ≥ 8 giữa hai bên **62→42**
   (từ đầu phiên: 194→42). Đã chạy: core 147 test / 100%; company 1023 / 100%; studio 471 + 5 skip / 100%;
-  gateway 251, console 233.
+  gateway 251, console 233 (#175)
 
 - refactor(core): K3.3c3 **bước 1** — `OpenAICompatClient` lên `xagents_core.llm`. difflib 0.73 sau c2: company
   là **tập cha** của studio — cùng hình dạng, cùng thứ tự, hơn đúng một method và 46 dòng. Tách khỏi
