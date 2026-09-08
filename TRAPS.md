@@ -24,6 +24,20 @@ xanh: lệnh thử-lại trong `self.queue`, trạng thái `blocked` suy từ s�
 cho `remind` và `overdue`; `project_paused` không bao giờ gỡ → trần ngân sách chặn đúng một lần cả vòng đời. Rà
 2026-09-04: 7 khoá, 3 hỏng. *Cách rà*: grep `in self.once` / `not in self.<set>`, hỏi "tình huống này có lặp lại
 hợp lệ không?" — nếu có, khoá phải mang **giai đoạn/thế hệ**, không chỉ danh tính. Gỡ cờ thì coi chừng bật lại ngay.
+*Tái phát 2026-09-08 (audit sâu)*: đúng `gate:{sid}` ấy vẫn sống trong `studio/orchestrator.py` suốt thời gian
+company đã vá xong — `gate.overdue` của studio **chưa bao giờ** vào audit-log, và studio còn thiếu luôn bước
+escalate khi quá hạn. Guard `test_orch_khuon_loi.py` không thấy vì nó khoá phạm vi ở `src/company/orch/`. Hai
+bài học: (a) **vá một khuôn thì vá ở mọi công ty**, không chỉ nơi phát hiện — hai orchestrator là bản sao của
+cùng một thiết kế; (b) **test canh quy ước phải nói rõ nó canh tới đâu**, vì phạm vi hẹp của nó đọc y hệt "cả
+repo sạch". Studio nay có `Studio-creators/tests/test_khuon_loi.py` đối xứng.
+
+**Thế hệ phải là cùng một giá trị ở mọi tiến trình.** Cùng phiên: khoá `once` của gate lấy `GateRequest.created_at`
+làm thế hệ, nhưng tiến trình tạo gate giữ mốc dựng dataclass còn tiến trình dựng lại từ replay đặt
+`created_at=env.ts` của envelope `gate.request` — lệch vài trăm micro giây. Cả hai công ty đều thế. Hệ quả: mỗi
+lần mở lại bus là mọi gate đang chờ đổi thế hệ, khoá cũ hết khớp, gate đã nhắc/đã escalate bị **nhắc lại và
+escalate lại**. Sửa ở `PersistentGate.request` (gán `r.created_at = env.ts` trước khi publish) chứ không ở nơi
+dùng khoá. *Cách rà*: một khoá `once` mang thế hệ → hỏi tiếp "giá trị này có bằng chính nó sau restart không?".
+Test in-process không bao giờ thấy lớp lỗi này; phải có test mở lại bus.
 
 **Khuôn 4 — event cũ trong hàng đợi phát lại như mới sau resume/restart.** Hàng đợi giữ event theo danh tính,
 không theo thế hệ: task retry cũ + PR cũ nằm đó (hoãn vì paused), duyệt gate → phát lại → backend chạy trên worktree
