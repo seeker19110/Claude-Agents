@@ -40,7 +40,7 @@ research-requests → product[intake] → product[research] → product[spec] �
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0038); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0039); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
 agents/        system prompt 6 agent (có version), nhóm theo khối; agent nhiều việc khai `phases:` — skill của pha
                chỉ nạp ở lượt chạy pha đó (ADR-0037), thân bài có tiểu mục `### Pha <tên>` / `### Stack <tên>`
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
@@ -158,7 +158,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-08)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0038; 6 system prompt có version (5 công đoạn + supervisor, ADR-0037); 45 skill có version; 14 template; checklist 3 gate + escalation.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0039; 6 system prompt có version (5 công đoạn + supervisor, ADR-0037); 45 skill có version; 14 template; checklist 3 gate + escalation.
 - 19 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   `delivery.py` (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate release → production → nghiệm thu;
