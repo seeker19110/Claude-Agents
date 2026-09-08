@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any, Literal
-from uuid import uuid4
 
 from pydantic import BaseModel, Field
+from xagents_core.events import SCHEMA_VERSION as SCHEMA_VERSION
+from xagents_core.events import AuditLog as CoreAuditLog
+from xagents_core.events import Envelope as CoreEnvelope
+from xagents_core.events import SharedContext as CoreSharedContext
+from xagents_core.events import SupervisorAction as CoreSupervisorAction
+from xagents_core.events import SupervisorActionKind as SupervisorActionKind
+from xagents_core.events import can_transition as _can_transition
 
 from .roles import ROLE, Assignee, BuildPhase, ReviewSource
 
@@ -45,7 +50,6 @@ RISK_HINTS = frozenset({
     "crypto", "upload", "admin", "webhook", "external",
 })
 
-SCHEMA_VERSION = 1  # tăng khi envelope hoặc payload của topic đổi không tương thích ngược
 
 
 class Ruling(BaseModel):
@@ -58,24 +62,12 @@ class Ruling(BaseModel):
     cost_if_wrong: str
 
 
-class Envelope(BaseModel):
-    event_id: str = Field(default_factory=lambda: uuid4().hex)
+class Envelope(CoreEnvelope):
+    """Khung ở `xagents_core.events` (K3.5a). Ở đây chỉ thu hẹp `topic` về Literal của công ty này — đó là chỗ
+    duy nhất biết đủ để làm việc ấy, và nhờ nó `bus.publish` vẫn đỏ khi ai đó gửi một topic không tồn tại."""
+
     topic: Topic
-    key: str
-    actor: str
-    ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    payload: dict[str, Any]
-    schema_version: int = SCHEMA_VERSION
-    correlation_id: str | None = None  # event gốc của chuỗi nhân quả (mặc định = chính event_id khi không có cha)
-    causation_id: str | None = None    # event trực tiếp sinh ra event này
 
-    def model_post_init(self, _ctx: Any) -> None:
-        if self.correlation_id is None:
-            self.correlation_id = self.event_id
-
-    def child(self, **kw: Any) -> Envelope:
-        """Envelope mới trong cùng chuỗi nhân quả: kế thừa correlation_id, causation_id = event này."""
-        return Envelope(correlation_id=self.correlation_id, causation_id=self.event_id, **kw)
 
 class Task(BaseModel):
     ticket_id: str
@@ -145,28 +137,27 @@ class ReviewResult(BaseModel):
     a11y: dict[str, Any] | None = None
     rulings: list[Ruling] = []  # ADR-0030
 
-class SharedContext(BaseModel):
+class SharedContext(CoreSharedContext):
     namespace: Namespace
-    version: int
-    content_ref: str
-    summary: str = ""
     project_id: str | None = None  # None = phạm vi toàn công ty (vd. knowledge); dự án khác nhau không ghi đè nhau
     content: str | None = None  # toàn văn artifact; bus là nguồn sự thật, artifact store chỉ mirror ra file cho người đọc
-    rulings: list[Ruling] = []  # ADR-0030
+    # `default_factory` thay `= []`: lớp cha nay ở package khác nên ruff không nhận ra đây là model
+    # pydantic và báo RUF012. Pydantic vốn deep-copy default nên hành vi không đổi.
+    rulings: list[Ruling] = Field(default_factory=list)  # ADR-0030
 
-class AuditLog(BaseModel):
-    actor: str
-    action: str
+
+class AuditLog(CoreAuditLog):
     ticket_id: str | None = None
     project_id: str | None = None
-    evidence: str | None = None
-    tokens: int = 0
-    # Token ĐẦU RA riêng. `tokens` là tổng (input + output) và phình theo số lượt tool vì mỗi lượt gửi lại cả
-    # hội thoại, nên nó không đo được "agent đã làm bao nhiêu việc". Ngân sách ticket dùng trường này.
+    # Token ĐẦU RA riêng. `tokens` (ở lớp cha) là tổng (input + output) và phình theo số lượt tool vì mỗi lượt
+    # gửi lại cả hội thoại, nên nó không đo được "agent đã làm bao nhiêu việc". Ngân sách ticket dùng trường này.
     output_tokens: int = 0
     cost_usd: float = 0.0  # từ bảng giá `prices` trong llm.yaml; 0 khi model không có giá (supervisor đếm `unpriced`)
-    rulings: list[Ruling] = []  # ADR-0030
+    # `default_factory` thay `= []`: lớp cha nay ở package khác nên ruff không nhận ra đây là model
+    # pydantic và báo RUF012. Pydantic vốn deep-copy default nên hành vi không đổi.
+    rulings: list[Ruling] = Field(default_factory=list)  # ADR-0030
     phase: str | None = None  # ADR-0037: pha của lượt (`AgentSpec.phases`) — hai lượt cùng actor khác pha phân biệt được ở sổ
+
 
 class ChangeRequest(BaseModel):
     """Khách yêu cầu đổi phạm vi sau khi spec đã duyệt (account-manager tạo). Không sửa spec trực tiếp."""
@@ -189,13 +180,12 @@ class AcceptanceResult(BaseModel):
     evidence_ref: str | None = None
     rulings: list[Ruling] = []  # ADR-0030
 
-class SupervisorAction(BaseModel):
-    target: str
-    action: Literal["pause", "resume", "escalate", "budget_cut", "warn"]
-    reason: str
-    evidence: str | None = None
+class SupervisorAction(CoreSupervisorAction):
     project_id: str | None = None
-    rulings: list[Ruling] = []  # ADR-0030
+    # `default_factory` thay `= []`: lớp cha nay ở package khác nên ruff không nhận ra đây là model
+    # pydantic và báo RUF012. Pydantic vốn deep-copy default nên hành vi không đổi.
+    rulings: list[Ruling] = Field(default_factory=list)  # ADR-0030
+
 
 PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
     "tasks": Task, "pull-requests": PullRequest, "review-results": ReviewResult,
@@ -213,4 +203,5 @@ TRANSITIONS: dict[str, set[str]] = {
     "escalated": {"dispatched", "closed"}, "closed": set(),
 }
 def can_transition(src: str, dst: str) -> bool:
-    return dst in {"blocked", "escalated"} or dst in TRANSITIONS.get(src, set())
+    """Bảng `TRANSITIONS` là của công ty này; cơ chế ở `xagents_core.events`."""
+    return _can_transition(src, dst, TRANSITIONS)
