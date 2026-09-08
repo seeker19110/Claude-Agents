@@ -42,7 +42,7 @@ Checklist 9 mục cuối đặc tả: company **6 ✅ 3 ◐**, studio **3 ✅ 6 
 | L2 chốt duyệt tool tác dụng phụ | ✅* | ✅* | *thay bằng không cấp tool + gate `gates.py:9` | 2 | **8** |
 | L2 lỗi tool có hướng dẫn | ✅ | ✅ | `tools.py:196,97,118,138` | | |
 | L2 giới hạn phiên | ✅ | ✅ | `max_turns=25` `runner.py:299`; budget output `:243`; timeout 600/900s | | |
-| L2 nhật ký tool call | ◐ | ◐ | `tools_used` đếm theo tên (`runner.py:274-280`), không args | 7 | **2** |
+| L2 nhật ký tool call | ✅ | ✅ | audit `tools_trace` từng lời gọi (name/args_hash/out_hash/ms), `company.trace` in `↳` | 7 | **2** |
 | L2 nội dung ngoài = dữ liệu | ✅ | ✅ | `runner.py:90-96`; `sanitize_tool_output` `:254-256`; guard K3.4 | 6 | |
 | L3 kiểm bằng máy | ✅ | ✅ | `ws.run_checks()` → `verified_by=workspace` `runner.py:450-462`; `qc.py` | | |
 | L3 trần cứng | ✅ | ✅ | `max_retries=3` `delivery.py:28`; `MAX_REPAIR_ROUNDS=3` `studio/events.py:41` | 3 | |
