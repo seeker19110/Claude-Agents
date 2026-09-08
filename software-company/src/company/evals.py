@@ -265,20 +265,84 @@ class _AgentOutcome:
     cases_ok: bool
     res: list[CaseResult] = field(default_factory=list)
 
+    @property
+    def total(self) -> int:
+        return len(self.res)
 
-def _summary(outcomes: list[_AgentOutcome]) -> None:
+    @property
+    def passed(self) -> int:
+        return sum(r.passed for r in self.res)
+
+
+@dataclass(frozen=True)
+class Threshold:
+    """Sàn điểm của một agent (4L-1a). `cases` chống thu nhỏ bộ ca để né `min_pass_ratio`: xoá bớt ca xấu
+    làm ratio đẹp lên nhưng `total` tụt dưới `cases` thì vẫn đỏ."""
+    min_pass_ratio: float
+    cases: int
+
+
+DEFAULT_THRESHOLDS_PATH = EVALS_DIR / "thresholds.yaml"
+
+
+def load_thresholds(path: Path | None = None) -> dict[str, Threshold]:
+    """Không có file → `{}` (tính năng không áp, không phải lỗi — agent mới chưa kịp có ngưỡng).
+    Có file nhưng sai hình (không phải mapping, thiếu trường) → `LLMError` rõ ràng thay vì KeyError mù mờ."""
+    p = path or DEFAULT_THRESHOLDS_PATH
+    if not p.exists():
+        return {}
+    try:
+        raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as e:
+        raise LLMError(f"{p}: sai cú pháp YAML: {e}") from e
+    if not isinstance(raw, dict):
+        raise LLMError(f"{p}: phải là mapping agent -> {{min_pass_ratio, cases}}")
+    out: dict[str, Threshold] = {}
+    for aid, v in raw.items():
+        if not isinstance(v, dict) or "min_pass_ratio" not in v or "cases" not in v:
+            raise LLMError(f"{p}: {aid} thiếu `min_pass_ratio` hoặc `cases`")
+        try:
+            out[aid] = Threshold(min_pass_ratio=float(v["min_pass_ratio"]), cases=int(v["cases"]))
+        except (TypeError, ValueError) as e:
+            raise LLMError(f"{p}: {aid} có `min_pass_ratio`/`cases` không phải số: {e}") from e
+    return out
+
+
+def check_thresholds(outcomes: list[_AgentOutcome], th: dict[str, Threshold]) -> list[str]:
+    """Dòng FAIL cho agent tụt dưới sàn (4L-1a). Tính SAU khi mọi outcome đã gom xong (dùng được với `--jobs`).
+    Agent không có trong `th` → không áp (agent mới, hoặc cố ý chưa đặt ngưỡng); `total == 0` → không áp
+    (không có ca eval thì không có gì để chấm, tránh chia 0 và tránh đỏ oan agent chưa có bộ ca)."""
+    fails: list[str] = []
+    for o in outcomes:
+        t = th.get(o.agent_id)
+        if t is None or o.total == 0:
+            continue
+        ratio = o.passed / o.total
+        if ratio < t.min_pass_ratio:
+            fails.append(f"FAIL {o.agent_id}: điểm {ratio:.2f} dưới ngưỡng {t.min_pass_ratio:.2f} "
+                        f"({o.passed}/{o.total} ca) — evals/thresholds.yaml")
+        if o.total < t.cases:
+            fails.append(f"FAIL {o.agent_id}: bộ ca còn {o.total} dưới ngưỡng {t.cases} ca — "
+                        f"bộ ca bị thu nhỏ, evals/thresholds.yaml")
+    return fails
+
+
+def _summary(outcomes: list[_AgentOutcome], th: dict[str, Threshold] | None = None) -> None:
     """Bảng điểm vào `$GITHUB_STEP_SUMMARY` khi chạy trong Actions (K5.4). Điểm KHÔNG phải cổng — nhưng "CI xanh"
     cũng không được đọc thành "eval đạt", nên phải có chỗ nhìn thấy điểm mà không phải mở log job."""
+    th = th or {}
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     rows = [o for o in outcomes if o.res]
     if not path or not rows: return
-    body = ["| agent | ca đạt | bản ghi |", "|---|---|---|"]
+    body = ["| agent | ca đạt | bản ghi | ngưỡng |", "|---|---|---|---|"]
     for o in rows:
+        t = th.get(o.agent_id)
+        ng = f"≥{t.min_pass_ratio:.2f}, ≥{t.cases} ca" if t else "-"
         body.append(f"| `{o.agent_id}` | {sum(r.passed for r in o.res)}/{len(o.res)} | "
-                    f"{'ok' if o.gate_ok else '**lệch/thiếu**'} |")
+                    f"{'ok' if o.gate_ok else '**lệch/thiếu**'} | {ng} |")
     body.append("")
-    body.append("Điểm chấm không phải cổng (CONTRIBUTING §3): chỉ bản ghi thiếu hoặc lệch phiên bản prompt mới "
-                "làm CI đỏ. Bảng này để đọc xu hướng giữa các lần ghi lại.")
+    body.append("Điểm chấm không phải cổng riêng lẻ (CONTRIBUTING §3): bản ghi thiếu/lệch phiên bản prompt hoặc "
+                "tụt dưới `evals/thresholds.yaml` (4L-1a) mới làm CI đỏ.")
     try:
         with open(path, "a", encoding="utf-8") as f:
             f.write("\n".join(body) + "\n")
@@ -300,6 +364,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--jobs", type=int, default=1, metavar="N",
                     help="chạy N agent song song (K5.3). Mỗi agent một client và một file bản ghi riêng nên "
                          "không tranh nhau; thứ tự IN vẫn theo id. Song song ở đây là chờ MẠNG, không phải CPU")
+    ap.add_argument("--thresholds", type=Path, default=None, metavar="PATH",
+                    help="ngưỡng eval theo agent (4L-1a), mặc định evals/thresholds.yaml nếu tồn tại; "
+                         "agent tụt dưới sàn làm CI đỏ")
+    ap.add_argument("--no-thresholds", action="store_true", help="tắt cổng ngưỡng eval, giữ hành vi cũ")
     ns = ap.parse_args(argv)
     if ns.jobs < 1: ap.error("--jobs phải >= 1")
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8")  # Windows console cp1252
@@ -310,6 +378,11 @@ def main(argv: list[str] | None = None) -> int:
     # vòng sau; nó chỉ đổi mã thoát khi chạy với model thật ở máy, không đổi khi CI phát lại.
     gate_ok = True; cases_ok = True
     required = set(required_agents()) if ns.strict else set()
+    th: dict[str, Threshold] = {}
+    if not ns.no_thresholds:
+        th_path = ns.thresholds if ns.thresholds is not None else DEFAULT_THRESHOLDS_PATH
+        if ns.thresholds is not None or th_path.exists():
+            th = load_thresholds(th_path)
     if ns.strict:
         for aid, why in outdated_versions(ids).items():
             print(f"FAIL {aid}: {why} — chạy `make eval-record AGENT={aid}` rồi commit lại"); gate_ok = False
@@ -346,7 +419,10 @@ def main(argv: list[str] | None = None) -> int:
         for ln in o.lines: print(ln)
         gate_ok = gate_ok and o.gate_ok
         cases_ok = cases_ok and o.cases_ok
-    _summary(outcomes)
+    _summary(outcomes, th)
+    if th:
+        for line in check_thresholds(outcomes, th):
+            print(line); gate_ok = False
     # Điểm chấm KHÔNG phải cổng (CONTRIBUTING §3): bản ghi thật vừa commit mà đỏ ngay thì không ai dám ghi lại.
     # Nhưng "CI xanh" cũng không được hiểu là "eval đạt": in một dòng tổng kết để đọc log là thấy, và
     # `--fail-on-score` cho người vận hành bật cổng khi muốn.

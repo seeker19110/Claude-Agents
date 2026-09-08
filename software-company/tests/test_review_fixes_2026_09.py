@@ -381,10 +381,12 @@ def test_eval_replay_noi_ro_khi_ca_khong_dat_va_co_co_bat_cong(monkeypatch, caps
         ev.CaseResult(name="ca-hong", passed=False, failures=["verdict sai"])])
     monkeypatch.setattr(ev, "load_cases", lambda aid: [{"name": "ca-hong"}])
     monkeypatch.setattr(ev, "ReplayClient", lambda aid: FakeClient())
-    assert ev.main(["qa", "--replay"]) == 0
+    # --no-thresholds: ca giả này cố ý làm qa 0/1, thứ test này đo là --fail-on-score, không phải ngưỡng 4L-1a
+    # (qa có ngưỡng thật trong evals/thresholds.yaml, sẽ tự đỏ nếu không tắt ở đây).
+    assert ev.main(["qa", "--replay", "--no-thresholds"]) == 0
     out = capsys.readouterr().out
     assert "ca-hong" in out and "CHÚ Ý" in out and "không phải cổng" in out
-    assert ev.main(["qa", "--replay", "--fail-on-score"]) == 1
+    assert ev.main(["qa", "--replay", "--fail-on-score", "--no-thresholds"]) == 1
     assert "là cổng vì --fail-on-score" in capsys.readouterr().out
 
 

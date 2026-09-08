@@ -1,4 +1,4 @@
-.PHONY: llm probe test cov lint types fix demo golden subagents subagents-check gate gate-brief eval eval-record eval-replay run watch status report metrics assetscan assetbudget
+.PHONY: llm probe test cov lint types fix demo golden subagents subagents-check gate gate-brief eval eval-record eval-replay eval-thresholds run watch status report metrics assetscan assetbudget
 llm:           # cài hồ sơ model chạy thật: make llm PROFILE=claude-gateway (không ghi đè llm.yaml đang có)
 	@test -f llm.yaml && echo "llm.yaml đã có, không ghi đè (xoá nó nếu muốn cài lại)" || \
 	 (uv run python -m gateway ready --quiet && \
@@ -39,6 +39,8 @@ eval-record:   # chạy model thật, lưu evals/recordings/$(AGENT).json — b�
 	uv run python -m company.evals $(AGENT) --record --jobs $(or $(JOBS),1)
 eval-replay:   # như CI: phát lại từ bản ghi, không gọi model
 	uv run python -m company.evals all --replay
+eval-thresholds:  # như eval-replay --strict, in rõ agent nào tụt dưới evals/thresholds.yaml (4L-1a)
+	uv run python -m company.evals all --replay --strict
 run:
 	uv run python -m company.orchestrator run
 watch:

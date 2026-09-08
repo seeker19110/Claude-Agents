@@ -84,8 +84,12 @@ Prompt là code: đổi prompt mà không chạy lại các bước dưới đâ
    `chore(<package>): ghi lại eval <agents>` gắn nhãn `no-changelog`, để người đọc diff trước khi vào.
 
    **Đọc bảng điểm ở job summary trước khi merge PR bản ghi**, và đọc nó như một xu hướng: điểm chấm dao động
-   giữa các lần ghi, một lần tụt chưa phải hồi quy. Điểm không phải cổng — CI chỉ đỏ khi bản ghi thiếu hoặc
-   lệch phiên bản prompt.
+   giữa các lần ghi, một lần tụt chưa phải hồi quy. Điểm không phải cổng riêng lẻ — CI chỉ đỏ khi bản ghi thiếu
+   hoặc lệch phiên bản prompt, **hoặc** khi agent trong `evals/thresholds.yaml` tụt dưới sàn của nó (4L-1a; cột
+   "ngưỡng" trong bảng job summary). Bản ghi mới làm điểm rớt xuống dưới sàn thì CI đỏ đúng ý — đó là cơ chế
+   chặn hồi quy điểm dần dần qua nhiều lần ghi lại; nâng chất lượng prompt/skill trước khi commit, đừng hạ số
+   trong `thresholds.yaml` để né. Đổi ngưỡng có chủ đích thì làm tròn xuống 0.05 theo điểm đo được (`make
+   eval-thresholds` để xem điểm và dòng "dưới ngưỡng").
 4. Commit bản ghi đầu tiên của một agent mới thì thêm id của nó vào `REQUIRED.txt` — từ lúc đó agent ấy được
    bảo vệ như trên.
 5. **`make assetscan`** (trong `software-company/`, quét cả hai công ty). Prompt là tài sản chuỗi cung ứng: mẫu

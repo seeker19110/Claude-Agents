@@ -81,7 +81,7 @@ không nâng mức C1.
 | **5** | `metrics.loops` p50/p90/capped + ô console | L3 | `feat(company)` | C2 | rẻ nhất, số đã có | ô mới phải theo console ADR-0003 (rỗng = xám) | đợt 2 |
 | **6** | studio validate trước rẽ nhánh (4 chỗ) | L4 | `refactor(studio)` | **C3** | đóng lỗ L4 còn lại của studio | chạm `events.py` lúc dời bus | gộp K3.5b/c |
 | **7** | `xagents_core.trace` + `studio.trace` + `deferred` bền | L4 | `feat(studio)` | **C3** | studio ngang company | copy = thêm fork → phải lên core | sau K3.5c |
-| **8** | ARCHITECTURE: "vì sao không chốt mức tool", năm package; bảng K3 cập nhật | — | `docs` | C1 | chặn hiểu nhầm | — | **ngay** |
+| **8** | ARCHITECTURE: "vì sao không chốt mức tool", năm package; bảng K3 cập nhật | — | `docs` | C1 | chặn hiểu nhầm | — | xong #181 |
 
 **Cố ý không làm**: chốt duyệt mức tool (quay lại "nghẽn chốt" mà ADR-0037 vừa gỡ); tách `product.md` thành 4
 file (đảo ADR-0037 không có lỗi mới); few-shot trước việc 1 (không đo được); đưa đặc tả vào `AGENTS.md`.
