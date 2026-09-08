@@ -28,7 +28,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   không thấy. mypy `strict` của core bắt thêm một `Any` ngầm ở `json.loads` mà mypy lỏng của company bỏ qua.
   Số đo từ đĩa: `company/llm.py` 698→552, `studio/llm.py` 335→235, dòng trùng khối ≥ 8 giữa hai bên **128→62**.
   Đã chạy: core 140 test / 100%; company 1023 / 100%; studio 471 + 5 skip / 100%; gateway 251, console 233,
-  không sửa một dòng.
+  không sửa một dòng (#174)
 
 - refactor(core): K3.3c2 kịch bản B — `AnthropicClient`, `CodexClient`, `FakeClient` lên `xagents_core.llm`,
   kèm `ModelClient`, `cli_env`, `check_argv`, `anthropic_input_tokens`. Đây là bước "rẻ" mà K3.3c1 đã đặt tên và
