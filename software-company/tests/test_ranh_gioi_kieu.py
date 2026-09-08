@@ -27,7 +27,11 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "company"
 ORCH = SRC / "orch"
 
 # Trần bánh cóc, đo 2026-09-07. Giảm được thì giảm; tăng thì phải sửa dòng này kèm lý do trong PR.
-TRAN_DICT_ANY = 25
+# 25 → 27 (2026-09-08, ADR-0039 D1b): `verify.deploy_release` nhận và trả `payload` của `release-events` —
+# đúng loại "kiểu ĐÚNG" mà docstring trên nói tới (hợp đồng nằm ở `topics/schemas/release-events.json` và
+# `guard` kiểm lúc chạy). Chỉ +2 vì thân hàm đi một đường duy nhất thay vì ba hàm lồng nhau, mỗi hàm một chú
+# kiểu; bản ghi `deploy` không cần chú kiểu riêng vì `DeployRecord.record()` mới là nguồn hình dạng của nó.
+TRAN_DICT_ANY = 27
 
 
 def test_k63_ba_kieu_o_ranh_gioi_van_la_dataclass_co_truong_co_kieu() -> None:

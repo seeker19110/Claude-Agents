@@ -7,15 +7,22 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from ..deploy import DeployError, project_name
 from ..events import Envelope
 from ..gates import GateRequest
 from ..roles import ROLE
-from ..smoke import parse_runtime, run_smoke, unverified
+from ..smoke import VERIFIED_BY, parse_runtime, run_smoke, unverified
 from ..workspace import Integration
 from .routes import _dict_of
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator
+
+# Trạng thái release-events mới của ADR-0039: đã THỬ dựng môi trường chạy và KHÔNG dựng được. Cố ý không gộp vào
+# `failed`: `failed` (ADR-0029) trả ticket của RC về `changes_requested` vì sản phẩm hỏng, còn `deploy_failed` nói
+# "chưa deploy được" — có thể là hạ tầng máy trực, không phải code — nên ticket nằm yên chờ người quyết ở gate
+# escalation. Phân biệt được hai thứ đó chính là điều REL-019 thiếu (ADR-0039 "Bối cảnh").
+DEPLOY_FAILED = "deploy_failed"
 
 
 def release_evidence(o: Orchestrator, rid: str) -> dict[str, Any]:
@@ -84,6 +91,68 @@ def smoke(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[str, Any]
         o.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
                                       checklist=["root_cause", "decision:redeploy|close", "hint"]))
     return {**p, "status": "failed", "smoke": smoke}
+
+
+def _escalate(o: Orchestrator, rid: str) -> None:
+    """RC không đi tiếp được thì phải có người được hỏi — cùng đường với smoke fail ở trên: không mở gate thì RC
+    nằm im đúng như `pending_human` từng nằm im (TRAPS §"RC `pending_human`/`failed` không có route tiếp")."""
+    if rid not in o.gate.pending:
+        o.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
+                                      checklist=["root_cause", "decision:redeploy|close", "hint"]))
+
+
+def deploy_release(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[str, Any],
+                   integ: Integration | None, target_env: str) -> dict[str, Any]:
+    """ADR-0039: `deployed` là **container đang chạy**, không phải lời khai. `p["status"] == "deployed"` lúc vào đây
+    chỉ là yêu cầu đi tiếp của agent `ops`; orchestrator tự dựng compose file của khách rồi TỰ kết luận:
+
+    - đủ ba phần (`up -d` thoát 0 + mọi service `running` + smoke vào cổng đã map) → giữ `deployed`, kèm
+      `evidence.deploy` có `container_ids`/`port`/`started_at`/`smoke`/`verified_by=orchestrator`;
+    - thiếu bất kỳ phần nào → `status=deploy_failed`, evidence ghi phần nào hỏng + `logs_tail` (`deploy()` đã tự
+      `down` — không gọi `down` lần hai ở đây), và mở gate escalation;
+    - `skipped` (chưa bật `COMPANY_DEPLOY`, không có compose file, spec không khai `runtime`, không có worktree) →
+      **giữ nguyên hành vi cũ**, chỉ ghi lý do vào evidence. Đây là đường lùi để repo đang chạy không gãy —
+      `skipped` KHÔNG phải thành công, nhưng cũng không phải bằng chứng hỏng.
+
+    `env` là của ROUTE (`STAGING_ROUTE`/`PROD_ROUTE`), không phải `payload.env` của model: `_release` đã ghi đè
+    lời khai trước khi gọi hàm này, và `deploy()` từ chối env ngoài `staging|production`. Production vẫn CHỈ tới
+    được đây qua `PROD_ROUTE` sau Gate 3 — ADR-0039 quyết định 5 không thêm cổng nào.
+    """
+    pid = o.project_for(rc)
+    spec = o.latest("approved-specs", pid) if pid else None
+    rt = parse_runtime(spec.payload if spec is not None else None)
+    ev = _dict_of(p.get("evidence"))
+    # Bản ghi tối thiểu khi CHƯA gọi được `deploy()`: hình dạng phải giống `DeployRecord.record()` để chỗ đọc
+    # (console, gate_brief, người trực) chỉ phải biết MỘT hình.
+    d = {"project": project_name(pid or rid, target_env), "env": target_env, "ok": False, "verified_by": VERIFIED_BY}
+    detail = None   # None = chưa hỏng; dict = hỏng, và đây là phần ghi vào audit
+    if rt is None:
+        d["skipped"] = "spec không khai `runtime` (không biết dựng gì, probe đường nào)"
+    elif integ is None or not integ.path.exists():
+        d["skipped"] = "không có worktree tích hợp (dự án chạy không repo)"
+    else:
+        try:
+            rec = o.deploy_fn(integ.path, pid or rid, target_env, rt)
+        except DeployError as e:
+            # Fail-closed của ADR-0039 quyết định 4 (`COMPANY_DEPLOY=compose` mà thiếu binary): người vận hành
+            # khai đích danh nên đây là LỖI, không phải "coi như xong" — nhưng nó không được giết orchestrator.
+            d["error"] = str(e)[:300]
+            detail = {"error": d["error"]}
+        else:
+            d = rec.record()
+            if not rec.ok and not rec.skipped:
+                detail = {"error": rec.error, "services": list(rec.services), "logs_tail": rec.logs_tail[-600:]}
+    if detail is not None:
+        o._audit("release.deploy_failed", {"release_id": rid, "env": target_env,
+                                              "claimed_status": p.get("status"), **detail}, project_id=pid)
+        _escalate(o, rid)
+        return {**p, "status": DEPLOY_FAILED, "evidence": {**ev, "deploy": d}}
+    if d.get("skipped"):
+        o._audit("release.deploy_skipped", {"release_id": rid, "env": target_env, "reason": d["skipped"]},
+                    project_id=pid, once=f"deploy.skipped:{rid}:{rc.event_id}:{target_env}")
+    else:
+        o._audit("release.deploy", {"release_id": rid, **d}, actor=agent, project_id=pid)
+    return {**p, "evidence": {**ev, "deploy": d}}
 
 
 def regression_run(o: Orchestrator, env: Envelope) -> dict[str, Any]:

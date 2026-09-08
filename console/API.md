@@ -99,7 +99,7 @@ công ty đó bao giờ).
   "delivery": {
     "releases_total": 19, "releases_live": 14, "void": 5, "production": 0, "delivered": 0,
     "latest_tag": null, "latest_release": null, "integration_sha": "d16289b", "integrated_tickets": 18,
-    "funnel": [{"stage":"void","label":"Bị huỷ","n":5,"ids":["REL-009", …]}, …],   // đủ 12 bậc, thứ tự đi tới
+    "funnel": [{"stage":"void","label":"Bị huỷ","n":5,"ids":["REL-009", …]}, …],   // đủ 15 bậc, thứ tự đi tới (ADR-0039 thêm hai bậc `*_deploy_failed`)
     "releases": [{"id":"REL-019","stage":"production_pending_human","label":"…","version":"0.11.1",
                   "tickets":["QLKH-012"],"sha":"964b704","gate":null,"at":"10:06","summary":"…","runbook":"…",
                   "next":"Agent tự dừng, KHÔNG gate nào mở: …"}]

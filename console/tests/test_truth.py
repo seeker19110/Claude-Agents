@@ -15,7 +15,7 @@ from company.events import AuditLog, Envelope, ReviewResult, Task
 from company.gates import GateRequest, HumanGate
 
 from console.collect import COMPANY, collect
-from console.truth import FUNNEL, Truth, gate_effect
+from console.truth import FUNNEL, FUNNEL_LABEL, Truth, gate_effect
 
 NOW = datetime(2026, 9, 6, 4, 0, tzinfo=UTC)
 
@@ -127,6 +127,26 @@ def test_rollback_o_production_va_staging_la_that_bai() -> None:
     tr = Truth([rc("REL-1", ["T1"]), rel_event("REL-1", "production", "rolled_back"),
                 rc("REL-2", ["T2"]), rel_event("REL-2", "staging", "rolled_back")], lead, HumanGate(), NOW)
     assert [r["stage"] for r in tr.releases()] == ["production_failed", "staging_failed"]
+
+
+def test_deploy_failed_la_bac_rieng_khong_phai_that_bai_thuong() -> None:
+    """ADR-0039: `deploy_failed` (đã thử dựng container, không dựng được) KHÁC `failed`. Gộp hai thứ vào một ô là
+    nói sai với người trực: `failed` đã trả ticket về làm lại, `deploy_failed` thì chưa — việc nằm ở máy trực.
+
+    Đo hai chiều: bỏ hai dòng `if status == "deploy_failed"` trong `_release_stage` → cả hai RC rơi vào
+    `staging_pending_human`/`production_pending_human` (agent tự dừng), sai hẳn nguyên nhân, test ĐỎ."""
+    gate = HumanGate()
+    for rid in ("REL-1", "REL-2"):
+        gate.request(GateRequest(kind="escalation", subject_id=rid, created_by="ops", checklist=["root_cause"]))
+    lead = lead_stub(releases=["REL-1", "REL-2"], release_tickets={"REL-1": ["T1"], "REL-2": ["T2"]})
+    tr = Truth([rc("REL-1", ["T1"]), rel_event("REL-1", "staging", "deploy_failed"),
+                rc("REL-2", ["T2"]), rel_event("REL-2", "production", "deploy_failed")], lead, gate, NOW)
+    rels = {r["id"]: r for r in tr.releases()}
+    assert [r["stage"] for r in rels.values()] == ["staging_deploy_failed", "production_deploy_failed"]
+    assert all(s in FUNNEL_LABEL for s in ("staging_deploy_failed", "production_deploy_failed")), "phải có NHÃN riêng"
+    for r in rels.values():
+        assert "evidence.deploy" in r["next"] and "logs_tail" in r["next"], "chỉ chỗ đọc bằng chứng, không chỉ 'thất bại'"
+        assert "làm lại" not in r["next"], "ticket KHÔNG bị trả về làm lại — đừng bảo người trực đi tìm"
 
 
 def test_quyet_dinh_da_ky_chua_ap_dung() -> None:

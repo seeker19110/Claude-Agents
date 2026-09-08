@@ -41,9 +41,11 @@
           "enum": [
             "pending_human",
             "deployed",
+            "deploy_failed",
             "rolled_back",
             "failed"
-          ]
+          ],
+          "description": "`deployed` = orchestrator ĐÃ dựng được môi trường chạy và smoke qua (ADR-0039), không phải lời khai của agent; `deploy_failed` = đã thử dựng và không dựng được (`evidence.deploy` nói phần nào hỏng) — RC không đi tiếp, không mở gate release, và ticket KHÔNG bị trả về làm lại như `failed`."
         },
         "rollback_plan": {
           "type": "string"
@@ -95,6 +97,17 @@
             "sandbox": {
               "type": "string",
               "description": "ADR-0035: lớp bảo vệ đã chạy lệnh khởi động của spec — `subprocess` hay `container:<image>`. Khác lint/test, smoke phải mở đúng một cổng loopback nên backend container dùng `--network bridge -p 127.0.0.1:<port>`."
+            }
+          },
+          "additionalProperties": true
+        },
+        "evidence": {
+          "type": "object",
+          "description": "bằng chứng máy sinh của lượt deploy (ADR-0039). `deploy`: {project, env, ok, services[], container_ids[], port, started_at, smoke, compose_file, verified_by: orchestrator} khi đã dựng; {skipped: lý do} khi chưa bật `COMPANY_DEPLOY` / không có compose file; {error, logs_tail} khi hỏng.",
+          "properties": {
+            "deploy": {
+              "type": "object",
+              "additionalProperties": true
             }
           },
           "additionalProperties": true

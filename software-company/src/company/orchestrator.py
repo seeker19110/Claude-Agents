@@ -56,6 +56,7 @@ from typing import TYPE_CHECKING, Any
 from .blackboard import Blackboard
 from .bus import InMemoryBus
 from .delivery import DONE_STATES, DeliveryLead
+from .deploy import deploy
 from .events import Envelope
 from .gate_cli import PersistentGate
 from .llm import LLMError, ModelClient, TransientError
@@ -145,8 +146,14 @@ class Orchestrator:
                  integration: str = "company/integration", workers: int = 1, web: WebTools | bool = False,
                  artifacts: Path | None = None, project_budget_usd: float | None = None,
                  deliver: bool = False, push_remote: str | None = None, release_branch: str = "company/release",
-                 test_author: bool = False, sandbox: Sandbox | None = None, deliver_pr: bool = False):
+                 test_author: bool = False, sandbox: Sandbox | None = None, deliver_pr: bool = False,
+                 deploy_fn: Any = None):
         self.bus = bus
+        # ADR-0039 (D1b): dựng môi trường chạy thật của khách bằng `docker compose`. Tiêm được vì máy CI không có
+        # docker daemon và ma trận còn `windows-latest` — test truyền `partial(deploy, run=…, which=…)` để đo cả
+        # bốn nhánh kết luận mà không cần container thật. Mặc định là `deploy()` thật; nó tự đọc `COMPANY_DEPLOY`
+        # và trả `skipped` khi máy không có runtime, nên repo đang chạy không đổi hành vi.
+        self.deploy_fn: Any = deploy_fn if deploy_fn is not None else deploy
         # ADR-0035 (K2.4): sandbox chạy MỌI lệnh có đối số hoặc nội dung do model/repo khách sinh — lint/test của
         # `run_checks`, tool `run` của model, lệnh khởi động trong `run_smoke`. Mặc định `SubprocessSandbox`
         # (= hành vi trước ADR) chứ KHÔNG phải `sandbox_from_config`: `Orchestrator` được dựng thẳng trong hàng
@@ -419,6 +426,7 @@ class Orchestrator:
 
 
     _smoke = verify.smoke
+    _deploy_release = verify.deploy_release
     _regression_run = verify.regression_run
     _verdict_with_run = verify.verdict_with_run
 

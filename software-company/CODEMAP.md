@@ -34,6 +34,7 @@
 | Lint/test thật trong worktree ticket, `local_checks` | `TicketWorkspace.run_checks` (`src/company/workspace.py`); lệnh theo stack: `src/company/stacks.py` |
 | Sổ Ruling: trường `rulings` mọi topic, audit `ruling`, `Orchestrator.rulings()`, CLI `rulings`, mục trong gate_brief | `events.py` (`Ruling`), 19 schema, `runner.publish`, `orchestrator.py`, `gate_brief.py` — ADR-0030 |
 | Smoke sau deploy staging (`runtime` của spec) | `src/company/smoke.py`; hook `Orchestrator._smoke`; `_release_evidence` mang sang production |
+| Deploy thật bằng `docker compose` (`deployed` = container đang chạy; `deploy_failed`; `skipped`) | `src/company/deploy.py` (`deploy`, `DeployRecord`, `project_name`, `COMPANY_DEPLOY*`); hook `orch/verify.py::deploy_release` gọi từ `orch/release_fsm.py::_release`; `runtime.deploy` trong `topics/schemas/approved-specs.json` + `smoke.parse_runtime`; `status`/`evidence` trong `topics/schemas/release-events.json`; bậc phễu console `console/src/console/truth.py`; ADR-0039 |
 | Diff gửi lượt chấm (`qa[review]`, `security`; ưu tiên mã nguồn, cắt có khai) | `TicketWorkspace.diff`, `GENERATED_PATTERNS` (`workspace.py`) |
 | Merge vào nhánh tích hợp, xung đột | `Integration.merge`; `_integrate`, `_integrate_approved` (orchestrator) |
 | Giao hàng: tag `v<version>`, nhánh `company/release`, push, rollback | `Integration.deliver` / `rollback_delivery`; `_deliver` / `_rollback_delivery` (orchestrator); ADR-0027 |

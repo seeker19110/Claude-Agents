@@ -46,6 +46,38 @@ cả hai: target trùng ticket **hoặc** trùng dự án đều bị hoãn.
 Không có lệnh CLI. Dừng tiến trình `orchestrator run`. An toàn vì mọi trạng thái nằm trong bus SQLite:
 mở lại là replay dựng lại đúng chỗ, event chưa xử lý (`deferred`) được nhận lại.
 
+> **Dừng orchestrator KHÔNG còn đồng nghĩa với dừng sản phẩm** (ADR-0039, từ 2026-09-08). Khi
+> `COMPANY_DEPLOY` bật, lượt deploy dựng container **sống lâu** của khách bằng `docker compose up -d` và
+> **cố ý không giết chúng** — đó là cả điểm của "deployed là container đang chạy". Giết tiến trình
+> orchestrator chỉ dừng các agent; sản phẩm của khách vẫn nhận request, vẫn giữ cổng, vẫn ghi dữ liệu.
+
+### Mức 4 — dừng SẢN PHẨM đang chạy (container)
+
+Mỗi môi trường là một compose project riêng, tên do code đặt: `company-<project_id>-<env>` với
+`env ∈ staging | production`.
+
+```bash
+docker compose -p company-<project_id>-staging down      # dừng staging của một dự án
+docker compose -p company-<project_id>-production down   # dừng production của dự án đó
+docker ps --filter "name=company-" --format "{{.Names}}\t{{.Ports}}"   # còn cái gì đang chạy, chiếm cổng nào
+```
+
+Không nhớ `project_id`? Đọc `evidence.deploy.project` của `release-events` cuối (console: cột phễu release,
+bậc "Đã lên production"), hoặc `docker ps` như trên rồi `down` đúng tên.
+
+**Cảnh báo cổng (rủi ro đã biết).** Cổng lấy từ compose file **của khách**, orchestrator chỉ đọc lại cổng đã
+map để probe — nó không tự chọn và không sửa compose. Hệ quả trên máy trực:
+
+- staging và production của **cùng** một dự án khai cùng cổng → project thứ hai `up -d` hỏng, lượt đó thành
+  `deploy_failed` (không im lặng), nhưng chỉ vì hàng xóm. Khách phải khai cổng khác nhau cho hai môi trường.
+- hai **dự án** khác nhau cũng có thể trùng cổng với nhau, và với cả console (`8200`) hay dev server đang mở.
+- container đã `down` mà cổng vẫn bận → còn một project khác đang giữ: `docker ps --filter "name=company-"`.
+
+`deploy_failed` **khác** `failed`: nó nói "chưa dựng được môi trường chạy", ticket của RC **không** bị trả về
+làm lại; việc phải làm nằm ở máy trực. Đọc `evidence.deploy` (phần nào hỏng + `logs_tail`) của release-event
+cuối, sửa, rồi quyết gate escalation của RC. Container của lượt hỏng đã được `compose down` tự động — không
+phải dọn tay, cũng đừng `down` lần nữa để "cho chắc" khi lượt sau đã dựng lại được.
+
 ### Chạy tiếp sau khi đã xử lý
 
 ```bash

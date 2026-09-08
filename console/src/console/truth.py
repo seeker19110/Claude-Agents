@@ -39,6 +39,10 @@ FUNNEL = [
     ("void", "Bị huỷ"),
     ("rc", f"Chờ {ROLE.OPS}[deploy]"),
     ("staging_failed", "Staging thất bại"),
+    # ADR-0039: `deploy_failed` KHÁC `failed` — đã thử dựng container và không dựng được (hoặc smoke vào cổng đã
+    # map không qua). Ticket của RC KHÔNG bị trả về làm lại, nên gộp vào ô "thất bại" là nói sai với người trực:
+    # họ sẽ đi tìm ticket rework không tồn tại thay vì mở `evidence.deploy` xem `logs_tail`.
+    ("staging_deploy_failed", "Staging: deploy hỏng (container không chạy)"),
     ("staging_pending_human", "Staging: agent dừng chờ người"),
     ("staging_deployed", "Staging xong, chờ QA hồi quy"),
     ("qa_failed", "QA hồi quy chặn"),
@@ -46,6 +50,7 @@ FUNNEL = [
     ("gate3", "Chờ gate release"),
     ("gate3_approved", "Gate release đã ký, chờ deploy"),
     ("production_failed", "Production thất bại"),
+    ("production_deploy_failed", "Production: deploy hỏng (container không chạy)"),
     ("production_pending_human", "Production: agent dừng chờ người"),
     ("production", "Đã lên production"),
     ("delivered", "Đã giao (tag + push)"),
@@ -179,8 +184,10 @@ class Truth:
                 "ts": last.ts.astimezone().strftime("%H:%M"), "version": p.get("version")}
         if env_ == "production":
             if status == "deployed": return "production", info
+            if status == "deploy_failed": return "production_deploy_failed", info
             if status == "failed" or status == "rolled_back": return "production_failed", info
             return "production_pending_human", info
+        if status == "deploy_failed": return "staging_deploy_failed", info
         if status == "failed" or status == "rolled_back": return "staging_failed", info
         if status != "deployed": return "staging_pending_human", info
         # staging deployed: QA hồi quy / gate release quyết bậc tiếp
@@ -206,6 +213,11 @@ class Truth:
         if stage == "gate3": return "Chờ NGƯỜI ký gate release (kind=release) — duyệt là deploy production."
         if stage == "gate3_approved": return f"Chờ `{ROLE.OPS}` (pha deploy) chạy lượt production."
         if stage == "production": return "Chờ tag + push (delivery) rồi khách ký nghiệm thu."
+        if stage in {"staging_deploy_failed", "production_deploy_failed"}:
+            # ADR-0039: đứng TRƯỚC nhánh `pending` vì deploy hỏng luôn mở escalation — "chờ người quyết gate" là
+            # đúng nhưng vô dụng: người trực cần biết chỗ đọc bằng chứng. Khác `*_failed`: ticket KHÔNG bị trả về.
+            return ("Deploy hỏng: đọc `evidence.deploy` (phần nào hỏng + `logs_tail`) của release-event cuối. "
+                    "Container đã được `compose down`; sửa hạ tầng/compose rồi quyết gate escalation.")
         if pending: return f"Chờ người quyết gate `{self.gate.pending[rid].kind}` của RC này."
         if stage in {"staging_pending_human", "production_pending_human"}:
             return "Agent tự dừng, KHÔNG gate nào mở: không ai được hỏi. Người phải xử lý nợ agent nêu rồi request gate release lại."
