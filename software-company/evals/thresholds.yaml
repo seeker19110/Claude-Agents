@@ -1,0 +1,26 @@
+# Sàn điểm eval theo agent (4L-1a). Cổng CI (`evals all --replay --strict`): agent trong file này mà bản ghi
+# tụt dưới `min_pass_ratio`, hoặc bộ ca thu nhỏ dưới `cases`, thì đỏ — khác `evals/recordings/REQUIRED.txt`
+# (ADR-0010, gác bản ghi thiếu/lệch phiên bản prompt), file này gác ĐIỂM CHẤM không được tụt so với hôm đo.
+#
+# Đo ngày 2026-09-08 bằng `uv run python -m company.evals all --replay` trên bản ghi đã commit — mọi agent
+# 100% (điểm đo hôm nay), làm tròn xuống 0.05 theo quy ước. `cases` = số ca đo được hôm đó, chống thu nhỏ bộ.
+# Ghi lại eval bằng model thật và điểm tụt dưới sàn ở đây thì phải nâng chất lượng prompt/skill trước khi commit
+# bản ghi mới — không hạ số trong file này để né đỏ (cùng nguyên tắc `fail_under` ở AGENTS.md).
+builder:
+  min_pass_ratio: 0.95
+  cases: 13
+ops:
+  min_pass_ratio: 0.95
+  cases: 8
+product:
+  min_pass_ratio: 0.95
+  cases: 16
+qa:
+  min_pass_ratio: 0.95
+  cases: 8
+security:
+  min_pass_ratio: 0.95
+  cases: 2
+supervisor:
+  min_pass_ratio: 0.95
+  cases: 3

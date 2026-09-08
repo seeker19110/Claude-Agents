@@ -457,10 +457,11 @@ def test_every_agent_has_an_eval():
 
 
 def test_eval_files_reference_real_agents_and_topics():
-    from company.evals import EVALS_DIR
+    from company.evals import DEFAULT_THRESHOLDS_PATH, EVALS_DIR
     from company.registry import load_agents
     agents = load_agents()
-    files = list(EVALS_DIR.glob("*.yaml"))
+    # thresholds.yaml (4L-1a) không phải file ca eval — nó là ngưỡng điểm theo agent, tên không phải id agent
+    files = [f for f in EVALS_DIR.glob("*.yaml") if f != DEFAULT_THRESHOLDS_PATH]
     assert files, "phải có ít nhất một file eval"
     for f in files:
         assert f.stem in agents, f.name
@@ -488,9 +489,10 @@ class _NoDupLoader(yaml.SafeLoader):
 
 
 def test_eval_files_have_no_duplicate_keys_and_known_criteria():
-    from company.evals import EVALS_DIR
+    from company.evals import DEFAULT_THRESHOLDS_PATH, EVALS_DIR
     known = {"equals", "contains", "min_len", "max_len", "one_of", "any_of"}
     for f in sorted(EVALS_DIR.glob("*.yaml")):
+        if f == DEFAULT_THRESHOLDS_PATH: continue  # ngưỡng điểm (4L-1a), không phải file ca eval
         data = yaml.load(f.read_text(encoding="utf-8"), Loader=_NoDupLoader)
         for case in data["cases"]:
             unknown = set(case.get("expect", {})) - known

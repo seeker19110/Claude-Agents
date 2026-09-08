@@ -6,6 +6,11 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(company): **4L-1a — ngưỡng eval theo agent, CI chặn tụt điểm** (#182). `evals/thresholds.yaml` (6 agent,
+  đo 100% hôm 2026-09-08 làm tròn xuống 0.05); `Threshold`/`load_thresholds`/`check_thresholds` trong `evals.py`;
+  cờ `--thresholds`/`--no-thresholds`. Trước đây CI chỉ đỏ khi bản ghi eval thiếu/lệch phiên bản prompt, không
+  đỏ khi ĐIỂM CHẤM tụt — nay bản ghi mới làm điểm rớt dưới sàn thì CI đỏ. `Makefile` `eval-thresholds`.
+
 - docs: **4L-8 — ranh giới tin cậy nói rõ vì sao không chốt mức tool; bảng K3 cập nhật** (#181).
   `ARCHITECTURE.md` thêm `xagents-core` vào sơ đồ Năm package + đoạn giải thích lựa chọn "không chốt duyệt mức
   tool". `docs/DAC-TA-KICH-BAN-B.md` bảng K3: K3.3c2–d/K3.4/K3.5a/K3.5b = xong (#173-#179). Chỉ tài liệu.
