@@ -6,6 +6,9 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs: **4l — đợt 3-5 chờ K3.5c/K3.6 merge, kết phiên thi hành** (#186). `/thi-hanh 4l` đợt 1-2 xong (#181-#185);
+  4L-1b chờ người (key model thật); 4L-4/6/7 chờ K3.5c/K3.6 (kịch bản B, ngoài phạm vi mã 4l). `make test` gốc
+  xanh cả năm package. Chỉ tài liệu.
 - feat(company): **4L-5 — metrics vòng tool và tỉ lệ chạm trần** (#185). `metrics.collect()["loops"]`
   (turns_p50/p90/max, capped_ratio, no_progress_ratio, retry_max_ratio, empty) + 6 gauge `company_loop_*`;
   console ô "Vòng tool (trung vị)" mới, RỖNG → XÁM chứ không xanh giả (ADR-0003).
