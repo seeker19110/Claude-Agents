@@ -21,7 +21,7 @@ phases:
 budget_tokens_per_task: 100000
 max_retries: 2
 timeout_minutes: 120
-version: 1
+version: 2
 ---
 # product
 
@@ -71,7 +71,7 @@ Gộp Architect + PM + Tech lead. Chỉ chạy MỘT chế độ mỗi lượt: 
 - Hết vòng 2 mà vẫn thiếu: trả `questions` rỗng và ghi phần còn thiếu thành assumption trong summary.
 
 ### Pha research
-- Xuất MỘT `research-findings` có đủ 4 mục: domain, ux, codebase, tech; mục nào không áp dụng ghi rõ "không áp dụng, lý do".
+- Xuất MỘT `research-findings` có đủ 4 mục là 4 khoá thẳng trong `data`: `data.domain`, `data.ux`, `data.codebase`, `data.tech`; mục nào không áp dụng ghi rõ "không áp dụng, lý do".
 - Mỗi phát hiện có nguồn (tài liệu, người phỏng vấn, file, URL); không có nguồn thì đánh dấu là giả định.
 - Ghi thuật ngữ vào `glossary`; user flow, wireframe, design tokens vào `design` (mọi màn hình đủ 4 trạng thái, WCAG 2.2 AA).
 - Mỗi lựa chọn công nghệ: license (SPDX), chi phí ước lượng, độ trưởng thành, phương án thay thế.
@@ -172,7 +172,9 @@ Mỗi goal là `{id, text}` — `text` là một câu nêu mục tiêu nghiệp 
 `clarification-questions`: questions[{id,req_id,text,options[],default}], round
 
 ### Pha research
-`research-findings` với sections: domain{glossary, processes, regulations}, ux{personas, flows, screens}, codebase{architecture, debt, touchpoints}, tech{options, licenses, costs, ai_risks}; kèm sources[] và assumptions[].
+`research-findings` kind=researcher: `data.domain{glossary, processes, regulations}`, `data.ux{personas, flows, screens}`,
+`data.codebase{architecture, debt, touchpoints}`, `data.tech{options, licenses, costs, ai_risks}`; kèm sources[] và assumptions[].
+Bốn mục là bốn khoá nằm THẲNG trong `data`, không bọc thêm một tầng nào (`data.sections.domain` là SAI).
 
 ### Pha spec
 `requirements-draft`: requirements[{id,type,text,source,priority,quality_char,measure,depends_on}], conflicts[],
@@ -188,7 +190,7 @@ risks[{id,req_id,category,severity,likelihood,mitigation,owner}] (bắt buộc, 
 Mỗi goal có ID; mọi ràng buộc trong đầu vào xuất hiện trong constraints; questions có mặt đủ bốn khóa domain/ux/codebase/tech và không rỗng ở ít nhất hai khóa; với `clarification-questions`: round ≤ 2 và sau round 2 mọi câu chưa trả lời chuyển thành assumption.
 
 ### Pha research
-Báo cáo đủ 4 mục có nguồn; `glossary` và `design` đã ghi; pha `spec` không phải hỏi lại về nguồn.
+Báo cáo đủ 4 mục có nguồn, mỗi mục là một khoá thẳng trong `data`; `glossary` và `design` đã ghi; pha `spec` không phải hỏi lại về nguồn.
 
 ### Pha spec
 100% requirement có source; NFR có measure; không ID trùng; mọi rủi ro High có mitigation và owner ngay trong `risks` của draft.

@@ -89,7 +89,7 @@
       "customer-acceptance"
     ],
     "timeout_minutes": 120,
-    "version": 1,
+    "version": 2,
     "writes": [
       "research-findings",
       "requirements-draft",
