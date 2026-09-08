@@ -384,7 +384,7 @@ package đang gọi `company.llm.load_config()` không đổi.
 - Xoá `studio/runner.py:29-81` + dòng 265; runner studio gọi `guard.guard_payload`/`sanitize_tool_output`.
 - `assetscan.py` (company) import guard qua shim — job `asset-scan` không đổi.
 
-> **Trạng thái: XONG (#PRNUM).** Ba gạch trên viết K3.4 như một lần chuyển mã; **thực tế nó là hợp nhất HAI
+> **Trạng thái: XONG (#177).** Ba gạch trên viết K3.4 như một lần chuyển mã; **thực tế nó là hợp nhất HAI
 > CHIỀU**. Studio không có `guard.py` — nó có một bộ mẫu *khác* nằm lẫn trong `runner.py`, và đo chéo 23 câu thử
 > cho thấy **mỗi bên đều có lỗ**: company trượt 4 mẫu studio bắt được, studio trượt 8 mẫu company bắt được. Nên
 > "lấy bản company" là làm mất bốn thứ ở cả hai bên. Ba quyết định hợp nhất, mỗi cái kèm số đo, ghi ở docstring

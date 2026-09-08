@@ -46,7 +46,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   loại được nguồn, nới chỗ đó cần biết từng `enrich` lấy dữ liệu ở đâu — ngoài phạm vi K3.4.
   **Lỗ hổng test thứ hai, cùng khuôn với lỗ đầu**: ca gọi thẳng `guard_payload` chốt *hàm* đúng nhưng không chốt
   *runner có gọi hàm ấy* — thay `guard_payload` trong runner bằng luật cũ mà không ca nào đỏ. Nay có hai ca đi
-  qua `AgentRunner` thật (#PRNUM)
+  qua `AgentRunner` thật (#177)
 
 - refactor(core): **K3.3d — `routing.py` lên `xagents_core`, và studio HOÃN lỗi vận chuyển thay vì tính lỗi
   agent**. Bước cuối của K3.3; **K5 nay mở khoá**. `routing.py` là module dễ nhất của cả chuỗi — nó không đọc
