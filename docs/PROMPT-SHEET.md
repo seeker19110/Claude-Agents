@@ -44,7 +44,7 @@ nói rõ — đừng commit prompt mà không có bản ghi.
 
 ```
 Dự án <project_id> không tiến. Đừng tin `status` xanh. Trả lời bốn câu bằng dữ liệu từ bus (chạy trong
-software-company/): (1) release cuối của mỗi RC đang ở env/status nào — vẽ phễu RC → staging → qa → gate 3 →
+software-company/): (1) release cuối của mỗi RC đang ở env/status nào — vẽ phễu RC → staging → qa → gate release →
 production; (2) có gate nào đang chờ, kind gì, hậu quả duyệt là gì; (3) ticket nào `blocked` mà KHÔNG có gate;
 (4) `delivery` đã giao được gì (tag, sha). Rồi mới đề xuất một hành động.
 ```

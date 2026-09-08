@@ -100,15 +100,16 @@ def test_pheu_release_moi_bac_mot_rc() -> None:
     assert by_id["REL-006"]["sha"] == "d16289b" and by_id["REL-008"]["gate"] == "release" and by_id["REL-005"]["gate"] == "escalation"
     assert by_id["REL-011"]["runbook"] == "infra/x.md" and by_id["REL-005"]["summary"].startswith("Dừng")
     assert by_id["REL-001"]["next"] == "" and "trùng" in by_id["REL-002"]["next"]
-    # ADR-0037 §7: prose "Chờ <agent>" của console để PR-6 đổi cùng lượt viết lại tài liệu (PR-5b đã để lại
-    # "release-engineer" y như vậy) — ở đây vẫn khoá đúng chuỗi đang hiển thị.
-    assert "release-engineer" in by_id["REL-003"]["next"] and "qa-debugger" in by_id["REL-006"]["next"]
-    assert "Gate 3" in by_id["REL-008"]["next"] and "lượt production" in by_id["REL-009"]["next"]
+    # ADR-0037 PR-6: prose "Chờ <agent>" nay nói tên agent HIỆN CÓ kèm pha, dựng từ `ROLE` chứ không viết tay —
+    # người trực đọc "Chờ `ops` (pha deploy)" rồi grep `agents/operations/ops.md` là thấy đúng file.
+    assert "ops" in by_id["REL-003"]["next"] and "deploy" in by_id["REL-003"]["next"]
+    assert "qa" in by_id["REL-006"]["next"] and "review" in by_id["REL-006"]["next"]
+    assert "gate release" in by_id["REL-008"]["next"] and "lượt production" in by_id["REL-009"]["next"]
     assert "nghiệm thu" in by_id["REL-012"]["next"]
     assert "escalation" in by_id["REL-005"]["next"], "RC có gate chờ thì nói chờ người quyết gate đó"
     assert "KHÔNG gate nào mở" in by_id["REL-011"]["next"], "agent tự dừng mà không gate: nói thẳng là không ai được hỏi"
     assert "QA chặn" in by_id["REL-007"]["next"] and "làm lại" in by_id["REL-004"]["next"] and "làm lại" in by_id["REL-010"]["next"]
-    assert "Gate 3 không mở" in by_id["REL-013"]["next"], "QA pass mà không gate: đó là bế tắc, không phải 'chờ QA'"
+    assert "gate release không mở" in by_id["REL-013"]["next"], "QA pass mà không gate: đó là bế tắc, không phải 'chờ QA'"
 
 
 def test_qa_bi_waive_thi_khong_con_la_qa_failed() -> None:
@@ -117,7 +118,7 @@ def test_qa_bi_waive_thi_khong_con_la_qa_failed() -> None:
                      release_reviews={"REL-1": {"qa": ReviewResult(ticket_id="REL-1", source="qa", verdict="fail")}},
                      release_waived={"REL-1": {"qa"}})
     tr = Truth([rc("REL-1", ["T1"]), rel_event("REL-1", "staging", "deployed")], lead, gate, NOW)
-    # QA đã được người chấp nhận mà Gate 3 vẫn không mở → bế tắc `gate3_missing`, không phải "chờ QA"
+    # QA đã được người chấp nhận mà gate release vẫn không mở → bế tắc `gate3_missing`, không phải "chờ QA"
     assert tr.releases()[0]["stage"] == "gate3_missing"
 
 

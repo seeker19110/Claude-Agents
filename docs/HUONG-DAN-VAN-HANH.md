@@ -47,7 +47,7 @@ uv run python -m company.demo
 Dòng cuối in ra `sprint report` và `events: 20`. Đọc từ dưới lên, ba dòng đáng chú ý:
 
 ```
-REL-001: staging deployed, QA pass → gate 3 pending: True | TCK-1: merged
+REL-001: staging deployed, QA pass → gate release pending: True | TCK-1: merged
 REL-001: production + khách nghiệm thu → TCK-1: closed
 releases: ['REL-001', 'REL-002'] | gate pending: []
 ```
@@ -90,7 +90,7 @@ PowerShell: `$env:COMPANY_LLM_PROVIDER="fake"` trên một dòng riêng trước
 Ra:
 
 ```
-research-requests   THU-1   error:intake:FakeClient hết câu trả lời; stalled:THU-1:intake
+research-requests      THU-1           error:product:FakeClient hết câu trả lời; stalled:THU-1:product
 {... "paused": ["THU-1"], "gates_pending": {"THU-1": "escalation"}, "stats": {"errors": 1} ...}
 ```
 
@@ -113,7 +113,7 @@ THU-1        escalation by=supervisor       checklist=agent_error,decision:retry
 
 ```bash
 uv run python -m company.gate_cli --db thu.sqlite approve THU-1 --by human:<tên bạn> \
-  --reason "agent_error: FakeClient hết câu trả lời vì demo không có kịch bản cho intake; decision: close; hint: chạy lại bằng model thật sau khi make llm"
+  --reason "agent_error: FakeClient hết câu trả lời vì demo không có kịch bản cho lượt product[intake]; decision: close; hint: chạy lại bằng model thật sau khi make llm"
 ```
 
 ```
@@ -509,13 +509,13 @@ khởi động lại. Một tiến trình phục vụ được nhiều khách, m
 uv run python -m company.orchestrator publish research-requests req.json --actor human:sales
 ```
 
-Mẫu đầy đủ hơn (một web app quản lý trung tâm, có đủ tám phần mà `intake` cần để đặt câu hỏi cho cả bốn mảng
+Mẫu đầy đủ hơn (một web app quản lý trung tâm, có đủ tám phần mà `product` pha `intake` cần để đặt câu hỏi cho cả bốn mảng
 domain/ux/codebase/tech): `software-company/examples/yeu-cau-mau-web-app.json` — chép rồi sửa cho khách của bạn.
 Mô tả càng nêu rõ **ngoài phạm vi** và **yêu cầu phi chức năng có số đo** thì spec càng ít phải hỏi lại ở gate.
 
 Không muốn viết JSON tay: chạy console với `--allow-submit` (`cd console && uv run python -m console --allow-submit`),
 vào màn **Xưởng phần mềm** → khối *Giao việc* ở đầu màn → form *Yêu cầu phần mềm* (có ô *Nơi lưu dự án* = `repo`).
-Cùng một event, cùng schema — chỉ khác là điền vào ô. Câu hỏi làm rõ của spec-writer cũng trả lời được ở form
+Cùng một event, cùng schema — chỉ khác là điền vào ô. Câu hỏi làm rõ của `product` (pha `intake`) cũng trả lời được ở form
 *Trả lời câu hỏi làm rõ* ngay đó, thay cho `publish clarification-answers`.
 
 ### 5.2 Chạy vòng lặp
@@ -523,13 +523,13 @@ Cùng một event, cùng schema — chỉ khác là điền vào ô. Câu hỏi 
 ```bash
 uv run python -m company.orchestrator run --watch 5      # chạy liên tục, 5 giây một nhịp (Ctrl+C dừng, resume được)
 uv run python -m company.orchestrator run                # một lượt rồi thoát
-uv run python -m company.orchestrator run --workers 4 --web   # ticket khác key chạy song song; researcher được đọc web
+uv run python -m company.orchestrator run --workers 4 --web   # ticket khác key chạy song song; pha research được đọc web
 ```
 
-Làm **code thật** trên repo khách: thêm `--repo ../khach --base main`. Khối kỹ thuật sửa trong worktree `ticket/<id>`,
+Làm **code thật** trên repo khách: thêm `--repo ../khach --base main`. `builder` sửa trong worktree `ticket/<id>`,
 PR mang lint/test thật; `--integration` để ticket rẽ từ và gộp vào nhánh `company/integration`; `--batch-release` gom
-ticket approved của dự án vào một RC (một staging, một gate 3, một UAT). Thêm `--deliver` để khi gate release được duyệt và
-release-engineer báo production đã deploy, công ty đặt tag `v<version>` và fast-forward nhánh `company/release` trong repo
+ticket approved của dự án vào một RC (một staging, một gate release, một UAT). Thêm `--deliver` để khi gate release được duyệt và
+`ops` (pha `deploy`) báo production đã deploy, công ty đặt tag `v<version>` và fast-forward nhánh `company/release` trong repo
 khách (ADR-0027; `--push-remote origin` để đẩy lên remote, `--release-branch` đổi tên nhánh). `main` của khách vẫn không bị
 chạm — khách tự merge `company/release` (hoặc tag) vào `main` theo quy trình của họ.
 
@@ -540,28 +540,31 @@ con đã lọc `GH_*`/`GITHUB_*`, nên token trong biến môi trường không 
 và audit `delivery.pr_opened | pr_reused | pr_skipped | pr_failed`; `gh` lỗi hay remote không phải GitHub thì bản giao
 vẫn xong, chỉ thiếu PR (mở tay). Hồ sơ `gate_brief UAT-<rid>` có mục "PR giao hàng" để người duyệt đối chiếu số PR.
 
-Thêm `--test-author` để **bộ test do một vai khác viết** (ADR-0028): `test-author` đọc `acceptance` của ticket (không
-thấy code, không thấy diff, không thấy `hint` của vòng trước), ghi **chỉ** file test và commit vào nhánh ticket; rồi
-agent kỹ thuật viết code cho tới khi bộ test đó xanh mà **không ghi và không xoá được** file test — ranh giới cưỡng chế
-ở `tools.py`, không phải lời dặn trong prompt.
+Thêm `--test-author` để **bộ test do một lượt khác viết** (ADR-0028): `qa` chạy pha `author`, đọc `acceptance` của
+ticket (không thấy code, không thấy diff, không thấy `hint` của vòng trước), ghi **chỉ** file test và commit vào nhánh
+ticket; rồi `builder` viết code cho tới khi bộ test đó xanh mà **không ghi và không xoá được** file test — ranh giới
+cưỡng chế ở `tools.py`, không phải lời dặn trong prompt. Hai lượt là hai PHA của cùng một agent, nhưng pha `author`
+không được nạp skill review và không thấy diff (`BLIND_STRIP`), nên tính độc lập vẫn do code cưỡng chế.
 
-- Test **đỏ ngay sau lượt test-author là đúng**: nó chứng minh bộ test ràng buộc một hành vi chưa tồn tại. Xanh ngay
+- Test **đỏ ngay sau lượt `qa[author]` là đúng**: nó chứng minh bộ test ràng buộc một hành vi chưa tồn tại. Xanh ngay
   mới là dấu hiệu đáng ngờ (test rỗng, assert vô nghĩa) → audit `tests_green_before_code`.
-- Agent kỹ thuật cho rằng test sai đặc tả thì ghi `test_dispute` vào PR; việc quay về test-author (lượt này được xem
+- `builder` cho rằng test sai đặc tả thì ghi `test_dispute` vào PR; việc quay về `qa[author]` (lượt này được xem
   diff). Đó là đường **duy nhất** bộ test được đổi sau khi đã viết.
-- Repo mà công ty không nhận ra vùng test (stack `unknown`) thì **không** chạy test-author — không cưỡng chế được ranh
-  giới thì không giả vờ có nó. Ticket đi đường cũ và PR mang `tests_authored_by: assignee`, để reviewer biết bộ test
-  này không độc lập và tự chấm kỹ hơn.
+- Repo mà công ty không nhận ra vùng test (stack `unknown`) thì **không** chạy lượt `qa[author]` — không cưỡng chế được
+  ranh giới thì không giả vờ có nó. Ticket đi đường cũ và PR mang `tests_authored_by: assignee`, để lượt `qa[review]`
+  biết bộ test này không độc lập và tự chấm kỹ hơn.
 - Giá: thêm một lượt model (tier `standard`) mỗi ticket, và ticket chạy tuần tự hơn một nhịp.
 
 ### 5.3 Duyệt human gate
 
-Vòng lặp dừng ở bốn điểm: spec, plan, release, và khách ký nghiệm thu. Xem và quyết định:
+Vòng lặp dừng ở ba điểm: spec, release, và khách ký nghiệm thu (`GateKind` còn bốn giá trị — thêm `escalation` khi
+kẹt). Kế hoạch KHÔNG còn gate từ ADR-0037: `_check_plan` kiểm bằng code rồi giao ticket ngay; sai thì `plan_rejected`
++ gate `escalation`. Xem và quyết định:
 
 ```bash
 uv run python -m company.gate_cli list
 uv run python -m company.gate_cli approve SPEC-P1 --by human:po
-uv run python -m company.gate_cli reject  PLAN-P1 --by human:po --reason "tách ticket thanh toán nhỏ hơn"
+uv run python -m company.gate_cli reject  REL-001 --by human:po --reason "smoke production chưa có bằng chứng; decision: request_changes; hint: chạy lại staging"
 ```
 
 Năm quyết định: `approve`, `request_changes`, `reject`, `hold`, `rollback` (cùng cú pháp `SUBJECT --by --reason`). Gate có hạn
@@ -579,11 +582,12 @@ uv run python -m company.gate_brief --all                      # mọi gate đan
 Hồ sơ in ra màn hình và ghi `company.artifacts/<project>/gate-brief/<subject>.{md,json}`: mỗi mục tự kiểm là `ok` / `gap` /
 `unknown` kèm sự việc và nguồn (namespace@version, topic, worktree) — không có mục nào là "nên duyệt". Với gate `escalation`
 hồ sơ gom lịch sử thất bại, hint đã dùng (và hint lặp lại y hệt), ngân sách còn, worktree để hint mới cụ thể hơn "thử lại".
-Trong Claude Code, `/gate-brief REL-001` chạy lệnh trên rồi gọi subagent `sc-gate-release` + trợ lý chuyên môn (`sc-qa-debugger`,
-`sc-security-engineer`, `sc-release-engineer`; chỉ Read/Grep/Glob) đọc hồ sơ và in một bản tóm; câu cuối luôn là lệnh
+Trong Claude Code, `/gate-brief REL-001` chạy lệnh trên rồi gọi subagent `sc-gate-release` + trợ lý chuyên môn (`sc-qa`,
+`sc-security`, `sc-ops`; chỉ Read/Grep/Glob) đọc hồ sơ và in một bản tóm; câu cuối luôn là lệnh
 `gate_cli` để bạn tự ký.
 
-Con người trả lời câu hỏi của clarifier, quyết định change request, nhận xét ticket đang chạy, hoặc tiếp quản worktree:
+Con người trả lời câu hỏi làm rõ (`product` pha `intake`), quyết định change request, nhận xét ticket đang chạy, hoặc
+tiếp quản worktree:
 
 ```bash
 uv run python -m company.orchestrator publish clarification-answers ans.json --actor human:po
@@ -592,8 +596,8 @@ uv run python -m company.orchestrator comment  T-12 --by human:lead --text "dùn
 uv run python -m company.orchestrator takeover T-12 --by human:lead      # đã sửa tay trong worktree: chạy lint/test, thay PR của agent
 ```
 
-Sau khi release-engineer deploy staging và QA hồi quy pass, gate 3 mở; approve xong mới lên production. Khách ký
-nghiệm thu bằng `acceptance-results` qua account-manager (gate 4, ADR-0017).
+Sau khi `ops` (pha `deploy`) deploy staging và `qa` (pha `review`) hồi quy pass, gate `release` mở; approve xong mới
+lên production. Khách ký nghiệm thu bằng `acceptance-results` qua `ops` (pha `account`) — gate `acceptance`, ADR-0017.
 
 ### 5.4 Nhìn vào bên trong
 

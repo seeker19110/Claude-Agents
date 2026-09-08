@@ -1,6 +1,6 @@
 # Sổ mẫu thiết kế — chỉ mục bài toán hạ tầng thường gặp
 
-Mục đích: khi spec chạm một bài toán đã có lời giải chuẩn trong ngành, researcher và delivery-lead có **tên mẫu**
+Mục đích: khi spec chạm một bài toán đã có lời giải chuẩn trong ngành, `product` (pha `research` và `plan`) có **tên mẫu**
 để so, thay vì nghĩ lại từ đầu. Đây là **chỉ mục khái niệm**, không phải hướng dẫn: mỗi dòng cho tên bài toán,
 mẫu thường dùng, đánh đổi phải nêu trong ADR, và skill giữ luật chi tiết.
 

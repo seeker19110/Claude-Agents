@@ -2,18 +2,29 @@
 
 Bản đồ đầy đủ: [`docs/architecture.md`](docs/architecture.md) (nguyên tắc, bảng topic producer/consumer được test đối
 chiếu với `ROUTES`, vòng đời ticket, trạng thái, human gate). Tiêu chuẩn ngành từng khối: `docs/standards.md`. Quyết
-định: `docs/adr/` 0001–0029. File này chỉ là lối vào nhanh.
+định: `docs/adr/` 0001–0038. File này chỉ là lối vào nhanh.
+
+## Năm công đoạn (ADR-0037)
+
+`product` (pha `intake`/`research`/`spec`/`plan`) · `builder` (pha = `stack` của ticket: backend, frontend, mobile,
+database, platform, data) · `qa` (pha `author`/`review`) · `security` (không pha) · `ops` (pha `deploy`/`docs`/
+`account`). Cộng `supervisor` — code, không phải công đoạn — nên `load_agents()` trả **6**. Pha quyết định skill nào
+được nạp cho lượt đó (`phases:` trong front matter), không phải một agent khác.
 
 ## Một ticket đi qua đâu
 
 ```
-yêu cầu thô ─► intake ─► researcher (4 mảng) ─► synthesizer ─► risk ─► clarifier ⇄ người ─► spec-writer
-   ─► GATE spec ─► security (threat model) ─► delivery-lead (plan, ticket) ─► GATE plan
-   ─► [test-author lượt mù] ─► engineering (worktree ticket/<id>, lint/test thật) ─► reviewer + qa-debugger (+ security nếu risk_tags)
-   ─► delivery-lead: approved → merge vào company/integration ─► release-candidate
-   ─► release-engineer staging ─► ORCHESTRATOR SMOKE (ADR-0029) ─► qa-debugger hồi quy ─► GATE release
-   ─► release-engineer production ─► tag v<version> + company/release (ADR-0027) ─► GATE acceptance (khách ký)
+yêu cầu thô ─► product[intake] ─► product[research] (4 mảng) ─► product[spec] (draft kèm risks)
+   ─► product[intake] (câu hỏi làm rõ) ⇄ người ─► product[spec] → approved-specs
+   ─► GATE spec ─► security (threat model) ─► product[plan] (C4, contract, ticket) ─► _check_plan (CODE, không gate)
+   ─► [qa[author] lượt mù] ─► builder[stack] (worktree ticket/<id>, lint/test thật) ─► qa[review] (+ security nếu risk_tags)
+   ─► delivery.py: approved → merge vào company/integration ─► release-candidate
+   ─► ops[deploy] staging ─► ORCHESTRATOR SMOKE (ADR-0029) ─► qa[review] hồi quy ─► GATE release
+   ─► ops[deploy] production ─► tag v<version> + company/release (ADR-0027) ─► GATE acceptance (khách ký)
+   ─► ops[docs] (release notes, incident) · ops[account] (UAT, change request)
 ```
+
+`delivery.py` phát event dưới actor `delivery-lead` (`roles.LEAD_ACTOR`) — đó là CODE đóng vòng, không phải agent.
 
 Kẹt ở đâu cũng có đường ra: agent tự dừng / smoke fail / retry hết → gate `escalation`; supervisor đếm ngân sách và
 bế tắc. Không đường nào được kết thúc trong im lặng (`../TRAPS.md` §1).
@@ -22,7 +33,8 @@ bế tắc. Không đường nào được kết thúc trong im lặng (`../TRAP
 
 | Lớp | Module | Vai trò |
 |---|---|---|
-| Hợp đồng | `events.py`, `topics/schemas/`, `registry.py` | topic, payload Pydantic, agent đọc/ghi gì |
+| Tên vai | `roles.py` | NƠI DUY NHẤT id agent là chuỗi trong `src/` (ADR-0037 PR-4): `ROLE.*`, `PHASE.*`, `STACK`/`BUILD_PHASES`, nhãn `SOURCE.*`, `LEAD_ACTOR` |
+| Hợp đồng | `events.py`, `topics/schemas/`, `registry.py` | topic, payload Pydantic, agent đọc/ghi gì, `phases:` của agent |
 | Bus | `bus.py`, `sqlite_bus.py`, `blackboard.py` | publish có kiểm producer + schema; replay; artifact theo namespace |
 | Điều phối | `orchestrator.py`, `delivery.py`, `gates.py`, `gate_cli.py`, `supervisor.py` | route, máy trạng thái ticket/release, human gate bền, watchdog |
 | Chạy agent | `runner.py`, `tools.py`, `guard.py`, `context.py`, `subagents.py` | vòng lặp tool, ranh giới tin cậy, injection, hạn mức ngữ cảnh |

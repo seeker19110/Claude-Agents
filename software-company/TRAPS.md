@@ -25,7 +25,7 @@ Bốn khuôn lỗi chung và bẫy thao tác ở `../TRAPS.md`. Ở đây là ch
 | Lượt production không thấy staging/QA | "chưa qua staging" dù có (#80) | `_release_evidence` vào payload |
 | Diff bị cắt mà reviewer không biết | security chặn QLKH-012 "thiếu diff" — openapi 804 dòng | `diff()` xếp mã nguồn trước, nói rõ file bị bỏ (#67); reviewer có tool đọc (#87) |
 | `local_checks` pass giả từ lệnh không liên quan | frontend PR "pass" bằng ruff+pytest | `stacks.py` theo stack; không nhận ra stack → `unverified` (ADR-0013) |
-| Test xanh trước khi có code | TDD chỉ là lời dặn | test-author lượt mù (ADR-0028); `tests_green_before_code` audit |
+| Test xanh trước khi có code | TDD chỉ là lời dặn | `qa` pha `author` chạy lượt mù (ADR-0028); `tests_green_before_code` audit |
 
 ## Prompt / eval
 
@@ -38,6 +38,7 @@ Bốn khuôn lỗi chung và bẫy thao tác ở `../TRAPS.md`. Ở đây là ch
 | `claude -p` không tool cần > 1 lượt | `error_max_turns` ở effort low (#60, #62) | `CLI_NO_TOOL_TURNS = 6` |
 | Prompt tĩnh nuốt ngân sách | Skill nhồi > 50% `budget_tokens_per_task` | `make assetbudget` |
 | Sửa `checklists.md` không sinh lại subagent | `test_ban_dan_xuat_tren_dia_khop_nguon` đỏ | `make subagents`, commit `../.claude/agents/` |
+| Tưởng `make eval-record` treo vì file không đổi | Chạy 1–2 giờ mà `evals/recordings/<id>.json` giữ nguyên mtime và log rỗng (PR-5x/PR-6) — `evals.py` gọi `save()` **sau** vòng lặp mọi ca và gom log vào biến, nên trong lúc chạy không có dấu hiệu nào trên đĩa | Đừng đo bằng mtime: `ps` xem tiến trình `company.evals` và tiến trình con `claude -p`. Còn hai cái đó là còn sống; giết ngang thì mất **toàn bộ** ca đã chấm |
 
 ## Vận hành
 

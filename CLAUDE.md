@@ -36,7 +36,7 @@ Luật đầy đủ nằm ở `AGENTS.md` (nhập ở dòng đầu). Dưới đ�
 - Duyệt gate: lý do = root_cause + decision + hint, ≥ 20 ký tự; "ok" là hint rỗng cho agent.
 - Trước khi tin dashboard: hỏi *"chạy cho tôi xem"*. Số xanh có thể xanh vì rỗng.
 - Sửa tay trong worktree của ticket: commit + takeover **trước**, duyệt gate **sau** (duyệt trước là bị reset).
-- Muốn đổi hành vi agent: đổi tài liệu nó đọc qua đúng vai (CR → spec-writer ghi prd), không ghi tay blackboard.
+- Muốn đổi hành vi agent: đổi tài liệu nó đọc qua đúng vai (CR → `product` pha spec ghi prd), không ghi tay blackboard.
 
 ## Bộ nhớ
 
