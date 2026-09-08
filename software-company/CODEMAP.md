@@ -18,6 +18,7 @@
 | Muốn | Sửa | Test đối chiếu |
 |---|---|---|
 | Agent nào nhận event nào, điều kiện gì | `ROUTES`, `THREAT_ROUTE`, `PLAN_INPUTS`, `STAGING_ROUTE`/`PROD_ROUTE` trong `src/company/orchestrator.py` | `tests/test_routing.py`; bảng Consumer `docs/architecture.md` |
+| Khung event chung (`Envelope`, `AuditLog`, `SharedContext`, `SupervisorAction`, `can_transition`) | `xagents-core/src/xagents_core/events.py` — **LỚP CƠ SỞ** từ K3.5a; `src/company/events.py` kế thừa và thêm trường phạm vi của mình, thu hẹp `topic`/`namespace` về Literal. Model miền, `PAYLOAD_MODELS`, `TRANSITIONS` ở LẠI package | `xagents-core/tests/test_events.py` |
 | Thêm/đổi trường của một topic | `topics/schemas/<topic>.json` **và** model trong `src/company/events.py` (`PAYLOAD_MODELS`) | `tests/test_schema_consistency.py` |
 | Ai được ghi namespace blackboard nào | `NAMESPACE_OWNERS` trong `events.py`; bảng `topics/README.md` | — |
 | Ai được publish topic nào | `bus.py` `_check_publish` (producer hợp lệ theo registry) | `tests/test_bus.py` |

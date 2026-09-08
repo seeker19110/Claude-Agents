@@ -413,6 +413,28 @@ package đang gọi `company.llm.load_config()` không đổi.
   không cần đổi nhưng có thể đơn giản hoá sau).
 - Nghiệm thu: `make demo` hai công ty; `console` test xanh; chạy thật company ≥ 5 ngày trước K3.6.
 
+> **Trạng thái: K3.5 TÁCH BA BƯỚC; bước a XONG (#178).** Lý do tách: đo `difflib` cho thấy ba module lệch rất
+> khác nhau — `sqlite_bus` 0.44, `events` 0.14, **`bus` 0.06**. Ở mức 0.06 hai file gần như không có gì chung;
+> gộp cả ba vào một PR là đúng thứ K3.3a đã học được là không nên.
+>
+> - **K3.5a — `events` chung: XONG (#178).** `Envelope`, `SharedContext`, `AuditLog`, `SupervisorAction`,
+>   `can_transition` lên core. **Không phải như đặc tả hình dung**: chúng lên dưới dạng **LỚP CƠ SỞ**, mỗi công
+>   ty kế thừa (tiền lệ `LLMConfig` ở K3.3b). Lý do đo được: chỗ lệch không phải "một bên thiếu" mà là *trường
+>   phạm vi của từng miền* — `AuditLog` company có `ticket_id`/`project_id`, studio có `video_id`/`channel_id`;
+>   đưa cả bốn lên core là bắt company mang một trường nó không bao giờ ghi. Cùng lý do, `topic`/`namespace` ở
+>   core là `str`, lớp con thu hẹp về Literal của mình nên kiểm tra topic KHÔNG mất, chỉ chuyển xuống nơi biết
+>   đủ để làm việc ấy.
+> - **K3.5b — `bus`**: chưa làm. Đây là bước đáng sợ nhất: bus company 206 dòng có validator + ACL topic, bus
+>   studio 61 dòng không có gì tương đương. Studio sẽ nhận một lớp kiểm quyền nó chưa từng chạy.
+> - **K3.5c — `sqlite_bus`**: chưa làm.
+>
+> Hai điểm khác lời đặc tả ở bước a: (a) `can_transition` **không** chỉ là `dst in transitions[src]` — cả hai
+> công ty có cửa thoát `dst in {"blocked","escalated"}`, và quên nó làm **12 ca của company đỏ**; nay nó là
+> tham số `always=` chứ không viết cứng tên trạng thái của một công ty vào core. (b) Fixture
+> `studio-0.1.0.sqlite` **không** commit dưới dạng file nhị phân: `AGENTS.md` luật 3 cấm `*.sqlite*` và
+> `.gitignore` chặn thật, nên "định dạng cũ" được dựng bằng SQL + JSON ngay trong test — không có blob trong
+> git, và hình dạng cũ đọc được bằng mắt.
+
 ### PR K3.6 `refactor(core): K3.6 — registry, blackboard, runner, evals`
 
 - `registry`: `ROOT:10` → `core.root`; `load_agents(check_owners=True)` mặc định, studio truyền `False` nếu cần.

@@ -6,6 +6,39 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(core): **K3.5a — khung event lên `xagents_core`; K3.5 tách làm ba bước**. Đặc tả gộp `events` + `bus`
+  + `sqlite_bus` vào một PR và tự gắn nhãn "rủi ro cao nhất". Đo `difflib` trước khi làm cho thấy ba module lệch
+  rất khác nhau — `sqlite_bus` **0.44**, `events` **0.14**, `bus` **0.06**. Ở mức 0.06 hai file gần như không có
+  gì chung; gộp cả ba là đúng thứ K3.3a đã học được là không nên, nên K3.5 tách: **a = `events`** (PR này),
+  b = `bus`, c = `sqlite_bus`.
+  **Chúng lên core dưới dạng LỚP CƠ SỞ, không phải lớp dùng thẳng** (tiền lệ `LLMConfig` ở K3.3b) — đây là điểm
+  đặc tả không nói tới, và nó quyết định cả hình dạng bước này. Đo từng symbol: `Envelope` 0.43,
+  `SharedContext` 0.45, `AuditLog` 0.38, `SupervisorAction` 0.62, `can_transition` **1.00**. Chỗ lệch không phải
+  "một bên thiếu" mà là **trường phạm vi của từng miền**: `AuditLog` của company có `ticket_id`/`project_id`,
+  của studio có `video_id`/`channel_id`. Đưa cả bốn lên core là bắt company mang một trường `video_id` nó không
+  bao giờ ghi — đúng thứ nguyên tắc 1 cấm. Nên core giữ phần chung, mỗi công ty kế thừa và thêm trường của mình.
+  Cùng lý do, `topic`/`namespace` ở core là `str`: `Topic` là danh sách topic CỦA MỘT công ty. Lớp con thu hẹp
+  về Literal của mình nên **kiểm tra topic không mất** — publish một topic lạ vẫn đỏ, chỉ là việc ấy chuyển
+  xuống nơi biết đủ để làm. `child()` dùng `type(self)` chứ không viết cứng tên lớp: lớp con phải sinh ra lớp
+  con, nếu không mỗi event con lại tụt về lớp core và mất đúng cái kiểm tra vừa được thêm vào.
+  **Hai chỗ phải quyết ngoài lời đặc tả.** (1) `can_transition` **không** chỉ là `dst in transitions[src]`: cả
+  hai công ty có cửa thoát `dst in {"blocked", "escalated"}` — một ticket/video ở bất kỳ đâu cũng phải chặn hoặc
+  escalate được. Quên vế này làm **12 ca của company đỏ** với `không thể changes_requested → blocked`; đó là
+  cách nó được phát hiện. Nay nó là tham số `always=` chứ không viết cứng tên trạng thái của một công ty vào
+  core. (2) Fixture `studio-0.1.0.sqlite` mà đặc tả đòi **không** commit dưới dạng nhị phân: `AGENTS.md` luật 3
+  cấm `*.sqlite*` và `.gitignore` chặn thật. "Định dạng cũ" được dựng bằng SQL + JSON ngay trong test — không có
+  blob trong git, và hình dạng cũ đọc được bằng mắt thay vì phải mở bằng công cụ.
+  **Ca đắt nhất của bước này là ca tương thích ngược**, vì đây là bước đầu tiên của cả K3 đổi hình dạng của thứ
+  ĐÃ nằm trên đĩa: `test_bus_cu_van_mo_duoc` dựng một bus đúng định dạng trước K3.5a rồi mở bằng mã mới —
+  replay đủ event, ba trường mới nhận default, `correlation_id` lùi về chính `event_id`. Kèm
+  `test_bus_cu_ghi_tiep_duoc_bang_ban_moi`: mở file cũ rồi ghi tiếp, chuỗi nhân quả nối từ event cũ sang event
+  mới — đó là hình dạng thật khi nâng cấp một máy đang chạy, không ai xoá bus rồi bắt đầu lại.
+  Đo hai chiều **4 đột biến**, mỗi cái đỏ ở **cả hai** suite (core và studio): `child()` viết cứng `Envelope`;
+  bỏ cửa thoát `blocked`/`escalated`; bỏ `model_post_init`; và cho core mang luôn `video_id`/`channel_id` của
+  studio (rò nghĩa lên core). Đã chạy: core 216 test / phủ 100%; studio 508 + 5 skip / phủ 100%; company 1027 /
+  phủ 100% — **company không sửa một ca test nào**, subclassing giữ nguyên hành vi; console 233 và gateway 251
+  cũng không sửa dòng nào (#178)
+
 - refactor(core): **K3.4 — `guard.py` lên `xagents_core`; hợp nhất HAI CHIỀU chứ không phải chuyển mã**. Đặc tả
   viết K3.4 trong ba gạch đầu dòng ("chuyển `guard.py`, xoá `studio/runner.py:29-81`"), nhưng studio **không có**
   `guard.py` — nó có một bộ mẫu *khác* nằm lẫn trong `runner.py`. Đo chéo 23 câu thử trước khi gõ phím cho thấy
