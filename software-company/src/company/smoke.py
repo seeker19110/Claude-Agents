@@ -41,6 +41,9 @@ class Runtime:
     path: str = "/"
     timeout_s: int = DEFAULT_TIMEOUT_S
     expect_status: int = 200
+    # ADR-0039: đường dẫn compose file TRONG repo khách để `company.deploy` dựng môi trường chạy thật. Đọc ở đây
+    # vì nó là cùng một khối `runtime` của spec; rỗng = không khai (deploy tự dò `docker-compose.yml`).
+    deploy: str = ""
 
     def argv(self, port: int) -> list[str]:
         out = [a.replace("{port}", str(port)) for a in self.command]
@@ -68,7 +71,8 @@ def parse_runtime(spec_payload: dict[str, Any] | None) -> Runtime | None:
     path = str(rt.get("health") or rt.get("path") or "/")
     if not path.startswith("/"):
         path = "/" + path
-    return Runtime(tuple(cmd), port=port, path=path, timeout_s=max(1, min(timeout, 300)), expect_status=expect)
+    return Runtime(tuple(cmd), port=port, path=path, timeout_s=max(1, min(timeout, 300)), expect_status=expect,
+                   deploy=str(rt.get("deploy") or ""))
 
 
 def unverified(reason: str) -> dict[str, Any]:

@@ -69,13 +69,20 @@ def _ws(tmp_path) -> TicketWorkspace:
 # - `github_pr.py` (ADR-0038): `gh pr list/create` — cùng lý do với git: argv do code ghép (slug, nhánh, tiêu đề),
 #   không chạy mã của khách, cần credential của người vận hành trên đĩa (`gh auth login`; env đã lọc `GH_*`).
 #   Nhốt vào container mạng tắt là cắt đường lên GitHub. Test dưới khẳng định TỪNG lời gọi trong file là gh.
+# - `deploy.py` (ADR-0039 §7): `docker compose up -d/ps/logs/down` — ngoại lệ subprocess THỨ HAI. Nhốt một client
+#   gọi `/var/run/docker.sock` vào container là vô nghĩa: qua socket đó nó có quyền cao nhất của máy, nên
+#   "sandbox" chỉ là một lớp giả. argv do code ghép (`--project-name` do code đặt, chỉ đường dẫn compose file đến
+#   từ spec và phải là file có thật trong repo khách), env đã lọc `clean_env`.
 MIEN_HOAN_TOAN = {"sandbox.py", "llm.py"}
 CHI_GIT = {"workspace.py", "gate_brief.py"}
 CHI_GH = {"github_pr.py"}
+CHI_COMPOSE = {"deploy.py"}
 
 
 def _goi_subprocess(src: str) -> list[str]:
-    return [m.group(0) for m in re.finditer(r"subprocess\.(run|Popen)\([^\n]*", src)]
+    """Bắt cả THAM CHIẾU (`run: Any = subprocess.run`) chứ không chỉ lời gọi có ngoặc: một module tiêm được runner
+    lách được luật cũ bằng cách giữ `subprocess.run` làm giá trị mặc định — đúng hình dạng của `deploy.py`."""
+    return [m.group(0) for m in re.finditer(r"subprocess\.(run|Popen)\b[^\n]*", src)]
 
 
 def test_pham_vi_khong_module_nao_ngoai_sandbox_goi_subprocess_truc_tiep():
@@ -90,6 +97,8 @@ def test_pham_vi_khong_module_nao_ngoai_sandbox_goi_subprocess_truc_tiep():
             if p.name in CHI_GIT and '"git"' in goi:
                 continue
             if p.name in CHI_GH and '"gh"' in goi:
+                continue
+            if p.name in CHI_COMPOSE and "compose" in goi:
                 continue
             vi_pham.append(f"{p.relative_to(SRC).as_posix()}: {goi[:110]}")
     assert not vi_pham, ("lệnh chạy ngoài Sandbox (ADR-0035) — đưa qua `Sandbox` hoặc ghi lý do vào danh sách "
@@ -108,6 +117,21 @@ def test_pham_vi_gh_chi_o_github_pr_va_la_gh_that():
     for name in sorted(CHI_GH):
         goi = _goi_subprocess((SRC / name).read_text(encoding="utf-8"))
         assert goi and all('"gh"' in g for g in goi), f"mọi lời gọi trong {name} phải là gh: {goi}"
+
+
+def test_pham_vi_compose_chi_o_deploy_va_chi_bon_lenh_con():
+    """Chiều ngược cho ngoại lệ ADR-0039. Binary là biến (`docker` hay `COMPANY_DEPLOY_RUNTIME`) nên không grep
+    được như `"gh"`; grep phần KHÔNG đổi được — `deploy.py` có đúng một tham chiếu subprocess, nó là runner mặc
+    định của compose — rồi đo phần còn lại bằng hành vi: argv luôn bắt đầu `<binary> compose --project-name …`
+    và chỉ bốn lệnh con được ghép."""
+    from company.deploy import CMD_SUB, _argv
+
+    for name in sorted(CHI_COMPOSE):
+        goi = _goi_subprocess((SRC / name).read_text(encoding="utf-8"))
+        assert len(goi) == 1 and "compose" in goi[0], f"{name} chỉ được có runner compose mặc định: {goi}"
+    assert set(CMD_SUB) == {"up", "ps", "logs", "down"}, "ADR-0039 §6 cho phép đúng bốn lệnh con"
+    argv = _argv("docker", "company-P-staging", "compose.yaml", "up", "-d")
+    assert argv[:6] == ["docker", "compose", "--project-name", "company-P-staging", "-f", "compose.yaml"]
 
 
 # ---------- K2.4: hành vi — ba điểm gọi thật sự đi qua sandbox được tiêm ----------

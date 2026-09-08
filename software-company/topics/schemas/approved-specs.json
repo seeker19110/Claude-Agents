@@ -98,6 +98,10 @@
             "expect_status": {
               "type": "integer"
             },
+            "deploy": {
+              "type": "string",
+              "description": "ADR-0039: đường dẫn file docker compose TRONG repo khách để orchestrator deploy thật (vd. `docker-compose.yml`, `deploy/compose.yaml`). Thiếu trường này thì orchestrator dò `docker-compose.yml` / `compose.yaml`; không có file nào → deploy `skipped` kèm lý do, KHÔNG phải deploy thành công"
+            },
             "dependencies": {
               "type": "array",
               "items": {
