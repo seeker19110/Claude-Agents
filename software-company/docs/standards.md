@@ -13,7 +13,7 @@ Bản tóm tắt; chi tiết dạng rule + checklist nằm trong `skills/`.
 
 ## Khối 1 – Nghiên cứu yêu cầu
 ISO/IEC/IEEE 29148, BABOK v3, INVEST, Gherkin, MoSCoW/WSJF, FMEA, STRIDE sơ bộ, ADR.
-- researcher (gộp domain/UX/codebase/tech, ADR-0006): ISO 9241-210, WCAG 2.2 AA, Nielsen heuristics, design tokens W3C; mọi màn hình đủ 4 trạng thái; SPDX license và chi phí cho mọi lựa chọn công nghệ.
+- product pha `research` (gộp domain/UX/codebase/tech, ADR-0006): ISO 9241-210, WCAG 2.2 AA, Nielsen heuristics, design tokens W3C; mọi màn hình đủ 4 trạng thái; SPDX license và chi phí cho mọi lựa chọn công nghệ.
 
 ## Khối 2 – Delivery lead
 PMBOK 7, Scrum Guide 2020, ISO 21502, C4 model, arc42, OpenAPI 3.1/AsyncAPI, SemVer, DORA, PERT/reference-class.
@@ -30,16 +30,16 @@ OpenTelemetry ở mọi agent kỹ thuật, ICU/CLDR cho i18n, AsyncAPI + outbox
 
 ## Khối 4 – Chất lượng
 ISO/IEC/IEEE 29119, ISTQB, OWASP Testing Guide, Google Eng Practices, SLSA L3, CWE Top 25,
-SBOM (SPDX/CycloneDX), mutation testing ≥ 70% module lõi, contract testing, load/soak test so NFR trên staging, a11y (axe + thủ công) trước gate 3.
+SBOM (SPDX/CycloneDX), mutation testing ≥ 70% module lõi, contract testing, load/soak test so NFR trên staging, a11y (axe + thủ công) trước gate `release`.
 - Security-engineer: STRIDE trên DFD, CVSS 4.0, OWASP SAMM, DAST trước release, DPIA (GDPR Art. 35, NĐ13), license policy (cấm GPL/AGPL/SSPL trừ ADR).
-- Separation of duties: reviewer ≠ security; ticket có `risk_tags` cần cả hai.
+- Separation of duties: `qa` ≠ `security`; ticket có `risk_tags` cần cả hai.
 
 ## Khối 5 – Vận hành
 Google SRE, ITIL 4, DORA, GitOps, CIS Benchmarks, NIST SSDF, ISO 22301, Diátaxis, Keep a Changelog,
 Sigstore, blue-green/canary + auto-rollback theo SLO, blameless postmortem ≤ 48h.
 - Observability: OpenTelemetry, RED/USE, SLO trong code, alert theo burn rate có runbook, log JSON không PII.
 
-- account-manager: ISO/IEC/IEEE 29119-1 (acceptance), PMBOK scope/change control, biên bản nghiệm thu có người ký của khách; mọi thay đổi phạm vi qua change request.
+- ops pha `account`: ISO/IEC/IEEE 29119-1 (acceptance), PMBOK scope/change control, biên bản nghiệm thu có người ký của khách; mọi thay đổi phạm vi qua change request.
 
 ## Khối 6 – Supervisor
 NIST AI RMF, ISO/IEC 42001, OWASP Top 10 for LLM, FinOps. Cảnh báo 80% / cắt 100% ngân sách.

@@ -48,7 +48,9 @@ phải có mặt; agent được liệt kê mà không có route phải ghi `(ch
 ## Vòng đời một ticket
 
 ```
-delivery-lead:      tasks(ticket, assignee=builder, stack, estimate_tokens, risk_tags?)
+product[plan]:      C4 L1–L2 + ADR lên `architecture`, contract lên `api-contract`, rồi chia ticket
+delivery.py (CODE): tasks(ticket, assignee=builder, stack, estimate_tokens, risk_tags?) — actor `delivery-lead`
+                    là vai của CODE đóng vòng (`roles.LEAD_ACTOR`), không phải agent
 qa[author]:         (ADR-0028, khi bật) lượt MÙ từ acceptance → chỉ ghi file test → test-suites(ticket)
                     test ĐỎ ngay sau lượt này là kết quả đúng; xanh ngay → audit tests_green_before_code
 builder[stack]:     đọc shared-context → code trên branch cho tới khi test xanh (KHÔNG ghi được file test)
@@ -56,13 +58,13 @@ builder[stack]:     đọc shared-context → code trên branch cho tới khi te
 qa[author]:         PR có test_dispute → xem diff, sửa test hoặc bác bỏ → test-suites(blind=false)
 qa[review]:         review-results(source=reviewer, verdict=pass|block, findings[], root_cause?) — MỌI ticket
 security:  review-results(source=security) — chỉ khi ticket có risk_tags
-delivery-lead:      đủ review bắt buộc và tất cả pass → approved → release-candidates
+delivery.py:        đủ review bắt buộc và tất cả pass → approved → release-candidates
                     có fail/block → tasks(ticket, retry+1, hint); retry ≥ 3 → blocked
                     ticket có depends_on chưa xong → waiting; tự dispatch theo priority khi phụ thuộc approved
 ops[deploy]:        gộp branch → build/test/scan/sign → release-events(env=staging) → ticket merged
 qa[review]:         hồi quy + perf + a11y trên staging → review-results(ticket_id=release_id, source=qa)
-delivery-lead:      QA staging pass → xin human gate 3; fail → ticket quay lại với hint
-ops[deploy]:        gate 3 approve → release-events(env=production) → ticket released; rolled_back → ticket quay lại
+delivery.py:        QA staging pass → xin human gate release; fail → ticket quay lại với hint
+ops[deploy]:        gate release approve → release-events(env=production) → ticket released; rolled_back → ticket quay lại
 ops[account]:       UAT với khách → acceptance-results(accepted → closed | rejected → ticket quay lại | conditional)
 supervisor:         retry > MAX_RETRY, token > budget, review quá 2h → supervisor-actions(warn, pause, escalate)
                     cùng mã nợ kiến trúc (DEF-xx/SD-xx/debt:) ≥ N review liên tiếp → gate escalation cấp dự án (ADR-0032)
@@ -79,9 +81,11 @@ cộng `blocked` và `escalated` có thể vào từ bất kỳ trạng thái n�
 
 ## Human gate
 
-Ba điểm bắt buộc của công ty: `approved-specs`, plan sau delivery-lead (kèm threat model), release production
-(chỉ sau khi QA staging pass). Điểm thứ tư thuộc về khách: nghiệm thu (`acceptance-results`, người ký của khách,
-ops pha `account` ghi nhận). Timeout 24h, supervisor nhắc ở 12h. Không bao giờ tự đi tiếp. Checklist trong
+Hai điểm bắt buộc trên đường công đoạn: `approved-specs` (gate `spec`, kèm điều kiện `runtime` — ADR-0031) và
+release production (gate `release`, chỉ sau khi QA staging pass). Điểm thứ ba thuộc về khách: nghiệm thu
+(`acceptance-results`, người ký của khách, ops pha `account` ghi nhận). Kế hoạch KHÔNG còn là gate (ADR-0037) —
+`_check_plan` chặn bằng code; kẹt ở đâu thì mở gate `escalation`, nên `GateKind` chỉ còn bốn giá trị
+`spec|release|acceptance|escalation`. Timeout 24h, supervisor nhắc ở 12h. Không bao giờ tự đi tiếp. Checklist trong
 `gates/checklists.md`, tách hai nửa: "Code gửi kèm" (khoá trong `GateRequest.checklist`, hiện ở `gate_cli list`) và "Người tự
 kiểm thêm". Nửa sau có **trợ lý kiểm duyệt** (`docs/dac-ta-tro-ly-kiem-duyet.md`): `gate_brief` (code, chỉ đọc) rút bằng chứng
 định lượng thành hồ sơ `ok|gap|unknown`; subagent `sc-gate-<kind>` / `sc-<agent>` (sinh từ checklist và prompt agent, chỉ
@@ -145,8 +149,8 @@ Read/Grep/Glob) đọc hồ sơ và in bản tóm; người ký bằng `gate_cli
 `company.orchestrator` là vòng lặp nối các dòng trong bảng topic ở trên: mỗi event → tra `ROUTES` → gọi runner →
 publish → event mới. Bảng route phải khớp front matter `reads`/`writes` (kiểm lúc khởi tạo). Hai chỗ vòng lặp dừng và
 chờ người trên đường công đoạn: gate `spec` (`SPEC-<project>`) và gate `release` (`REL-xxx`, production); thứ ba là
-chữ ký của khách ở gate `acceptance` (`UAT-<release_id>`). Kế hoạch KHÔNG có gate (ADR-0037): sau khi delivery-lead
-sinh ticket, `_check_plan` kiểm bằng code (kích thước ticket, estimate/budget, `risk_tags`, `depends_on`, threat
+chữ ký của khách ở gate `acceptance` (`UAT-<release_id>`). Kế hoạch KHÔNG có gate (ADR-0037): sau khi `product`
+pha `plan` sinh ticket, `_check_plan` kiểm bằng code (kích thước ticket, estimate/budget, `risk_tags`, `depends_on`, threat
 model, `architecture`/`api-contract` trên blackboard) — sạch thì `_dispatch_plan` giao ngay trong cùng lượt, có
 `problems` thì `plan_rejected` + gate `escalation` cấp dự án. Guard vẫn nằm ở code: `DeliveryLead.dispatch` chỉ
 nhận `plan_id` đã vào `lead.plans_ok`. Ticket bị supervisor pause/budget_cut/

@@ -36,25 +36,26 @@ không còn lựa chọn).
 Tiêu chí xếp: (a) độ sâu suy luận cần thiết; (b) hậu quả nếu sai và có lớp nào bắt lỗi phía sau không (gate người,
 code kiểm định, agent review khác); (c) độ dài/độ phức tạp đầu ra; (d) tần suất chạy (agent chạy nhiều lượt kéo chi phí).
 
-### software-company (21 agent)
+### software-company (6 agent: 5 công đoạn + supervisor — ADR-0037)
 
-| Agent | Tier | Vì sao |
-|---|---|---|
-| delivery-lead | strong | Kiến trúc, ước lượng, chia ticket có `depends_on`; sai kế hoạch kéo cả dự án |
-| backend, frontend, mobile, database, platform, data | strong | Viết code thật trong worktree, tool-use nhiều lượt, PR phải qua lint/test thật |
-| reviewer | strong | Đọc diff, bắt lỗi bảo mật/logic; là lớp bắt lỗi cho khối kỹ thuật nên không được yếu hơn |
-| qa-debugger | strong | Phân tích nguyên nhân gốc khi test fail; suy luận nhiều bước |
-| test-author | standard | Viết test từ đặc tả, không nhìn code (ADR-0028). Đầu vào hẹp và có cấu trúc (acceptance + api-contract), đầu ra là file test chạy được — không phải suy luận nhiều bước. Hậu quả sai lộ ra ngay ở vòng tranh chấp với assignee, không lọt tới production. Sau 4 tuần đối chiếu `review_catch_rate`: bỏ sót ca biên rõ rệt thì nâng `strong` kèm bằng chứng eval, như đã làm với `researcher` |
-| security-engineer | strong | Threat model STRIDE, DAST; hậu quả sai cao, chạy ít lượt |
-| synthesizer, spec-writer | strong | Khử mâu thuẫn yêu cầu, viết PRD + Gherkin làm chuẩn nghiệm thu cho cả vòng đời |
-| risk | strong | Rà khả thi/pháp lý/bảo mật sơ bộ; đầu vào cho `risk_tags` → quyết định có cần security review |
-| researcher | strong *(2026-09-03: standard → strong trở lại)* | Gom 4 góc nhìn nghiên cứu; "theo mẫu có sẵn" hoá ra không đủ để hạ tier. Eval đo thật: `de-bai-day-du-phai-ra-4-muc-co-nguon` đòi ≥3 glossary, ≥2 persona, ≥1 flow, ≥1 option kỹ thuật và trích đúng số hiệu văn bản — không model standard nào đạt (gemini-3.8-flash-medium/high, gemini-pro-agent, claude-sonnet-4-6 đều 0/2), trong khi claude-sonnet-5 và opus-5 pass 2/2. Đầu ra mỏng thì synthesizer không cứu được: nó khử mâu thuẫn chứ không đi nghiên cứu lại |
-| release-engineer | standard *(trước: strong)* | Quy trình cố định gộp → build → staging → gate; phần nguy hiểm (merge, deploy) là code, gate 3 người duyệt |
-| account-manager | standard *(trước: strong)* | SOW, UAT, change request theo mẫu; Gherkin dùng nguyên văn từ spec-writer; khách ký nghiệm thu là gate |
-| support-docs | standard | Tài liệu Diátaxis, changelog, phân loại incident theo `root_cause_class` |
-| intake | light *(trước: standard)* | Tách yêu cầu thô thành mục tiêu/ràng buộc/câu hỏi theo mẫu; researcher + synthesizer làm sâu phía sau |
-| clarifier | light *(trước: standard)* | Gom chỗ mơ hồ thành câu hỏi có lựa chọn; con người trả lời là lớp kiểm |
-| supervisor | light *(trước: standard)* | Phần xác định (ngân sách, watchdog) là code; model chỉ diễn giải và ghi bài học; chạy nhiều lượt nhất |
+ADR-0037 gộp 21 agent thành 5 công đoạn; mỗi công đoạn nhiều việc thì chia **pha** (`phases:` trong front matter).
+Tier là của **agent**, không của pha — một agent chạy mọi pha của nó trên cùng một tier, nên tier phải đủ cho pha
+nặng nhất. Đó là thay đổi thực chất so với bảng 21 dòng cũ: `intake`/`clarifier` từng là `light` nay chạy dưới
+`product` (`strong`), còn `test-author` từng là `standard` nay chạy dưới `qa` (`standard`, không đổi).
+
+| Agent | Tier | Pha | Vì sao |
+|---|---|---|---|
+| `product` | strong | `intake`, `research`, `spec`, `plan` | Pha `research` và `plan` quyết định tier: gom 4 mảng nghiên cứu có nguồn (eval `de-bai-day-du-phai-ra-4-muc-co-nguon` đo thật — không model `standard` nào đạt, xem ghi chú dưới), và kiến trúc/ước lượng/chia ticket có `depends_on` — sai kế hoạch kéo cả dự án. Pha `intake` nhẹ hơn nhưng đi chung agent nên đi chung tier |
+| `builder` | strong | 6 stack (`backend`…`data`) | Viết code thật trong worktree, tool-use nhiều lượt, PR phải qua lint/test thật |
+| `security` | strong | — | Threat model STRIDE, DAST; hậu quả sai cao, chạy ít lượt |
+| `qa` | standard | `author`, `review` | Pha `author` viết test từ đặc tả, không nhìn code (ADR-0028): đầu vào hẹp, sai thì lộ ra ngay ở vòng `test_dispute`. Pha `review` đọc diff và chẩn đoán nguyên nhân — nặng hơn, nhưng phía sau còn gate `release` và smoke do orchestrator chạy. Theo dõi `review_catch_rate`: bỏ sót ca biên rõ rệt thì nâng `strong` kèm bằng chứng eval |
+| `ops` | standard | `deploy`, `docs`, `account` | Cả ba pha là quy trình cố định trên đầu vào đã chuẩn hoá: gộp → build → staging → gate (phần nguy hiểm — merge, deploy, tag — là code); tài liệu Diátaxis + `root_cause_class`; SOW/UAT/change request theo mẫu, khách ký nghiệm thu là gate |
+| `supervisor` | light | — | Phần xác định (ngân sách, watchdog) là code; model chỉ diễn giải và ghi bài học; chạy nhiều lượt nhất |
+
+Ghi chú lịch sử còn giá trị (2026-09-03, khi `researcher` còn là agent riêng): hạ nó xuống `standard` đã hỏng —
+eval đòi ≥3 glossary, ≥2 persona, ≥1 flow, ≥1 option kỹ thuật và trích đúng số hiệu văn bản; `gemini-3.8-flash-medium/high`,
+`gemini-pro-agent`, `claude-sonnet-4-6` đều 0/2, `claude-sonnet-5` và `opus-5` pass 2/2. Đầu ra nghiên cứu mỏng thì
+pha `spec` không cứu được: nó khử mâu thuẫn chứ không đi nghiên cứu lại. Đó là lý do `product` giữ `strong`.
 
 ### Studio-creators (14 agent)
 

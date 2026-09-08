@@ -11,7 +11,7 @@ Console **đọc bus SQLite của hai công ty ở chế độ chỉ đọc** v�
 **Tab Hướng dẫn** trả lời tại chỗ ba câu người mới hay hỏi: hệ này làm gì, sao nút của tôi bị mờ (bảng quyền đọc
 đúng cờ của phiên đang chạy), và giao một việc mới thế nào. Nút *Điền yêu cầu mẫu* ở form yêu cầu phần mềm đổ sẵn
 một đề bài web app thật (cùng nội dung với `software-company/examples/yeu-cau-mau-web-app.json`) để sửa lại, thay vì
-nhìn ô trống rồi viết hai dòng mà spec-writer phải hỏi lại năm lần.
+nhìn ô trống rồi viết hai dòng mà `product` (pha spec) phải hỏi lại năm lần.
 
 **Giao việc ngay trên trang** (bật `--allow-submit`), tách theo từng xưởng chứ không gộp: đầu màn *Xưởng phần mềm*
 có form *Yêu cầu phần mềm* (`research-requests`, kèm **nơi lưu dự án** = repo git của khách cho riêng dự án đó,
@@ -96,7 +96,7 @@ chạy bao giờ (chưa có file DB) cũng không sao — trang báo phần đó
 |---|---|
 | **Trực ban** | Hàng đợi human gate của cả hai xưởng, xếp theo mức quá hạn (`over` ≥ 24 giờ, `warn` ≥ 12 giờ — khớp `GATE_TIMEOUT_H`/`GATE_REMIND_H`); ô số event, lời gọi model, token, tỉ lệ làm lại, PR chưa kiểm; chi phí 14 ngày tách theo tier; bảng gói tài khoản đang xoay; 10 bản ghi audit gần nhất |
 | **Phễu sản phẩm** | Một hàng cho MỖI sản phẩm: yêu cầu → đặc tả → ticket → RC → staging (smoke) → production (smoke) → nghiệm thu. Ô không có dữ liệu là **ô xám gạch đứt**, không bao giờ xanh; bậc staging/production chỉ tính khi có `smoke` (bằng chứng máy sinh, ADR-0029 của company) — `status: deployed` do agent tự khai thì bậc đó vẫn xám |
-| **Xưởng phần mềm** | Bảng ticket theo trạng thái kèm mức tiêu ngân sách, pull request chờ review (lint/test do code chạy thật) và cột **commit vượt integration** (`git rev-list --count company/integration..ticket/<id>` — `0` là đã gộp hết, `—` là không đo được), kết quả review của reviewer · qa · security kèm **nguồn ngữ cảnh bị cắt** ngay cạnh verdict |
+| **Xưởng phần mềm** | Bảng ticket theo trạng thái kèm mức tiêu ngân sách, pull request chờ review (lint/test do code chạy thật) và cột **commit vượt integration** (`git rev-list --count company/integration..ticket/<id>` — `0` là đã gộp hết, `—` là không đo được), kết quả review theo nguồn `reviewer` · `qa` · `security` (hai nguồn đầu đều do agent `qa` chấm) kèm **nguồn ngữ cảnh bị cắt** ngay cạnh verdict |
 | **Xưởng video** | Dây chuyền video theo trạng thái, số liệu sau khi đăng kéo từ YouTube Analytics, đường giữ chân người xem |
 | **Chi phí & hạn mức** | Chi phí dự án so với trần, lời gọi chưa có giá (gói thuê bao), hiệu chỉnh ước lượng, ngân sách token từng ticket, chi phí theo agent, mọi lần supervisor can thiệp |
 | **Nhật ký** | Toàn bộ `audit-log` (tối đa 200 bản ghi mới nhất), lọc theo sản phẩm agent / gate / supervisor / người / lỗi |

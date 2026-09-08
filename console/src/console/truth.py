@@ -32,16 +32,19 @@ STUCK_STATES = frozenset({"blocked", "escalated"})
 SANDBOX_WINDOW_H = 24
 
 # Bậc của phễu release, theo thứ tự đi tới. Mỗi RC đứng đúng một bậc; `n` đếm theo bậc là câu "RC chết ở đâu".
+# Khoá `gate3*` giữ nguyên chữ (JS `static/js/truth.js::TONE` và deep-link dùng chúng); NHÃN thì bỏ số thứ tự —
+# ADR-0037 bỏ gate plan nên `gates/checklists.md` đánh lại "Gate 2 — Duyệt release production", nói "Gate 3"
+# với người trực là chỉ họ sang một mục không tồn tại.
 FUNNEL = [
     ("void", "Bị huỷ"),
-    ("rc", "Chờ release-engineer"),
+    ("rc", f"Chờ {ROLE.OPS}[deploy]"),
     ("staging_failed", "Staging thất bại"),
     ("staging_pending_human", "Staging: agent dừng chờ người"),
     ("staging_deployed", "Staging xong, chờ QA hồi quy"),
     ("qa_failed", "QA hồi quy chặn"),
-    ("gate3_missing", "QA xong nhưng Gate 3 KHÔNG mở"),
-    ("gate3", "Chờ Gate 3 (release)"),
-    ("gate3_approved", "Gate 3 đã ký, chờ deploy"),
+    ("gate3_missing", "QA xong nhưng gate release KHÔNG mở"),
+    ("gate3", "Chờ gate release"),
+    ("gate3_approved", "Gate release đã ký, chờ deploy"),
     ("production_failed", "Production thất bại"),
     ("production_pending_human", "Production: agent dừng chờ người"),
     ("production", "Đã lên production"),
@@ -180,7 +183,7 @@ class Truth:
             return "production_pending_human", info
         if status == "failed" or status == "rolled_back": return "staging_failed", info
         if status != "deployed": return "staging_pending_human", info
-        # staging deployed: QA hồi quy / Gate 3 quyết bậc tiếp
+        # staging deployed: QA hồi quy / gate release quyết bậc tiếp
         reviews = self.lead.release_reviews.get(rid, {})
         qa = reviews.get(SOURCE.QA)
         if qa is not None and qa.verdict != "pass" and SOURCE.QA not in self.lead.release_waived.get(rid, set()):
@@ -198,17 +201,17 @@ class Truth:
         pending = rid in self.gate.pending
         if stage == "delivered": return ""
         if stage == "void": return "Không đi tiếp — RC trùng ticket với RC khác."
-        if stage == "rc": return "Chờ release-engineer chạy lượt staging."
-        if stage == "staging_deployed": return "Chờ qa-debugger hồi quy trên staging."
-        if stage == "gate3": return "Chờ NGƯỜI ký Gate 3 (kind=release) — duyệt là deploy production."
-        if stage == "gate3_approved": return "Chờ release-engineer chạy lượt production."
+        if stage == "rc": return f"Chờ `{ROLE.OPS}` (pha deploy) chạy lượt staging."
+        if stage == "staging_deployed": return f"Chờ `{ROLE.QA}` (pha review) hồi quy trên staging."
+        if stage == "gate3": return "Chờ NGƯỜI ký gate release (kind=release) — duyệt là deploy production."
+        if stage == "gate3_approved": return f"Chờ `{ROLE.OPS}` (pha deploy) chạy lượt production."
         if stage == "production": return "Chờ tag + push (delivery) rồi khách ký nghiệm thu."
         if pending: return f"Chờ người quyết gate `{self.gate.pending[rid].kind}` của RC này."
         if stage in {"staging_pending_human", "production_pending_human"}:
             return "Agent tự dừng, KHÔNG gate nào mở: không ai được hỏi. Người phải xử lý nợ agent nêu rồi request gate release lại."
         if stage == "qa_failed": return "QA chặn mà không gate escalation nào chờ — kiểm tra."
         if stage == "gate3_missing":
-            return "QA hồi quy đã pass nhưng Gate 3 không mở: thiếu nguồn review (security) hoặc review ghi sai subject. Request gate release tay."
+            return "QA hồi quy đã pass nhưng gate release không mở: thiếu nguồn review (security) hoặc review ghi sai subject. Request gate release tay."
         return "Thất bại — ticket của RC đã bị trả về làm lại; theo dõi ticket."
 
     def releases(self) -> list[dict[str, Any]]:

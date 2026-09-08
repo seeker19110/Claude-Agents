@@ -4,7 +4,7 @@
 
 | Muốn | Sửa |
 |---|---|
-| Hành vi một agent: PHẢI / KHÔNG ĐƯỢC / DoD / đầu ra | `agents/<khối>/<id>.md` — khối: `research` (intake, researcher, synthesizer, risk, clarifier, spec-writer), `delivery-lead`, `engineering` (backend, frontend, mobile, database, platform, data), `quality` (reviewer, qa-debugger, security, test-author), `operations` (release-engineer, support-docs, account-manager), `supervisor` |
+| Hành vi một agent: PHẢI / KHÔNG ĐƯỢC / DoD / đầu ra | `agents/<khối>/<id>.md` — sáu file sau ADR-0037: `research/product.md`, `engineering/builder.md`, `quality/qa.md`, `quality/security.md`, `operations/ops.md`, `supervisor/supervisor.md`. Hành vi riêng của một PHA nằm trong tiểu mục `### Pha <tên>` (builder: `### Stack <tên>`) của chính file đó, không phải file khác |
 | Agent đọc topic nào, ghi topic nào, tier model, ngân sách, tool | front matter của file agent: `reads`, `writes`, `model_tier`, `budget_tokens_per_task`, `tools`, `skills`, `skills_core` |
 | Skill chỉ nạp ở MỘT loại lượt của agent | `phases:` trong front matter agent (ADR-0037); lượt nào chạy pha nào: `phase=` của `Route`, hoặc `stack` của ticket với route sửa code (`orch/routes.py::phase_for`) |
 | Đổi tên / id một agent (ADR-0037) | `src/company/roles.py` — NƠI DUY NHẤT id agent là chuỗi trong `src/` (`ROLE.*`, nhãn `SOURCE.*` của review, `LEAD_ACTOR`); mọi route/producer/chủ namespace/`truth.py` console tham chiếu hằng; `tests/test_roles.py` chặn literal viết tay và đối chiếu hai chiều với front matter |
@@ -34,12 +34,12 @@
 | Lint/test thật trong worktree ticket, `local_checks` | `TicketWorkspace.run_checks` (`src/company/workspace.py`); lệnh theo stack: `src/company/stacks.py` |
 | Sổ Ruling: trường `rulings` mọi topic, audit `ruling`, `Orchestrator.rulings()`, CLI `rulings`, mục trong gate_brief | `events.py` (`Ruling`), 19 schema, `runner.publish`, `orchestrator.py`, `gate_brief.py` — ADR-0030 |
 | Smoke sau deploy staging (`runtime` của spec) | `src/company/smoke.py`; hook `Orchestrator._smoke`; `_release_evidence` mang sang production |
-| Diff gửi reviewer (ưu tiên mã nguồn, cắt có khai) | `TicketWorkspace.diff`, `GENERATED_PATTERNS` (`workspace.py`) |
+| Diff gửi lượt chấm (`qa[review]`, `security`; ưu tiên mã nguồn, cắt có khai) | `TicketWorkspace.diff`, `GENERATED_PATTERNS` (`workspace.py`) |
 | Merge vào nhánh tích hợp, xung đột | `Integration.merge`; `_integrate`, `_integrate_approved` (orchestrator) |
 | Giao hàng: tag `v<version>`, nhánh `company/release`, push, rollback | `Integration.deliver` / `rollback_delivery`; `_deliver` / `_rollback_delivery` (orchestrator); ADR-0027 |
 | PR thật cho khách review trước UAT (`--deliver-pr`): mở/dùng lại, không merge; lý do bỏ qua/lỗi | `github_pr.open_pr` (+ `github_slug`, `_gh`); `orch/release_fsm.py::_delivery_pr` → trường `pr` trong `delivery.done`, audit `delivery.pr_*`; `Integration.remote_url/base_branch`; mục `acceptance.pr-giao-hang` (`gate_brief`, `gate_checklists`); ADR-0038 | `tests/test_delivery_real.py` §ADR-0038, `test_gate_brief.py::test_acceptance_pr_giao_hang…` |
 | Tool agent được cấp, allowlist `run`, khoá đường dẫn, lọc env | `src/company/tools.py`; `SECRET_ENV`, `NO_HOOKS`, `clean_env` trong `workspace.py` |
-| Vùng ghi test-author vs engineering (ADR-0028) | `Stack.test_globs` (`stacks.py`); phân quyền trong `tools.py`; lượt mù ở `runner.py` |
+| Vùng ghi của `qa[author]` vs `builder` (ADR-0028) | `Stack.test_globs` (`stacks.py`); phân quyền trong `tools.py`; lượt mù ở `runner.py` |
 | Chống prompt injection | `src/company/guard.py`; gọi từ `runner.py` |
 | Hạn mức ngữ cảnh, cắt | `src/company/context.py` |
 
@@ -63,7 +63,7 @@
 | Hồ sơ bằng chứng gate (`make gate-brief`, `/gate-brief`) | `src/company/gate_brief.py`; slash command `../.claude/commands/gate-brief.md` |
 | Trợ lý kiểm duyệt `sc-*` | `src/company/subagents.py` sinh từ agents + skills + checklists — không sửa tay đầu ra |
 | Quét tài sản prompt, ngân sách prompt tĩnh | `src/company/assetscan.py` (ADR-0022) |
-| Tool web cho researcher | `src/company/web.py` |
+| Tool web cho `product` pha research | `src/company/web.py` |
 | Mô phỏng cả công ty offline | `src/company/demo.py`, `examples/donghanhcungban_demo.py`, `examples/relay_client.py` |
 | Yêu cầu mẫu để publish | `examples/yeu-cau-mau-web-app.json` |
 

@@ -152,6 +152,10 @@ python -m company.gate_brief --all            # mọi gate đang chờ trong Per
 
 ### 5.2 Schema JSON (v1)
 
+Ví dụ dưới viết trước ADR-0037 và giữ nguyên làm mẫu **hình dạng**: `kind: "plan"` KHÔNG còn tồn tại (PR-2 bỏ gate
+plan), `created_by: "delivery-lead"` nay là `LEAD_ACTOR` của code. Hai mục tự kiểm `plan.*` thì vẫn còn — chúng
+chuyển sang gate `release` và **giữ nguyên `id` cũ** để hồ sơ gate đã lưu còn đọc được.
+
 ```json
 {
   "schema_version": 1,
@@ -226,13 +230,15 @@ Sau đó `/gate-brief <ticket>` gọi `sc-qa` với hồ sơ này. Mục tiêu �
 
 Ánh xạ kind → trợ lý chuyên môn gợi ý:
 
+Nguồn sự thật là `EXPERTS` trong `src/company/gate_checklists.py` — bảng dưới chép lại nó sau ADR-0037
+(4 kind, `plan` không còn):
+
 | kind | gọi |
 |---|---|
-| spec | `sc-spec-writer`, `sc-risk` |
-| plan | `sc-delivery-lead`, `sc-security` (khi có `risk_tags`), `sc-platform` |
-| release | `sc-qa`, `sc-security`, `sc-ops` |
+| spec | `sc-product`, `sc-security` |
+| release | `sc-qa`, `sc-security`, `sc-ops`, `sc-product` |
 | acceptance | `sc-ops` |
-| escalation | `sc-qa` + agent chủ quản ticket (`assignee`) |
+| escalation | `sc-qa`, `sc-builder` |
 
 ## 6. Phần C — phiên duyệt
 

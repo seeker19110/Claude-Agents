@@ -86,7 +86,7 @@ chỉ lo `tools="rw"`). Cái rơi ra ngoài luôn rơi vào im lặng.
 |---|---|---|
 | Duyệt gate lý do "ok" | 2026-09-06 13:05 → agent nhận hint rỗng | root_cause + decision + hint; console khoá < 20 ký tự (#80) |
 | Duyệt nhầm loại gate | Duyệt `escalation` cho REL-xxx tưởng đã giao hàng; chỉ `kind=release` mới deploy | Đọc `kind` và hậu quả trước khi bấm |
-| Ghi tay blackboard để mở khoá | Threat-model cũ chặn mọi RC | Đổi qua đúng vai: CR → spec-writer ghi `prd`, security ghi `threat-model` |
+| Ghi tay blackboard để mở khoá | Threat-model cũ chặn mọi RC | Đổi qua đúng vai: CR → `product` (pha spec) ghi `prd`, `security` ghi `threat-model` |
 | Console mở, orchestrator tắt | Việc giao nằm im | Bật `run --watch` cùng lúc |
 | Agent tự dừng `pending_human` không ai xử lý | 10 RC kẹt, status xanh (#77/#78) | Mọi "chờ người" của agent phải mở gate; sweep mỗi nhịp |
 | Trường identity do model khai | `env`/`release_id`/`ticket_id` lệch → Gate 3 không mở (#72, #75) | Identity lấy từ ROUTE; model chỉ điền nội dung; audit `*_overridden` |

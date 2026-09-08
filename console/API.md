@@ -60,11 +60,11 @@ công ty đó bao giờ).
     "by": "desk", "trigger": "human:owner", "hours": 26, "sev": "over",   // over|warn|calm
     "effect": "Duyệt = … (hậu quả của việc duyệt, theo kind; rỗng khi xưởng không nói)",
     "reject": "Từ chối = … (ticket/RC về đâu; rỗng khi xưởng không nói)",   // C2
-    "agent":  "release-engineer",                                          // agent chạy lại sau khi duyệt; "" khi không biết
+    "agent":  "ops",                                                       // agent chạy lại sau khi duyệt; "" khi không biết
     "title": "…", "facts": [["video_id","vid-042"], …],
     "cl": [["review:fact:pass","mô tả ngắn lấy từ checklist/evidence"], …]
   }],
-  "tickets": [{"id":"TCK-112","st":"in_review","who":"backend","t":"…",
+  "tickets": [{"id":"TCK-112","st":"in_review","who":"builder","t":"…",
                "used":82400,"out":9800,"bud":120000,"est":78000,"retry":0,   // used = tổng token; out = đầu ra (ngân sách so với out)
                "integrated":true,"sha":"b1b3e4b","human_hint":"","hint":"","gate":null,
                "ahead": 3,            // C7: commit của ticket/<id> CHƯA có trên nhánh tích hợp; null = không đo được ≠ 0 = đã gộp hết
