@@ -49,7 +49,7 @@
 | Muốn | Sửa |
 |---|---|
 | Adapter provider (anthropic / openai / claude-code / codex / fake), retry, bảng giá | `src/company/llm.py` |
-| Chọn backend theo tier, xoay khi hết quota, `prefer` | `src/company/routing.py`; cấu hình `llm.yaml` (`llm.example.yaml`, `llm.claude-gateway.yaml`) |
+| Chọn backend theo tier, xoay khi hết quota, `prefer` | `xagents-core/src/xagents_core/routing.py` (K3.3d — `src/company/routing.py` chỉ còn là shim); cấu hình `llm.yaml` (`llm.example.yaml`, `llm.claude-gateway.yaml`) |
 | Tool của công ty vào `claude -p` qua MCP | `src/company/mcp_bridge.py` (ADR-0024); dò chế độ: `probe.py` |
 | Ngân sách ticket/dự án, watchdog, pause/escalate, bài học | `src/company/supervisor.py`; `BUDGET_FACTOR` trong `events.py` |
 | Nợ kiến trúc treo: mã nợ `DEBT_RE`, đếm liên tiếp theo nguồn, bảng `debt_table`; gate cấp dự án `_check_debt`; ngưỡng `debt_reviews` | `supervisor.py`, `orchestrator.py`, `llm.py` (`LLMConfig.debt_reviews`) — ADR-0032 |
