@@ -130,6 +130,17 @@ def test_quyet_dinh_mao_danh_khong_dong_duoc_gate_that(cfg):
     assert list(_gate(bus).pending) == ["G1"]   # kể cả khi dựng lại từ replay
 
 
+def test_created_by_lay_tu_actor_that_khong_phai_evidence_tu_khai(cfg):
+    """Ca chốt ADR-0002: `audit-log` MỞ, nên `created_by` trong evidence là LỜI KHAI của người ghi. Ghi
+    `created_by="human:a"` rồi tự duyệt bằng chính mình sẽ vô hiệu hoá four-eyes; gate phải mang `env.actor`."""
+    bus = Bus(cfg); g = _gate(bus)
+    bus.publish(_audit(actor="human:evil", action="gate.request",
+                       subject_id="G9", kind="duyet", checklist=["c1"], created_by="human:a"))
+    assert g.pending["G9"].created_by == "human:evil"
+    assert _gate(bus).pending["G9"].created_by == "human:evil"      # kể cả khi dựng lại từ replay
+    with pytest.raises(PermissionError):
+        g.decide("G9", "approve", by="human:evil")
+
 def test_uat_prefix_none_thi_gate_khong_nhan_quyet_dinh_he_thong(cfg):
     class NoUat(PersistentGate[FakeEnvelope, AuditLog]):
         UAT_PREFIX = None
