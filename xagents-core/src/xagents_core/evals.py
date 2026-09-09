@@ -39,7 +39,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -50,7 +50,7 @@ from .llm import Completion, LLMError, ModelClient
 from .tools import ToolSpec
 
 __all__ = ["CaseResult", "EvalSuite", "RecordingClient", "ReplayClient", "ScoredOutcome", "Threshold",
-           "check", "check_thresholds", "load_thresholds", "prompt_key"]
+           "check", "check_thresholds", "load_recording_score", "load_thresholds", "prompt_key"]
 
 REQUIRED_NAME = "REQUIRED.txt"  # agent BẮT BUỘC có bản ghi tươi; thiếu hoặc lệch phiên bản prompt → CI đỏ
 
@@ -100,6 +100,22 @@ class CaseResult:
     broken_recording: bool = False
     # `errored`: ca không chạy được vì BẤT KỲ lý do gì (gồm cả trên: model lỗi, đầu ra sai schema). Cổng của studio.
     errored: bool = False
+    # Số lần ca này được chạy trong lượt vừa rồi, và tỉ lệ đạt trên số lần ấy (p3.3b). `runs=1` là mặc định và
+    # là mọi thứ `--replay` làm được: replay TẤT ĐỊNH (khoá = hash(system, user), giá trị = `text` đã ghi) nên
+    # chạy lại 100 lần ra đúng một số. Dao động sinh ra lúc GHI, nên n-lần chỉ có nghĩa với `--record`.
+    runs: int = 1
+    pass_rate: float = 1.0
+
+
+def load_recording_score(rec: dict[str, Any], key: str) -> float | None:
+    """Điểm đã ghi cho một khoá prompt, hoặc `None` khi bản ghi không có (mọi file trước p3.3b).
+
+    Hai trường `score`/`runs` là TUỲ CHỌN có chủ đích: 20 file bản ghi đang nằm trên đĩa không có chúng, và
+    một schema bắt buộc là 20 file phải ghi lại bằng model thật trước khi CI xanh trở lại. `None` nghĩa là
+    "chưa đo", không phải "điểm 0"."""
+    e = (rec.get("cases") or {}).get(key)
+    v = e.get("score") if isinstance(e, dict) else None
+    return float(v) if isinstance(v, int | float) and not isinstance(v, bool) else None
 
 
 class _Probe:
@@ -118,9 +134,14 @@ class RecordingClient:
 
     Ba tính chất, mỗi cái là một bài học đã trả giá — hai của company, một của studio (docstring module §1)."""
 
-    def __init__(self, inner: ModelClient, agent_id: str, suite: EvalSuite):
+    def __init__(self, inner: ModelClient, agent_id: str, suite: EvalSuite, runs: int = 1):
         self.inner, self.agent_id, self.suite = inner, agent_id, suite
         self.entries: dict[str, dict[str, Any]] = {}
+        # `runs` là SỐ LẦN CHẠY MỖI CA của lượt ghi này (p3.3b), không phải số lần gọi `complete`: một ca có
+        # tool đi qua nhiều lượt `complete`. `run_eval` đọc thẳng `self.runs` thay vì nhận một tham số riêng —
+        # hai nguồn sự thật cho cùng một con số là chỗ để chúng lệch nhau mà không ai thấy.
+        self.runs = runs
+        self._case_keys: set[str] = set()
         # Chốt phiên bản NGAY LÚC BẮT ĐẦU, không đọc lại lúc `save()`. Một lượt ghi kéo dài nhiều phút; file
         # prompt đổi giữa chừng (người sửa tiếp, hay `git stash`/`checkout` ở nhánh khác) thì bản ghi mang một
         # phiên bản mà nó KHÔNG được ghi bằng — `outdated_versions` đỏ mà không ai hiểu vì sao. Đo được
@@ -133,11 +154,27 @@ class RecordingClient:
         c = self.inner.complete(system=system, user=user, schema=schema, model_tier=model_tier, cache_key=cache_key,
                                 tools=tools, messages=messages, workdir=workdir)
         if not c.tool_calls:  # chỉ lưu câu trả lời cuối; lượt gọi tool không ghi (phát lại bỏ qua tool)
-            self.entries[prompt_key(system, user)] = {"text": c.text, "model": c.model, "input_tokens": c.input_tokens,
-                                                      "output_tokens": c.output_tokens}
+            k = prompt_key(system, user)
+            self.entries[k] = {"text": c.text, "model": c.model, "input_tokens": c.input_tokens,
+                               "output_tokens": c.output_tokens}
+            self._case_keys.add(k)
         return c
 
-    def save(self) -> Path:
+    # ----- điểm của một ca (p3.3b). `run_eval` gọi hai hàm này quanh N lần chạy của CÙNG một ca -----
+
+    def begin_case(self) -> None:
+        self._case_keys = set()
+
+    def end_case(self, pass_rate: float) -> None:
+        """Gắn điểm vào MỌI khoá ca vừa sinh ra. `text` được giữ là của lần chạy CUỐI (N lần cùng
+        `system`+`user` nên cùng khoá, lần sau đè lần trước) trong khi `score` là tỉ lệ đạt trên cả N —
+        `score` là số đo về ĐỘ ỔN ĐỊNH lúc ghi, không phải nhãn pass/fail của đúng câu trả lời được lưu.
+        Phát lại vẫn tất định và vẫn chấm chính câu trả lời ấy; `score` không thay `check`."""
+        for k in self._case_keys:
+            self.entries[k]["score"] = pass_rate
+            self.entries[k]["runs"] = self.runs
+
+    def save(self, *, prune_to: set[str] | None = None) -> Path:
         """Gộp vào bản ghi cũ, KHÔNG ghi đè cả file.
 
         Một ca lỗi giữa chừng (model từ chối, mạng đứt, hết hạn mức) thì lượt ghi chỉ có phần ca chạy được.
@@ -145,9 +182,16 @@ class RecordingClient:
         chẳng ai đụng tới — mất bằng chứng vì một sự cố không liên quan. Đo được 2026-09-05 trên qa-debugger.
 
         Khoá cũ không còn khớp prompt hiện tại thì nằm lại vô hại: `stale_recordings` chấm theo việc khoá
-        HIỆN TẠI có mặt hay không, nên rác cũ không che được tín hiệu "phải ghi lại"."""
+        HIỆN TẠI có mặt hay không, nên rác cũ không che được tín hiệu "phải ghi lại".
+
+        `prune_to` là ngoại lệ CÓ KIỂM SOÁT của quy tắc trên (p3.3c): rác vô hại thì vô hại, nhưng nó tích tụ —
+        `product.json` có 32 khoá cho 16 ca. Chỉ khoá trong tập được giữ. Người gọi phải tự chịu trách nhiệm
+        rằng tập ấy ĐỦ: truyền vào tập khoá của một lượt chạy thiếu ca là xoá bằng chứng của ca không chạy.
+        `None` (mặc định) giữ nguyên hành vi gộp."""
         cu = self.suite.load_recording(self.agent_id) or {}
         cases = {**(cu.get("cases") or {}), **self.entries}
+        if prune_to is not None:
+            cases = {k: v for k, v in cases.items() if k in prune_to}
         data = {"agent": self.agent_id, "prompt_version": self.prompt_version,
                 "recorded_at": datetime.now(UTC).isoformat(),
                 "models": sorted({e["model"] for e in cases.values()}), "cases": cases}
@@ -274,19 +318,39 @@ class EvalSuite:
                      content=ctx.get("content"))
         return bb
 
-    def run_eval(self, agent_id: str, client: ModelClient, agents: dict[str, Any] | None = None) -> list[CaseResult]:
+    def _run_once(self, agent_id: str, case: dict[str, Any], client: ModelClient,
+                  agents: dict[str, Any] | None) -> CaseResult:
+        bus = self.new_bus()
+        bb = self._with_context(self.new_blackboard(bus), case)
+        try:
+            r = self.run_case(agent_id, case, client, agents, bb, bus)
+        except self.case_errors as e:
+            # Nhận diện bản ghi lệch bằng SUBSTRING tiếng Việt của thông điệp `ReplayClient` — đổi chữ ở đó là
+            # gãy im lặng (cổng của company thôi đỏ mà không ca nào báo). Giữ nguyên chữ, hoặc đổi cả hai chỗ.
+            broken = isinstance(e, LLMError) and "bản ghi" in str(e)
+            return CaseResult(case["name"], False, [str(e)], broken_recording=broken, errored=True, pass_rate=0.0)
+        fails = check(r.output.payload, case.get("expect", {}))
+        return CaseResult(case["name"], not fails, fails, r.tokens, pass_rate=0.0 if fails else 1.0)
+
+    def run_eval(self, agent_id: str, client: ModelClient, agents: dict[str, Any] | None = None,
+                 runs: int = 1) -> list[CaseResult]:
+        """`runs > 1` chỉ có nghĩa khi GHI: replay tất định nên chạy lại chỉ tốn thời gian (p3.3b). Với
+        `RecordingClient`, số lần lấy thẳng từ client — một con số, một nguồn. `runs < 1` là lỗi của người gọi
+        (ZeroDivisionError); CLI chặn trước bằng `--runs`.
+
+        Kết quả gộp lấy lần chạy HỎNG đầu tiên làm đại diện (nên `passed` chỉ đúng khi cả N lần đạt — cùng
+        nghĩa với hôm nay ở `runs=1`), `tokens` cộng cả N lần, `pass_rate` là tỉ lệ đạt."""
+        rec = client if isinstance(client, RecordingClient) else None
+        runs = rec.runs if rec is not None else runs
         results: list[CaseResult] = []
         for case in self.load_cases(agent_id):
-            bus = self.new_bus()
-            bb = self._with_context(self.new_blackboard(bus), case)
-            try:
-                r = self.run_case(agent_id, case, client, agents, bb, bus)
-            except self.case_errors as e:
-                broken = isinstance(e, LLMError) and "bản ghi" in str(e)
-                results.append(CaseResult(case["name"], False, [str(e)], broken_recording=broken, errored=True))
-                continue
-            fails = check(r.output.payload, case.get("expect", {}))
-            results.append(CaseResult(case["name"], not fails, fails, r.tokens))
+            if rec is not None: rec.begin_case()
+            lan = [self._run_once(agent_id, case, client, agents) for _ in range(runs)]
+            rate = sum(r.passed for r in lan) / len(lan)
+            if rec is not None: rec.end_case(rate)
+            xau = [r for r in lan if not r.passed]
+            goc = xau[0] if xau else lan[0]
+            results.append(replace(goc, tokens=sum(r.tokens for r in lan), runs=runs, pass_rate=rate))
         return results
 
     @staticmethod
