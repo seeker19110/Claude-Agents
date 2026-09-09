@@ -37,7 +37,7 @@ from xagents_core.runner import payload_schema as _core_payload_schema
 
 from .blackboard import Blackboard
 from .bus import SCHEMA_DIR, BusError, InMemoryBus
-from .context import fit
+from .context import _prune, fit
 from .events import AuditLog, Envelope
 from .guard import guard_payload, sanitize_tool_output
 from .llm import Completion, LLMError, ModelClient
@@ -289,6 +289,14 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         stopped = False   # 4L-3: vòng tool bị cắt vì lặp không tiến bộ (khác "hết lượt", nhưng chốt JSON y hệt)
         while turn < max_turns:
             turn += 1
+            # ADR-0007: tỉa role=tool cũ hơn NO_PROGRESS_WARN lượt gần nhất TRƯỚC khi gửi — msgs chỉ có hình
+            # dạng đầy đủ trong vòng này (khác `fit()`, cắt một lần trước vòng). K = NO_PROGRESS_WARN: model
+            # còn thấy đủ ngữ cảnh gần nhất để tự sửa khi 4L-3 cảnh báo lặp ở đúng lượt đó.
+            if turn > NO_PROGRESS_WARN:
+                msgs, dropped = _prune(msgs, keep_turns=NO_PROGRESS_WARN)
+                if dropped:
+                    self._audit(spec, "context_pruned", inp, evidence=json.dumps(
+                        {"turn": turn, "dropped_chars": dropped}, ensure_ascii=False))
             c = self._complete(spec, inp, user, schema, messages=msgs, tools=tools, tokens=total, cost=usd, phase=phase)
             total += c.tokens; produced += c.output_tokens; usd += self._cost(c)[0]
             # Ngân sách đo OUTPUT, không đo tổng token. `budget_tokens` do delivery-lead đặt theo ƯỚC LƯỢNG

@@ -13,6 +13,17 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   (`docs/KIEN-TRUC-4-LOP.md`): tỉa `role=tool` cũ hơn `keep_turns=3` lượt gần nhất trong vòng tool
   (`company.runner._turns`, `studio.runner._tool_loop`), thay bằng placeholder `[đã cắt: <tool> <chars> ký tự,
   hash <h>; gọi lại nếu cần]`; không tỉa `msgs[0]`, giữ nguyên `tool_calls`. Chỉ tài liệu — code ở PR riêng.
+- feat(core): **4L-4 — tỉa tool output cũ trong vòng tool (ADR-0007)** (#PENDING). `xagents_core.context._prune(msgs,
+  keep_turns=3)` (hàm thuần): message `role=tool` cũ hơn 3 lượt gần nhất trong vòng tool thay bằng placeholder
+  `[đã cắt: <tool> <chars> ký tự, hash <h>; gọi lại nếu cần]`; giữ nguyên `msgs[0]` (yêu cầu gốc) và `tool_calls`
+  của `assistant`. Ghép vào `company.runner._turns` (gọi khi `turn > NO_PROGRESS_WARN`, audit `context_pruned`)
+  và `studio.runner._tool_loop` (`PRUNE_KEEP_TURNS = 3`, audit tương tự) — hai vòng tool RIÊNG (chưa hợp nhất
+  trên core), chỉ dùng chung hàm `_prune`. Đo trên fake 15 lượt × 6k ký tự/lượt (`software-company/tests/
+  test_runner_no_progress.py`): không tỉa thì lượt cuối phình gấp ~4.7 lần mốc ổn định (lượt 4), tỉa giữ nó dưới
+  3 lần (đo hai chiều: tắt `_prune` bằng monkeypatch → test đỏ đúng như dự đoán). `evals all --replay --strict`
+  hai công ty: mọi bản ghi hiện có (company 58 ca, studio 28 ca) PASS KHÔNG ĐỔI — không ca eval hiện tại nào có
+  ≥ 4 lượt tool nên `_prune` chưa từng kích hoạt trên bộ ca đang có; ghi lại thật một agent mỗi công ty
+  (`supervisor`) để xác nhận model thật vẫn chạy đúng qua code path mới. ADR: `docs/adr/0007-tia-tool-output-cu-trong-vong-tool.md`.
 - fix(core): **thế hệ gate là bộ đếm, không phải dấu thời gian tường** (#203). Phát hiện 4 của audit
   2026-09-09. `scheduler._the_he` phân biệt hai thế hệ gate của cùng `subject_id` bằng
   `created_at.isoformat(microseconds)`, và nó hỏng theo HAI đường: (1) `datetime.now(UTC)` trên Windows có bước
