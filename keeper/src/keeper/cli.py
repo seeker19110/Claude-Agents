@@ -86,6 +86,20 @@ def _run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _watch(args: argparse.Namespace) -> int:
+    """`keeper watch` — vòng lặp `watch → triage → patch → verify → gate? → release` (BT7).
+
+    `GitHubReader` dựng ở ĐÂY chứ không trong `KeeperOrchestrator`: adapter `gh` là thứ chạm ra ngoài máy,
+    nên nó là THAM SỐ của orchestrator (test tiêm `FakeGitHub`), không phải một phụ thuộc ẩn."""
+    from .github import GitHubReader
+    from .orchestrator import KeeperOrchestrator
+
+    repo = Path(args.repo).resolve()
+    orc = KeeperOrchestrator(Path(args.db), repo, GitHubReader(repo))
+    orc.watch(interval=args.interval, max_ticks=args.max_ticks)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="keeper", description="công ty bảo trì X-Agents")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -96,6 +110,12 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--root", required=True, help="worktree PHỤ của keeper để áp patch (bắt buộc)")
     run.add_argument("--dry-run", action="store_true", help="chỉ in kế hoạch, không chạm file nào")
     run.set_defaults(func=_run)
+    watch = sub.add_parser("watch", help="vòng lặp orchestrator (BT7)")
+    watch.add_argument("--db", required=True, help="file bus bền vững (keeper.sqlite)")
+    watch.add_argument("--repo", required=True, help="repo để hỏi `gh` (chỉ đọc)")
+    watch.add_argument("--interval", type=float, default=300.0, help="giây giữa hai nhịp")
+    watch.add_argument("--max-ticks", type=int, default=None, help="dừng sau bấy nhiêu nhịp (mặc định: mãi)")
+    watch.set_defaults(func=_watch)
     args = parser.parse_args(argv)
     return int(args.func(args))
 

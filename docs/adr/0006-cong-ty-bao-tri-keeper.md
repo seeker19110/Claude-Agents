@@ -31,7 +31,10 @@ Nó **không viết lại** Renovate/CodeQL/Scorecard. Nó *tiêu thụ* đầu 
 không công cụ nào ngoài kia làm được: quyết định **cái gì đáng sửa, sửa theo luật của repo này, và chứng minh
 đã sửa**.
 
-### Cấu trúc — 6 khối, 8 agent, 1 human gate
+### Cấu trúc — 6 khối, 10 agent, 1 human gate
+
+> Sửa 2026-09-09 khi thi hành BT7: bản gốc ghi "8 agent" nhưng chính bảng bên dưới liệt kê mười — khối
+> `watch` có ba (`dependency-scout`, `health-monitor`, `drift-detector`). Lỗi đếm, không phải đổi phạm vi.
 
 | Khối | Agent | Việc |
 |---|---|---|
