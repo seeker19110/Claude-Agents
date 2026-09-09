@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- refactor(core): **K3.6d2 — `AgentRunner` (phần ngoài) lên `xagents_core`; K3.6 XONG** (#PR). Nguyên tắc của
+- refactor(core): **K3.6d2 — `AgentRunner` (phần ngoài) lên `xagents_core`; K3.6 XONG** (#195). Nguyên tắc của
   bước này gắt hơn mọi bước trước: *cơ chế lên core, **hành vi quan sát được của mỗi công ty giữ nguyên từng
   byte***. Lên core: `__init__`, `_audit`, `run`, `run_context`, `write_context`, `publish`. Ở lại từng công ty:
   `generate` và vòng lặp tool (chúng dựng prompt — prompt là khoá bản ghi eval, xem K3.6d1),
