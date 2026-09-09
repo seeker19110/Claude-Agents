@@ -65,6 +65,20 @@ def test_man_huong_dan_noi_dung_khop_hanh_vi_that_cua_he(page: str) -> None:
     assert "--allow-decide" in guide and "--allow-submit" in guide
 
 
+def test_man_huong_dan_day_nguoi_truc_bat_dong_co_truoc_khi_giao_viec(page: str) -> None:
+    """ADR-0004: bước dễ quên nhất là bước im lặng nhất — giao việc khi động cơ chưa chạy thì event vào bus,
+    trang báo thành công, và không gì nhúc nhích. Hướng dẫn TRONG TRANG phải nói ra điều đó, không để trong README:
+    người mở console lần đầu không đọc README."""
+    guide = page[page.index('id="v-huong-dan"'):page.index('<section class="view" id="v-nhat-ky"')]
+    assert "--allow-engine" in guide, "bảng quyền phải có cờ động cơ"
+    assert "Động cơ" in guide and "run --watch" in guide
+    for trang_thai in ("đang chạy", "chưa bật", "đã dừng"):
+        assert trang_thai in guide, f"bảng trạng thái động cơ thiếu {trang_thai!r}"
+    assert "tự chết" in guide, "phải phân biệt người tắt với động cơ tự chết"
+    caps = page[page.index("const CAPS=["):page.index("function renderGuide")]
+    assert "--allow-engine" in caps and "canEngine()" in caps, "cờ động cơ phải đọc trạng thái THẬT của phiên"
+
+
 def test_nut_dien_yeu_cau_mau_do_du_truong_bat_buoc(page: str) -> None:
     """Mẫu phải điền được đúng những ô mà form yêu cầu phần mềm đang có, và mô tả phải đủ dài để `intake` có việc
     làm — mẫu hai dòng thì spec-writer sẽ hỏi lại năm lần, đúng thứ nút này sinh ra để tránh."""

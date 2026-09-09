@@ -1,6 +1,7 @@
 /* submit.js — tách từ index.html ở K7.1 (kịch bản B). Không build step, không CDN.
     */
 import {CONSOLE, ME_KEY, READONLY, api} from "./api.js";
+import {canEngine} from "./engine.js";
 import {view} from "./router.js";
 import {CFG} from "./settings.js";
 import {filter} from "./tiles.js";
@@ -117,7 +118,8 @@ $$(".submit").forEach(sect=>sect.addEventListener("submit",async e=>{
 export const CAPS=[
  {flag:"--allow-decide",what:"Duyệt gate ngay trong Trực ban (duyệt, trả lại, từ chối, giữ, thu hồi)",on:()=>!READONLY},
  {flag:"--allow-submit",what:"Giao việc mới cho hai xưởng và trả lời câu hỏi làm rõ",on:()=>!!CONSOLE.can_submit},
- {flag:"--allow-config",what:"Đổi model và backend của từng công ty ở Cài đặt model",on:()=>!!(CFG&&CFG.can_edit)}];
+ {flag:"--allow-config",what:"Đổi model và backend của từng công ty ở Cài đặt model",on:()=>!!(CFG&&CFG.can_edit)},
+ {flag:"--allow-engine",what:"Bật/tắt động cơ (orchestrator run --watch) của từng xưởng ở ô Động cơ — không bật động cơ thì việc giao và gate đã ký NẰM IM trên bus",on:()=>canEngine()}];
 
 export function renderGuide(){
   const tb=$("#guide-caps"); if(!tb) return;

@@ -693,7 +693,7 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
       </div>
 
       <div class="sect">
-        <div class="sect-head"><h2>Ba quyền, bật riêng từng cái</h2><p>mặc định console chỉ đọc — không bật thì không gửi được gì</p></div>
+        <div class="sect-head"><h2>Bốn quyền, bật riêng từng cái</h2><p>mặc định console chỉ đọc — không bật thì không gửi được gì</p></div>
         <div class="tablewrap">
           <table>
             <thead><tr><th>Cờ khi chạy</th><th>Cho phép</th><th>Trạng thái phiên này</th></tr></thead>
@@ -701,6 +701,45 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
           </table>
         </div>
         <p class="note">Mỗi lần chạy console sinh một token mới nằm trong địa chỉ trình duyệt; đóng console là token hết hiệu lực.</p>
+      </div>
+
+      <div class="sect">
+        <div class="sect-head"><h2>Một ngày trực, làm đúng thứ tự này</h2><p>năm bước, không rời trang</p></div>
+        <div class="panel guide">
+          <ol>
+            <li><b>Bật động cơ</b> — ô <i>Động cơ</i> ở đầu <b>Trực ban</b>, bấm <b>Bật</b> cho xưởng cần chạy.
+                Đây là bước dễ quên nhất và là bước im lặng nhất khi quên: giao việc mà động cơ chưa chạy thì event
+                vẫn vào bus, trang vẫn báo thành công, nhưng <b>không gì nhúc nhích</b> và không có lỗi nào cả.</li>
+            <li><b>Giao việc</b> — form <i>Yêu cầu phần mềm</i> ở <b>Xưởng phần mềm</b>.</li>
+            <li><b>Chờ gate</b> — việc chạy tới điểm dừng đầu tiên rồi hiện ở hàng đợi <i>Chờ bạn duyệt</i>, thường
+                trong khoảng một giây (trang nối stream).</li>
+            <li><b>Ký</b> — bấm vào gate, đọc hồ sơ, tick checklist, ghi <i>Bạn là</i> và lý do.</li>
+            <li><b>Tắt động cơ</b> khi nghỉ. Không tắt cũng được: đóng console là động cơ do nó bật <b>chết theo</b>.</li>
+          </ol>
+          <p class="note">Ô Động cơ chỉ thấy tiến trình do <i>chính console này</i> bật. Orchestrator bạn tự chạy ở
+          terminal vẫn làm việc bình thường nhưng ô này không hiện — nó không đoán, chỉ báo cái nó đo được.</p>
+        </div>
+      </div>
+
+      <div class="sect">
+        <div class="sect-head"><h2>Ô Động cơ đang nói gì</h2><p>cần <code>--allow-engine</code></p></div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Trạng thái</th><th>Nghĩa là</th><th>Làm gì</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill good">đang chạy</span></td><td>tiến trình còn sống — dòng dưới ghi pid, nhịp, ai bật, chạy bao lâu</td><td>không phải làm gì</td></tr>
+              <tr><td><span class="pill calm">chưa bật</span></td><td>console này chưa bật động cơ đó lần nào</td><td>bấm <b>Bật</b> trước khi giao việc</td></tr>
+              <tr><td><span class="pill crit">đã dừng</span></td><td>đã chạy rồi kết thúc — kèm mã thoát và đuôi log; “KHÔNG ai tắt” nghĩa là nó <b>tự chết</b></td><td>mở <i>đuôi log</i> đọc dòng cuối rồi sửa nguyên nhân, bật lại</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">Trạng thái này <b>đo</b> mỗi lần trang hỏi (hệ điều hành còn thấy tiến trình không), không
+        phải nhớ lại việc bạn đã bấm Bật. Lý do chết hay gặp nhất: chưa có <code>llm.yaml</code> hoặc chưa đăng nhập
+        gói tài khoản — đuôi log nói thẳng.</p>
+        <p class="note"><b>Nhịp</b> là số giây giữa hai lần động cơ nạp event mới (5–3600). Nhỏ thì phản ứng nhanh
+        và tốn nhiều lượt hỏi hơn; 30 giây là mặc định hợp lý cho một buổi trực.</p>
+        <p class="note">Model dùng đúng gói thuê bao khai trong <code>llm.yaml</code> của công ty — console không
+        truyền model và không truyền API key. Đổi model ở <b>Cài đặt model</b> (cần <code>--allow-config</code>).</p>
       </div>
 
       <div class="sect">
@@ -760,9 +799,11 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
         <div class="panel guide">
           <pre><code># bật console — thêm cờ nào thì mở quyền đó
 cd console
-uv run python -m console --allow-decide --allow-submit
+uv run python -m console --allow-decide --allow-submit --allow-engine
 
-# vòng lặp xưởng phần mềm: nối topic → agent → topic, dừng ở gate
+# vòng lặp xưởng phần mềm: nối topic → agent → topic, dừng ở gate.
+# Đây CHÍNH LÀ lệnh mà nút Bật ở ô Động cơ chạy (nó in nguyên văn vào
+# đầu console/.engine/<xưởng>.log). Chạy tay khi cần sống lâu hơn console.
 cd software-company
 uv run python -m company.orchestrator run --watch 5 \
     --repo /duong/dan/repo-khach
