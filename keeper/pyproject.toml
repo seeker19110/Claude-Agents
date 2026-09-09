@@ -5,7 +5,7 @@ description = "Công ty bảo trì tự vận hành X-Agents: quan sát → tria
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.6",
-    "pyyaml>=6",
+    "pyyaml>=6.0.3",
     "xagents-core",   # lõi chung (ADR gốc 0001); mã theo bảy bước K3.1-K3.7
 ]
 
