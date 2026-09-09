@@ -56,12 +56,18 @@ def test_sc_agent_drift_mac_dinh_version_1(tmp_path: Path) -> None:
 
 
 def test_sc_agent_drift_nguon_khong_ton_tai(tmp_path: Path) -> None:
-    """`_source_version` trên file nguồn không tồn tại → mặc định 1 (khớp `sc-foo` ghi version=1 → im lặng)."""
+    """File nguồn KHÔNG tồn tại → báo sai đường dẫn, không im lặng.
+
+    Bản cũ trả mặc định `version=1` cho file thiếu, nên một bản dẫn xuất ghi `version=1` trỏ vào đường dẫn
+    trống lọt lưới hoàn toàn — đúng ca đã xảy ra thật với `sc-supervisor.md` (trỏ `agents/supervision/`, thư
+    mục thật là `agents/supervisor/`). Ghi `recorded_version=1` ở đây để khoá đúng ca lọt lưới ấy."""
     company_root = tmp_path / "software-company"
     claude_dir = tmp_path / ".claude" / "agents"
     _write_sc_agent(claude_dir, "sc-foo", src="agents/engineering/khong-ton-tai.md", recorded_version=1)
 
-    assert drift.sc_agent_drift(claude_dir, company_root) == []
+    out = drift.sc_agent_drift(claude_dir, company_root)
+    assert len(out) == 1
+    assert "KHÔNG có file đó" in out[0].detail
 
 
 def test_sc_agent_drift_bo_qua_file_khong_co_comment_nguon(tmp_path: Path) -> None:
@@ -119,7 +125,8 @@ def test_golden_drift_nguon_khong_ton_tai(tmp_path: Path) -> None:
     (golden_dir / "ghost.md").write_text("<!-- golden agent=ghost version=2 -->\n", encoding="utf-8")
 
     out = drift.golden_drift(golden_dir, company_root)
-    assert len(out) == 1  # default 1 != recorded 2
+    assert len(out) == 1
+    assert "không có file nguồn" in out[0].detail  # không còn giả vờ "version=1"
 
 
 def _git(repo: Path, *args: str) -> None:

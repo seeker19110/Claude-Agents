@@ -40,10 +40,14 @@ _PR_REF_RE = re.compile(r"\(#(?P<n>\d+)\)")
 CHANGELOG_RULE_CUTOFF = datetime(2026, 9, 7, 19, 41, 1, tzinfo=timezone(timedelta(hours=7)))
 
 
-def _source_version(source_md: Path) -> int:
-    """`version:` ở front matter của file nguồn agent; mặc định 1 (khớp `AgentSpec.version` default)."""
+def _source_version(source_md: Path) -> int | None:
+    """`version:` ở front matter của file nguồn agent; `None` khi KHÔNG có file nguồn.
+
+    Trước đây thiếu file thì trả `1` (bắt chước `AgentSpec.version` default). Đó là fail-open: bản dẫn xuất trỏ
+    sai đường dẫn hiện ra dưới dạng "nguồn hiện version=1" — người đọc đi tìm một lần tăng version không hề có,
+    thay vì thấy ngay là đường dẫn trỏ vào chỗ trống. Phân biệt hai ca, vì cách xử lý của chúng khác hẳn nhau."""
     if not source_md.exists():
-        return 1
+        return None
     text = source_md.read_text(encoding="utf-8")
     front = text.split("---", 2)
     body = front[1] if len(front) >= 3 and text.startswith("---") else text
@@ -64,7 +68,14 @@ def sc_agent_drift(claude_agents_dir: Path, company_root: Path) -> list[Signal]:
             continue
         src_rel, recorded = m.group("src"), int(m.group("ver"))
         actual = _source_version(company_root / src_rel)
-        if actual != recorded:
+        if actual is None:
+            out.append(Signal(
+                subject=str(sc_path.name), kind="drift",
+                detail=f"{sc_path.name} trỏ nguồn {src_rel} nhưng KHÔNG có file đó — bản dẫn xuất ghi sai đường "
+                       f"dẫn, chạy make subagents để sinh lại",
+                evidence=src_rel,
+            ))
+        elif actual != recorded:
             out.append(Signal(
                 subject=str(sc_path.name), kind="drift",
                 detail=f"{sc_path.name} ghi version={recorded} của {src_rel} nhưng nguồn hiện version={actual}",
@@ -84,12 +95,13 @@ def golden_drift(golden_agents_dir: Path, company_root: Path) -> list[Signal]:
             continue
         agent_id, recorded = m.group("id"), int(m.group("ver"))
         matches = list((company_root / "agents").rglob(f"{agent_id}.md"))
-        actual = _source_version(matches[0]) if matches else 1
+        actual = _source_version(matches[0]) if matches else None
         if actual != recorded:
+            shown = "không có file nguồn" if actual is None else f"version={actual}"
             out.append(Signal(
                 subject=golden_path.name, kind="drift",
                 detail=f"golden {golden_path.name} ghi version={recorded} nhưng nguồn agent={agent_id} "
-                       f"hiện version={actual}",
+                       f"hiện {shown}",
                 evidence=str(matches[0].relative_to(company_root)) if matches else "nguồn không tìm thấy",
             ))
     return out
