@@ -1,4 +1,4 @@
-# ADR-0006: Công ty con `Upkeep-crew` — bảo trì toàn dự án
+# ADR-0006: Công ty con `keeper` — bảo trì toàn dự án
 
 ## Bối cảnh
 
@@ -24,7 +24,7 @@ biết "test phải đo hai chiều", không biết "không hạ `fail_under`".
 
 ## Quyết định
 
-Dựng package thứ sáu của workspace: **`Upkeep-crew/`** (distribution `upkeep-crew`, package Python `upkeep`),
+Dựng package thứ sáu của workspace: **`keeper/`** (distribution `keeper`, package Python `keeper`),
 là công ty con **bảo trì** — khách hàng đầu tiên và mặc định của nó là chính repo X-Agents.
 
 Nó **không viết lại** Renovate/CodeQL/Scorecard. Nó *tiêu thụ* đầu ra của chúng làm tín hiệu, rồi làm phần mà
@@ -44,15 +44,15 @@ không công cụ nào ngoài kia làm được: quyết định **cái gì đá
 | `quality` | `regression-guard` | Chạy đúng lệnh CI; ép **đo hai chiều**; rà cả họ lỗi (`AGENTS.md` bắt buộc §5) |
 | `quality` | `security-auditor` | gitleaks toàn lịch sử, audit dependency, OpenSSF Scorecard, quét bí mật trong artifact |
 | `release` | `release-clerk` | Dòng `CHANGELOG.md`, `docs/sessions/<ngày>.md`, số liệu `README.md`, tag — **trong chính PR** |
-| `supervisor` | `upkeep-supervisor` | Hạn mức token/PR, chống bão PR, giữ luật một-PR-mở, dừng khẩn |
+| `supervisor` | `keeper-supervisor` | Hạn mức token/PR, chống bão PR, giữ luật một-PR-mở, dừng khẩn |
 
-Human gate mới: **`upkeep`** — chỉ mở cho ticket `risk_tier` cao. Tier thấp đi thẳng tới auto-merge.
+Human gate mới: **`keeper`** — chỉ mở cho ticket `risk_tier` cao. Tier thấp đi thẳng tới auto-merge.
 
 ### Tính năng nâng cao (phần khác biệt so với ghép công cụ rời)
 
 1. **Bậc rủi ro tự động (`risk_tier`)** — tính từ bán kính ảnh hưởng: patch version của dev-dependency là
    `low` (tự merge); major version, chạm `xagents-core`, chạm `agents/`/`skills/`, hay chạm CI là `high`
-   (bắt buộc gate `upkeep` + ADR nếu là kiến trúc).
+   (bắt buộc gate `keeper` + ADR nếu là kiến trúc).
 2. **Bằng chứng đo hai chiều bắt buộc** — `regression-guard` phải nộp output *tắt bản sửa → test đỏ* và
    *bật lại → xanh*. Không có bằng chứng thì ticket không rời pha quality. Đây là `AGENTS.md` bắt buộc §4
    biến thành cổng máy, không còn là lời hứa.
@@ -62,7 +62,7 @@ Human gate mới: **`upkeep`** — chỉ mở cho ticket `risk_tier` cao. Tier t
    Tái dùng cơ chế `debt_due` đã có ở `software-company`, không dựng mới.
 5. **Rà cả họ lỗi thành pha bắt buộc** — sau mỗi patch, `regression-guard` grep mọi chỗ dùng cùng cơ chế và
    báo cáo **cả chỗ an toàn và vì sao** (`TRAPS.md` §1). Kết quả đính kèm PR.
-6. **Tự đề xuất `TRAPS.md`** — gặp cùng khuôn lỗi lần thứ hai, `upkeep-supervisor` sinh sẵn một mục
+6. **Tự đề xuất `TRAPS.md`** — gặp cùng khuôn lỗi lần thứ hai, `keeper-supervisor` sinh sẵn một mục
    `TRAPS.md` cho người duyệt. Bài học thành tài sản của repo, không của một phiên.
 7. **Cầu GitHub chỉ-đọc (adapter)** — `gh api` đọc Dependabot alert, CodeQL alert, trạng thái check, tuổi PR.
    Không quyền ghi ngoài việc mở PR qua đúng quy trình nhánh.
@@ -91,9 +91,9 @@ nguy cơ công ty bảo trì tự tạo nhiễu PR — chính vì thế mới c�
 **Rủi ro lớn nhất:** agent bảo trì "sửa" thứ không hỏng. Chặn bằng ba lớp: `risk_tier`, bằng chứng đo hai
 chiều, và luật cấm sửa code cạnh bên.
 
-**Lộ trình:** 5 PR — (1) khung package + pyproject + CI, (2) `watch` + adapter GitHub chỉ-đọc, (3) `triage`
+**Lộ trình:** 9 PR (BT0–BT8, đặc tả chi tiết ở `keeper/docs/DAC-TA-KEEPER.md`) — (1) khung package + pyproject + CI, (2) `watch` + adapter GitHub chỉ-đọc, (3) `triage`
 + sổ nợ + ngân sách thay đổi, (4) `engineering` + `quality` + bằng chứng hai chiều, (5) `release` + gate
-`upkeep` + console. Mỗi PR tự đứng được và giữ coverage 100%.
+`keeper` + console. Mỗi PR tự đứng được và giữ coverage 100%.
 
 ## Liên quan
 
