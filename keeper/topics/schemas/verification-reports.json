@@ -82,7 +82,53 @@
         "verified_by"
       ],
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "$defs": {
+        "FamilySafeEntry": {
+          "description": "Một chỗ cùng cơ chế ĐÃ SOI và kết luận an toàn, mang theo LÝ DO (xem docstring model).",
+          "properties": {
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "reason": {
+              "minLength": 1,
+              "title": "Reason",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "reason"
+          ],
+          "title": "FamilySafeEntry",
+          "type": "object"
+        },
+        "RunOutcome": {
+          "description": "Output THẬT của một lần chạy lệnh CI — không phải lời khai của model.",
+          "properties": {
+            "cmd": {
+              "title": "Cmd",
+              "type": "string"
+            },
+            "exit_code": {
+              "title": "Exit Code",
+              "type": "integer"
+            },
+            "output_tail": {
+              "default": "",
+              "title": "Output Tail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cmd",
+            "exit_code"
+          ],
+          "title": "RunOutcome",
+          "type": "object"
+        }
+      }
     }
   },
   "required": [

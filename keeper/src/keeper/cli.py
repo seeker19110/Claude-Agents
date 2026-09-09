@@ -16,10 +16,12 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import get_args
 
 from pydantic import ValidationError
 
 from .events import Ticket
+from .gates import GateKind
 from .patcher import HUMAN_ONLY_SEGMENTS, fix_docs
 from .worktree import SharedCheckoutRefused
 
@@ -86,6 +88,74 @@ def _run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _watch(args: argparse.Namespace) -> int:
+    """`keeper watch` — vòng lặp `watch → triage → patch → verify → gate? → release` (BT7).
+
+    `GitHubReader` dựng ở ĐÂY chứ không trong `KeeperOrchestrator`: adapter `gh` là thứ chạm ra ngoài máy,
+    nên nó là THAM SỐ của orchestrator (test tiêm `FakeGitHub`), không phải một phụ thuộc ẩn."""
+    from .github import GitHubReader
+    from .orchestrator import KeeperOrchestrator
+
+    repo = Path(args.repo).resolve()
+    orc = KeeperOrchestrator(Path(args.db), repo, GitHubReader(repo))
+    orc.watch(interval=args.interval, max_ticks=args.max_ticks)
+    return 0
+
+
+#: Mọi giá trị `decide()` nhận. Cả năm đều ĐÓNG gate (`gates.py` mục 3) — không giá trị nào "mở lại" ticket.
+GATE_DECISIONS: tuple[str, ...] = ("approve", "request_changes", "reject", "hold", "rollback")
+
+
+def _gate(args: argparse.Namespace) -> int:
+    """`keeper gate` — đường của NGƯỜI vào sổ gate (`gates.py`), sao khuôn `company/gate_cli.py`.
+
+    Không có nó, một ticket `risk_tier="high"` kẹt vĩnh viễn ở cổng `gate` của `pr_blockers()`: orchestrator
+    chỉ XIN gate, không ai đóng được, và công ty tự khoá chính mình. Trạng thái gate không lưu riêng —
+    `PersistentGate` dựng lại từ replay `audit-log` trên cùng `keeper.sqlite`, nên lệnh này là một tiến trình
+    KHÁC vòng watch và quyết định tới được orchestrator qua `bus.poll()`.
+
+    `--by` bắt buộc là NGƯỜI (`is_human`). Đây là nửa còn lại của `trusted_decision`: nó chỉ tin envelope có
+    `env.actor` hình người VÀ trùng `by`, còn `PersistentGate.decide` ghi envelope dưới actor `by`. Chặn ngay
+    ở đây để `--by patcher` báo lỗi thay vì ghi lên bus một bản ghi mà mọi người tiêu thụ đều lặng lẽ bỏ qua —
+    "đã bấm mà không có gì xảy ra" đúng là khuôn hỏng không tự khai báo."""
+    from xagents_core.bus import is_human
+
+    from .bus import KeeperBus
+    from .core import CORE
+    from .gates import CHECKLIST, GateRequest, PersistentGate, gate_approvers
+
+    gate = PersistentGate(KeeperBus(CORE, Path(args.db)), approvers=gate_approvers())
+    if args.gate_cmd == "list":
+        for sid, r in gate.pending.items():
+            print(f"{sid}  {r.kind}  by={r.created_by or '-'}  checklist={len(r.checklist)} mục")
+        if not gate.pending:
+            print("(không có gate chờ)")
+        return 0
+    if args.gate_cmd == "request":
+        try:  # vai không có quyền mở gate (ADR-0008): báo như mọi lỗi quyền khác, không traceback
+            gate.request(GateRequest(kind=args.kind, subject_id=args.subject_id, created_by=args.by,
+                                     checklist=list(CHECKLIST)))
+        except PermissionError as e:
+            print(str(e), file=sys.stderr)
+            return 3
+        print(f"requested {args.kind} {args.subject_id}")
+        return 0
+    if not is_human(args.by):
+        print(f"{args.by} không phải người (`human` / `human:<tên>`) — chỉ người quyết được gate "
+              f"(`trusted_decision`, xagents_core/gate_cli.py)", file=sys.stderr)
+        return 3
+    try:
+        done = gate.decide(args.subject_id, args.gate_cmd, by=args.by, reason=args.reason)
+    except KeyError:
+        print(f"không có gate chờ: {args.subject_id}", file=sys.stderr)
+        return 2
+    except PermissionError as e:
+        print(str(e), file=sys.stderr)
+        return 3
+    print(f"{done.subject_id}: {done.decision} by {done.decided_by}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="keeper", description="công ty bảo trì X-Agents")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -96,6 +166,26 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--root", required=True, help="worktree PHỤ của keeper để áp patch (bắt buộc)")
     run.add_argument("--dry-run", action="store_true", help="chỉ in kế hoạch, không chạm file nào")
     run.set_defaults(func=_run)
+    watch = sub.add_parser("watch", help="vòng lặp orchestrator (BT7)")
+    watch.add_argument("--db", required=True, help="file bus bền vững (keeper.sqlite)")
+    watch.add_argument("--repo", required=True, help="repo để hỏi `gh` (chỉ đọc)")
+    watch.add_argument("--interval", type=float, default=300.0, help="giây giữa hai nhịp")
+    watch.add_argument("--max-ticks", type=int, default=None, help="dừng sau bấy nhiêu nhịp (mặc định: mãi)")
+    watch.set_defaults(func=_watch)
+    gate = sub.add_parser("gate", help="sổ human gate: list / request / duyệt (BT7)")
+    gate.add_argument("--db", required=True, help="file bus bền vững (keeper.sqlite)")
+    gsub = gate.add_subparsers(dest="gate_cmd", required=True)
+    gsub.add_parser("list", help="gate đang chờ người")
+    rq = gsub.add_parser("request", help="mở một gate")
+    rq.add_argument("kind", choices=get_args(GateKind))
+    rq.add_argument("subject_id")
+    rq.add_argument("--by", required=True, help="actor mở gate (vai trong REQUEST_ACTORS, hoặc human:<tên>)")
+    for d in GATE_DECISIONS:
+        p = gsub.add_parser(d, help=f"đóng gate với quyết định {d}")
+        p.add_argument("subject_id")
+        p.add_argument("--by", required=True, help="NGƯỜI duyệt (`human:<tên>`)")
+        p.add_argument("--reason", default="", help="lý do — người sau đọc bản ghi này, không đọc được đầu bạn")
+    gate.set_defaults(func=_gate)
     args = parser.parse_args(argv)
     return int(args.func(args))
 

@@ -265,17 +265,32 @@ code vừa chạy lệnh, không bao giờ nhận từ JSON model trả về —
 | File | Thay đổi |
 |---|---|
 | `release.py` | soạn dòng `CHANGELOG.md` + mục `docs/sessions/<ngày>.md`; điền `(#n)` **sau** khi có số PR rồi commit tiếp vào chính PR đó (`AGENTS.md` §10), không mở PR thứ hai để vá số |
-| `gates.py` | gate `keeper` bọc `HumanGate` của core (`xagents-core/src/xagents_core/gates.py:52`); `created_by` không rỗng (ADR-0005, #199); four-eyes giữ nguyên |
-| `keeper/gates/checklists.md` | checklist gate `keeper`: `risk_tier`, bằng chứng hai chiều, báo cáo họ lỗi, ngân sách còn chỗ, không chạm đường cấm |
-| `orchestrator.py` | vòng lặp `watch → triage → patch → verify → gate? → release`; resume qua `SqliteBus`; `--watch` như hai công ty kia |
+| `gates.py` | gate `keeper` bọc `PersistentGate` của lõi (`xagents-core/src/xagents_core/gate_cli.py:78`); `GateKind = patch\|release\|escalation`; `REQUEST_ACTORS` (allowlist vai được TẠO gate, ADR-0008/#216); `APPROVERS_SOURCE` nêu rõ nguồn danh sách; `approvers()` nhận `CORE.approvers_env` — **không viết cứng** tên biến môi trường (lõi không được biết tên công ty nào, I6); `created_by` không rỗng (ADR-0005, #199); four-eyes giữ nguyên |
+| `bus.py` | `KeeperBus`/`KeeperMemoryBus` = bus lõi + `Envelope` của `keeper` (khuôn `company/bus.py`). Không có trong bản đồ §1 nhưng bắt buộc: bus lõi generic theo lớp envelope, để nguyên lớp lõi là mất `topic: Topic` ở lớp kiểu |
+| `keeper/gates/checklists.md` | checklist gate `keeper`: `risk_tier`, bằng chứng hai chiều, báo cáo họ lỗi, ngân sách còn chỗ, không chạm đường cấm (bản mã: `gates.CHECKLIST`) |
+| `orchestrator.py` | vòng lặp `watch → triage → patch → verify → gate? → release`; resume qua **`SQLiteBus`** (xem sửa 1 dưới); `--watch` như hai công ty kia; `pr_blockers()` là nơi DUY NHẤT nối bốn cổng BT4–BT6: `human-only` (`patcher.HUMAN_ONLY_SEGMENTS`), `evidence` (`require_two_way`), `gate` (tier `high`), `budget` (`can_open_pr`) |
+| `topics/schemas/verification-reports.json` | `$defs` phải nằm **cả trong** `properties.payload`: bus dựng validator payload từ `s["properties"]["payload"]` làm gốc riêng (`xagents-core/src/xagents_core/bus.py:74`), nên `$ref: "#/$defs/RunOutcome"` chỉ có `$defs` ở gốc file là `PointerToNowhere` — đo được lần đầu ở BT7 khi có mã publish topic này |
 | `keeper/agents/**` (8 file) | system prompt; front matter đủ `model_tier` — mặc định `cheap`, `strong` chỉ cho `refactorer` và cho `triager` khi tier cao |
-| `keeper/evals/recordings/` | bản ghi eval provider fake cho 8 agent |
+| `keeper/evals/recordings/` | bản ghi eval provider fake cho **10** agent — **chưa có**: `keeper` chưa có hạ tầng eval, và bước `make eval-record` của `CONTRIBUTING.md` §3 cần model thật ⇒ `chờ người`. Không dựng thư mục rỗng để khỏi trông như đã chạy |
 
 Đo hai chiều: ticket `risk_tier=high` chưa có gate approved → orchestrator **không** mở PR; approve → mở. Tắt
-kiểm `created_by` → test bypass four-eyes đỏ (khuôn test đã có ở #199).
+kiểm `created_by` → test bypass four-eyes đỏ (khuôn test đã có ở #199). Mỗi cổng trong bảng `pr_blockers` phải
+tắt được riêng và làm đỏ đúng ca của nó.
 
-**Cạm bẫy**: `gate_cli approve` là **reopen**, không phải close. Muốn đóng hẳn một ticket bảo trì bỏ đi thì
-dùng `reject`/`rollback` — `approve` sẽ mở lại nó bất kể chữ trong `reason`.
+### Ba chỗ mục này nói SAI — đã đo lại ở BT7, đừng chép lại bản cũ
+
+1. **`SqliteBus` không tồn tại.** Tên thật là **`SQLiteBus`** (`xagents-core/src/xagents_core/sqlite_bus.py:57`).
+2. **`HumanGate` không có `approve()`/`reject()`.** Chỉ có `decide(subject_id, decision, by, reason, *, enforce)`
+   (`xagents-core/src/xagents_core/gates.py:87`). Thế hệ chống-trùng của một gate là **`GateRequest.seq`**, do
+   `request()` gán (`gates.py:84`) — **không** phải `created_at` (`created_at` đổi sau mỗi lần dựng lại từ
+   replay, nên khoá `once` lấy nó làm thế hệ sẽ nhắc/escalate lại một gate đã nhắc rồi).
+3. **Cạm bẫy "`gate_cli approve` là reopen" viết sai.** `decide()` **ĐÓNG** gate: bỏ `subject_id` khỏi
+   `pending` và đẩy bản ghi vào `history`, đúng một lần, bất kể `decision` là gì
+   (`xagents-core/src/xagents_core/gates.py:87-94`). "Mở lại" là **nghĩa riêng** mà orchestrator của company
+   gán cho một SỐ escalation — nó tự phát `supervisor-actions{action:"resume"}` theo LOẠI subject sau khi gate
+   đã đóng (`software-company/src/company/orch/gates_flow.py:110-117`). Câu đúng: **muốn một ticket bảo trì
+   được làm lại thì orchestrator phải tự phát `resume`; `approve`/`reject`/`rollback` chỉ khác nhau ở chữ
+   `decision` ghi vào `history`, không cái nào mở lại gì cả.**
 
 ---
 

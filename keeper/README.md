@@ -12,7 +12,10 @@ Package thứ sáu của workspace X-Agents. Khách hàng số 0 và mặc đị
 Không viết lại Renovate / CodeQL / Scorecard — nó *tiêu thụ* đầu ra của chúng làm tín hiệu, rồi làm phần không
 công cụ nào ngoài kia làm được: quyết định **cái gì đáng sửa, sửa theo luật của repo này, và chứng minh đã sửa**.
 
-Sáu khối, tám agent, một human gate `keeper`:
+Sáu khối, **mười** agent, một human gate `keeper`:
+
+(ADR-0006 và bản đầu của README viết "tám" — đếm lại bảng dưới
+ra mười; khối `watch` một mình đã có ba. Con số cũ là lỗi đếm, không phải một danh sách khác.)
 
 | Khối | Agent |
 |---|---|

@@ -29,10 +29,10 @@ gate:
 	uv run python -m company.gate_cli list
 gate-brief:       # hồ sơ bằng chứng (chỉ đọc) cho nửa "người tự kiểm thêm" của một gate: make gate-brief SUBJECT=REL-001 [REPO=../khach]
 	uv run python -m company.gate_brief $(or $(SUBJECT),--all) $(if $(REPO),--repo $(REPO),)
-assetscan:     # quét tài sản prompt của cả hai công ty (ADR-0022); miễn trừ ở assetscan-waivers.txt
-	uv run python -m company.assetscan scan . ../Studio-creators
+assetscan:     # quét tài sản prompt của cả ba công ty (ADR-0022); miễn trừ ở assetscan-waivers.txt
+	uv run python -m company.assetscan scan . ../Studio-creators ../keeper
 assetbudget:   # prompt tĩnh chiếm bao nhiêu phần ngân sách token của từng agent
-	uv run python -m company.assetscan budget . ../Studio-creators
+	uv run python -m company.assetscan budget . ../Studio-creators ../keeper
 eval:
 	uv run python -m company.evals $(AGENT)
 eval-record:   # chạy model thật, lưu evals/recordings/$(AGENT).json — bắt buộc sau khi đổi prompt/skill (ADR-0010)

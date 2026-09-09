@@ -1,0 +1,177 @@
+{
+  "dependency-scout": {
+    "block": "watch",
+    "budget_tokens_per_task": 40000,
+    "context_namespace_write": null,
+    "max_retries": 2,
+    "model_tier": "light",
+    "reads": [
+      "shared-context"
+    ],
+    "skills": [],
+    "skills_core": [],
+    "timeout_minutes": 30,
+    "version": 1,
+    "writes": [
+      "maintenance-signals"
+    ]
+  },
+  "drift-detector": {
+    "block": "watch",
+    "budget_tokens_per_task": 40000,
+    "context_namespace_write": null,
+    "max_retries": 2,
+    "model_tier": "light",
+    "reads": [
+      "shared-context"
+    ],
+    "skills": [],
+    "skills_core": [],
+    "timeout_minutes": 30,
+    "version": 1,
+    "writes": [
+      "maintenance-signals"
+    ]
+  },
+  "health-monitor": {
+    "block": "watch",
+    "budget_tokens_per_task": 40000,
+    "context_namespace_write": null,
+    "max_retries": 2,
+    "model_tier": "light",
+    "reads": [
+      "shared-context"
+    ],
+    "skills": [],
+    "skills_core": [],
+    "timeout_minutes": 30,
+    "version": 1,
+    "writes": [
+      "maintenance-signals"
+    ]
+  },
+  "keeper-supervisor": {
+    "block": "supervisor",
+    "budget_tokens_per_task": 40000,
+    "context_namespace_write": "knowledge",
+    "max_retries": 0,
+    "model_tier": "light",
+    "reads": [
+      "*",
+      "audit-log",
+      "debt-ledger"
+    ],
+    "skills": [],
+    "skills_core": [],
+    "timeout_minutes": 15,
+    "version": 1,
+    "writes": [
+      "supervisor-actions",
+      "debt-ledger"
+    ]
+  },
+  "patcher": {
+    "block": "engineering",
+    "budget_tokens_per_task": 80000,
+    "context_namespace_write": null,
+    "max_retries": 3,
+    "model_tier": "light",
+    "reads": [
+      "maintenance-tickets"
+    ],
+    "skills": [],
+    "skills_core": [],
+    "timeout_minutes": 60,
+    "version": 1,
+    "writes": [
+      "patch-proposals"
+    ]
+  },
+  "refactorer": {
+    "block": "engineering",
+    "budget_tokens_per_task": 120000,
+    "context_namespace_write": null,
+    "max_retries": 3,
+    "model_tier": "strong",
+    "reads": [
+      "maintenance-tickets"
+    ],
+    "skills": [],
+    "skills_core": [],
+    "timeout_minutes": 120,
+    "version": 1,
+    "writes": [
+      "patch-proposals"
+    ]
+  },
+  "regression-guard": {
+    "block": "quality",
+    "budget_tokens_per_task": 60000,
+    "context_namespace_write": null,
+    "max_retries": 2,
+    "model_tier": "light",
+    "reads": [
+      "patch-proposals"
+    ],
+    "skills": [],
+    "skills_core": [],
+    "timeout_minutes": 45,
+    "version": 2,
+    "writes": [
+      "verification-reports"
+    ]
+  },
+  "release-clerk": {
+    "block": "release",
+    "budget_tokens_per_task": 50000,
+    "context_namespace_write": null,
+    "max_retries": 2,
+    "model_tier": "light",
+    "reads": [
+      "verification-reports",
+      "security-findings"
+    ],
+    "skills": [],
+    "skills_core": [],
+    "timeout_minutes": 30,
+    "version": 2,
+    "writes": [
+      "release-notes"
+    ]
+  },
+  "security-auditor": {
+    "block": "quality",
+    "budget_tokens_per_task": 60000,
+    "context_namespace_write": null,
+    "max_retries": 2,
+    "model_tier": "light",
+    "reads": [
+      "patch-proposals"
+    ],
+    "skills": [],
+    "skills_core": [],
+    "timeout_minutes": 45,
+    "version": 1,
+    "writes": [
+      "security-findings"
+    ]
+  },
+  "triager": {
+    "block": "triage",
+    "budget_tokens_per_task": 60000,
+    "context_namespace_write": null,
+    "max_retries": 2,
+    "model_tier": "standard",
+    "reads": [
+      "maintenance-signals"
+    ],
+    "skills": [],
+    "skills_core": [],
+    "timeout_minutes": 45,
+    "version": 1,
+    "writes": [
+      "maintenance-tickets",
+      "debt-ledger"
+    ]
+  }
+}

@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from keeper.cli import Plan, main, plan_for
-from keeper.events import Ticket
+from keeper.events import Signal, Ticket
 
 
 def cay_hash(root: Path) -> str:
@@ -152,3 +152,86 @@ def test_chieu_nguoc_cung_lenh_do_tren_worktree_phu_thi_GHI_THAT(root: Path, tmp
     f.write_text(json.dumps([_ticket("T-doc", "CHANGELOG.md")]), encoding="utf-8")
     assert main(["run", "--tickets", str(f), "--root", str(root)]) == 0
     assert "T-doc" in (root / "CHANGELOG.md").read_text(encoding="utf-8")
+
+
+# ---------- CHẶN-4: đường cho NGƯỜI duyệt gate (`keeper gate`) ----------
+
+@pytest.fixture
+def khong_allowlist(monkeypatch):
+    """Không ca gate nào được rẽ theo biến môi trường của máy đang chạy."""
+    from keeper.core import CORE
+    monkeypatch.delenv(CORE.approvers_env, raising=False)
+
+
+def _orc_ticket_high(db: Path, repo: Path):
+    """Một ticket `risk_tier=high` đã đủ bằng chứng, đang kẹt ở cổng `gate` — công ty tự khoá chính mình nếu
+    không có đường cho người."""
+    from datetime import UTC, datetime
+
+    from keeper.events import RunOutcome
+    from keeper.evidence import TRUSTED_VERIFIER, TwoWayEvidence
+    from keeper.fakes import FakeGitHub
+    from keeper.orchestrator import KeeperOrchestrator
+
+    class _GH(FakeGitHub):
+        def open_prs(self):
+            return []
+
+        def merged_prs(self, since):
+            return []
+
+    o = KeeperOrchestrator(db, repo, _GH())
+    o.submit_signal(Signal(subject="requests", kind="dependency", detail="bump", semver_jump="major"))
+    (t,) = o.tick(now=datetime(2026, 9, 9, tzinfo=UTC)).tickets
+    cmd = "uv run pytest -q"
+    o.record_verification(t.ticket_id, {"ticket_id": t.ticket_id}, TwoWayEvidence(
+        cmd=cmd, before=RunOutcome(cmd=cmd, exit_code=1), after=RunOutcome(cmd=cmd, exit_code=0),
+        verified_by=TRUSTED_VERIFIER))
+    o.tick(now=datetime(2026, 9, 9, tzinfo=UTC))  # xin gate
+    assert "gate" in o.pr_blockers(t)
+    return o, t
+
+
+def test_gate_list_rong(tmp_path: Path, khong_allowlist, capsys):
+    assert main(["gate", "--db", str(tmp_path / "k.sqlite"), "list"]) == 0
+    assert "không có gate chờ" in capsys.readouterr().out
+
+
+def test_nguoi_duyet_qua_cli_thi_ticket_high_het_bi_chan(tmp_path: Path, khong_allowlist, capsys):
+    db = tmp_path / "k.sqlite"
+    o, t = _orc_ticket_high(db, tmp_path / "repo")
+    assert main(["gate", "--db", str(db), "list"]) == 0
+    assert t.ticket_id in capsys.readouterr().out
+    assert main(["gate", "--db", str(db), "approve", t.ticket_id, "--by", "human:pm",
+                 "--reason", "đã soi bằng chứng hai chiều"]) == 0
+    o.bus.poll()
+    assert "gate" not in o.pr_blockers(t), "quyết định của người phải tới được orchestrator qua bus"
+
+
+def test_gate_decide_boi_actor_khong_phai_nguoi_bi_tu_choi(tmp_path: Path, khong_allowlist, capsys):
+    """`trusted_decision`: chỉ NGƯỜI quyết được. Một actor máy khai `--by patcher` không đóng được gate."""
+    db = tmp_path / "k.sqlite"
+    o, t = _orc_ticket_high(db, tmp_path / "repo")
+    assert main(["gate", "--db", str(db), "approve", t.ticket_id, "--by", "patcher", "--reason", "x"]) == 3
+    assert "không phải người" in capsys.readouterr().err
+    o.bus.poll()
+    assert "gate" in o.pr_blockers(t) and t.ticket_id in o.gate.pending
+
+
+def test_gate_decide_subject_khong_ton_tai(tmp_path: Path, khong_allowlist, capsys):
+    assert main(["gate", "--db", str(tmp_path / "k.sqlite"), "reject", "KEEP:khong-co",
+                 "--by", "human:pm", "--reason", "x"]) == 2
+    assert "không có gate chờ" in capsys.readouterr().err
+
+
+def test_gate_decide_vi_pham_four_eyes(tmp_path: Path, khong_allowlist, capsys):
+    db = tmp_path / "k.sqlite"
+    assert main(["gate", "--db", str(db), "request", "patch", "KEEP:x", "--by", "human:pm"]) == 0
+    assert main(["gate", "--db", str(db), "approve", "KEEP:x", "--by", "human:pm", "--reason", "tự duyệt"]) == 3
+    assert "four-eyes" in capsys.readouterr().err
+
+
+def test_gate_request_boi_vai_ngoai_allowlist_bi_tu_choi(tmp_path: Path, khong_allowlist, capsys):
+    assert main(["gate", "--db", str(tmp_path / "k.sqlite"), "request", "patch", "KEEP:x",
+                 "--by", "patcher"]) == 3
+    assert "quyền" in capsys.readouterr().err

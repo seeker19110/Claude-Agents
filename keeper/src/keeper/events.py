@@ -57,6 +57,9 @@ class Ticket(BaseModel):
     subject: str
     risk_tier: RiskTier
     signal_subjects: list[str] = []
+    #: `Envelope.event_id` của những `maintenance-signals` đã bị ticket này tiêu thụ. ĐÂY là sổ chống-trùng của
+    #: `triager` ở dạng dựng lại được từ bus (`triage.py`): không có nó thì trạng thái ấy chỉ sống trong RAM.
+    signal_event_ids: list[str] = []
     due_at: str | None = None
     requires_gate: bool = False
     status: Literal["open", "in_progress", "blocked", "closed"] = "open"
