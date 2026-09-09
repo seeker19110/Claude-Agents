@@ -21,7 +21,7 @@ Scope PR: `keeper` (một từ chữ thường, đúng regex của `pr-policy.ym
 | I1 | `keeper` **không có quyền ghi** ngoài: tạo nhánh, commit trong worktree của chính nó, mở PR | Nó bảo trì chính cái repo đang chạy nó | `github.py` chỉ có hàm đọc; không hàm nào gọi `gh pr merge`, `gh api -X`, hay `git push origin main` |
 | I2 | Mọi patch phải có **bằng chứng đo hai chiều** mới rời pha quality | `AGENTS.md` bắt buộc §4 | `evidence.py:require_two_way()` ném `EvidenceError` khi `before.exit_code == 0` |
 | I3 | Đúng **một PR bảo trì mở** tại một thời điểm | `docs/QUY-TRINH-GIT.md` §2c | `budget.py:can_open_pr()` hỏi `gh pr list --state open` thật, không tin state trong RAM |
-| I4 | Không hạ `fail_under`, không sửa `.github/rulesets/`, không push `main` | `AGENTS.md` cấm §6 | `patcher.py:FORBIDDEN_PATHS` + test chặn |
+| I4 | Không hạ `fail_under` (giá trị, không phải dòng), không sửa `.git/` hay `.github/` (CẢ `workflows/`), không push `main` | `AGENTS.md` cấm §6 | `patcher.py:FORBIDDEN_PATHS` + `check_coverage_guard` + test chặn |
 | I5 | Không xoá dead code, chỉ báo cáo | `AGENTS.md` cấm §7 | `patcher` không có thao tác xoá file; `drift-detector` chỉ phát signal |
 | I6 | Core không biết tên công ty nào | ADR-0001 §1 | `keeper` chỉ điền trường của `CoreConfig`; một `if cfg.prefix == "KEEPER"` trong `xagents_core` là fork mọc lại |
 | I7 | `keeper` là khách hàng số 0 của chính nó | Canary | BT8 phải chạy một chu kỳ thật trên X-Agents trước khi mở cho repo khách |
@@ -217,12 +217,20 @@ nếu không nó nuốt lần hai hợp lệ (bug `once="no-test-author:{tid}"`,
 
 | File | Thay đổi |
 |---|---|
-| `worktree.py` | `open_worktree(ticket_id)` → `../Claude-Agents-wt-keeper-<id>`, nhánh `chore/keeper-<id>`; `close()` dọn. **Không bao giờ** `reset --hard` trên checkout chung — phiên khác đang mở cùng thư mục |
-| `patcher.py` | ba thao tác: `bump_dependency`, `regen_derived` (`make golden`, `make subagents`), `fix_docs` (dòng CHANGELOG / nhật ký phiên). `FORBIDDEN_PATHS = (".github/rulesets/", "llm.yaml", "media.yaml", "*.sqlite*")` + kiểm riêng cấm sửa dòng `fail_under` trong bất kỳ `pyproject.toml` nào |
-| `cli.py` | `keeper run --dry-run` in kế hoạch (ticket → thao tác → file sẽ đụng) mà **không** chạm file nào |
+| `worktree.py` | `open_worktree(ticket_id)` → `../Claude-Agents-wt-keeper-<id>`, nhánh `chore/keeper-<id>`; `close()` dọn. **Không bao giờ** `reset --hard` trên checkout chung — phiên khác đang mở cùng thư mục; `git_env()` bỏ mọi biến `GIT_*` để môi trường ngoài không lái được phép dò repo của chốt |
+| `patcher.py` | ba thao tác: `bump_dependency`, `regen_derived` (`make golden`, `make subagents`), `fix_docs` (dòng CHANGELOG / nhật ký phiên). `FORBIDDEN_PATHS = (".git/", ".github/", "llm.yaml", "media.yaml", "*.sqlite*")` + `check_coverage_guard` cấm HẠ ngưỡng coverage (so **giá trị** `tool.coverage.report.fail_under` đọc bằng `tomllib`, và `--cov-fail-under` ở mọi file khác). Mọi đường GHI đi qua `refuse_shared_checkout(root)` |
+| `cli.py` | `keeper run --dry-run` in kế hoạch (ticket → thao tác → file sẽ đụng) mà **không** chạm file nào. `--root` **bắt buộc**, không có mặc định `"."` |
+
+**Sửa bảng chặn so với bản đặc tả đầu (đã đo, 2026-09-09).** Bảng cũ chỉ có `.github/rulesets/`, nên
+`apply_edits` GHI ĐƯỢC `.github/workflows/ci.yml` — tức gỡ chính cổng CI đang ép `fail_under`, gitleaks và
+ruleset, rồi mọi chốt còn lại trong bảng này thành trang trí. Đây là gap của ĐẶC TẢ, không phải của mã, nên
+sửa ở cả hai chỗ: bảng chặn nay là cả `.github/` và `.git/`. `keeper` không có việc gì phải sửa hai thư mục
+đó — thay đổi ở đấy là việc của người, qua PR.
 
 Đo hai chiều: ticket đòi sửa `.github/rulesets/x.yml` → `patcher` ném `ForbiddenPath`; xoá bảng chặn → test đỏ
-vì file bị sửa thật trong repo tạm.
+vì file bị sửa thật trong repo tạm. `apply_edits`/`regen_derived`/CLI trên checkout CHUNG → `SharedCheckoutRefused`
+và file không đổi; `write_guard=False` → file đổi thật. Hạ ngưỡng bằng đổi mục `[tool.coverage.report]` →
+`[tool.coverage.paths]` (dòng `fail_under` y nguyên) vẫn bị chặn — đây là lý do chốt so GIÁ TRỊ chứ không so dòng.
 
 **Cạm bẫy**: patch chạm `agents/`/`skills/` **bắt buộc** đủ bảy bước `CONTRIBUTING.md` §3, mà bước
 `make eval-record` cần model thật. Vì thế `patcher` **không được** tự làm nhóm này: nó chỉ mở ticket `high` và
