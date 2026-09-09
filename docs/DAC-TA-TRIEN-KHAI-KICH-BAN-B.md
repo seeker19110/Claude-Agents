@@ -490,7 +490,17 @@ package đang gọi `company.llm.load_config()` không đổi.
 >   Điểm thứ hai đặc tả không lường: `scope_of`/`context_key` của company **thôi là hàm module** (chúng đọc
 >   `global_namespaces`, nay ở `CoreConfig`), nên một ca test vá hàm module phải đổi sang vá phương thức —
 >   không đổi thì ca ấy vẫn xanh mà không còn đo gì.
-> - **K3.6c `evals`, K3.6d `runner`**: chưa làm.
+> - **K3.6c — `evals`: XONG (#PR).** Đặc tả viết "bản company (`RecordingClient` chốt version ở `__init__:69`,
+>   `save` merge `:80-96`); giữ `if not c.tool_calls` của studio khi ghi" — **đúng cả ba vế**, đây là gạch đầu
+>   dòng chính xác nhất của cả K3. Nhưng nó bỏ sót một thứ lớn hơn: `main` và `CaseResult` không phải cơ chế
+>   mà là **CHÍNH SÁCH CỔNG**, và hai công ty quyết định "cái gì làm CI đỏ" khác nhau (company tách điểm chấm
+>   khỏi cổng bản ghi; studio đỏ khi bất kỳ ca nào không chạy được). Lấy `main` của company là âm thầm nới
+>   lỏng cổng của studio — nên `main` ở lại từng công ty, và `CaseResult` mang HAI trường có tên
+>   (`broken_recording`, `errored`) thay vì một cờ.
+>   `EVALS_DIR → core.root/"evals"` làm đúng như đặc tả, nhưng phải đi **qua biến module** chứ không tính từ
+>   `self.root`: 20 chỗ test dùng `monkeypatch.setattr(evals, "RECORDINGS_DIR", …)` làm seam, và tính từ
+>   `self.root` là seam ấy im lặng hết tác dụng. Cùng khuôn với `scope_of` ở K3.6b.
+> - **K3.6d `runner`**: chưa làm.
 
 ### PR K3.7 `refactor(core): K3.7 — gates, gate_cli, supervisor hợp nhất hai chiều`
 
