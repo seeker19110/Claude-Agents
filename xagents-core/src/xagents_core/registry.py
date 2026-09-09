@@ -22,7 +22,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import yaml
 
@@ -119,7 +119,7 @@ class AgentSpec:
 S = TypeVar("S", bound=AgentSpec)
 
 
-def split_front_matter(text: str) -> tuple[dict, str]:
+def split_front_matter(text: str) -> tuple[dict[str, Any], str]:
     """Tách front matter YAML khỏi thân Markdown. Thiếu front matter là lỗi, không phải "coi như rỗng"."""
     m = _FM.match(text)
     if not m:
