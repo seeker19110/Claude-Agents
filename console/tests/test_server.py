@@ -485,7 +485,12 @@ def test_stream_day_ngay_trang_thai_dau_tien(make_console, fake_modules, tmp_pat
     assert status == 200
     assert headers["content-type"].startswith("text/event-stream")
     assert headers["cache-control"] == "no-store"
-    assert frames == [("state", {"generated_at": "2026-09-03T08:41:12+07:00", "tiles": {"events": 7}})]
+    assert len(frames) == 1 and frames[0][0] == "state"
+    payload = dict(frames[0][1])
+    # `engine` đi kèm MỌI khung trạng thái (ADR-0004): /api/state và /api/stream phải trả cùng một payload,
+    # nếu không thì ô Động cơ chỉ đúng ở đường hỏi lại 10 giây và sai ở đường stream.
+    assert payload.pop("engine")["engines"][0]["xuong"] == "software-company"
+    assert payload == {"generated_at": "2026-09-03T08:41:12+07:00", "tiles": {"events": 7}}
 
 
 def test_stream_day_khung_moi_khi_bus_doi(make_console, fake_modules, tmp_path: Path) -> None:
@@ -509,10 +514,15 @@ def test_stream_day_khung_moi_khi_bus_doi(make_console, fake_modules, tmp_path: 
                 if text.startswith("data: "):
                     return json.loads(text[len("data: "):])
 
-        assert next_state() == {"n": 1}
+        def state_khong_engine() -> Any:
+            payload = dict(next_state())
+            payload.pop("engine", None)
+            return payload
+
+        assert state_khong_engine() == {"n": 1}
         fake_modules.state.clear(); fake_modules.state.update({"n": 2})
         db.write_bytes(b"xy")            # bus đổi → dấu vân tay đổi
-        assert next_state() == {"n": 2}
+        assert state_khong_engine() == {"n": 2}
     finally:
         conn.close()
 
@@ -942,3 +952,132 @@ def test_stream_mat_ket_noi_giua_chung_khong_nem(make_console, fake_modules, tmp
     while calls["n"] < 2 and time.monotonic() < deadline:
         real_sleep(0.02)   # dùng sleep GỐC — srv.time.sleep đã bị vá, gọi nó ở đây sẽ tự ném luôn
     assert calls["n"] >= 2   # đủ để vòng lặp chạm nhánh sleep() ném BrokenPipeError
+
+
+# --- động cơ: POST /api/engine (ADR-0004) -------------------------------------
+
+class _FakeEngine:
+    """Thay `EngineManager` để test SERVER (định tuyến, quyền, mã HTTP) mà không tạo tiến trình con thật —
+    vòng đời tiến trình đã có `tests/test_engine.py` kiểm bằng tiến trình thật."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.raise_with: Exception | None = None
+
+    def status(self) -> dict[str, Any]:
+        return {"engines": [{"xuong": "software-company", "state": "stopped"}]}
+
+    def fingerprint(self) -> str:
+        return "fp"
+
+    def stop_all(self) -> None:
+        self.calls.append(("stop_all", {}))
+
+    def start(self, xuong: str, **kw: Any) -> dict[str, Any]:
+        self.calls.append(("start", {"xuong": xuong, **kw}))
+        if self.raise_with is not None:
+            raise self.raise_with
+        return {"ok": True, "state": "running", "xuong": xuong}
+
+    def stop(self, xuong: str, **kw: Any) -> dict[str, Any]:
+        self.calls.append(("stop", {"xuong": xuong, **kw}))
+        if self.raise_with is not None:
+            raise self.raise_with
+        return {"ok": True, "state": "exited", "xuong": xuong}
+
+
+@pytest.fixture
+def engine_console(make_console):
+    def _make(**kw: Any) -> tuple[Console, _FakeEngine]:
+        c = _make_with(kw)
+        return c
+
+    def _make_with(kw: dict[str, Any]) -> tuple[Console, _FakeEngine]:
+        c = make_console(**kw)
+        fake = _FakeEngine()
+        c.server.engine = fake
+        return c, fake
+    return _make
+
+
+_ENG = {"action": "start", "xuong": "software-company", "by": "human:truc-ban", "interval": 30}
+
+
+def test_engine_bi_khoa_khi_khong_co_allow_engine(engine_console) -> None:
+    c, fake = engine_console()
+    status, body = c.request("POST", "/api/engine", body=_ENG)
+    assert status == 403 and "--allow-engine" in body["error"] and fake.calls == []
+
+
+def test_engine_khong_dinh_kem_allow_decide(engine_console) -> None:
+    """Bốn quyền là bốn cờ: mở cửa duyệt gate không đồng nghĩa mở cửa đốt hạn mức model."""
+    c, fake = engine_console(readonly=False, allow_submit=True, allow_config=True)
+    assert c.request("POST", "/api/engine", body=_ENG)[0] == 403 and fake.calls == []
+
+
+def test_engine_start_va_stop_di_toi_manager(engine_console) -> None:
+    c, fake = engine_console(allow_engine=True)
+    status, body = c.request("POST", "/api/engine", body=_ENG)
+    assert status == 200 and body["state"] == "running"
+    assert fake.calls[0] == ("start", {"xuong": "software-company", "interval": 30, "by": "human:truc-ban"})
+    status, body = c.request("POST", "/api/engine", body={**_ENG, "action": "stop"})
+    assert status == 200 and fake.calls[1] == ("stop", {"xuong": "software-company", "by": "human:truc-ban"})
+
+
+def test_engine_thieu_interval_thi_dung_mac_dinh(engine_console) -> None:
+    c, fake = engine_console(allow_engine=True)
+    c.request("POST", "/api/engine", body={"action": "start", "xuong": "software-company", "by": "human:a"})
+    assert fake.calls[0][1]["interval"] == srv.DEFAULT_ENGINE_INTERVAL
+
+
+@pytest.mark.parametrize("body,mong", [
+    ({"action": "toggle", "xuong": "software-company", "by": "human:a"}, "'action'"),
+    ({"action": "start", "xuong": 7, "by": "human:a"}, "'xuong'"),
+    ({"action": "start", "xuong": "software-company"}, "'xuong'"),
+])
+def test_engine_tu_choi_body_sai(engine_console, body: dict[str, Any], mong: str) -> None:
+    c, fake = engine_console(allow_engine=True)
+    status, resp = c.request("POST", "/api/engine", body=body)
+    assert status == 400 and mong in resp["error"] and fake.calls == []
+
+
+def test_engine_giu_nguyen_ma_http_cua_engine_error(engine_console) -> None:
+    from console.engine import EngineError
+
+    c, fake = engine_console(allow_engine=True)
+    fake.raise_with = EngineError("động cơ xưởng phần mềm đang chạy rồi (pid 7)", 409)
+    status, body = c.request("POST", "/api/engine", body=_ENG)
+    assert status == 409 and "đang chạy rồi" in body["error"]
+
+
+def test_engine_can_token_nhu_moi_api(engine_console) -> None:
+    c, _ = engine_console(allow_engine=True)
+    assert c.request("POST", "/api/engine", token="sai", body=_ENG)[0] == 401
+
+
+def test_state_mang_trang_thai_dong_co_va_co_quyen(engine_console, fake_modules) -> None:
+    c, _ = engine_console(allow_engine=True)
+    status, body = c.request("GET", "/api/state")
+    assert status == 200 and body["engine"]["allowed"] is True
+    assert body["engine"]["engines"][0]["xuong"] == "software-company"
+
+
+def test_state_noi_ro_dong_co_bi_khoa_khi_chua_bat_co(engine_console, fake_modules) -> None:
+    c, _ = engine_console()
+    assert c.request("GET", "/api/state")[1]["engine"]["allowed"] is False
+
+
+def test_trang_biet_minh_co_quyen_bat_dong_co_khong(make_console) -> None:
+    c = make_console(allow_engine=True)
+    html = c.request("GET", "/")[1]
+    assert '"can_engine": true' in html.replace("'", '"')
+    assert '"can_engine": false' in make_console().request("GET", "/")[1].replace("'", '"')
+
+
+def test_dong_server_thi_tat_moi_dong_co(static_dir: Path) -> None:
+    """Con của console chết cùng console (ADR-0004): orchestrator mồ côi vẫn ghi bus là thứ tệ nhất."""
+    server = srv.make_server("127.0.0.1", 0, static_dir=static_dir)
+    fake = _FakeEngine()
+    server.engine = fake
+    server.server_close()
+    assert ("stop_all", {}) in fake.calls

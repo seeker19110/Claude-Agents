@@ -115,6 +115,10 @@ main{min-width:0;display:flex;flex-direction:column}
 .cl{display:flex;flex-wrap:wrap;gap:4px}
 .cl code{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:3px;background:var(--surface-sunk);border:1px solid var(--line-soft);color:var(--ink-2)}
 
+.eng{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface-2);display:grid;gap:6px}
+.eng-head{display:flex;align-items:center;gap:8px}
+.eng pre{margin:6px 0 0;padding:8px;background:var(--surface);border-radius:8px;overflow:auto;max-height:200px;font-size:11.5px}
+.engines{display:grid;gap:10px}
 .pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:500;padding:2px 8px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
 .pill::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;flex:none}
 .pill.warn{color:var(--warn-ink);background:var(--warn-wash);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
@@ -451,6 +455,14 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
           <p>câu hỏi duy nhất quan trọng: đã có gì ra production chưa, và release đang chết ở bậc nào</p>
         </div>
         <div class="hero" id="delivery"></div>
+      </div>
+
+      <div class="sect">
+        <div class="sect-head">
+          <h2>Động cơ</h2>
+          <p>Vòng lặp <code>orchestrator run --watch</code> của từng xưởng. Không bật thì việc bạn giao và gate bạn ký nằm im trên bus — không lỗi, không dấu hiệu.</p>
+        </div>
+        <div class="engines" id="engine"></div>
       </div>
 
       <div class="sect">

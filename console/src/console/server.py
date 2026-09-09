@@ -13,6 +13,7 @@ mọi lớp phòng thủ ở dưới là bắt buộc, không phải tuỳ chọ
 
 from __future__ import annotations
 
+import atexit
 import json
 import logging
 import os
@@ -40,6 +41,8 @@ DEFAULT_PORT = 8200
 DEFAULT_COMPANY_DB = REPO_ROOT / "software-company" / "company.sqlite"
 DEFAULT_STUDIO_DB = REPO_ROOT / "Studio-creators" / "studio.sqlite"
 DEFAULT_KEEPER_DB = REPO_ROOT / "keeper" / "keeper.sqlite"
+
+DEFAULT_ENGINE_INTERVAL = 30.0   # giây giữa hai nhịp `run --watch` khi trang không nói gì khác
 
 MAX_BODY_BYTES = 1 << 20  # 1 MiB: body của /api/gate/decide chỉ là vài trường ngắn.
 
@@ -181,6 +184,7 @@ class ConsoleServer(ThreadingHTTPServer):
         readonly: bool = True,
         allow_config: bool = False,
         allow_submit: bool = False,
+        allow_engine: bool = False,
         company_db: Path | None = None,
         studio_db: Path | None = None,
         keeper_db: Path | None = None,
@@ -196,6 +200,9 @@ class ConsoleServer(ThreadingHTTPServer):
         self.allow_config = allow_config
         # Giao việc (publish event vào bus) cũng là quyền RIÊNG: người nhận việc mới không nhất thiết là người được duyệt gate.
         self.allow_submit = allow_submit
+        # Bật/tắt `orchestrator run --watch` là quyền RIÊNG và nặng nhất: nó tạo tiến trình con GỌI MODEL và
+        # GHI vào bus, khác hẳn ba quyền trên (chỉ ghi một event hoặc một file cấu hình).
+        self.allow_engine = allow_engine
         self.company_db = company_db
         self.studio_db = studio_db
         self.keeper_db = keeper_db
@@ -204,7 +211,16 @@ class ConsoleServer(ThreadingHTTPServer):
         # None = stream sống tới khi client đóng (chế độ chạy thật). Test đặt một giá trị nhỏ
         # để vòng lặp tự kết thúc thay vì phải giết thread.
         self.stream_max_seconds = stream_max_seconds
+        from console.engine import COMPANY, KEEPER, STUDIO, EngineManager
+        self.engine = EngineManager({COMPANY: company_db, STUDIO: studio_db, KEEPER: keeper_db})
+        # Con của console chết cùng console: cả đường đóng bình thường (`server_close`) lẫn đường thoát
+        # đột ngột (`atexit`) đều phải dọn, nếu không một orchestrator mồ côi vẫn ghi bus sau khi tắt trang.
+        atexit.register(self.engine.stop_all)
         super().__init__((host.strip("[]"), port), ConsoleHandler)
+
+    def server_close(self) -> None:
+        self.engine.stop_all()
+        super().server_close()
 
     @property
     def port(self) -> int:
@@ -345,7 +361,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._error(HTTPStatus.UNAUTHORIZED, "thiếu hoặc sai X-Console-Token")
             return
-        if path not in {"/api/gate/decide", "/api/settings", "/api/request"}:
+        if path not in {"/api/gate/decide", "/api/settings", "/api/request", "/api/engine"}:
             self._error(HTTPStatus.NOT_FOUND, "không có đường dẫn này")
             return
         if path == "/api/gate/decide" and self.server.readonly:
@@ -357,6 +373,9 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         if path == "/api/request" and not self.server.allow_submit:
             self._error(HTTPStatus.FORBIDDEN, "giao việc bị khoá; chạy lại với --allow-submit")
             return
+        if path == "/api/engine" and not self.server.allow_engine:
+            self._error(HTTPStatus.FORBIDDEN, "bật/tắt động cơ bị khoá; chạy lại với --allow-engine")
+            return
         try:
             payload = self._read_json_body()
         except GateHTTPError as e:
@@ -364,6 +383,8 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/settings":
             self._api_settings_post(payload)
+        elif path == "/api/engine":
+            self._api_engine(payload)
         elif path == "/api/request":
             self._api_submit(payload)
         else:
@@ -387,11 +408,19 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             raise GateHTTPError(HTTPStatus.BAD_REQUEST, "body phải là một object JSON")
         return data
 
-    def _api_state(self) -> None:
+    def _state(self) -> dict[str, Any]:
+        """`/api/state` và `/api/stream` phải trả CÙNG một payload — trang đọc chung một hàm vẽ. Trạng thái
+        động cơ đi kèm ở đây chứ không phải một route riêng: người trực hỏi "công ty có đang chạy không" cùng
+        lúc với "có gate nào chờ tôi không", một lần đọc phải trả lời cả hai."""
         from console.collect import collect  # nhập trễ: lớp dữ liệu do agent khác viết song song.
 
+        state = collect(self.server.company_db, self.server.studio_db, self.server.keeper_db)
+        state["engine"] = {**self.server.engine.status(), "allowed": self.server.allow_engine}
+        return state
+
+    def _api_state(self) -> None:
         try:
-            state = collect(self.server.company_db, self.server.studio_db, self.server.keeper_db)
+            state = self._state()
         except Exception:
             logger.exception("collect() thất bại")
             self._error(HTTPStatus.INTERNAL_SERVER_ERROR, "không đọc được trạng thái")
@@ -425,8 +454,6 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         đóng, đúng HTTP/1.1. Trang vẫn giữ nguyên đường `/api/state` để tự hỏi lại khi stream
         đứt, nên mất stream chỉ là chậm hơn, không phải hỏng.
         """
-        from console.collect import collect  # nhập trễ, xem _api_state.
-
         self.close_connection = True
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -444,11 +471,12 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         deadline = None if self.server.stream_max_seconds is None else time.monotonic() + self.server.stream_max_seconds
         try:
             while deadline is None or time.monotonic() < deadline:
-                current = db_fingerprint(dbs)
+                # Dấu vân tay gồm cả động cơ: bấm Bật ở tab này phải hiện ngay ở tab kia, không chờ nhịp 10 giây.
+                current = db_fingerprint(dbs) + "#" + self.server.engine.fingerprint()
                 if current != fingerprint:
                     fingerprint = current
                     try:
-                        state = collect(self.server.company_db, self.server.studio_db, self.server.keeper_db)
+                        state = self._state()
                     except Exception:
                         logger.exception("collect() thất bại trong /api/stream")
                         self.wfile.write(sse_frame("error", {"error": "không đọc được trạng thái"}))
@@ -501,6 +529,31 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             logger.exception("decide() thất bại")
             self._error(HTTPStatus.INTERNAL_SERVER_ERROR, "lỗi không lường trước khi ghi quyết định")
         else:
+            self._json(HTTPStatus.OK, result)
+
+    def _api_engine(self, payload: dict[str, Any]) -> None:
+        """Bật/tắt động cơ của một xưởng. Body: `{"xuong", "action": "start"|"stop", "interval"?, "by"}`."""
+        from console.engine import EngineError
+
+        action = payload.get("action")
+        xuong = payload.get("xuong")
+        by = payload.get("by")
+        if action not in {"start", "stop"}:
+            self._error(HTTPStatus.BAD_REQUEST, "trường 'action' phải là 'start' hoặc 'stop'")
+            return
+        if not isinstance(xuong, str) or not isinstance(by, str):
+            self._error(HTTPStatus.BAD_REQUEST, "thiếu hoặc sai trường 'xuong'/'by'")
+            return
+        interval = payload.get("interval", DEFAULT_ENGINE_INTERVAL)
+        try:
+            if action == "start":
+                result = self.server.engine.start(xuong, interval=interval, by=by)
+            else:
+                result = self.server.engine.stop(xuong, by=by)
+        except EngineError as e:
+            self._error(e.http_status, str(e))
+        else:
+            logger.info("động cơ %s: %s bởi %s", xuong, action, by)
             self._json(HTTPStatus.OK, result)
 
     def _api_submit(self, payload: dict[str, Any]) -> None:
@@ -587,7 +640,8 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         boot = (
             f'<script nonce="{nonce}">window.__CONSOLE__='
             + json.dumps(
-                {"token": self.server.token, "readonly": self.server.readonly, "can_submit": self.server.allow_submit},
+                {"token": self.server.token, "readonly": self.server.readonly,
+                 "can_submit": self.server.allow_submit, "can_engine": self.server.allow_engine},
                 ensure_ascii=False,
             )
             + ";</script>"
@@ -623,6 +677,7 @@ def make_server(
     readonly: bool = True,
     allow_config: bool = False,
     allow_submit: bool = False,
+    allow_engine: bool = False,
     company_db: Path | None = None,
     studio_db: Path | None = None,
     keeper_db: Path | None = None,
@@ -637,6 +692,7 @@ def make_server(
         readonly=readonly,
         allow_config=allow_config,
         allow_submit=allow_submit,
+        allow_engine=allow_engine,
         company_db=company_db,
         studio_db=studio_db,
         keeper_db=keeper_db,

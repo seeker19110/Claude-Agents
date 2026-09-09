@@ -62,7 +62,18 @@ Terminal in ra địa chỉ kèm token phiên — mở đúng địa chỉ đó.
 ```bash
 uv run python -m console --allow-decide
 uv run python -m console --allow-config    # cho phép sửa model/backend của từng công ty ngay trên trang
+uv run python -m console --allow-engine    # cho phép BẬT/TẮT orchestrator của từng xưởng ngay trên trang
 ```
+
+**Bật động cơ ngay trên trang** (`--allow-engine`, ADR-0004). Ô *Động cơ* ở đầu màn Trực ban có một dòng cho mỗi
+xưởng: đang chạy hay không, pid, nhịp, ai bật, và đuôi log khi nó chết. Bấm *Bật* là console chạy đúng lệnh mà
+bạn vẫn gõ tay (`orchestrator run --watch`, in nguyên văn vào đầu file log `console/.engine/<xưởng>.log`) trong
+đúng thư mục công ty. Model vẫn là gói thuê bao khai trong `llm.yaml` — console không truyền model, không truyền
+API key. Không có ô này thì giao việc xong mà quên bật orchestrator là **việc nằm im, không lỗi, không dấu hiệu**.
+
+Ba giới hạn cố ý: động cơ do console bật **chết khi tắt console** (chạy dài ngày thì vẫn bật ở terminal như cũ);
+ô này **không thấy** orchestrator do người khác bật; và `--allow-engine` là cờ riêng, `--allow-decide` không mở nó
+— ký gate và đốt hạn mức model là hai quyền khác nhau.
 
 Mục **Cài đặt model** trong trang cho từng công ty: chọn model cho tier mạnh/tiêu chuẩn/nhẹ trên từng backend,
 đặt ưu tiên backend theo tier, bật/tắt backend. Giá trị hiển thị là đúng cái đang chạy (`llm.yaml`); lưu là ghi
@@ -87,7 +98,11 @@ chạy bao giờ (chưa có file DB) cũng không sao — trang báo phần đó
   quyền 0600 (đã nằm trong `.gitignore`) và chèn vào trang. Mọi `/api/*` phải kèm header `X-Console-Token`;
   token ở header chứ không phải cookie nên trang ngoài không giả mạo POST được.
 - **Chỉ đọc là mặc định.** Không có `--allow-decide` thì mọi POST bị chặn 403 và trang khoá sẵn các nút
-  quyết định kèm giải thích cách bật.
+  quyết định kèm giải thích cách bật. Bốn quyền ghi tách riêng và không cái nào mở cái nào:
+  `--allow-decide` (ký gate) · `--allow-submit` (giao việc) · `--allow-config` (đổi model) ·
+  `--allow-engine` (bật/tắt động cơ — nặng nhất, tạo tiến trình con gọi model).
+- **Dòng lệnh của động cơ không nhận gì từ trang.** `argv` dựng từ bảng chốt cứng trong `engine.py`; thứ duy
+  nhất client đặt được là nhịp (giây, kẹp 5–3600). Không `shell=True`, không đường dẫn từ body.
 - **Không log token, không log body.**
 
 ## Trang có gì

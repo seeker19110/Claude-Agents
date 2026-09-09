@@ -851,7 +851,21 @@ cd console
 uv sync
 uv run python -m console                 # 127.0.0.1:8200, CHỈ ĐỌC; terminal in địa chỉ kèm token phiên
 uv run python -m console --allow-decide  # mở khoá các nút quyết định gate ngay trên trang
+uv run python -m console --allow-decide --allow-submit --allow-engine   # điều khiển trọn vòng trên một trang
 ```
+
+**Điều khiển trọn vòng trên trang (ADR-0004 của console).** Với ba cờ trên, người trực không cần terminal thứ hai:
+ô *Động cơ* ở đầu màn Trực ban bật/tắt `orchestrator run --watch` của từng xưởng (đúng lệnh ở §5/§6/§7, chạy trong
+đúng thư mục công ty, model vẫn là gói thuê bao khai trong `llm.yaml`), form *Yêu cầu phần mềm* giao việc, ngăn kéo
+gate ký quyết định. Thứ tự một ngày: **bật động cơ → giao việc → ký gate → xem phễu → tắt động cơ**.
+
+Ba điều phải biết trước khi dựa vào nó:
+
+- Động cơ do console bật **chết khi tắt console** (Ctrl-C, đóng terminal). Chạy dài ngày, qua nhiều phiên console,
+  thì vẫn bật ở terminal riêng như §5 — ô Động cơ chỉ thấy tiến trình do chính nó tạo, và nói rõ điều đó.
+- Ô này hiện trạng thái **đo được**, không phải "đã bấm Bật": động cơ chết vì thiếu `llm.yaml` hiện `đã dừng` kèm
+  mã thoát và đuôi log (`console/.engine/<xưởng>.log`), không hiện `đang chạy`.
+- `--allow-engine` là cờ **riêng**, `--allow-decide` không mở nó: ký gate và đốt hạn mức model là hai quyền khác nhau.
 
 Mở đúng địa chỉ terminal in ra (có token phiên trong đó). Đường dẫn DB khác mặc định thì chỉ ra bằng
 `--company-db` / `--studio-db` / `--keeper-db`.
@@ -866,7 +880,8 @@ có bộ lọc). Trang tự làm mới 10 giây một lần, có nút tạm dừ
 Cần biết khi vận hành:
 
 - **Chỉ đọc là mặc định.** Không có `--allow-decide` thì mọi nút quyết định bị khoá — console là cửa sổ, không phải
-  nút bấm, cho tới khi bạn cố ý bật.
+  nút bấm, cho tới khi bạn cố ý bật. Bốn quyền ghi tách riêng: `--allow-decide` (ký gate) · `--allow-submit`
+  (giao việc) · `--allow-config` (đổi model) · `--allow-engine` (bật/tắt động cơ).
 - **Token sinh mỗi lần chạy**, ghi `console/.console-token` (quyền 600, đã gitignore). Tắt server là token hết hiệu
   lực. Server chỉ bind loopback; `--host` khác bị từ chối khởi động.
 - **Quyết định đi qua đúng `HumanGate` của công ty**: four-eyes (người duyệt phải khác người tạo), allowlist

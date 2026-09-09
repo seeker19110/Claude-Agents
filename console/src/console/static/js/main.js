@@ -3,6 +3,7 @@
 import {READONLY, api} from "./api.js";
 import {agentChart, costChart, hideTip, retChart} from "./charts.js";
 import {renderQueue} from "./gates.js";
+import {renderEngine} from "./engine.js";
 import {renderKeeper} from "./keeper.js";
 import {renderLoops} from "./loops.js";
 import {VIEWS, applyRoute, readHash, showView, titles, view, writeHash} from "./router.js";
@@ -22,7 +23,7 @@ export function render(){
   $("#brand-sub").textContent=`${okCount}/2 xưởng đọc được · ${st().backends.length} gói tài khoản`
     +(READONLY?" · chỉ đọc":" · duyệt được");
   $("#mode-pill").innerHTML=READONLY?'<span class="pill calm">chỉ đọc</span>':'<span class="pill accent">duyệt được</span>';
-  renderSilent(); renderSandbox(); renderDeadlocks(); renderDelivery(); renderRunning(); renderQueue(); renderKeeper(); renderTiles(); renderLoops(); renderBackends(); renderBoards(); renderTables(); renderProductFunnel(); renderStreams();
+  renderSilent(); renderSandbox(); renderEngine(); renderDeadlocks(); renderDelivery(); renderRunning(); renderQueue(); renderKeeper(); renderTiles(); renderLoops(); renderBackends(); renderBoards(); renderTables(); renderProductFunnel(); renderStreams();
   costChart(); retChart(); agentChart();
   titles(); freshLabel();
 }
