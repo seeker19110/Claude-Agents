@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- feat(keeper): **BT1 — khung package thứ sáu, CoreConfig và topic** (#PR). Cơ sở hạ tầng package, mô hình dữ liệu, schema topic bảo trì; mỗi phần có test đo hai chiều.
+- feat(keeper): **BT1 — khung package thứ sáu, CoreConfig và topic** (#210). Cơ sở hạ tầng package, mô hình dữ liệu, schema topic bảo trì; mỗi phần có test đo hai chiều.
 - docs(keeper): **BT0 — đổi tên công ty bảo trì thành `keeper` + đặc tả triển khai** (#207). ADR-0006 đổi
   tên file và nội dung (`Upkeep-crew` → `keeper`); thêm `keeper/README.md` và `keeper/docs/DAC-TA-KEEPER.md`
   — 9 PR BT0–BT8, 7 bất biến, bản đồ 9 topic, mỗi mục có test đo hai chiều và cạm bẫy. Chưa có mã.
