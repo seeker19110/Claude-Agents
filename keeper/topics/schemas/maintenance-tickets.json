@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "keeper/topics/maintenance-tickets",
+  "title": "maintenance-tickets",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "topic": {
+      "const": "maintenance-tickets"
+    },
+    "key": {
+      "type": "string"
+    },
+    "actor": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "phiên bản envelope+payload của topic"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "event gốc của cả chuỗi (ticket)"
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "event trực tiếp sinh ra event này"
+    },
+    "payload": {
+      "description": "`maintenance-signals` đã gom (`triager`) + `risk_tier` + hạn xử lý.",
+      "properties": {
+        "ticket_id": {
+          "pattern": "^[A-Za-z0-9_.:/-]{1,200}$",
+          "title": "Ticket Id",
+          "type": "string"
+        },
+        "subject": {
+          "title": "Subject",
+          "type": "string"
+        },
+        "risk_tier": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Risk Tier",
+          "type": "string"
+        },
+        "signal_subjects": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Signal Subjects",
+          "type": "array"
+        },
+        "due_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Due At"
+        },
+        "requires_gate": {
+          "default": false,
+          "title": "Requires Gate",
+          "type": "boolean"
+        },
+        "status": {
+          "default": "open",
+          "enum": [
+            "open",
+            "in_progress",
+            "blocked",
+            "closed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticket_id",
+        "subject",
+        "risk_tier"
+      ],
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "event_id",
+    "topic",
+    "key",
+    "actor",
+    "ts",
+    "payload"
+  ],
+  "additionalProperties": false
+}

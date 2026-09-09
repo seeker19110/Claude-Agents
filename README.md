@@ -19,6 +19,7 @@ Nguyên tắc chung cho mọi công ty:
 | [`gateway/`](gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code. **Nhiều tài khoản có rủi ro khoá tài khoản Google — đọc [§Rủi ro tài khoản](gateway/README.md#rủi-ro-tài-khoản--đọc-trước-khi-gõ-make-login-lần-thứ-hai) trước** | daemon `127.0.0.1:1123/v1`, CLI `python -m gateway start/stop/status/login/logout/reset/setup/models`, 251 test |
 | [`console/`](console/) | Trực ban hợp nhất: một trang web cục bộ nhìn cả hai công ty — hàng đợi human gate, ticket, dây chuyền video, token và chi phí, gói tài khoản đang xoay — duyệt gate ngay tại chỗ khi bật `--allow-decide`, đổi model/backend từng công ty khi bật `--allow-config`, giao việc mới ngay trong màn của từng xưởng (yêu cầu phần mềm kèm nơi lưu dự án, brief kênh video) khi bật `--allow-submit`. Cập nhật tức thì bằng SSE, địa chỉ deep-link tới từng gate/ticket, tìm và lọc mọi bảng, cài được thành app (PWA). Đọc bus SQLite ở chế độ chỉ đọc; quyết định đi qua đúng `HumanGate`, việc mới đi qua đúng bus + schema của từng công ty | `127.0.0.1:8200`, chỉ thư viện chuẩn (`http.server`), 6 màn hình, chỉ đọc mặc định + token mỗi lần chạy, ADR 0001–0003 |
 | [`xagents-core/`](xagents-core/) | Lõi chung của mọi công ty AI: bus, llm, runner, guard, gate — company và studio import từ đây thay vì mỗi bên một bản fork | mypy `strict` + phủ 100% dòng từ ngày đầu, 236 test; ADR gốc 0001, 0003, 0004 (0002 đặt trước cho K4); đang xây theo bảy bước K3.1–K3.7 — **K3.3 và K3.4 xong hết**, K3.5 tách ba bước và đã xong **a** (`events`, lớp cơ sở) + **b** (`bus`: cơ chế lên core, dữ liệu ở `CoreConfig`; studio lần đầu có ACL topic, bảng ACL đo từ 76 cặp `(actor, topic)` thật). Còn K3.5c (`sqlite_bus`) rồi K3.6–K3.7 |
+| [`keeper/`](keeper/) | Công ty bảo trì: tín hiệu → ticket bảo trì → patch có bằng chứng đo hai chiều → PR; khách hàng số 0 là chính repo này | 6 khối / 8 agent theo ADR-0006; BT1 (khung package) xong, BT2–BT8 chưa có mã — lộ trình ở [`keeper/docs/DAC-TA-KEEPER.md`](keeper/docs/DAC-TA-KEEPER.md) |
 | [`docs/HUONG-DAN-VAN-HANH.md`](docs/HUONG-DAN-VAN-HANH.md) | Hướng dẫn cài đặt và vận hành từng bước: cấu hình gói tài khoản, chạy thử, đưa yêu cầu, duyệt gate, theo dõi chi phí, bảo trì | |
 | [`docs/DIEU-PHOI-MODEL.md`](docs/DIEU-PHOI-MODEL.md) | Điều phối model theo gói tài khoản: backend, 3 tier, bảng agent → tier, cơ chế xoay khi hết quota | |
 | [`docs/TRUC-VA-DUNG-KHAN.md`](docs/TRUC-VA-DUNG-KHAN.md) | Trực ban và **dừng khẩn**: ba mức dừng (ticket / dự án / toàn hệ thống) kèm lệnh đã chạy thật, lịch trực luân phiên, cổng phát hành gộp lô, và danh sách thứ CHƯA có để không ai tưởng đã có | |
@@ -28,7 +29,7 @@ Nguyên tắc chung cho mọi công ty:
 | [`SECURITY.md`](SECURITY.md) | Cách báo lỗi bảo mật, phạm vi, mô hình bí mật, các lớp phòng thủ đang có | |
 
 Cả repo là **một project** ([uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/)): `pyproject.toml` + `uv.lock`
-ở gốc, năm thư mục là năm package thành viên dùng chung một `.venv`. Mỗi công ty tự chứa: `pyproject.toml`, `Makefile`, `agents/`,
+ở gốc, sáu thư mục là sáu package thành viên dùng chung một `.venv`. Mỗi công ty tự chứa: `pyproject.toml`, `Makefile`, `agents/`,
 `skills/`, `topics/`, `gates/`, `templates/`, `evals/`, `tests/`, `docs/` (kiến trúc + ADR), `llm.example.yaml`; software-company thêm
 `examples/` (mô phỏng cả công ty, relay client), Studio-creators thêm `media.example.yaml`. Không có `[project.scripts]`: mọi lệnh đều là
 `python -m <package>.<module>` (package `company` và `studio`). Đọc README trong từng thư mục để biết luồng và lệnh chi tiết. Repo khách
@@ -41,8 +42,8 @@ Hướng dẫn đầy đủ từng bước: [`docs/HUONG-DAN-VAN-HANH.md`](docs/
 Yêu cầu: Python 3.11+, [`uv`](https://docs.astral.sh/uv/). `ffmpeg` nếu muốn render video thật ở `Studio-creators`.
 
 ```bash
-uv sync            # một lần ở gốc repo: một .venv cho cả năm package
-make test          # pytest cả năm (hoặc make lint / make cov / make build)
+uv sync            # một lần ở gốc repo: một .venv cho cả sáu package
+make test          # pytest cả sáu (hoặc make lint / make cov / make build)
 
 # Chạy offline (client giả), không cần key
 cd software-company && make test && make demo
@@ -107,8 +108,8 @@ topic (JSON Schema, có key) ──► registry: agent nào nhận topic nào
 
 ## Phát triển
 
-- CI (`.github/workflows/ci.yml`, Python 3.11 và 3.13): cả năm package chạy ruff + mypy + pytest có ngưỡng coverage
-  (`fail_under` 100 / 100 / 100 / 100 / 100 cho software-company / Studio-creators / gateway / console / xagents-core: cả năm đang phủ 100% dòng, ngưỡng bằng đúng mức đạt được nên mất một
+- CI (`.github/workflows/ci.yml`, Python 3.11 và 3.13): cả sáu package chạy ruff + mypy + pytest có ngưỡng coverage
+  (`fail_under` 100 / 100 / 100 / 100 / 100 / 100 cho software-company / Studio-creators / gateway / console / xagents-core / keeper: cả sáu đang phủ 100% dòng, ngưỡng bằng đúng mức đạt được nên mất một
   dòng phủ là CI đỏ); hai công ty chạy thêm `evals all --replay --strict`. Job `golden-check` chạy `make golden` rồi so
   `git diff --exit-code`; `asset-scan` quét tài sản prompt và ngân sách token của cả hai công ty (ADR-0022); `audit` chạy
   `pip-audit --strict` + gitleaks trên cả lịch sử; `quality` gom kết quả — tên job này là bất biến (required status check

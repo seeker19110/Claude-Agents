@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "keeper/topics/verification-reports",
+  "title": "verification-reports",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "topic": {
+      "const": "verification-reports"
+    },
+    "key": {
+      "type": "string"
+    },
+    "actor": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "phiên bản envelope+payload của topic"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "event gốc của cả chuỗi (ticket)"
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "event trực tiếp sinh ra event này"
+    },
+    "payload": {
+      "description": "Bằng chứng hai chiều bắt buộc (bất biến I2): `before.exit_code == 0` là báo cáo vô hiệu.",
+      "properties": {
+        "ticket_id": {
+          "pattern": "^[A-Za-z0-9_.:/-]{1,200}$",
+          "title": "Ticket Id",
+          "type": "string"
+        },
+        "before": {
+          "$ref": "#/$defs/RunOutcome"
+        },
+        "after": {
+          "$ref": "#/$defs/RunOutcome"
+        },
+        "verified_by": {
+          "enum": [
+            "workspace",
+            "orchestrator"
+          ],
+          "title": "Verified By",
+          "type": "string"
+        },
+        "family_hits": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Family Hits",
+          "type": "array"
+        },
+        "family_safe": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Family Safe",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ticket_id",
+        "before",
+        "after",
+        "verified_by"
+      ],
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "event_id",
+    "topic",
+    "key",
+    "actor",
+    "ts",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "RunOutcome": {
+      "description": "Output THẬT của một lần chạy lệnh CI — không phải lời khai của model.",
+      "properties": {
+        "cmd": {
+          "title": "Cmd",
+          "type": "string"
+        },
+        "exit_code": {
+          "title": "Exit Code",
+          "type": "integer"
+        },
+        "output_tail": {
+          "default": "",
+          "title": "Output Tail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cmd",
+        "exit_code"
+      ],
+      "title": "RunOutcome",
+      "type": "object"
+    }
+  }
+}

@@ -60,7 +60,7 @@ PR vá riêng.
 
 | Mã | Việc | Mảng | Loại PR | Mức | Ưu | Nhược | Khi nào |
 |---|---|---|---|---|---|---|---|
-| BT1 | khung package: `pyproject` + `core.py` + `events.py` + 9 schema + 2 job CI + nối 11 chỗ workspace | keeper, gốc, CI | `feat(keeper)` | C2 (mã) + C1 (tài liệu/số liệu) | mở đường cho mọi BT sau | chạm nhiều file gốc, dễ sót một chỗ → CI đỏ | chưa |
+| BT1 | khung package: `pyproject` + `core.py` + `events.py` + 10 schema + 2 job CI + nối 11 chỗ workspace | keeper, gốc, CI | `feat(keeper)` | C2 (mã) + C1 (tài liệu/số liệu) | mở đường cho mọi BT sau | chạm nhiều file gốc, dễ sót một chỗ → CI đỏ | chưa |
 | BT2 | `github.py` chỉ đọc + `FORBIDDEN_ARGS` + bộ đệm TTL + `FakeGitHub` | keeper | `feat(keeper)` | C2 | I1 thành mã | phụ thuộc khuôn `github_pr.py` | chưa |
 | BT3 | `scout/health/drift` + `signals.dedupe` | keeper | `feat(keeper)` | C2 | ba phép so thuần cục bộ, test dễ | phép (c) báo giả trước mốc §10 → cần hằng số ngày có comment | chưa |
 | BT4 | `risk.py` bảng dữ liệu + `ledger.py` có `due_at` + `budget.py` + `triage.py` | keeper | `feat(keeper)` | C3 | quyết `due_at` vs `streak` (A2-9) | là cơ chế mới, không phải dùng lại — phải nói rõ trong PR | chưa |
@@ -73,7 +73,7 @@ PR vá riêng.
 
 - *Không* thêm trường `CoreConfig` ở BT7 — A2-8 đo được là không cần. Thêm trường không dùng là nợ.
 - *Không* viết script sinh `topics/schemas/*.json` (A2-6). Hai công ty kia commit tay và ép khớp bằng test; dựng
-  generator chỉ cho package thứ sáu là làm lệch khuôn repo. BT1 viết tay 9 schema + test đối chiếu như studio.
+  generator chỉ cho package thứ sáu là làm lệch khuôn repo. BT1 viết tay 10 schema + test đối chiếu như studio.
 - *Không* sửa `software-company/src/` để dùng chung `github_pr.py`/`workspace.py`. Đặc tả §0 cấm; `keeper` **sao
   khuôn** (đọc và viết lại theo nhu cầu của mình), không import chéo công ty. Nếu sau này đo được là trùng lặp
   thật thì đó là một bước K3 lên `xagents_core`, không phải việc của BT nào.

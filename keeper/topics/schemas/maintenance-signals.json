@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "keeper/topics/maintenance-signals",
+  "title": "maintenance-signals",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "topic": {
+      "const": "maintenance-signals"
+    },
+    "key": {
+      "type": "string"
+    },
+    "actor": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "phiên bản envelope+payload của topic"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "event gốc của cả chuỗi (ticket)"
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "event trực tiếp sinh ra event này"
+    },
+    "payload": {
+      "description": "Một quan sát thô, chưa phán xét (`dependency-scout`, `health-monitor`, `drift-detector`,",
+      "properties": {
+        "subject": {
+          "pattern": "^[A-Za-z0-9_.:/-]{1,200}$",
+          "title": "Subject",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "dependency",
+            "health",
+            "drift",
+            "security"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "semver_jump": {
+          "anyOf": [
+            {
+              "enum": [
+                "patch",
+                "minor",
+                "major"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Semver Jump"
+        },
+        "is_dev": {
+          "default": false,
+          "title": "Is Dev",
+          "type": "boolean"
+        },
+        "evidence": {
+          "default": "",
+          "title": "Evidence",
+          "type": "string"
+        },
+        "seen_count": {
+          "default": 1,
+          "title": "Seen Count",
+          "type": "integer"
+        },
+        "source": {
+          "default": "keeper",
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subject",
+        "kind",
+        "detail"
+      ],
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "event_id",
+    "topic",
+    "key",
+    "actor",
+    "ts",
+    "payload"
+  ],
+  "additionalProperties": false
+}

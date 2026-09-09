@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "keeper/topics/release-notes",
+  "title": "release-notes",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "topic": {
+      "const": "release-notes"
+    },
+    "key": {
+      "type": "string"
+    },
+    "actor": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "phiên bản envelope+payload của topic"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "event gốc của cả chuỗi (ticket)"
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "event trực tiếp sinh ra event này"
+    },
+    "payload": {
+      "description": "Dòng `CHANGELOG.md` + mục nhật ký phiên do `release-clerk` soạn.",
+      "properties": {
+        "ticket_id": {
+          "pattern": "^[A-Za-z0-9_.:/-]{1,200}$",
+          "title": "Ticket Id",
+          "type": "string"
+        },
+        "pr_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pr Number"
+        },
+        "changelog_line": {
+          "title": "Changelog Line",
+          "type": "string"
+        },
+        "session_line": {
+          "title": "Session Line",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticket_id",
+        "changelog_line",
+        "session_line"
+      ],
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "event_id",
+    "topic",
+    "key",
+    "actor",
+    "ts",
+    "payload"
+  ],
+  "additionalProperties": false
+}

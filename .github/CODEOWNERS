@@ -23,3 +23,6 @@
 
 # Hạ tầng CI và chính các quy tắc này.
 /.github/                                @seeker19110
+
+# keeper: công ty bảo trì tự vận hành, chỉ đọc GitHub — đổi sai là vá nhầm hoặc phát hành nhầm.
+/keeper/                                 @seeker19110

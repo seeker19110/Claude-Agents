@@ -28,7 +28,7 @@ thể: `CODEMAP.md`.
         claude-code CLI · codex CLI · gateway/ (127.0.0.1:1123, xoay tài khoản Google) · model local · API
 ```
 
-Năm package là năm thành viên của một **uv workspace** — một `.venv`, một `uv.lock`. Không có `[project.scripts]`:
+Sáu package là sáu thành viên của một **uv workspace** — một `.venv`, một `uv.lock`. Không có `[project.scripts]`:
 mọi entry point là `python -m <package>.<module>`. Repo khách nằm **ngoài** repo này (`--repo <đường dẫn>`).
 
 ## Kiến trúc chung của một "công ty"
@@ -75,6 +75,7 @@ Còn lại là lời khai — hữu ích, nhưng chỉ ký gate trên bằng ch�
 |---|---|---|
 | software-company | `spec` → `release` → `acceptance` (+ `escalation`) | PRD; production; khách ký UAT (kế hoạch ticket do `_check_plan` chặn bằng code, không còn gate `plan` từ ADR-0037) |
 | Studio-creators | `plan` → `publish` → `replies` (+ `escalation`) | kế hoạch biên tập; đăng video; trả lời bình luận |
+| keeper | `keeper` (chưa chạy — BT7) | patch rủi ro cao: semver major, chạm `xagents-core`/`agents`/`.github`, security ≥ high |
 
 Gate là thật: hạn 24h, nhắc 12h, quá hạn escalate, four-eyes. Mỗi gate của software-company có trợ lý kiểm duyệt
 chỉ đọc `sc-gate-<kind>` và hồ sơ bằng chứng `gate_brief`.
@@ -82,7 +83,7 @@ chỉ đọc `sc-gate-<kind>` và hồ sơ bằng chứng `gate_brief`.
 ## CI (`.github/workflows/ci.yml`)
 
 `static` · `unit` · `eval-replay` · `audit` (pip-audit + gitleaks cả lịch sử) · `studio-static` · `studio-unit` ·
-`studio-eval-replay` · `golden-check` (golden + subagents dẫn xuất khớp nguồn) · `gateway-*` · `console-*` ·
+`studio-eval-replay` · `golden-check` (golden + subagents dẫn xuất khớp nguồn) · `gateway-*` · `console-*` · `keeper-*` ·
 `asset-scan` (ADR-0022) · `protection-guard` (ruleset file ↔ thật) · **`quality`** gom tất cả — required check của
 `main`, tên bất biến. `pr-policy.yml`: job `metadata` kiểm tiêu đề PR.
 

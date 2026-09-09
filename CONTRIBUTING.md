@@ -10,7 +10,7 @@ chạy lại những gì.
 Cần Python 3.11+ và [`uv`](https://docs.astral.sh/uv/). `ffmpeg` chỉ cần khi muốn render video thật ở
 Studio-creators (thiếu thì test render tự bỏ qua).
 
-Cả repo là **một project** (uv workspace): `pyproject.toml` + `uv.lock` duy nhất ở gốc, năm thư mục là năm package
+Cả repo là **một project** (uv workspace): `pyproject.toml` + `uv.lock` duy nhất ở gốc, sáu thư mục là sáu package
 thành viên, một `.venv` chung. Cài một lần ở gốc:
 
 ```bash
@@ -23,22 +23,24 @@ uv sync
 | `Studio-creators/` | `studio` | phòng ban sáng tạo video (tên package phân phối: `video-creators`) |
 | `gateway/` | `gateway` | proxy xoay vòng tài khoản Google Antigravity |
 | `console/` | `console` | trực ban hợp nhất, phụ thuộc hai công ty qua workspace |
+| `keeper/` | `keeper` | công ty bảo trì |
+| `xagents-core/` | `xagents_core` | lõi chung |
 
 Mỗi thư mục vẫn có `Makefile` riêng cho các lệnh của package đó; `uv run` trong thư mục con dùng `.venv` ở gốc.
-Thêm/đổi phụ thuộc: sửa `pyproject.toml` của package liên quan rồi `uv lock` ở gốc (một lock cho cả năm).
+Thêm/đổi phụ thuộc: sửa `pyproject.toml` của package liên quan rồi `uv lock` ở gốc (một lock cho cả sáu).
 Không có `[project.scripts]`: mọi entry point đều là `python -m <package>.<module>`.
 
 ## 2. Cổng chất lượng
 
-Chạy trước khi mở PR — ở gốc cho cả năm, hoặc trong thư mục đã sửa:
+Chạy trước khi mở PR — ở gốc cho cả sáu, hoặc trong thư mục đã sửa:
 
 ```bash
-make lint && make test      # gốc: lặp qua cả năm package
+make lint && make test      # gốc: lặp qua cả sáu package
 ```
 
 `software-company` và `Studio-creators` có cùng bộ target: `test`, `cov`, `lint` (ruff + mypy), `types`, `fix`,
-`golden`, `eval`, `eval-record`, `eval-replay`, `demo`, `run`, `status`. `gateway` và `console` có `test`, `cov`,
-`lint`, `types`, `fix` cùng nghĩa. Makefile gốc có `sync`, `test`, `cov`, `lint`, `types`, `fix`, `build`, `clean`.
+`golden`, `eval`, `eval-record`, `eval-replay`, `demo`, `run`, `status`. `gateway`, `console` và `keeper` có `test`, `cov`,
+`lint`, `types`, `fix` cùng nghĩa. `xagents-core` có `test`, `cov`, `lint`, `types`, `fix`. Makefile gốc có `sync`, `test`, `cov`, `lint`, `types`, `fix`, `build`, `clean`.
 
 Muốn các cổng nhẹ (ruff, gitleaks, YAML, khoảng trắng thừa) chạy tự động trước mỗi commit, cài pre-commit một lần
 ở gốc repo:
