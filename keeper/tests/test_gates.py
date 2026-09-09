@@ -127,3 +127,10 @@ def test_gate_dung_lai_duoc_tu_replay(tmp_path: Path):
     g1.decide("KEEP:1", "approve", by="human:pm", reason="ok")
     g2 = PersistentGate(KeeperBus(CORE, db))
     assert g2.is_approved("KEEP:1") and g2.pending == {}
+
+
+def test_request_actors_dung_bang_call_site_that():
+    """Allowlist là quyền, không phải danh sách ước lượng: chỉ vai NÀO thật sự gọi `gate.request` mới có tên.
+    Đo lại ở BT7 — call site duy nhất là `KeeperOrchestrator.ensure_gate` (`created_by=GATE_ACTOR`)."""
+    from keeper import gates
+    assert gates.REQUEST_ACTORS == frozenset({GATE_ACTOR})

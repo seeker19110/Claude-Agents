@@ -65,6 +65,15 @@
           "title": "Signal Subjects",
           "type": "array"
         },
+        "signal_event_ids": {
+          "default": [],
+          "description": "Envelope.event_id của những maintenance-signals ticket này đã tiêu thụ — sổ chống-trùng của triager ở dạng dựng lại được từ bus",
+          "items": {
+            "type": "string"
+          },
+          "title": "Signal Event Ids",
+          "type": "array"
+        },
         "due_at": {
           "anyOf": [
             {

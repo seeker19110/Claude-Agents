@@ -2,7 +2,17 @@
 
 Nguyên tắc: separation of duties, four-eyes (`decided_by != created_by`), timeout 24h (supervisor nhắc 12h),
 quá hạn KHÔNG tự đi tiếp. `GateKind` hiện có đúng ba giá trị: `patch`, `release`, `escalation`
-(`keeper/src/keeper/gates.py`). Bản mã của checklist dưới đây là `gates.CHECKLIST`; sửa văn xuôi ở đây thì
+(`keeper/src/keeper/gates.py`).
+
+> **CHỈ `patch` ĐANG VẬN HÀNH Ở BT7.** Đo từ call site: nơi duy nhất gọi `gate.request` là
+> `KeeperOrchestrator.ensure_gate`, và nó luôn xin `kind="patch"`. Không mã nào xin `release` hay `escalation`.
+> Hai mục dưới giữ lại vì `GateKind` vẫn khai chúng và BT8+ sẽ nối vào, nhưng chúng được đánh dấu **chưa dùng ở
+> BT7** — file này là NGUỒN sinh subagent kiểm duyệt, nên mô tả một cổng chưa tồn tại như đang chạy sẽ đi thẳng
+> vào bản dẫn xuất và thành một lời khai (`AGENTS.md` cấm §8).
+
+Đường của NGƯỜI vào sổ gate là `keeper gate` (`keeper/src/keeper/cli.py`):
+`keeper gate --db keeper.sqlite list` / `keeper gate --db keeper.sqlite approve <ticket_id> --by human:<tên>
+--reason "<lý do>"`. `--by` phải là người (`human:*`); actor máy bị `trusted_decision` từ chối. Bản mã của checklist dưới đây là `gates.CHECKLIST`; sửa văn xuôi ở đây thì
 sửa cả hai chỗ, chúng phải khớp năm câu.
 
 Mỗi gate tách làm hai phần, giống khuôn `software-company/gates/checklists.md`:
@@ -11,8 +21,8 @@ Mỗi gate tách làm hai phần, giống khuôn `software-company/gates/checkli
 - **Người tự kiểm thêm** — không có trong payload; người duyệt tự đọc và trả lời.
 
 ## Gate `patch` (kind `patch`, subject `<ticket_id>`)
-Mở khi: `triager` xếp ticket `risk_tier=high`, hoặc `keeper-supervisor` xin thay orchestrator trước khi
-`patcher`/`refactorer` được phép mở PR (`pr_blockers()` cổng `gate`).
+Mở khi: `triager` xếp ticket `risk_tier=high` — `KeeperOrchestrator.ensure_gate` xin dưới tên
+`keeper-supervisor`, đúng một lần trong đời ticket. Đây là cổng `gate` của `pr_blockers()`.
 
 Code gửi kèm:
 - [ ] `risk_tier đúng bậc và lý do xếp bậc kiểm được` — `Ticket.risk_tier` cùng lý do từ `triager`
@@ -30,8 +40,10 @@ Người tự kiểm thêm:
 Kết quả: approve / request_changes / reject / hold / rollback (`decide()` — mọi giá trị đều ĐÓNG gate, xem
 lưu ý dưới)
 
-## Gate `release` (kind `release`, subject `<release_id>`)
-Mở khi: `release-clerk` đã soạn `ReleaseNote`, có `VerificationReport.ok=true` và không `SecurityFinding` chặn.
+## Gate `release` (kind `release`, subject `<release_id>`) — CHƯA DÙNG Ở BT7
+Mở khi (thiết kế, **chưa nối vào mã ở BT7**): `release-clerk` đã soạn `ReleaseNote`, có bằng chứng hai chiều
+đạt và không `SecurityFinding` chặn. `release-clerk` KHÔNG có tên trong `REQUEST_ACTORS` — vai nào xin gate này
+sẽ được quyết cùng lúc với call site thật.
 
 Code gửi kèm:
 - [ ] `risk_tier đúng bậc và lý do xếp bậc kiểm được` — bậc của ticket/patch được gộp vào release
@@ -46,10 +58,10 @@ Người tự kiểm thêm:
 
 Kết quả: approve / request_changes / reject / hold / rollback
 
-## Gate `escalation` (kind `escalation`, subject `<ticket_id>` hoặc `<debt_id>`)
-Mở khi: ticket bảo trì kẹt (retry hết, vòng lặp cùng lỗi ≥ 2 lần) hoặc nợ trong `debt-ledger` quá hạn
-(`ledger.overdue`). Xin bởi `keeper-supervisor`; người (`human:*`) luôn xin được dù không có tên trong
-`REQUEST_ACTORS`.
+## Gate `escalation` (kind `escalation`, subject `<ticket_id>` hoặc `<debt_id>`) — CHƯA DÙNG Ở BT7
+Mở khi (thiết kế, **chưa nối vào mã ở BT7**): ticket bảo trì kẹt (retry hết, vòng lặp cùng lỗi ≥ 2 lần) hoặc
+nợ trong `debt-ledger` quá hạn (`ledger.overdue`). Sẽ xin bởi `keeper-supervisor`; người (`human:*`) luôn xin
+được dù không có tên trong `REQUEST_ACTORS`.
 
 Code gửi kèm:
 - [ ] `risk_tier đúng bậc và lý do xếp bậc kiểm được` — bậc của ticket/nợ đang kẹt

@@ -116,7 +116,7 @@
     "skills": [],
     "skills_core": [],
     "timeout_minutes": 45,
-    "version": 1,
+    "version": 2,
     "writes": [
       "verification-reports"
     ]
@@ -134,7 +134,7 @@
     "skills": [],
     "skills_core": [],
     "timeout_minutes": 30,
-    "version": 1,
+    "version": 2,
     "writes": [
       "release-notes"
     ]

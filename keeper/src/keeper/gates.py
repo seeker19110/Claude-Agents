@@ -45,12 +45,17 @@ Decision = Literal["approve", "request_changes", "reject", "hold", "rollback", "
 #: Biến khai người được duyệt gate — SUY RA từ `CORE`, không phải một chuỗi thứ hai đứng cạnh.
 APPROVERS_ENV = CORE.approvers_env
 
-#: Vai mà `keeper` cho phép TẠO gate (allowlist ADR-0008, `xagents_core/gate_cli.py:REQUEST_ACTORS`), đo từ
-#: chính các call site: `keeper-supervisor` (orchestrator xin gate `patch`/`escalation`), `triager` (ticket
-#: tier `high` sinh ra ngay lúc triage), `release-clerk` (gate `release`). `patcher`/`refactorer`/
-#: `regression-guard` KHÔNG có tên ở đây: vai viết patch không được tự mở cái cổng xét patch của mình.
-#: Người (`human:*`) không cần có tên — gate CLI là đường của người.
-REQUEST_ACTORS = frozenset({"keeper-supervisor", "triager", "release-clerk"})
+#: Vai mà `keeper` cho phép TẠO gate (allowlist ADR-0008, `xagents_core/gate_cli.py:REQUEST_ACTORS`), ĐO từ
+#: chính các call site — không phải liệt kê những vai "chắc sẽ cần".
+#:
+#: Ở BT7 call site duy nhất là `KeeperOrchestrator.ensure_gate` → `request_gate(..., created_by=GATE_ACTOR)`.
+#: Bản đầu còn khai `triager` và `release-clerk`; đo lại thì **không call site nào** dùng hai vai đó (`keeper`
+#: chưa xin gate `release` ở đâu cả). Một allowlist là QUYỀN: cấp trước cho vai chưa dùng tới là để sẵn một
+#: đường mở gate mà không ai đang canh — nên chúng bị bỏ, và sẽ thêm lại CÙNG call site thật khi có.
+#: `patcher`/`refactorer`/`regression-guard` không có tên vì một lý do khác và vĩnh viễn: vai viết patch không
+#: được tự mở cái cổng xét patch của mình. Người (`human:*`) không cần có tên — gate CLI (`keeper gate`,
+#: `cli.py`) là đường của người.
+REQUEST_ACTORS = frozenset({"keeper-supervisor"})
 
 #: Actor mặc định khi orchestrator (code) xin gate thay công ty.
 GATE_ACTOR = "keeper-supervisor"

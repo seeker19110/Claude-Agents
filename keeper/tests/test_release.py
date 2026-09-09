@@ -18,6 +18,7 @@ from keeper.release import (
     fill_pr_number,
     record,
 )
+from keeper.worktree import SharedCheckoutRefused
 
 CHANGELOG = "# Nhật ký thay đổi\n\n- dòng cũ (#1)\n"
 
@@ -109,3 +110,25 @@ def test_fill_pr_number_chi_dien_changelog_khi_nhat_ky_chua_ghi(root: Path):
     filled = fill_pr_number(root, note, 218, session_date="2026-09-09")
     assert filled.pr_number == 218
     assert not (root / "docs" / "sessions" / "2026-09-09.md").exists()
+
+
+@pytest.fixture
+def main_repo(tmp_path: Path) -> Path:
+    """Checkout CHUNG (không phải worktree phụ) — nơi `fill_pr_number` không bao giờ được chạm tới."""
+    main = tmp_path / "chung-mot-minh"
+    (main / "docs" / "sessions").mkdir(parents=True)
+    (main / "CHANGELOG.md").write_text(CHANGELOG, encoding="utf-8")
+    _git(main, "init", "-b", "main")
+    _git(main, "add", "-A")
+    _git(main, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-m", "khoi tao")
+    return main
+
+
+def test_fill_pr_number_tu_choi_checkout_chung_TRUOC_khi_doc_file(main_repo: Path):
+    """Chốt worktree phải đứng TRƯỚC lần đọc file đầu tiên.
+
+    `CHANGELOG.md` của checkout chung ở đây KHÔNG có chỗ trống `(#PR)`. Nếu chốt đứng sau vòng đọc file (hình
+    dạng trước bản sửa) thì hàm đọc xong file của phiên khác rồi mới rơi vào `ValueError("không tìm thấy…")` —
+    ca này đo đúng chỗ lệch đó: lỗi phải là `SharedCheckoutRefused`, không phải `ValueError`."""
+    with pytest.raises(SharedCheckoutRefused):
+        fill_pr_number(main_repo, compose(_ticket()), 218, session_date="2026-09-09")

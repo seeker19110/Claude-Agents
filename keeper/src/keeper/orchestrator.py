@@ -27,9 +27,16 @@ một trong bốn khuôn lỗi lặp lại của X-Agents (`TRAPS.md`).
 
 ## "Mở PR" ở BT7 nghĩa là gì
 
-Nghĩa là soạn và phát `release-notes` + ghi `pr.open` vào `audit-log`. Thao tác `gh pr create` THẬT không nằm
+Nghĩa là soạn và phát `release-notes` + ghi `pr.intent` vào `audit-log`. Thao tác `gh pr create` THẬT không nằm
 ở đây: `github.py` chỉ đọc (bất biến I1) và một chu kỳ thật là việc của canary BT8. Nói "mở PR" cho một hàm
-gọi `gh` sẽ là lời khai, và `AGENTS.md` cấm §8 áp cho chính `keeper` trước tiên.
+KHÔNG gọi `gh` sẽ là lời khai, và `AGENTS.md` cấm §8 áp cho chính `keeper` trước tiên — nên cả tên hàm lẫn tên
+action đều nói **ý định**, không nói kết quả.
+
+Chính vì `open_pr()` không tạo PR thật mà `gh.open_prs()` vẫn trả 0 ở ticket kế tiếp trong CÙNG một nhịp (bộ
+đệm TTL của `GitHubReader` còn giữ câu trả lời cũ nữa). Nên cổng `budget` đếm THÊM những `release-notes` mà
+`keeper` đã xin mở nhưng chưa thấy số PR thật (`outstanding_pr_intents`) — trạng thái ấy dựng lại được từ bus,
+không phải một biến RAM. Không có nó, N ticket đủ cổng trong một nhịp ra N `release-notes` và I3 thủng mà
+không cần đa luồng (`sc-qa` chấm BT7).
 """
 from __future__ import annotations
 
@@ -46,14 +53,15 @@ from .budget import GitHubLike, can_open_pr
 from .bus import KeeperBus
 from .core import CORE
 from .events import AuditLog, Envelope, ReleaseNote, Signal, Ticket, VerificationReport
-from .evidence import TwoWayEvidence, verification_report
-from .gates import GATE_ACTOR, PersistentGate, gate_approvers, request_gate
+from .evidence import EvidenceError, TwoWayEvidence, require_two_way, verification_report
+from .gates import PersistentGate, gate_approvers, request_gate
+from .github import GitHubWriteAttempt
 from .patcher import HUMAN_ONLY_SEGMENTS
 from .release import compose
-from .signals import dedupe
-from .triage import TriageState, triager
+from .triage import ObservedSignal, TriageState, triager
 
-__all__ = ["HUMAN_ONLY", "KeeperOrchestrator", "TickResult", "touches_human_only"]
+__all__ = ["CODE_ACTOR", "HUMAN_ONLY", "REJECT_ACTION", "KeeperOrchestrator", "TickResult",
+           "touches_human_only"]
 
 #: Khoá chặn "việc này của người" — hằng số chứ không chuỗi rời, vì cả `pr_blockers` lẫn test đều nêu tên nó.
 HUMAN_ONLY = "human-only"
@@ -63,7 +71,14 @@ TRIAGER_ACTOR = "triager"
 VERIFIER_ACTOR = "regression-guard"
 RELEASE_ACTOR = "release-clerk"
 
-TICKET_PREFIX = "KEEP:"
+#: Actor của mọi bản ghi `audit-log` do CODE phát (`pr.intent`, `pr.blocked`, `tick_error`, `gate.requested`,
+#: `verification.rejected`). KHÁC `GATE_ACTOR`: `keeper-supervisor` là một VAI agent có prompt riêng, và audit
+#: ghi dưới tên vai ấy đọc như thể agent đã làm việc đó. Khuôn `LEAD_ACTOR` của company: tên riêng cho code, để
+#: câu hỏi "agent làm hay code làm" trả lời được bằng `env.actor` chứ không bằng suy đoán.
+CODE_ACTOR = "keeper-orchestrator"
+
+#: Action ghi khi một `verification-reports` đến từ bus KHÔNG qua được `require_two_way` (bất biến I2).
+REJECT_ACTION = "verification.rejected"
 
 
 def touches_human_only(subject: str) -> bool:
@@ -85,21 +100,40 @@ class KeeperOrchestrator:
     """Một tiến trình vòng lặp trên một `keeper.sqlite`. Nhiều tiến trình cùng file thì `bus.poll()` mỗi nhịp
     nạp event của nhau (gate CLI của người là tiến trình khác)."""
 
+    #: Kiểm `require_two_way` ở đường NẠP event (`_apply`). Thuộc tính lớp để ca "chiều ngược" TẮT được đúng
+    #: bản sửa rồi đo lại trên cùng event; mã sản xuất không bao giờ đổi nó.
+    VERIFY_ON_APPLY = True
+
+    #: Đếm `release-notes` chưa có số PR vào cổng `budget` (I3 trong cùng một nhịp). Cùng lý do như trên.
+    INTENT_GUARD = True
+
     def __init__(self, db: Path, repo: Path, gh: GitHubLike, *, approvers: frozenset[str] | None = None,
                  env: Mapping[str, str] | None = None) -> None:
         self.repo = Path(repo)
         self.gh = gh
         self.env = env
         self.bus: KeeperBus = KeeperBus(CORE, db)
-        self.signals: list[Signal] = []
+        self.signals: list[ObservedSignal] = []
         self.tickets: dict[str, Ticket] = {}
         self.reports: dict[str, VerificationReport] = {}
         self.verified: set[str] = set()
         self.notes: dict[str, ReleaseNote] = {}
         self.triage = TriageState()
         self.ticks = 0
+        # Bản ghi từ chối bằng chứng: `_audited_rejects` là `event_id` đã CÓ bản ghi trên `audit-log` (đọc từ
+        # `key` của envelope audit, không phải parse JSON), `_pending_rejects` là những cái phát hiện TRONG
+        # lúc replay. Không audit ngay giữa vòng replay vì hai lẽ: `bus.replay()` đang đọc trên cùng kết nối
+        # SQLite, và bản ghi từ chối của lần chạy trước còn nằm PHÍA SAU trong log — audit ngay là nhân bản
+        # một dòng mỗi lần mở lại.
+        self._audited_rejects: set[str] = set()
+        self._pending_rejects: list[tuple[str, dict[str, Any]]] = []
+        self._replaying = True
         for env_ in self.bus.replay():
             self._apply(env_)
+        self._replaying = False
+        for event_id, data in self._pending_rejects:
+            self._audit_reject(event_id, data)
+        self._pending_rejects.clear()
         for topic in ("maintenance-signals", "maintenance-tickets", "verification-reports", "release-notes"):
             self.bus.subscribe(topic, self._apply)
         # Gate mở SAU replay của mình nhưng tự replay `audit-log` lấy sổ gate — hai nguồn không giẫm nhau vì
@@ -110,16 +144,32 @@ class KeeperOrchestrator:
 
     def _apply(self, env: Envelope) -> None:
         """Một event → trạng thái. Chạy cho cả replay lúc mở lẫn event mới (subscribe), nên phải idempotent."""
-        if env.topic == "maintenance-signals":
-            self.signals.append(Signal.model_validate(env.payload))
+        if env.topic == "audit-log":
+            # Chỉ để biết event hỏng nào ĐÃ có bản ghi từ chối. `key` mang `event_id` bị từ chối, nên không
+            # phải parse `evidence` (một dòng log xấu không được làm sập replay của cả orchestrator).
+            if env.payload.get("action") == REJECT_ACTION:
+                self._audited_rejects.add(env.key)
+        elif env.topic == "maintenance-signals":
+            self.signals.append(ObservedSignal(env.event_id, Signal.model_validate(env.payload)))
         elif env.topic == "maintenance-tickets":
             t = Ticket.model_validate(env.payload)
             self.tickets[t.ticket_id] = t
-            # Khoá chống-trùng của `triager` KHÔNG được lưu riêng: `ticket_id` LÀ `KEEP:<khoá>` (`triage.py`),
-            # nên sổ khoá suy được từ chính ticket. Lưu thêm một bản là hai nguồn cho một sự thật.
-            self.triage.seen.add(t.ticket_id.removeprefix(TICKET_PREFIX))
+            # Sổ chống-trùng của `triager` dựng lại từ chính ticket: `signal_event_ids` là những envelope
+            # signal ticket này đã tiêu thụ (`triage.py`). Lưu thêm một bản là hai nguồn cho một sự thật.
+            self.triage.seen.update(t.signal_event_ids)
         elif env.topic == "verification-reports":
             r = VerificationReport.model_validate(env.payload)
+            # **Cổng I2 đứng ở ĐƯỜNG TIÊU THỤ, không chỉ ở hàm dựng.** `verification_report()` chặn được lời
+            # khai đi qua `record_verification()`, nhưng một event đến từ tiến trình KHÁC — hay từ replay của
+            # một bus đã bị ghi thẳng — không đi qua hàm ấy. Nạp thẳng vào `self.verified` là mở cổng
+            # `evidence` cho bất cứ ai publish được `verification-reports` (`sc-security` chấm BT7).
+            if self.VERIFY_ON_APPLY:
+                try:
+                    require_two_way(TwoWayEvidence(cmd=r.before.cmd, before=r.before, after=r.after,
+                                                   verified_by=r.verified_by))
+                except EvidenceError as e:
+                    self._reject_report(env, r, e)
+                    return
             self.reports[r.ticket_id] = r
             self.verified.add(r.ticket_id)
         elif env.topic == "release-notes":
@@ -129,10 +179,27 @@ class KeeperOrchestrator:
     def _publish(self, topic: str, key: str, actor: str, payload: dict[str, Any]) -> Envelope:
         return self.bus.publish(Envelope(topic=topic, key=key, actor=actor, payload=payload))  # type: ignore[arg-type]
 
-    def _audit(self, action: str, data: dict[str, Any], *, ticket_id: str | None = None) -> None:
-        a = AuditLog(actor=GATE_ACTOR, action=action, ticket_id=ticket_id,
+    def _audit(self, action: str, data: dict[str, Any], *, ticket_id: str | None = None,
+               key: str | None = None) -> None:
+        a = AuditLog(actor=CODE_ACTOR, action=action, ticket_id=ticket_id,
                      evidence=json.dumps(data, ensure_ascii=False))
-        self._publish("audit-log", GATE_ACTOR, GATE_ACTOR, a.model_dump())
+        self._publish("audit-log", key or CODE_ACTOR, CODE_ACTOR, a.model_dump())
+
+    def _reject_report(self, env: Envelope, report: VerificationReport, err: EvidenceError) -> None:
+        """Báo cáo không đạt hai chiều: KHÔNG vào `self.verified`, và ghi lý do — nuốt im lặng là đúng khuôn
+        "chế độ hỏng không tự khai báo" (`TRAPS.md`)."""
+        data = {"ticket_id": report.ticket_id, "event_id": env.event_id, "error": str(err)[:300]}
+        if self._replaying:
+            self._pending_rejects.append((env.event_id, data))
+            return
+        self._audit_reject(env.event_id, data)
+
+    def _audit_reject(self, event_id: str, data: dict[str, Any]) -> None:
+        """Đúng MỘT bản ghi cho một event hỏng, dù mở lại bus bao nhiêu lần."""
+        if event_id in self._audited_rejects:
+            return
+        self._audited_rejects.add(event_id)
+        self._audit(REJECT_ACTION, data, ticket_id=str(data["ticket_id"]), key=event_id)
 
     # ---------- watch: nạp việc ----------
 
@@ -143,22 +210,14 @@ class KeeperOrchestrator:
 
     # ---------- triage ----------
 
-    def _generation(self, subject: str) -> int:
-        """Thế hệ = số vòng đời ticket đã ĐÓNG của chủ thể đó (`triage.py`). Đếm từ ticket đã dựng lại từ bus,
-        không phải từ một biến đếm trong RAM."""
-        return sum(1 for t in self.tickets.values() if t.subject == subject and t.status == "closed")
-
     def _triage(self, now: datetime) -> list[Ticket]:
-        """Gộp trùng rồi xếp bậc TỪNG signal với thế hệ CỦA CHÍNH chủ thể đó.
-
-        Gọi `triager()` một signal mỗi lần chứ không cả lô: `generation` là tham số chung cho cả lời gọi, nên
-        đưa cả lô vào là mọi chủ thể phải dùng chung một thế hệ — một ticket đóng lại ở chủ thể A sẽ đổi khoá
-        chống-trùng của B và làm B ra ticket lần hai."""
+        """Cả lô một lần: `triager` gộp trùng theo `(kind, subject)` NGAY TRONG lô, và chống trùng theo
+        `event_id` nên hai chủ thể khác nhau không dùng chung một khoá. (Bản trước phải gọi từng signal một vì
+        `generation` là tham số chung cho cả lời gọi — trục thế hệ ấy đã bỏ, lý do ở `triage.py`.)"""
         out: list[Ticket] = []
-        for s in dedupe(self.signals):
-            for t in triager([s], generation=self._generation(s.subject), state=self.triage, now=now):
-                self._publish("maintenance-tickets", t.ticket_id, TRIAGER_ACTOR, t.model_dump())
-                out.append(self.tickets[t.ticket_id])
+        for t in triager(self.signals, state=self.triage, now=now):
+            self._publish("maintenance-tickets", t.ticket_id, TRIAGER_ACTOR, t.model_dump())
+            out.append(self.tickets[t.ticket_id])
         return out
 
     # ---------- verify (I2) ----------
@@ -188,6 +247,22 @@ class KeeperOrchestrator:
 
     # ---------- release ----------
 
+    def outstanding_pr_intents(self) -> set[str]:
+        """Ticket mà `keeper` đã XIN mở PR nhưng chưa thấy số PR thật.
+
+        Dựng lại từ bus (`release-notes`), không phải biến RAM: `ReleaseNote.pr_number is None` nghĩa là dòng
+        CHANGELOG còn mang chỗ trống `(#PR)` (`release.PR_PLACEHOLDER`), tức PR chưa tồn tại dưới dạng số. Ý
+        định chỉ hết khi một `release-notes` sau đó mang `pr_number` — đường `release.fill_pr_number` (BT8)."""
+        return {n.ticket_id for n in self.notes.values() if n.pr_number is None}
+
+    def _budget_ok(self, ticket: Ticket) -> bool:
+        """Cổng I3. Hai nguồn, cố ý thừa: `gh` (sự thật NGOÀI) và ý định của chính mình (sự thật TRONG). Chỉ
+        hỏi `gh` là thủng ngay trong một nhịp — `open_pr()` không tạo PR thật nên `gh.open_prs()` vẫn trả 0 ở
+        ticket thứ hai, và bộ đệm TTL của `GitHubReader` còn giữ câu trả lời cũ nữa."""
+        if self.INTENT_GUARD and (self.outstanding_pr_intents() - {ticket.ticket_id}):
+            return False
+        return can_open_pr(self.gh, env=self.env)
+
     def pr_blockers(self, ticket: Ticket) -> list[str]:
         """Những cổng CHƯA qua, theo thứ tự từ "không bao giờ qua được" tới "hỏi lại sau là qua"."""
         blockers: list[str] = []
@@ -197,7 +272,7 @@ class KeeperOrchestrator:
             blockers.append("evidence")
         if ticket.risk_tier == "high" and not self.gate.is_approved(ticket.ticket_id):
             blockers.append("gate")
-        if not can_open_pr(self.gh, env=self.env):
+        if not self._budget_ok(ticket):
             blockers.append("budget")
         return blockers
 
@@ -213,7 +288,7 @@ class KeeperOrchestrator:
             return None
         note = compose(ticket)
         self._publish("release-notes", note.ticket_id, RELEASE_ACTOR, note.model_dump())
-        self._audit("pr.open", {"ticket_id": ticket.ticket_id, "changelog_line": note.changelog_line},
+        self._audit("pr.intent", {"ticket_id": ticket.ticket_id, "changelog_line": note.changelog_line},
                     ticket_id=ticket.ticket_id)
         return self.notes[ticket.ticket_id]
 
@@ -226,7 +301,10 @@ class KeeperOrchestrator:
         res = TickResult(tickets=self._triage(moc))
         res.actions += [f"ticket:{t.ticket_id}" for t in res.tickets]
         for ticket in list(self.tickets.values()):
-            if ticket.status == "closed" or ticket.ticket_id in self.notes:
+            # KHÔNG kiểm `ticket.status == "closed"`: không chỗ nào trong `keeper/src/` đặt trạng thái ấy, nên
+            # nhánh đó là mã chết — và mã chết đọc như một cổng đang hoạt động (`sc-security` chấm BT7). Thứ
+            # thật sự đánh dấu "đã xong một vòng" là có `release-notes`.
+            if ticket.ticket_id in self.notes:
                 continue
             self.ensure_gate(ticket)
             note = self.open_pr(ticket)
@@ -237,13 +315,19 @@ class KeeperOrchestrator:
 
     def watch(self, interval: float = 5.0, max_ticks: int | None = None) -> None:
         """`--watch` như hai công ty kia. Một nhịp lỗi (bus/git/`gh`) KHÔNG được giết vòng lặp: ghi
-        `tick_error` vào `audit-log` rồi đi tiếp — nhưng ghi, không nuốt."""
+        `tick_error` vào `audit-log` rồi đi tiếp — nhưng ghi, không nuốt.
+
+        `GitHubWriteAttempt` là NGOẠI LỆ và thoát thẳng ra: nó được khai là "không bao giờ được bắt và bỏ qua"
+        (`github.py`), vì nó nghĩa là có mã đang thử GHI lên GitHub — bất biến I1 đã thủng. Ghi `tick_error`
+        rồi chạy tiếp sau lỗi đó là để công ty vận hành trong đúng trạng thái mà I1 sinh ra để chặn."""
         n = 0
         while max_ticks is None or n < max_ticks:
             try:
                 for a in self.tick().actions:
                     print(a)
-            except Exception as e:  # mọi lỗi của một nhịp, có ghi lại rồi đi tiếp — xem docstring
+            except GitHubWriteAttempt:  # I1 thủng — không nuốt vào tick_error, xem docstring
+                raise
+            except Exception as e:  # mọi lỗi khác của một nhịp: ghi lại rồi đi tiếp — xem docstring
                 self._audit("tick_error", {"error": f"{type(e).__name__}: {str(e)[:300]}"})
                 print(f"tick_error: {type(e).__name__}: {str(e)[:120]}", file=sys.stderr)
             n += 1

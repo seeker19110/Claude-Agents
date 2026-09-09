@@ -22,6 +22,7 @@ from pathlib import Path
 
 from .events import PatchProposal, ReleaseNote, Ticket
 from .patcher import Edit, apply_edits, fix_docs
+from .worktree import refuse_shared_checkout
 
 __all__ = ["PR_PLACEHOLDER", "compose", "fill_pr_number", "record"]
 
@@ -59,7 +60,13 @@ def fill_pr_number(root: Path, note: ReleaseNote, pr_number: int, *, session_dat
                    changelog: str = "CHANGELOG.md") -> ReleaseNote:
     """Thay `(#PR)` bằng `(#<pr_number>)` TẠI CHỖ, trong chính worktree của PR đang mở.
 
-    Không thêm dòng nào: dòng đã nằm trong PR từ commit trước, đây chỉ là commit thứ hai vào cùng PR."""
+    Không thêm dòng nào: dòng đã nằm trong PR từ commit trước, đây chỉ là commit thứ hai vào cùng PR.
+
+    Chốt worktree đứng TRƯỚC lần đọc file đầu tiên. `apply_edits` cũng có chốt ấy, nhưng nó chỉ chạy sau khi
+    hàm này đã `read_text` cả `CHANGELOG.md` lẫn nhật ký phiên — gọi nhầm trên checkout chung là đọc nội dung
+    đang làm dở của phiên KHÁC (và để nó lọt vào thông điệp lỗi / `Edit`) trước khi bị từ chối. Một chốt đứng
+    sau thao tác nó bảo vệ thì không phải là chốt."""
+    refuse_shared_checkout(root)
     if note.pr_number is not None:
         raise ValueError(f"note của {note.ticket_id} đã có số PR (#{note.pr_number}) — không điền lần hai")
     moi = note.model_copy(update={

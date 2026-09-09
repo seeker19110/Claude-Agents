@@ -10,11 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from keeper.events import RunOutcome, Signal
+from keeper.events import Envelope, RunOutcome, Signal, VerificationReport
 from keeper.evidence import TRUSTED_VERIFIER, EvidenceError, TwoWayEvidence
 from keeper.fakes import FakeGitHub
 from keeper.gates import request_gate
-from keeper.orchestrator import HUMAN_ONLY, KeeperOrchestrator
+from keeper.github import GitHubWriteAttempt
+from keeper.orchestrator import CODE_ACTOR, HUMAN_ONLY, REJECT_ACTION, KeeperOrchestrator
 
 NOW = datetime(2026, 9, 9, tzinfo=UTC)
 
@@ -164,6 +165,7 @@ def test_resume_tu_cung_file_sqlite_giu_nguyen_trang_thai(tmp_path: Path):
     assert set(o2.notes) == set(o1.notes)
     assert o2.triage.seen == o1.triage.seen
     assert o2.tick(now=NOW).tickets == [], "signal cũ không được thành ticket lần hai sau restart"
+    assert set(o2.tickets) == set(o1.tickets), "replay không được sinh ticket thứ hai cho cùng envelope"
 
 
 def test_resume_giu_gate_dang_cho(tmp_path: Path):
@@ -254,3 +256,148 @@ def test_cli_watch_dung_orchestrator_va_khong_cham_gh(tmp_path: Path, monkeypatc
     rc = cli_mod.main(["watch", "--db", str(tmp_path / "k.sqlite"), "--repo", str(tmp_path),
                        "--interval", "0", "--max-ticks", "1"])
     assert rc == 0 and goi["watch"] == (0.0, 1) and isinstance(goi["gh"], _Reader)
+
+
+# ---------- CHẶN-1: chống trùng theo danh tính event, không theo thế hệ ----------
+
+def test_signal_moi_sau_khi_vong_truoc_hoan_tat_van_ra_ticket_thu_hai(tmp_path: Path):
+    """Chiều thuận của CHẶN-1: một vòng đã HOÀN TẤT (có `release-notes`) rồi cùng `(kind, subject)` phát lại
+    bằng một envelope MỚI → phải có ticket thứ hai, id khác. Trước bản sửa, thế hệ vĩnh viễn = 0 nên khoá cũ
+    nuốt mọi lần sau."""
+    o = _orc(tmp_path)
+    o.submit_signal(_signal(semver_jump=None))
+    (t1,) = o.tick(now=NOW).tickets
+    _verify(o, t1.ticket_id)
+    assert o.tick(now=NOW).notes, "vòng một phải hoàn tất (có release-notes)"
+
+    o.submit_signal(_signal(semver_jump=None))
+    tickets = o.tick(now=NOW).tickets
+    assert len(tickets) == 1, "signal mới sau khi vòng trước xong KHÔNG được bị nuốt"
+    assert tickets[0].ticket_id != t1.ticket_id
+
+
+def test_ticket_mang_danh_tinh_event_da_tieu_thu(tmp_path: Path):
+    o = _orc(tmp_path)
+    env = o.submit_signal(_signal(semver_jump=None))
+    (t,) = o.tick(now=NOW).tickets
+    assert t.signal_event_ids == [env.event_id] and t.ticket_id == f"KEEP:{env.event_id}"
+
+
+# ---------- CHẶN-2: cổng evidence đứng ở ĐƯỜNG TIÊU THỤ, không chỉ ở hàm dựng ----------
+
+def _bad_report(ticket_id: str) -> VerificationReport:
+    cmd = "uv run pytest -q"
+    return VerificationReport(
+        ticket_id=ticket_id,
+        before=RunOutcome(cmd=cmd, exit_code=0),   # tắt bản sửa mà CI vẫn XANH ⇒ vô hiệu (I2)
+        after=RunOutcome(cmd=cmd, exit_code=0),
+        verified_by=TRUSTED_VERIFIER,
+    )
+
+
+def _publish_bad_report(o: KeeperOrchestrator, ticket_id: str) -> Envelope:
+    """Đi THẲNG lên bus, không qua `record_verification` — đúng hình dạng event của một tiến trình khác."""
+    return o.bus.publish(Envelope(topic="verification-reports", key=ticket_id, actor="regression-guard",
+                                  payload=_bad_report(ticket_id).model_dump()))
+
+
+def test_bao_cao_khong_dat_hai_chieu_den_thang_tu_bus_khong_mo_cong_evidence(tmp_path: Path):
+    o = _orc(tmp_path)
+    o.submit_signal(_signal(semver_jump=None))
+    (t,) = o.tick(now=NOW).tickets
+    _publish_bad_report(o, t.ticket_id)
+    assert t.ticket_id not in o.verified and t.ticket_id not in o.reports
+    assert "evidence" in o.pr_blockers(t) and o.open_pr(t) is None
+    actions = [a.payload["action"] for a in o.bus.replay(topic="audit-log")]
+    assert REJECT_ACTION in actions, "từ chối phải ghi lý do, không nuốt im lặng"
+
+
+def test_tat_kiem_o_duong_nap_thi_cong_evidence_mo_ra(tmp_path: Path, monkeypatch):
+    """Chiều ngược: TẮT chính bản sửa (`VERIFY_ON_APPLY = False`) rồi đo lại trên CÙNG event — cổng mở."""
+    monkeypatch.setattr(KeeperOrchestrator, "VERIFY_ON_APPLY", False)
+    o = _orc(tmp_path)
+    o.submit_signal(_signal(semver_jump=None))
+    (t,) = o.tick(now=NOW).tickets
+    _publish_bad_report(o, t.ticket_id)
+    assert t.ticket_id in o.verified
+    assert "evidence" not in o.pr_blockers(t) and o.open_pr(t) is not None
+
+
+def test_bao_cao_hong_trong_bus_cu_bi_tu_choi_lai_khi_mo_va_chi_ghi_audit_mot_lan(tmp_path: Path):
+    """Event hỏng đã nằm sẵn trong `keeper.sqlite`: mở lại phải VẪN chặn, và audit không nhân lên mỗi lần mở."""
+    o1 = _orc(tmp_path)
+    o1.submit_signal(_signal(semver_jump=None))
+    (t,) = o1.tick(now=NOW).tickets
+    _publish_bad_report(o1, t.ticket_id)
+
+    o2 = _orc(tmp_path)
+    assert t.ticket_id not in o2.verified
+    o3 = _orc(tmp_path)
+    rejects = [a for a in o3.bus.replay(topic="audit-log") if a.payload["action"] == REJECT_ACTION]
+    assert len(rejects) == 1, "một event hỏng = đúng một bản ghi từ chối, dù mở lại bao nhiêu lần"
+
+
+# ---------- CHẶN-3: I3 trong CÙNG một nhịp ----------
+
+def _hai_ticket_du_cong(o: KeeperOrchestrator) -> list:
+    o.submit_signal(_signal(subject="requests", semver_jump=None))
+    o.submit_signal(_signal(subject="httpx", semver_jump=None))
+    tickets = o.tick(now=NOW).tickets
+    assert len(tickets) == 2
+    for t in tickets:
+        _verify(o, t.ticket_id)
+    return tickets
+
+
+def test_hai_ticket_du_cong_trong_mot_nhip_chi_ra_mot_release_note(tmp_path: Path):
+    o = _orc(tmp_path)
+    t1, t2 = _hai_ticket_du_cong(o)
+    res = o.tick(now=NOW)
+    assert len(res.notes) == 1 and res.notes[0].ticket_id == t1.ticket_id
+    assert o.pr_blockers(t2) == ["budget"], "ticket thứ hai bị chặn bởi ĐÚNG cổng ngân sách"
+
+
+def test_tat_kiem_y_dinh_thi_mot_nhip_ra_hai_release_note(tmp_path: Path, monkeypatch):
+    """Chiều ngược: TẮT chính bản sửa (`INTENT_GUARD = False`) → I3 thủng trong một nhịp, hai `release-notes`."""
+    monkeypatch.setattr(KeeperOrchestrator, "INTENT_GUARD", False)
+    o = _orc(tmp_path)
+    _hai_ticket_du_cong(o)
+    assert len(o.tick(now=NOW).notes) == 2
+
+
+def test_y_dinh_mo_pr_dung_lai_duoc_tu_bus(tmp_path: Path):
+    o1 = _orc(tmp_path)
+    o1.submit_signal(_signal(semver_jump=None))
+    (t,) = o1.tick(now=NOW).tickets
+    _verify(o1, t.ticket_id)
+    o1.tick(now=NOW)
+    o2 = _orc(tmp_path)
+    assert o2.outstanding_pr_intents() == {t.ticket_id}
+
+
+# ---------- audit: code không mượn tên agent, tên action không phải lời khai ----------
+
+def test_audit_cua_code_ghi_duoi_actor_rieng_va_action_la_y_dinh(tmp_path: Path):
+    o = _orc(tmp_path)
+    o.submit_signal(_signal(semver_jump=None))
+    (t,) = o.tick(now=NOW).tickets
+    _verify(o, t.ticket_id)
+    o.tick(now=NOW)
+    ghi = [a for a in o.bus.replay(topic="audit-log") if a.payload["action"] == "pr.intent"]
+    assert ghi and all(a.actor == CODE_ACTOR for a in ghi)
+    assert CODE_ACTOR != "keeper-supervisor", "code không được ghi audit dưới tên một vai agent"
+    actions = {a.payload["action"] for a in o.bus.replay(topic="audit-log")}
+    assert "pr.open" not in actions, "BT7 chưa gọi `gh pr create` — không được gọi ý định là `pr.open`"
+
+
+# ---------- I1: lỗi ghi GitHub không được nuốt vào tick_error ----------
+
+def test_watch_khong_nuot_gitub_write_attempt(tmp_path: Path, monkeypatch):
+    o = _orc(tmp_path)
+
+    def _no(now=None):
+        raise GitHubWriteAttempt("gh pr create: thao tác ghi bị cấm (bất biến I1)")
+
+    monkeypatch.setattr(o, "tick", _no)
+    with pytest.raises(GitHubWriteAttempt):
+        o.watch(interval=0.0, max_ticks=2)

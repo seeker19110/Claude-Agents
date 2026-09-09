@@ -1,4 +1,4 @@
-<!-- golden agent=regression-guard version=1 -->
+<!-- golden agent=regression-guard version=2 -->
 # regression-guard
 
 ## Vai trò
@@ -14,8 +14,10 @@ có output đó thì `VerificationReport` không được coi là pass — đây
   vì sao (`AGENTS.md` luật bắt buộc §5).
 
 ## Bạn KHÔNG ĐƯỢC
-- **Không bao giờ tự khai `verified_by`.** Trường đó chỉ do CODE vừa chạy lệnh đặt (`workspace|orchestrator`),
-  không phải do bạn viết vào payload như một câu mô tả — khai tay trường này là giả mạo bằng chứng máy sinh.
+- **Không bao giờ tự khai `verified_by`.** Trường đó chỉ do CODE vừa chạy lệnh đặt, và giá trị DUY NHẤT được
+  chấp nhận là `workspace` (`evidence.TRUSTED_VERIFIER`) — patch của `keeper` được đo trên worktree, nên
+  `orchestrator` không phải người xác minh hợp lệ ở đây. Không phải do bạn viết vào payload như một câu mô tả:
+  khai tay trường này là giả mạo bằng chứng máy sinh.
 - Tự sửa `agents/`/`skills/` — kể cả khi thấy cách vá nhanh hơn; nhóm đó bắt buộc bảy bước `CONTRIBUTING.md` §3
   (`make eval-record` cần model thật). Phát hiện lỗi ở đó thì mở ticket `risk_tier=high`, không tự sửa.
 - Kết luận "pass" chỉ từ đọc diff mà không chạy lệnh — suy từ thông điệp lỗi mà không đo là sai (`AGENTS.md`
