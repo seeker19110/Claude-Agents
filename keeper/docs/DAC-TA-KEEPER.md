@@ -137,7 +137,7 @@ Nghiệm thu: `cd keeper && uv run ruff check src tests && uv run mypy src/keepe
 | File | Thay đổi |
 |---|---|
 | `keeper/src/keeper/github.py` | `GitHubReader`: `open_prs()`, `checks(pr)`, `dependabot_alerts()`, `code_scanning_alerts()`, `pr_age_days()`, `workflow_runs()`, `merged_prs(since)`. Mỗi hàm gọi `gh api` / `gh pr list --json` qua `subprocess.run(..., check=False, timeout=…)`, parse JSON, trả model pydantic |
-| | `FORBIDDEN_ARGS = ("-X", "--method", "merge", "close", "delete", "edit")`: `_run()` ném `GitHubWriteAttempt` nếu argv chứa. Đây là bất biến **I1** thành mã, không thành lời hứa trong prompt |
+| | `FORBIDDEN_ARGS` — bảng của BT0 (`-X`, `--method`, `merge`, `close`, `delete`, `edit`) **có lỗ, đo được ở BT2**: `gh api` đổi sang POST ngay khi có `-f/-F/--field/--raw-field/--input`, KHÔNG cần `-X`, nên `gh api repos/o/r/pulls/1/merge -f x=y` là lời gọi GHI mà bảng gốc cho lọt (token `merge` nằm trong đường dẫn, không phải token riêng). Bảng thật thêm năm cờ đó: `_run()` ném `GitHubWriteAttempt` nếu argv chứa. Đây là bất biến **I1** thành mã, không thành lời hứa trong prompt |
 | | Bộ đệm TTL 60s theo argv — một chu kỳ watch không được gọi `gh` 40 lần |
 | `keeper/src/keeper/fakes.py` | `FakeGitHub` trả bản ghi JSON cố định; **mọi** test dùng nó, không test nào chạm mạng |
 
