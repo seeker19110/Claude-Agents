@@ -480,7 +480,7 @@ package đang gọi `company.llm.load_config()` không đổi.
 >   Một điểm đặc tả không nhắc: **`spec_cls`**. Studio có trường `tools` (ADR-0007 của studio) mà core không
 >   được biết, nên `load_agents` phải dựng ĐÚNG lớp `AgentSpec` của công ty — dựng bằng lớp core là làm rơi
 >   trường ấy im lặng, cùng cái bẫy `envelope_cls` ở K3.5b.
-> - **K3.6b — `blackboard`: XONG (#PR).** Hình dạng lệch **giống K3.5b** (một bên thiếu), nên cách xử lý cũng
+> - **K3.6b — `blackboard`: XONG (#189).** Hình dạng lệch **giống K3.5b** (một bên thiếu), nên cách xử lý cũng
 >   giống: core giữ toàn bộ cơ chế, công ty đưa vào dữ liệu (`cfg.global_namespaces`, `EXT`) và lớp
 >   (`envelope_cls`/`context_cls`). Đặc tả viết đúng cả hai gạch (`blackboard`: bản company; studio
 >   `write(Namespace)` → `str`), nhưng bỏ sót một hệ quả: **`project_id` và `content` phải lên core cùng nó**.

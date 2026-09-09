@@ -7,7 +7,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 ## Chưa phát hành
 
 - refactor(core): **K3.6b — `blackboard` lên `xagents_core`; studio nhận khoá, `rehydrate()`, `content` toàn
-  văn** (#PR). `difflib` **0.092** trên 114 dòng company vs 30 studio, 9 hàm chỉ company có — nhưng con số thấp
+  văn** (#189). `difflib` **0.092** trên 114 dòng company vs 30 studio, 9 hàm chỉ company có — nhưng con số thấp
   ấy KHÔNG nói hai blackboard khác bản chất: cả hai làm đúng một việc (nghe `shared-context`, giữ bản có
   `version` lớn nhất, `write` là đọc-version-rồi-publish). Studio chỉ **chưa làm phần còn lại**. Hình dạng lệch
   giống K3.5b, nên cách xử lý cũng giống: core giữ toàn bộ cơ chế, mỗi công ty đưa vào dữ liệu và lớp
