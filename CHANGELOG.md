@@ -9,6 +9,10 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 - docs(keeper): **BT0 — đổi tên công ty bảo trì thành `keeper` + đặc tả triển khai** (#207). ADR-0006 đổi
   tên file và nội dung (`Upkeep-crew` → `keeper`); thêm `keeper/README.md` và `keeper/docs/DAC-TA-KEEPER.md`
   — 9 PR BT0–BT8, 7 bất biến, bản đồ 9 topic, mỗi mục có test đo hai chiều và cạm bẫy. Chưa có mã.
+- docs: **ADR-0007 — tỉa tool output cũ trong vòng tool** (#206). Quyết định chuẩn bị cho 4L-4
+  (`docs/KIEN-TRUC-4-LOP.md`): tỉa `role=tool` cũ hơn `keep_turns=3` lượt gần nhất trong vòng tool
+  (`company.runner._turns`, `studio.runner._tool_loop`), thay bằng placeholder `[đã cắt: <tool> <chars> ký tự,
+  hash <h>; gọi lại nếu cần]`; không tỉa `msgs[0]`, giữ nguyên `tool_calls`. Chỉ tài liệu — code ở PR riêng.
 - fix(core): **thế hệ gate là bộ đếm, không phải dấu thời gian tường** (#203). Phát hiện 4 của audit
   2026-09-09. `scheduler._the_he` phân biệt hai thế hệ gate của cùng `subject_id` bằng
   `created_at.isoformat(microseconds)`, và nó hỏng theo HAI đường: (1) `datetime.now(UTC)` trên Windows có bước
