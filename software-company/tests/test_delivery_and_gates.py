@@ -139,7 +139,7 @@ def test_on_release_candidate_bo_qua_version_hong_khong_sap():
 
 def test_gate_timeouts():
     from datetime import datetime, timedelta
-    gate = HumanGate(); gate.request(GateRequest(kind="spec", subject_id="S", checklist=[]))
+    gate = HumanGate(); gate.request(GateRequest(kind="spec", subject_id="S", checklist=[], created_by="human:pm"))
     now = datetime.now(UTC)
     assert gate.due(now + timedelta(hours=13)) == (["S"], [])
     assert gate.due(now + timedelta(hours=25)) == ([], ["S"])
