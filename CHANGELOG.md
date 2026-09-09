@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- fix(studio): **`claude -p` không tool cần > 1 lượt** (#PENDING). `--max-turns 1` cắt đúng lượt CLI ép
+- fix(studio): **`claude -p` không tool cần > 1 lượt** (#214). `--max-turns 1` cắt đúng lượt CLI ép
   `--json-schema` → `error_max_turns`: `make eval-record` bằng model thật chết 1/2 ca ở `seo-optimizer`. Company
   đã đo và vá cùng lỗi này 2026-09-05 (`CLI_NO_TOOL_TURNS`), studio không được port — nay port sang. Đo hai
   chiều bằng chính model thật: trước 1/2 pass, sau 2/2 pass; test cũ khẳng định `== "1"` sửa thành `> 1`.
