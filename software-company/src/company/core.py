@@ -65,6 +65,7 @@ CORE = CoreConfig(
     prefix="COMPANY",
     root=Path(__file__).resolve().parents[2],   # software-company/ : llm.yaml, agents/, skills/, topics/schemas/
     db_name="company.sqlite",
+    global_namespaces=frozenset({"knowledge"}),   # ADR-0018: namespace toàn công ty, không thuộc dự án nào
     topic_acl=TopicACL(producers=TOPIC_PRODUCERS, human_topics=HUMAN_TOPICS, open_topics=OPEN_TOPICS,
                        engineering_actors=ENGINEERING_ACTORS, review_producers=REVIEW_PRODUCERS),
     payload_models=PAYLOAD_MODELS,

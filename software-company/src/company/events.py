@@ -138,9 +138,9 @@ class ReviewResult(BaseModel):
     rulings: list[Ruling] = []  # ADR-0030
 
 class SharedContext(CoreSharedContext):
+    # `project_id` và `content` lên core ở K3.6b cùng `blackboard.py` — chúng là cơ chế của blackboard, không
+    # phải trường của miền company (xem docstring `xagents_core/events.py`). Ở lại đây đúng một thứ: `rulings`.
     namespace: Namespace
-    project_id: str | None = None  # None = phạm vi toàn công ty (vd. knowledge); dự án khác nhau không ghi đè nhau
-    content: str | None = None  # toàn văn artifact; bus là nguồn sự thật, artifact store chỉ mirror ra file cho người đọc
     # `default_factory` thay `= []`: lớp cha nay ở package khác nên ruff không nhận ra đây là model
     # pydantic và báo RUF012. Pydantic vốn deep-copy default nên hành vi không đổi.
     rulings: list[Ruling] = Field(default_factory=list)  # ADR-0030

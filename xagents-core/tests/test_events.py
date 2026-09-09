@@ -72,11 +72,18 @@ def test_correlation_id_khai_tuong_minh_thi_khong_bi_ghi_de():
 # ---------- lớp cơ sở phải là CƠ SỞ ----------
 
 def test_khung_khong_mang_truong_pham_vi_cua_ben_nao():
-    """`ticket_id`/`project_id` là của company, `video_id`/`channel_id` là của studio. Một cái lọt lên đây là
-    core đã biết tên một công ty — đúng thứ nguyên tắc 1 cấm."""
-    cam = {"ticket_id", "project_id", "video_id", "channel_id", "rulings", "output_tokens", "cost_usd", "phase"}
+    """`ticket_id` là của company, `video_id`/`channel_id` là của studio. Một cái lọt lên đây là core đã biết
+    tên một công ty — đúng thứ nguyên tắc 1 cấm.
+
+    **`project_id` là ngoại lệ, và chỉ trên `SharedContext`** (K3.6b). Trên `AuditLog` nó vẫn là trường phạm vi
+    của company và vẫn bị cấm; trên `SharedContext` nó là *phân vùng của blackboard*, tức cơ chế — xem docstring
+    `SharedContext`. Danh sách cấm vì thế theo TỪNG LỚP, không phải một tập chung: một tập chung sẽ hoặc cấm
+    nhầm chỗ đúng, hoặc mở cả chỗ sai."""
+    cam_chung = {"ticket_id", "video_id", "channel_id", "rulings", "output_tokens", "cost_usd", "phase"}
     for lop in (Envelope, SharedContext, AuditLog, SupervisorAction):
-        assert not (set(lop.model_fields) & cam), f"{lop.__name__} mang trường của một miền cụ thể"
+        assert not (set(lop.model_fields) & cam_chung), f"{lop.__name__} mang trường của một miền cụ thể"
+    for lop in (Envelope, AuditLog, SupervisorAction):
+        assert "project_id" not in lop.model_fields, f"{lop.__name__}: `project_id` ở đây là trường của company"
 
 
 def test_topic_va_namespace_la_str_o_core():
@@ -88,7 +95,9 @@ def test_topic_va_namespace_la_str_o_core():
 
 def test_khung_mang_dung_phan_chung():
     assert {"actor", "action", "evidence", "tokens"} == set(AuditLog.model_fields)
-    assert {"namespace", "version", "content_ref", "summary"} == set(SharedContext.model_fields)
+    # `project_id` + `content` lên core ở K3.6b cùng `blackboard.py`: chúng là hai cơ chế của blackboard
+    # (phân vùng, toàn văn thay vì con trỏ), không phải trường của một miền. `rulings` vẫn ở company.
+    assert {"namespace", "version", "content_ref", "summary", "project_id", "content"} == set(SharedContext.model_fields)
     assert {"target", "action", "reason", "evidence"} == set(SupervisorAction.model_fields)
 
 
