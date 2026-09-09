@@ -55,8 +55,8 @@ Checklist 9 mục cuối đặc tả: company **6 ✅ 3 ◐**, studio **3 ✅ 6 
 | L4 kiểm lược đồ ở biên | ✅ | ✅ | pydantic + JSON Schema lúc publish `bus.py:317-356` | 4 | |
 | L4 gate trước hành động không hoàn tác | ✅ | ✅ | `deploy_production` `delivery.py:313`; publish sau gate `PUB-` | 2 | |
 | L4 chính sách lỗi từng nút | ✅ | ✅ | transient → hoãn; nội dung → retry → blocked → gate; unhandled → gate `gates_flow.py:245-257` | 9 | |
-| L4 trace toàn cục | ✅ | ◐ | `company.trace`; studio chưa có CLI | 7 | **7** |
-| L4 điểm khôi phục | ✅ | ◐ | `orch/rehydrate.py:22-118`; studio `deferred` chỉ RAM (`orchestrator.py:284-291`) | 9 | **7** |
+| L4 trace toàn cục | ✅ | ✅ | `xagents_core.trace` dùng chung; `python -m studio.trace <VIDEO\|PLAN\|CHANNEL>` | 7 | **7** |
+| L4 điểm khôi phục | ✅ | ✅ | `orch/rehydrate.py`; studio `Orchestrator._nap_lai_hen` nạp lại `defer.until` lúc `_rehydrate` | 9 | **7** |
 | L4 trần ngân sách toàn quy trình | ✅ | ❌ | `supervisor.py:196-213`; studio S5 chưa | 8 | (S5) |
 
 Studio, bốn chỗ so chuỗi (việc 6): `_rework` `orchestrator.py:618-625` so `payload["source"]` trước validate;
@@ -80,7 +80,7 @@ không nâng mức C1.
 | **4** | tỉa tool output cũ trong vòng (ADR-0040) | L3 | `docs` + `feat(core)` | **C3** | lượt cuối không đắt gấp mười lượt đầu | **đổi hành vi agent**; lệch hash mọi bản ghi eval | chờ người: đợi K3.6 merge (≥ 5 ngày lịch sau K3.5, ngoài phạm vi `/thi-hanh 4l`) |
 | **5** | `metrics.loops` p50/p90/capped + ô console | L3 | `feat(company)` | C2 | rẻ nhất, số đã có | ô mới phải theo console ADR-0003 (rỗng = xám) | xong #185 |
 | **6** | studio validate trước rẽ nhánh (4 chỗ) | L4 | `refactor(studio)` | **C3** | đóng lỗ L4 còn lại của studio | chạm `events.py` lúc dời bus | xong #190 |
-| **7** | `xagents_core.trace` + `studio.trace` + `deferred` bền | L4 | `feat(studio)` | **C3** | studio ngang company | copy = thêm fork → phải lên core | chờ người: đợi K3.5c merge |
+| **7** | `xagents_core.trace` + `studio.trace` + `deferred` bền | L4 | `feat(studio)` | **C3** | studio ngang company | copy = thêm fork → phải lên core | xong #196 |
 | **8** | ARCHITECTURE: "vì sao không chốt mức tool", năm package; bảng K3 cập nhật | — | `docs` | C1 | chặn hiểu nhầm | — | xong #181 |
 
 **Cố ý không làm**: chốt duyệt mức tool (quay lại "nghẽn chốt" mà ADR-0037 vừa gỡ); tách `product.md` thành 4

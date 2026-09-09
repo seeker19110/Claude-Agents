@@ -15,26 +15,31 @@ Nguồn: bus (replay mọi topic) + `audit-log` (evidence JSON của `produced:*
     python -m company.trace <subject> [--db company.sqlite] [--json]
 
 Chủ thể không có trong bus → exit 1 và nói rõ đã tìm ở đâu.
+
+**4L-7**: cấu trúc dòng / cách đọc `audit-log` / tổng kết / cách in nay ở `xagents_core.trace` (studio dùng chung).
+Ở lại đây đúng hai thứ riêng của company: chủ thể là gì + event nào thuộc về nó (`resolve`, `_belongs` — đọc theo
+`ticket_id`/`release_id`/`project_id`), và dòng của topic riêng company (`tasks`, `release-events`).
 """
 from __future__ import annotations
 
 import argparse
-import json
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from xagents_core.trace import SKIP_ACTIONS as SKIP_ACTIONS
+from xagents_core.trace import TraceError as TraceError
+from xagents_core.trace import _hms as _hms
+from xagents_core.trace import _wait as _wait
+from xagents_core.trace import build, summarize
+from xagents_core.trace import render as _render
+from xagents_core.trace import run as _run
 
 from .bus import InMemoryBus
 from .events import Envelope
 from .metrics import _ev
 
-# Audit chỉ dùng cho việc nội bộ của orchestrator, không nói gì về chủ thể: bỏ khỏi dòng thời gian.
-SKIP_ACTIONS = frozenset({"once", "orchestrated"})
 ERROR_ACTIONS = frozenset({"llm_error", "invalid_output", "handler_error", "budget_exhausted", "agent_error_unhandled"})
-
-
-class TraceError(Exception): ...
 
 
 def _plan_of(pid: str, sid: Any) -> bool:
@@ -85,71 +90,17 @@ def _belongs(e: Envelope, scope: dict[str, Any]) -> bool:
     return _plan_of(pid, d.get("subject_id")) or _plan_of(pid, e.key)
 
 
-def _gop_lap(calls: list[Any]) -> list[dict[str, Any]]:
-    """Gộp các lần gọi LIÊN TIẾP cùng bộ ba (name, args_hash, out_hash) — vd. vòng lặp tool poll trạng thái gọi
-    lại y hệt nhiều lần — thành MỘT dòng `×N` khi N ≥ 3. Dưới 3 lần thì để riêng: 2 lần giống nhau vẫn còn ít để
-    người đọc tự thấy, gộp sớm chỉ làm mất thứ tự thật."""
-    out: list[dict[str, Any]] = []
-    i = 0
-    while i < len(calls):
-        j = i + 1
-        key = (calls[i].get("name"), calls[i].get("args_hash"), calls[i].get("out_hash"))
-        while j < len(calls) and (calls[j].get("name"), calls[j].get("args_hash"), calls[j].get("out_hash")) == key:
-            j += 1
-        n = j - i
-        if n >= 3:
-            row = dict(calls[i]); row["n"] = n
-            out.append(row)
-        else:
-            out.extend(calls[i:j])
-        i = j
-    return out
-
-
-def _row(e: Envelope, prev: datetime | None, agents: dict[str, Any]) -> dict[str, Any]:
+def _domain(row: dict[str, Any], e: Envelope) -> bool:
+    """Topic riêng của company: `tasks` mang retry + hint người giao, `release-events` mang môi trường + trạng thái."""
     p = e.payload
-    row: dict[str, Any] = {"at": e.ts.isoformat(), "wait_s": round((e.ts - prev).total_seconds(), 3) if prev else 0.0,
-                           "topic": e.topic, "action": None, "actor": e.actor, "agent": None, "tier": None, "model": None,
-                           "tokens": 0, "cost_usd": 0.0, "tools": None, "sub": None, "gate": None, "retry": None,
-                           "error": None, "note": None, "event_id": e.event_id}
-    spec = agents.get(e.actor)
-    if spec is not None:
-        row["agent"] = e.actor; row["tier"] = getattr(spec, "model_tier", None)
     if e.topic == "tasks":
         row["retry"] = int(p.get("retry") or 0)
         row["note"] = str(p.get("human_hint") or p.get("hint") or p.get("title") or "")[:120] or None
-        return row
-    if e.topic != "audit-log":
-        note = p.get("status") or p.get("verdict") or p.get("decision") or p.get("summary")
-        if e.topic == "release-events": note = f"{p.get('env')} {p.get('status')}"
-        row["note"] = str(note)[:120] if note else None
-        return row
-    act = str(p.get("action", "")); d = _ev(p); row["action"] = act
-    row["tokens"] = int(p.get("tokens") or 0); row["cost_usd"] = round(float(p.get("cost_usd") or 0.0), 6)
-    if act.startswith("produced:"):
-        row["model"] = d.get("model"); row["note"] = f"{d.get('duration_ms', 0)} ms, {d.get('turns', 0)} lượt"
-    elif act == "tools_used":
-        calls = d.get("calls") or {}
-        row["tools"] = {str(k): int(v) for k, v in calls.items()} if isinstance(calls, dict) else None
-    elif act == "tools_trace":
-        # 4L-2: vết TỪNG lời gọi (`ToolBox.trace()`), một dòng `↳` mỗi call ở render() — riêng với `tools_used`
-        # (đếm gộp) ở trên. mode "cli" (ADR-0023) không đi qua `ToolBox` → `calls` rỗng: nói rõ bằng `note`,
-        # không im lặng in một khối `sub` rỗng.
-        calls = d.get("calls") or []
-        if isinstance(calls, list) and calls:
-            row["sub"] = _gop_lap(calls)
-        elif d.get("mode") == "cli":
-            row["note"] = "(tool do CLI chạy, không có vết)"
-    elif act == "llm_retry":
-        row["retry"] = int(d.get("attempts") or 1); row["note"] = "; ".join(str(x) for x in d.get("notes") or [])[:120] or None
-    elif act in {"gate.request", "gate.decide"}:
-        row["gate"] = {"subject_id": d.get("subject_id"), "kind": d.get("kind"), "decision": d.get("decision"),
-                       "by": d.get("by") or d.get("created_by"), "reason": str(d.get("reason") or "")[:200] or None}
-    elif act in ERROR_ACTIONS:
-        row["error"] = str(d.get("error") or p.get("evidence") or act)[:200]
-    else:
-        row["note"] = str(p.get("evidence") or "")[:120] or None
-    return row
+        return True
+    if e.topic == "release-events":
+        row["note"] = f"{p.get('env')} {p.get('status')}"
+        return True
+    return False
 
 
 def trace(bus: InMemoryBus, subject: str, agents: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -158,79 +109,26 @@ def trace(bus: InMemoryBus, subject: str, agents: dict[str, Any] | None = None) 
         from .registry import load_agents
         agents = load_agents(check_owners=False)
     scope = resolve(bus, subject)
-    rows: list[dict[str, Any]] = []; prev: datetime | None = None
-    gate_kind: dict[str, Any] = {}  # `gate.decide` không ghi kind: lấy từ `gate.request` cùng subject trước đó
-    for e in bus.replay():
-        if not _belongs(e, scope): continue
-        r = _row(e, prev, agents); prev = e.ts
-        if r["gate"]:
-            if r["gate"]["kind"]: gate_kind[str(r["gate"]["subject_id"])] = r["gate"]["kind"]
-            else: r["gate"]["kind"] = gate_kind.get(str(r["gate"]["subject_id"]))
-        rows.append(r)
-    gates = [r["gate"] for r in rows if r["gate"]]
-    opened = [g for g, r in ((r["gate"], r) for r in rows if r["gate"]) if r["action"] == "gate.request"]
-    decided = [g for g, r in ((r["gate"], r) for r in rows if r["gate"]) if r["action"] == "gate.decide"]
-    waits = [r["wait_s"] for r in rows if r["action"] == "gate.decide"]
-    summary = {"rows": len(rows), "tokens": sum(r["tokens"] for r in rows), "cost_usd": round(sum(r["cost_usd"] for r in rows), 6),
-               "gates_opened": len(opened), "gates_decided": len(decided), "gates": gates,
-               "gate_wait_s_max": max(waits, default=0.0),
+    rows = build((e for e in bus.replay() if _belongs(e, scope)), agents, _domain, ERROR_ACTIONS)
+    summary = {**summarize(rows),
                "task_retries": max((r["retry"] for r in rows if r["topic"] == "tasks"), default=0),
-               "llm_retries": sum(r["retry"] or 0 for r in rows if r["action"] == "llm_retry"),
-               "errors": sum(1 for r in rows if r["error"]),
-               "span_s": round((datetime.fromisoformat(rows[-1]["at"]) - datetime.fromisoformat(rows[0]["at"])).total_seconds(), 3)
-               if rows else 0.0,
                "deployed": [r["note"] for r in rows if r["topic"] == "release-events" and "deployed" in str(r["note"])]}
     return {"schema_version": 1, **scope, "rows": rows, "summary": summary}
 
 
-def _hms(iso: str) -> str:
-    return datetime.fromisoformat(iso).strftime("%m-%d %H:%M:%S")
-
-
-def _wait(s: float) -> str:
-    if s < 60: return f"+{s:.0f}s"
-    if s < 3600: return f"+{s / 60:.0f}m"
-    return f"+{s / 3600:.1f}h"
-
-
 def render(t: dict[str, Any]) -> str:
     s = t["summary"]
-    out = [f"# trace {t['subject']} ({t['kind']}) — dự án {t['project_id'] or '?'}; ticket {', '.join(t['tickets']) or '-'}; "
-           f"release {', '.join(t['releases']) or '-'}",
-           f"# {s['rows']} mốc, {s['span_s']:.0f}s; {s['tokens']} token, {s['cost_usd']:.4f} USD; gate mở {s['gates_opened']} / "
-           f"quyết {s['gates_decided']} (chờ tối đa {s['gate_wait_s_max']:.0f}s); retry ticket {s['task_retries']}, "
-           f"retry model {s['llm_retries']}, lỗi {s['errors']}; deployed: {', '.join(s['deployed']) or 'chưa'}", ""]
-    for r in t["rows"]:
-        what = f"{r['topic']}/{r['action']}" if r["action"] else r["topic"]
-        who = r["agent"] or r["actor"]
-        if r["model"]: who += f" [{r['tier'] or '?'}/{r['model']}]"
-        elif r["tier"]: who += f" [{r['tier']}]"
-        parts = [f"{_hms(r['at'])} {_wait(r['wait_s']):>7}  {what:<34} {who}"]
-        if r["tokens"]: parts.append(f"{r['tokens']} tok ${r['cost_usd']:.4f}")
-        if r["tools"]: parts.append("tool " + " ".join(f"{k}×{v}" for k, v in sorted(r["tools"].items())))
-        if r["gate"]:
-            g = r["gate"]
-            parts.append(f"gate {g['kind'] or ''} {g['subject_id']} {'quyết ' + str(g['decision']) if g['decision'] else 'mở'} "
-                         f"by {g['by'] or '?'}" + (f": {g['reason']}" if g["reason"] else ""))
-        if r["retry"]: parts.append(f"retry={r['retry']}")
-        if r["error"]: parts.append(f"LỖI {r['error']}")
-        if r["note"]: parts.append(r["note"])
-        out.append("  | ".join(parts))
-        if r["sub"]:
-            for c in r["sub"]:
-                args = " ".join(f"{k}={v}" for k, v in (c.get("args") or {}).items())
-                rep = f" ×{c['n']}" if c.get("n") else ""
-                out.append(f"    ↳ {c['name']}({args}) {'ok' if c['ok'] else 'LỖI'} {c['chars']}c {c['ms']}ms{rep}")
-    return "\n".join(out)
+    header = [f"# trace {t['subject']} ({t['kind']}) — dự án {t['project_id'] or '?'}; ticket {', '.join(t['tickets']) or '-'}; "
+              f"release {', '.join(t['releases']) or '-'}",
+              f"# {s['rows']} mốc, {s['span_s']:.0f}s; {s['tokens']} token, {s['cost_usd']:.4f} USD; gate mở {s['gates_opened']} / "
+              f"quyết {s['gates_decided']} (chờ tối đa {s['gate_wait_s_max']:.0f}s); retry ticket {s['task_retries']}, "
+              f"retry model {s['llm_retries']}, lỗi {s['errors']}; deployed: {', '.join(s['deployed']) or 'chưa'}"]
+    return _render(header, t["rows"])
 
 
 def run(bus: InMemoryBus, subject: str, as_json: bool = False, agents: dict[str, Any] | None = None) -> int:
     """Lõi chung của `orchestrator trace` và `python -m company.trace`: in ra stdout, exit 1 khi không có chủ thể."""
-    try:
-        t = trace(bus, subject, agents)
-    except TraceError as e:
-        print(str(e), file=sys.stderr); return 1
-    print(json.dumps(t, ensure_ascii=False, indent=2) if as_json else render(t)); return 0
+    return _run(lambda: trace(bus, subject, agents), as_json, render, sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> int:
