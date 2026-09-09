@@ -61,7 +61,7 @@ PR vá riêng.
 | Mã | Việc | Mảng | Loại PR | Mức | Ưu | Nhược | Khi nào |
 |---|---|---|---|---|---|---|---|
 | BT1 | khung package: `pyproject` + `core.py` + `events.py` + 10 schema + 2 job CI + nối 11 chỗ workspace | keeper, gốc, CI | `feat(keeper)` | C2 (mã) + C1 (tài liệu/số liệu) | mở đường cho mọi BT sau | chạm nhiều file gốc, dễ sót một chỗ → CI đỏ | **xong #210** |
-| BT2 | `github.py` chỉ đọc + `FORBIDDEN_ARGS` + bộ đệm TTL + `FakeGitHub` | keeper | `feat(keeper)` | C2 | I1 thành mã | phụ thuộc khuôn `github_pr.py` | chưa |
+| BT2 | `github.py` chỉ đọc + `FORBIDDEN_ARGS` + bộ đệm TTL + `FakeGitHub` | keeper | `feat(keeper)` | C2 | I1 thành mã | phụ thuộc khuôn `github_pr.py` | **xong #211** |
 | BT3 | `scout/health/drift` + `signals.dedupe` | keeper | `feat(keeper)` | C2 | ba phép so thuần cục bộ, test dễ | phép (c) báo giả trước mốc §10 → cần hằng số ngày có comment | chưa |
 | BT4 | `risk.py` bảng dữ liệu + `ledger.py` có `due_at` + `budget.py` + `triage.py` | keeper | `feat(keeper)` | C3 | quyết `due_at` vs `streak` (A2-9) | là cơ chế mới, không phải dùng lại — phải nói rõ trong PR | chưa |
 | BT5 | `worktree.py` (bọc `TicketWorkspace`) + `patcher.py` + `FORBIDDEN_PATHS` + `cli.py --dry-run` | keeper | `feat(keeper)` | C3 | chạm git thật, sai là hỏng worktree phiên khác | tuyệt đối không `reset --hard` checkout chung | chưa |
