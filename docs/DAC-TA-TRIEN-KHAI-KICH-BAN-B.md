@@ -500,7 +500,7 @@ package đang gọi `company.llm.load_config()` không đổi.
 >   `EVALS_DIR → core.root/"evals"` làm đúng như đặc tả, nhưng phải đi **qua biến module** chứ không tính từ
 >   `self.root`: 20 chỗ test dùng `monkeypatch.setattr(evals, "RECORDINGS_DIR", …)` làm seam, và tính từ
 >   `self.root` là seam ấy im lặng hết tác dụng. Cùng khuôn với `scope_of` ở K3.6b.
-> - **K3.6d — TÁCH ĐÔI; d1 XONG (#194).** Lý do tách không phải độ lệch mã mà là **bản ghi eval**: khoá bản
+> - **K3.6d — TÁCH ĐÔI; CẢ HAI XONG (d1 #194, d2 #195).** Lý do tách không phải độ lệch mã mà là **bản ghi eval**: khoá bản
 >   ghi là `hash(system_prompt, user_message)` và `user_message` do `build_user_message` sinh ra. Đo trực
 >   tiếp — thêm MỘT DẤU CÁCH vào prompt studio thì `evals all --replay` báo lệch toàn bộ. Hợp nhất bất kỳ CHỮ
 >   nào trong prompt đòi `make eval-record` bằng model thật cho 20 agent (7 bước `CONTRIBUTING.md` §3, cần API
@@ -509,8 +509,21 @@ package đang gọi `company.llm.load_config()` không đổi.
 >   prompt giữ nguyên từng byte, nghiệm thu bằng `evals all --replay` hai công ty 0 FAIL.
 >   `context_writes_schema` ở lại từng công ty (company đòi `content` ADR-0012, studio không), nên
 >   `output_schema` NHẬN nó làm tham số.
->   **d2 (chưa làm)**: `AgentRunner` — `difflib` 0.14 trên 411/202 dòng, `_tool_loop`+`_turns` 0.12,
->   `write_context` 0.15, `generate` 0.49. Đây là phần lớn còn lại của cả kịch bản B.
+>   **d2 (XONG, #195) — K3.6 kết thúc ở đây.** Nguyên tắc gắt hơn mọi bước trước: *cơ chế lên core, **hành vi
+>   quan sát được của mỗi công ty giữ nguyên từng byte***. Lên core: `__init__`, `_audit`, `run`,
+>   `run_context`, `write_context`, `publish`. Ở lại: `generate` + vòng lặp tool (chạm prompt),
+>   `generate_in_workspace`/`author_tests` (phụ thuộc `workspace.py`), `_filter_comments` (studio).
+>   Đặc tả viết "`runner`: bản company". Làm đúng chữ ấy thì studio đổi hành vi ở HAI chỗ mà không ai thấy:
+>   (a) `write_context` audit `context_no_content` **mỗi lần ghi** (studio không có `content` trong hợp đồng
+>   đầu ra); (b) `publish` nối chuỗi nhân quả bằng `inp.child()`, tức **đổi nội dung event trên bus**. Cả hai
+>   giải bằng **tham số** (`wants_content`, hook `_new_envelope`) nên không bên nào mất gì. Hai hook nữa cùng
+>   loại: `_audit_scope` (trường phạm vi `AuditLog`, khuôn K3.5a) và `_produced_evidence`.
+>   Đặc tả đoán sai một chi tiết: **`MAX_TOOL_TURNS` không cần lên `CoreConfig`** — vòng lặp tool ở lại từng
+>   công ty vì nó dựng `tools_prompt`, nên hằng ấy ở lại cùng nó. `toolbox_for(spec, ctx)` cũng vậy: studio đã
+>   có `toolbox_factory` từ trước, company cấp tool theo đường khác, không cần hook chung ở core.
+>   **Đo hai chiều để lộ một lỗ hổng của chính bộ test**: hai đột biến (`wants_content=True`, ép `child()`)
+>   làm ba ca core đỏ nhưng **cả 557 ca studio vẫn xanh** — nghĩa là "dọn" hai hook ấy đi thì studio hỏng âm
+>   thầm. Đã thêm `Studio-creators/tests/test_runner_core.py` chốt ba hành vi; đo lại thì studio đỏ đúng chỗ.
 
 ### PR K3.7 `refactor(core): K3.7 — gates, gate_cli, supervisor hợp nhất hai chiều`
 

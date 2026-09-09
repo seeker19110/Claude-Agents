@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from xagents_core.runner import AgentRunner as CoreAgentRunner
 from xagents_core.runner import Generated as CoreGenerated
 from xagents_core.runner import RunnerError as RunnerError
 from xagents_core.runner import RunResult as CoreRunResult
@@ -188,22 +189,59 @@ def _said(g: Any) -> str:
     return "(không giải thích)"
 
 
-class AgentRunner:
+class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
+    """Runner của company — phần ngoài ở `xagents_core.runner` (K3.6d2).
+
+    Sáu hook dưới là đúng chỗ company khác studio; `generate` và vòng lặp tool ở lại đây vì chúng dựng prompt
+    (khoá bản ghi eval — xem docstring core)."""
+
+    envelope_cls = Envelope
+    audit_cls = AuditLog
+    generated_cls = Generated
+    run_result_cls = RunResult
+    wants_content = True   # ADR-0012: `context_writes` của company mang toàn văn artifact
+
     def __init__(self, bus: InMemoryBus, client: ModelClient, agents: dict[str, AgentSpec] | None = None,
                  blackboard: Blackboard | None = None, max_input_chars: int | None = None):
-        self.bus, self.client = bus, client
-        self.agents = agents or load_agents()
-        self.blackboard = blackboard
-        self.max_input_chars = max_input_chars or getattr(client, "max_input_chars", None) or DEFAULT_MAX_INPUT_CHARS
+        super().__init__(bus, client, agents or load_agents(), blackboard, max_input_chars,
+                         default_max_input_chars=DEFAULT_MAX_INPUT_CHARS)
         self.pricing = getattr(client, "pricing", None)
 
-    def _audit(self, spec: AgentSpec, action: str, inp: Envelope, evidence: str, tokens: int = 0, cost: float = 0.0,
-               output_tokens: int = 0, phase: str | None = None) -> None:
-        a = AuditLog(actor=spec.id, action=action, tokens=tokens, output_tokens=output_tokens, evidence=evidence, cost_usd=cost,
-                     ticket_id=inp.payload.get("ticket_id") or (inp.key if inp.topic == "tasks" else None),
-                     project_id=inp.payload.get("project_id"), phase=phase)
-        self.bus.publish(Envelope(topic="audit-log", key=spec.id, actor=spec.id, payload=a.model_dump()))
+    def _audit_scope(self, inp: Envelope) -> dict[str, Any]:
+        return {"ticket_id": inp.payload.get("ticket_id") or (inp.key if inp.topic == "tasks" else None),
+                "project_id": inp.payload.get("project_id")}
 
+    def _audit(self, spec: AgentSpec, action: str, inp: Envelope, evidence: str, tokens: int = 0,  # type: ignore[override]
+               cost: float = 0.0, output_tokens: int = 0, phase: str | None = None) -> None:
+        """Chữ ký cũ (`cost=`, không phải `cost_usd=`) — hàng chục chỗ gọi trong file này dùng nó."""
+        super()._audit(spec, action, inp, evidence, tokens, cost_usd=cost, output_tokens=output_tokens, phase=phase)
+
+    def _new_envelope(self, inp: Envelope, topic: str, key: str, actor: str, payload: dict[str, Any]) -> Envelope:
+        # `child()` nối chuỗi nhân quả (correlation_id/causation_id); studio dựng envelope mới.
+        return inp.child(topic=topic, key=key, actor=actor, payload=payload)  # type: ignore[arg-type,return-value]
+
+    def _produced_evidence(self, g: Generated, event_id: str) -> str:
+        return g.evidence(event_id or None)
+
+    def _produced_extra(self, g: Generated) -> dict[str, Any]:
+        return {"cost": g.cost_usd, "output_tokens": g.output_tokens, "phase": g.phase}
+
+    def _context_project(self, inp: Envelope) -> str | None:
+        return project_of(inp)
+
+    def _run_result(self, out: Envelope, g: Generated) -> RunResult:
+        return RunResult(output=out, tokens=g.tokens, model=g.model, cost_usd=g.cost_usd)
+
+    def _extra_audit_on_publish(self, spec: AgentSpec, inp: Envelope, out: Envelope, topic_out: str,
+                                payload: dict[str, Any]) -> None:
+        # ADR-0030: quyết định agent tự đưa ra đi vào audit-log (một dòng mỗi ruling) — sổ nằm trên bus, không trong RAM;
+        # `Orchestrator.rulings()`, `status`, `gate_brief` đọc lại từ đây để người soát thấy agent đã quyết gì thay mình.
+        for r in payload.get("rulings") or []:
+            if isinstance(r, dict) and r.get("decision"):
+                self._audit(spec, "ruling", inp, evidence=json.dumps(
+                    {"topic": topic_out, "key": out.key, "event_id": out.event_id,
+                     "decision": str(r.get("decision"))[:500], "why": str(r.get("why") or "")[:500],
+                     "cost_if_wrong": str(r.get("cost_if_wrong") or "")[:300]}, ensure_ascii=False))
     def _cost(self, c: Completion) -> tuple[float, bool]:
         return self.pricing.cost(c) if self.pricing is not None else (0.0, False)
 
@@ -535,68 +573,6 @@ class AgentRunner:
                 payload[name] = None
                 fixed.append(name)
         return sorted(fixed)
-
-    def write_context(self, agent_id: str, inp: Envelope, writes: list[dict[str, Any]]) -> list[str]:
-        """Ghi các artifact lên blackboard dưới danh nghĩa agent; namespace không thuộc agent bị bỏ và ghi audit.
-        `content` (toàn văn) đi theo; thiếu content thì vẫn ghi con trỏ nhưng audit `context_no_content` — hạ nguồn
-        sẽ chỉ thấy summary. Trả về danh sách namespace đã ghi."""
-        spec = self.agents[agent_id]; done: list[str] = []; empty: list[str] = []
-        for w in writes:
-            ns = w["namespace"]
-            if ns not in spec.namespaces_write or self.blackboard is None:
-                self._audit(spec, "context_rejected", inp, evidence=f"namespace {ns} không thuộc {agent_id} hoặc không có blackboard")
-                continue
-            content = w.get("content")
-            content = str(content) if content is not None and str(content).strip() else None
-            if content is None: empty.append(ns)
-            self.blackboard.write(spec.id, ns, str(w["content_ref"]), str(w.get("summary", "")), content=content,
-                                  project_id=project_of(inp))
-            done.append(ns)
-        if done:
-            self._audit(spec, "context_written", inp, evidence=",".join(done))
-        if empty:
-            self._audit(spec, "context_no_content", inp, evidence="chỉ có con trỏ, không có toàn văn: " + ",".join(empty))
-        return done
-
-    def publish(self, agent_id: str, inp: Envelope, topic_out: str, payload: dict[str, Any], key: str | None = None,
-                tokens: int = 0, model: str = "", context_writes: list[dict[str, Any]] | None = None,
-                cache_hit_ratio: float = 0.0, generated: Generated | None = None) -> Envelope:
-        """Publish một payload đã sinh dưới danh nghĩa agent (bus validate + kiểm quyền lần nữa), ghi blackboard
-        (nếu có context_writes) và ghi audit có token + tiền + thời gian (evidence JSON cho metrics)."""
-        spec = self.agents[agent_id]
-        try:
-            out = self.bus.publish(inp.child(topic=topic_out, key=key or inp.key, actor=spec.id,  # type: ignore[arg-type]
-                                             payload=payload))
-        except BusError as e:
-            self._audit(spec, "invalid_output", inp, evidence=str(e)[:500], tokens=tokens)
-            raise RunnerError(f"{agent_id}: đầu ra không hợp lệ cho {topic_out}: {e}") from e
-        if context_writes: self.write_context(agent_id, inp, context_writes)
-        # ADR-0030: quyết định agent tự đưa ra đi vào audit-log (một dòng mỗi ruling) — sổ nằm trên bus, không trong RAM;
-        # `Orchestrator.rulings()`, `status`, `gate_brief` đọc lại từ đây để người soát thấy agent đã quyết gì thay mình.
-        for r in payload.get("rulings") or []:
-            if isinstance(r, dict) and r.get("decision"):
-                self._audit(spec, "ruling", inp, evidence=json.dumps({"topic": topic_out, "key": out.key, "event_id": out.event_id,
-                            "decision": str(r.get("decision"))[:500], "why": str(r.get("why") or "")[:500],
-                            "cost_if_wrong": str(r.get("cost_if_wrong") or "")[:300]}, ensure_ascii=False))
-        g = generated or Generated(payloads=[payload], tokens=tokens, model=model, cache_hit_ratio=cache_hit_ratio)
-        self._audit(spec, f"produced:{topic_out}", inp, evidence=g.evidence(out.event_id), tokens=tokens,
-                    cost=g.cost_usd, output_tokens=g.output_tokens, phase=g.phase)
-        return out
-
-    def run(self, agent_id: str, inp: Envelope, topic_out: str, key: str | None = None,
-            phase: str | None = None) -> RunResult:
-        g = self.generate(agent_id, inp, topic_out, phase=phase)
-        out = self.publish(agent_id, inp, topic_out, g.payloads[0], key=key, tokens=g.tokens, model=g.model,
-                           context_writes=g.context_writes, cache_hit_ratio=g.cache_hit_ratio, generated=g)
-        return RunResult(output=out, tokens=g.tokens, model=g.model, cost_usd=g.cost_usd)
-
-    def run_context(self, agent_id: str, inp: Envelope, phase: str | None = None) -> Generated:
-        """Lượt chỉ ghi blackboard (support-docs viết docs, `security` viết threat model...)."""
-        g = self.generate(agent_id, inp, CONTEXT_ONLY, phase=phase)
-        self.write_context(agent_id, inp, g.context_writes)
-        self._audit(self.agents[agent_id], "produced:shared-context", inp, evidence=g.evidence(), tokens=g.tokens,
-                    cost=g.cost_usd, output_tokens=g.output_tokens, phase=g.phase)
-        return g
 
 
 def main(argv: list[str] | None = None) -> int:
