@@ -177,12 +177,12 @@ def submit(company_db: Path | None, studio_db: Path | None, keeper_db: Path | No
 ## `server.py`
 
 ```
-GET  /                  → static/index.html, chèn <script>window.__CONSOLE__={token,readonly,can_submit}</script>
+GET  /                  → static/index.html, chèn <script>window.__CONSOLE__={token,readonly,can_submit,can_engine}</script>
 GET  /static/*          → file tĩnh trong static/
 GET  /sw.js             → static/sw.js — PHẢI ở gốc, service worker chỉ điều khiển được
                           những đường trong thư mục chứa nó, mà nó cần điều khiển "/"
 GET  /manifest.webmanifest → static/manifest.webmanifest (application/manifest+json)
-GET  /api/state         → collect(...)
+GET  /api/state         → collect(...) + {"engine": {"engines": [...], "allowed": bool}}  (ADR-0004)
 GET  /api/stream        → SSE: `event: state` mỗi khi bus đổi, `event: error` khi collect() ném,
                           `: ping` giữ nhịp 15 giây. Không có Content-Length; đóng kết nối là hết thân bài.
 GET  /api/gate/brief    → ?id=<subject>[&xuong=software-company][&closed=1]
@@ -195,6 +195,10 @@ POST /api/gate/decide   → body {subject_id, xuong, decision, by, reason}      
 POST /api/request       → body {xuong, topic, payload, actor}                 (cần --allow-submit)
                           giao việc: submit.submit(...) publish event vào bus của xưởng, chỉ nhận
                           topic do người nạp (`submit.FORMS`); payload kiểm theo schema của topic
+POST /api/engine        → body {xuong, action: "start"|"stop", by, interval?}  (cần --allow-engine)
+                          bật/tắt `orchestrator run --watch` của xưởng; `interval` giây, kẹp [5, 3600],
+                          mặc định `DEFAULT_ENGINE_INTERVAL` = 30. Trả trạng thái sau thao tác.
+                          409 khi bật cái đang chạy / tắt cái không chạy; 400 tham số sai; 500 không spawn được
 GET  /healthz           → {"ok": true}
 ```
 
@@ -208,9 +212,10 @@ Bảo mật — bắt buộc, đây là bề mặt đầu tiên cho phép duyệ
 3. Chống DNS rebinding: từ chối request có `Host` không phải loopback (404), và từ chối
    `Origin` khác `http://127.0.0.1:<port>` (403). Token nằm ở header chứ không phải cookie
    nên trang ngoài không giả mạo được POST.
-4. Ba quyền ghi TÁCH RIÊNG, không cái nào mở cái nào: `--allow-decide` cho `/api/gate/decide`,
-   `--allow-config` cho `POST /api/settings`, `--allow-submit` cho `POST /api/request`. Duyệt gate,
-   đổi model và giao việc mới là ba rủi ro khác nhau.
+4. Bốn quyền ghi TÁCH RIÊNG, không cái nào mở cái nào: `--allow-decide` cho `/api/gate/decide`,
+   `--allow-config` cho `POST /api/settings`, `--allow-submit` cho `POST /api/request`,
+   `--allow-engine` cho `POST /api/engine`. Duyệt gate, đổi model, giao việc và bật động cơ là bốn rủi
+   ro khác nhau — `--allow-engine` nặng nhất: nó tạo tiến trình con gọi model và ghi vào repo khách.
 5. `--readonly` (mặc định **bật**) chặn mọi POST. Muốn duyệt gate từ trang thì chạy
    `--allow-decide`, và trang hiện rõ đang ở chế độ nào.
 6. Không log token, không log body. Vì `log_message` ghi nguyên dòng request, token **không được**
@@ -219,6 +224,28 @@ Bảo mật — bắt buộc, đây là bề mặt đầu tiên cho phép duyệ
 
 Lỗi trả `{"error": "…"}` kèm mã HTTP đúng nghĩa: 400 sai tham số, 401 sai token,
 403 bị chặn, 404 không có, 409 gate đã quyết rồi, 500 lỗi không lường trước.
+
+## `engine.py`
+
+```python
+class EngineManager:
+    def status(self) -> dict            # {"engines": [{xuong, label, db, configured, state, pid, ...}]}
+    def fingerprint(self) -> str        # đổi khi động cơ bật/tắt/chết → /api/stream đẩy khung mới
+    def start(self, xuong, *, interval: float, by: str) -> dict
+    def stop(self, xuong, *, by: str) -> dict
+    def stop_all(self) -> None          # chạy ở server_close() và atexit
+```
+
+- Một động cơ = một tiến trình con chạy đúng CLI mà người vẫn gõ: company/studio
+  `python -m <mod> --db <db> run --watch <N>`, keeper `python -m keeper.cli watch --db <db> --repo <repo>
+  --interval <N>`. Dòng lệnh dựng từ `SPECS` chốt cứng trong mã nguồn — **không tham số nào của client đi
+  vào `argv`** ngoài `interval` đã kẹp; không `shell=True` (ADR-0004).
+- `state` là thứ ĐO ĐƯỢC mỗi lần hỏi (`Popen.poll`): `running` | `stopped` (chưa bật trong phiên console
+  này) | `exited` (đã chạy và đã kết thúc — kèm `exit_code`, `stopped_by` nếu do người tắt, và `tail` là
+  ~12 dòng cuối của `console/.engine/<xuong>.log`). Không có trạng thái nào suy từ "đã bấm Bật".
+- Động cơ do console bật **chết cùng console**; console không thấy orchestrator do người bật ở terminal.
+- Model dùng gói thuê bao trong `llm.yaml` của công ty (tiến trình con thừa kế env của console) — console
+  không truyền model, không truyền API key.
 
 ## `settings.py`
 

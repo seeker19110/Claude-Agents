@@ -53,6 +53,8 @@ build/
 
 # console: token phiên sinh mỗi lần chạy server trực ban (quyền 0600) — không bao giờ commit
 console/.console-token
+# console: log của động cơ do console bật (ADR-0004) — nhật ký chạy, không phải mã nguồn
+console/.engine/
 
 # Claude Code: quyền và cấu hình riêng của từng máy (settings.json dùng chung thì vẫn commit)
 .claude/settings.local.json

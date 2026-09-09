@@ -10,12 +10,13 @@ schema. Không framework, không CDN, không phụ thuộc ngoài hai công ty.
 cd console
 uv run pytest -q --cov && uv run ruff check src tests && uv run mypy src/console --ignore-missing-imports
 uv run python -m console                          # chỉ đọc; terminal in địa chỉ kèm token phiên
-uv run python -m console --allow-decide --allow-submit --allow-config
+uv run python -m console --allow-decide --allow-submit --allow-config --allow-engine
 uv run python -m console models --company software-company --set antigravity.standard=<model>
 ```
 
-**Bật console thì bật luôn `orchestrator run --watch` của công ty** — console chỉ hiển thị và publish; không có
-orchestrator thì việc giao và quyết định nằm im trên bus.
+**Phải có `orchestrator run --watch` chạy thì việc giao và gate đã ký mới đi tiếp.** Từ ADR-0004 console tự bật
+được nó: ô *Động cơ* ở màn Trực ban (`--allow-engine`). Động cơ do console bật **chết cùng console** — chạy dài
+ngày thì vẫn bật ở terminal như cũ, và ô Động cơ nói rõ nó chỉ thấy tiến trình do chính nó tạo.
 
 ## Ba điều không được phá
 
@@ -36,6 +37,7 @@ orchestrator thì việc giao và quyết định nằm im trên bus.
 | hồ sơ bằng chứng cạnh nút duyệt | `src/console/brief.py` → `company.gate_brief`; route `GET /api/gate/brief` |
 | quyết định gate | `src/console/decide.py` — gọi `HumanGate` công ty; lý do ≥ 20 ký tự |
 | form giao việc | `src/console/submit.py` — payload theo schema topic của công ty |
-| giao diện | `src/console/static/index.html` (HTML + CSS) và `static/js/*.js` (14 ES module, K7.1 — không build step). Thêm màn mới: HTML + một module + **nhập nó trong `main.js`** (không nhập = không bao giờ chạy, `tests/test_es_module.py` canh). Gán vào biến nhập từ module khác thì phải qua setter. Route hash `#/<màn>/gate/<id>`… trong `API.md` |
+| bật/tắt động cơ | `src/console/engine.py` — `argv` chốt cứng trong `SPECS`, KHÔNG nhận tham số client; route `POST /api/engine` (ADR-0004) |
+| giao diện | `src/console/static/index.html` (HTML + CSS) và `static/js/*.js` (15 ES module, K7.1 — không build step). Thêm màn mới: HTML + một module + **nhập nó trong `main.js`** (không nhập = không bao giờ chạy, `tests/test_es_module.py` canh). Gán vào biến nhập từ module khác thì phải qua setter. Route hash `#/<màn>/gate/<id>`… trong `API.md` |
 | đổi hợp đồng giữa lớp | `API.md` cùng PR |
-| kiến trúc | `docs/adr/` (0001–0003) |
+| kiến trúc | `docs/adr/` (0001–0004) |

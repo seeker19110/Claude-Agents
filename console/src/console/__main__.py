@@ -4,6 +4,7 @@
   python -m console                       chạy console chỉ đọc tại http://127.0.0.1:8200
   python -m console --allow-decide        cho phép duyệt gate từ trang
   python -m console --allow-config        cho phép sửa model/backend của từng công ty từ trang
+  python -m console --allow-engine        cho phép bật/tắt orchestrator của từng xưởng từ trang
   python -m console --open                mở trình duyệt sau khi khởi động
 
   python -m console models                        xem cấu hình model của cả hai công ty
@@ -49,6 +50,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="cho phép POST /api/settings (sửa llm.yaml); tách riêng khỏi --allow-decide")
     p.add_argument("--allow-submit", action="store_true",
                    help="cho phép POST /api/request (giao việc: yêu cầu phần mềm, brief kênh video); quyền riêng")
+    p.add_argument("--allow-engine", action="store_true",
+                   help="cho phép POST /api/engine (bật/tắt `orchestrator run --watch` của từng xưởng ngay trên "
+                        "trang); quyền riêng và nặng nhất — tiến trình con gọi model và ghi vào bus")
     p.add_argument("--i-know", action="store_true", help="chấp nhận rủi ro khi bind ra ngoài loopback")
     p.add_argument("--open", dest="open_browser", action="store_true", help="mở trình duyệt (cố gắng, không bắt buộc)")
     return p
@@ -164,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
             readonly=args.readonly,
             allow_config=args.allow_config,
             allow_submit=args.allow_submit,
+            allow_engine=args.allow_engine,
             company_db=args.company_db,
             studio_db=args.studio_db,
             keeper_db=args.keeper_db,
@@ -181,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Chế độ:      {mode}")
     print(f"  Cấu hình:    {'SỬA ĐƯỢC model/backend' if args.allow_config else 'chỉ xem (--allow-config để sửa)'}")
     print(f"  Giao việc:   {'CHO PHÉP (form Giao việc ghi vào bus)' if args.allow_submit else 'khoá (--allow-submit để giao việc)'}")
+    print(f"  Động cơ:     {'BẬT/TẮT ĐƯỢC trên trang' if args.allow_engine else 'khoá (--allow-engine để bật orchestrator từ trang)'}")
     print(f"  Token file:  {token_path}  (quyền 0600, mới mỗi lần chạy)")
     print(f"  company.db:  {args.company_db}{'' if args.company_db.exists() else '  (chưa có — phần này sẽ trống)'}")
     print(f"  studio.db:   {args.studio_db}{'' if args.studio_db.exists() else '  (chưa có — phần này sẽ trống)'}")
