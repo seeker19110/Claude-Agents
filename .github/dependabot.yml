@@ -16,6 +16,12 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "build(deps)"
+    # Cổng `metadata` (pr-policy.yml) đòi mọi PR có dòng CHANGELOG, và miễn theo nhãn `no-changelog`.
+    # Dependabot không viết CHANGELOG được, nên thiếu nhãn này là MỌI PR nó mở đều đỏ ở `metadata` —
+    # đo được ở #246: 35/36 check xanh, chỉ `metadata` đỏ đúng vì lý do đó. Cùng quy ước với PR do
+    # `eval-record.yml` tự tạo (nó đã gắn `no-changelog` từ trước).
+    # `labels` THAY THẾ bộ nhãn mặc định, nên phải liệt kê lại cả `dependencies`.
+    labels: ["dependencies", "no-changelog"]
     groups:
       dev:
         dependency-type: development
@@ -26,3 +32,4 @@ updates:
       interval: weekly
     commit-message:
       prefix: "ci(deps)"
+    labels: ["dependencies", "no-changelog"]

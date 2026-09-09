@@ -2,7 +2,12 @@ name: PR policy
 
 on:
   pull_request:
-    types: [opened, edited, reopened, synchronize]
+    # `labeled`/`unlabeled` có mặt vì bước dưới NÓI người dùng "gắn nhãn no-changelog để miễn" — mà nếu
+    # thiếu chúng thì lời khuyên đó KHÔNG DÙNG ĐƯỢC BẰNG CÁCH NÀO CẢ, kể cả bấm re-run tay:
+    # `rerun_failed_jobs` phát lại PAYLOAD SỰ KIỆN GỐC, mà `github.event.pull_request.labels` đóng băng
+    # trong payload đó. Đo trên #246 (2026-09-09): gắn `no-changelog` lúc 23:03:15, chạy lại lúc 23:03:23,
+    # log vẫn in `LABELS: dependencies,python:uv` và vẫn đỏ. Chỉ còn đường đóng/mở lại PR hoặc đẩy commit.
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
 
 jobs:
   # TÊN `metadata` LÀ BẤT BIẾN (required status check của branch protection `main`).
