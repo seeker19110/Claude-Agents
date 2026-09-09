@@ -16,7 +16,7 @@ File trạng thái duy nhất: `docs/thi-hanh/<mã>.md` (ngoại lệ: mã `4l` 
    yêu cầu trả lời kèm `file:dòng`, factual. Gộp thành phần A theo khung §5 của khuôn. Mọi ô thiếu trỏ tới một mã
    việc.
 2. **Giai đoạn 2 — Kế hoạch.** Viết bảng B. Mỗi việc: gắn vào hạng mục lộ trình đã có (`docs/DAC-TA-KICH-BAN-B.md`,
-   `docs/DAC-TA-NANG-CAP-2026-09.md`) hoặc là PR nhỏ độc lập; mức C1/C2/C3 theo §2 khuôn; "cố ý không làm" có lý do.
+   `docs/archive/DAC-TA-NANG-CAP-2026-09.md`) hoặc là PR nhỏ độc lập; mức C1/C2/C3 theo §2 khuôn; "cố ý không làm" có lý do.
 3. **Giai đoạn 3 — Gói việc.** Với mỗi mã: **đọc code thật** ở các file sẽ chạm (chữ ký hàm, hằng, test hiện có)
    rồi mới viết khối 7 mục. Mục 5 = khung code mức chữ ký; mục 7 = ca test bắt buộc kèm ca chiều ngược + tiêu đề PR.
 4. **Giai đoạn 4 — Điều phối.** Bảng đợt (≤ 3 gói song song/đợt, PR tuần tự), `sc-*` chấm gói nào.

@@ -1,7 +1,7 @@
 # Đặc tả kịch bản B — nền tảng "công ty AI" trên một lõi chung
 
-Ngày lập: 2026-09-06 · Căn cứ: `docs/DANH-GIA-VA-TAM-NHIN-2026-09.md` (§5 chọn kịch bản B, §7 bốn quyết định),
-`docs/DAC-TA-NANG-CAP-2026-09.md` (40 mục, sáu đợt), khảo sát mã nguồn tại `main@d7c8271`.
+Ngày lập: 2026-09-06 · Căn cứ: `docs/archive/DANH-GIA-VA-TAM-NHIN-2026-09.md` (§5 chọn kịch bản B, §7 bốn quyết định),
+`docs/archive/DAC-TA-NANG-CAP-2026-09.md` (40 mục, sáu đợt), khảo sát mã nguồn tại `main@d7c8271`.
 Tài liệu triển khai (PR theo PR, file:dòng): `docs/DAC-TA-TRIEN-KHAI-KICH-BAN-B.md`.
 
 Tài liệu này là **đặc tả mức epic**: mỗi mục nói *cái gì phải đúng* và *kiểm bằng lệnh nào*. Nó không thay đặc tả
