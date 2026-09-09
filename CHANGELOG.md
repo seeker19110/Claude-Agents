@@ -35,8 +35,12 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   còn một dòng đỏ "Server đọc được stream nhưng không đọc được bus" — không xem được gì. `company.events.Task`
   đã có sẵn `tu_log()` viết đúng cho việc đọc lại bản ghi trước ADR-0037/PR-5d (`assignee: "platform"` cũ chuyển
   thành `stack`), nhưng `collect._replay()` gọi thẳng `Task.model_validate()` nên bỏ qua đường tương thích đó.
-  Một dòng; 236 test + coverage 100% giữ nguyên. Rà cả họ lỗi: đây là chỗ DUY NHẤT trong `console/src` dựng
-  `Task` từ payload thô.
+  Một dòng mã, kèm **ca hồi quy còn thiếu**: bản vá gốc chỉ được "xác minh bằng mắt" — đo lại cho thấy hoàn
+  nguyên nó vẫn **259/259 xanh**, tức phủ 100% chỉ nói dòng ĐƯỢC CHẠY QUA, không nói hành vi được khẳng định.
+  Ca mới ghi bản ghi lịch sử THẲNG vào bảng `events` chứ không qua `bus.publish` (publish hôm nay validate theo
+  schema mới, nên không dựng nổi một bản ghi cũ). **Đo hai chiều**: hoàn nguyên `tu_log` → ĐỎ đúng
+  `collect.py:288 ValidationError`; khôi phục → 259 passed, coverage 100%. Rà cả họ lỗi: đây là chỗ DUY NHẤT
+  trong `console/src` dựng `Task` từ payload thô.
 
 - fix(core): **`gate.request` tin `env.actor`, không tin `created_by` tự khai** (#212). Phát hiện NGHIÊM TRỌNG
   còn lại của `sc-security` ở K3.7, pre-existing từ trước khi hợp nhất: `PersistentGate.apply()` đọc thẳng
