@@ -1119,3 +1119,59 @@ def test_mot_ca_loi_khong_duoc_xoa_ca_dang_tot_trong_ban_ghi(tmp_path, monkeypat
     data = json.loads(mot_ca.save().read_text(encoding="utf-8"))
     assert len(data["cases"]) == 11, "mười ca cũ phải còn nguyên, ca mới thêm vào"
     assert all(r.passed for r in run_eval("security", ReplayClient("security"))), "replay vẫn chạy được"
+
+
+def _chi_security(monkeypatch):
+    """`--record all` phải chạy được trong test mà không cần bản ghi/handler cho 12 agent kia."""
+    that = evals_mod.load_agents
+    monkeypatch.setattr(evals_mod, "load_agents", lambda: {"security": that()["security"]})
+    import company.llm as llm_mod
+    monkeypatch.setattr(llm_mod, "make_client",
+                        lambda: FakeClient(handler=_security_handler, tokens_per_call=(500, 40)))
+
+
+def test_don_khoa_rac_CHI_khi_chay_du_bo_khong_khi_chay_mot_agent_le(tmp_path, monkeypatch):
+    """`prune_to` là ngoại lệ có kiểm soát của "save() gộp, không ghi đè". Điều kiện của nó nằm ở CALL-SITE
+    (`ns.agent == "all"`), nên nó phải được đo ở call-site: kiểm mỗi `save(prune_to=…)` là bỏ sót đúng chỗ dễ
+    sai — chạy một agent lẻ mà dọn là xoá bản ghi của ca chưa chạy."""
+    monkeypatch.setattr(evals_mod, "RECORDINGS_DIR", tmp_path)
+    _chi_security(monkeypatch)
+    recording_path("security").write_text(json.dumps(
+        {"agent": "security", "prompt_version": 1, "cases": {"rac-cu": {"text": "x", "model": "m"}}}), encoding="utf-8")
+
+    assert evals_main(["security", "--record"]) == 0
+    cases = json.loads(recording_path("security").read_text(encoding="utf-8"))["cases"]
+    assert "rac-cu" in cases and len(cases) == 11, "một agent lẻ: KHÔNG dọn, khoá cũ phải còn nguyên"
+
+    assert evals_main(["all", "--record"]) == 0
+    cases = json.loads(recording_path("security").read_text(encoding="utf-8"))["cases"]
+    assert "rac-cu" not in cases and len(cases) == 10, "chạy đủ bộ: khoá không thuộc bộ ca hiện tại bị dọn"
+    assert stale_recordings(["security"]) == {}, "dọn rác không được làm mất khoá của ca hiện tại"
+
+
+def test_record_ghi_score_va_runs_vao_ban_ghi(tmp_path, monkeypatch):
+    monkeypatch.setattr(evals_mod, "RECORDINGS_DIR", tmp_path)
+    _chi_security(monkeypatch)
+    assert evals_main(["security", "--record", "--runs", "3"]) == 0
+    cases = json.loads(recording_path("security").read_text(encoding="utf-8"))["cases"]
+    assert all(e["runs"] == 3 and e["score"] == 1.0 for e in cases.values())
+
+    assert evals_main(["security", "--record"]) == 0
+    cases = json.loads(recording_path("security").read_text(encoding="utf-8"))["cases"]
+    assert all(e["runs"] == 1 for e in cases.values()), "lượt sau ghi đè `runs` chứ không cộng dồn"
+
+
+@pytest.mark.parametrize(("argv", "vi_sao"), [
+    (["security", "--runs", "3"], "chỉ có nghĩa với --record"),
+    (["security", "--replay", "--runs", "3"], "chỉ có nghĩa với --record"),
+    (["security", "--runs", "0"], "phải >= 1"),
+])
+def test_runs_lon_hon_1_chi_co_nghia_voi_record(argv, vi_sao, capsys):
+    """`--replay` TẤT ĐỊNH: khoá là hash(system, user), giá trị là `text` đã ghi. Chạy lại N lần ra đúng một
+    số, chỉ tốn N lần thời gian — nên đó là lỗi tham số, không phải một lựa chọn hợp lệ.
+
+    Khẳng định cả LÝ DO trong stderr, không chỉ `SystemExit`: argparse cũng thoát mã 2 khi không biết `--runs`,
+    nên một ca chỉ bắt `SystemExit` sẽ xanh cả khi tính năng chưa tồn tại."""
+    with pytest.raises(SystemExit):
+        evals_main(argv)
+    assert vi_sao in capsys.readouterr().err

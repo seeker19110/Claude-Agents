@@ -79,6 +79,17 @@ Prompt là code: đổi prompt mà không chạy lại các bước dưới đâ
    | Đường | Khi nào | Lệnh |
    |---|---|---|
    | Máy cá nhân | bạn có API key trên máy | `make eval-record AGENT=<id>` (thêm `--jobs 3` cho `AGENT=all`) |
+
+   **Điểm chấm dao động, và `--runs N` là chỗ duy nhất đo được nó.** Phát lại (`--replay`) là *tất định*: khoá
+   là `hash(system, user)` và giá trị là `text` đã ghi, nên chạy lại trăm lần ra đúng một số. Dao động sinh ra
+   lúc **ghi**. `make eval-record AGENT=<id> RUNS=3` chạy mỗi ca 3 lần và ghi thêm `score` (tỉ lệ đạt) cùng
+   `runs` vào bản ghi — thời gian chạy nhân lên đúng N lần (~2,5 phút/agent/lần), và giết ngang là mất **toàn
+   bộ** ca đã chấm vì `save()` chạy sau vòng lặp (`software-company/TRAPS.md`). `--runs > 1` mà không `--record`
+   bị từ chối ngay: nó chỉ tốn thời gian mà không đổi kết quả.
+
+   `score` là số đo **độ ổn định lúc ghi**, không phải nhãn pass/fail của câu trả lời được lưu — `text` giữ lần
+   chạy cuối, và replay vẫn chấm chính câu trả lời ấy bằng `check`. Nó **giảm** rủi ro đọc nhầm một lần đỏ thành
+   hồi quy; nó không **loại bỏ** dao động.
    | GitHub Actions | **không** có key trên máy, hoặc muốn ghi cả bộ | Actions → **eval-record** → Run workflow |
 
    Workflow `eval-record` nhận `package` (`company`/`studio`), `agents` (`all` hoặc danh sách), `provider`

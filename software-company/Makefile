@@ -35,8 +35,9 @@ assetbudget:   # prompt tĩnh chiếm bao nhiêu phần ngân sách token của 
 	uv run python -m company.assetscan budget . ../Studio-creators ../keeper
 eval:
 	uv run python -m company.evals $(AGENT)
-eval-record:   # chạy model thật, lưu evals/recordings/$(AGENT).json — bắt buộc sau khi đổi prompt/skill (ADR-0010)
-	uv run python -m company.evals $(AGENT) --record --jobs $(or $(JOBS),1)
+eval-record:   # RUNS=N chạy mỗi ca N lần và ghi `score` = tỉ lệ đạt (p3.3b); thời gian × N.
+               # chạy model thật, lưu evals/recordings/$(AGENT).json — bắt buộc sau khi đổi prompt/skill (ADR-0010)
+	uv run python -m company.evals $(AGENT) --record --jobs $(or $(JOBS),1) $(if $(RUNS),--runs $(RUNS),)
 eval-replay:   # như CI: phát lại từ bản ghi, không gọi model (đúng lệnh CI chạy, gồm cả --strict)
 	uv run python -m company.evals all --replay --strict
 eval-thresholds:  # BÍ DANH của eval-replay từ p3.3 (#224): trước đó eval-replay thiếu --strict nên hai lệnh
