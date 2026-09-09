@@ -6,6 +6,17 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(console): **console đọc lại bus có ticket cũ bằng `Task.tu_log`, không `model_validate`** (#241). Console
+  chết ngay ở `/api/stream` với `ValidationError: assignee Input should be 'builder'` và mặt kính trực ban chỉ
+  còn một dòng đỏ "Server đọc được stream nhưng không đọc được bus" — không xem được gì. `company.events.Task`
+  đã có sẵn `tu_log()` viết đúng cho việc đọc lại bản ghi trước ADR-0037/PR-5d (`assignee: "platform"` cũ chuyển
+  thành `stack`), nhưng `collect._replay()` gọi thẳng `Task.model_validate()` nên bỏ qua đường tương thích đó.
+  Một dòng mã, kèm **ca hồi quy còn thiếu**: bản vá gốc chỉ được "xác minh bằng mắt" — đo lại cho thấy hoàn
+  nguyên nó vẫn **259/259 xanh**, tức phủ 100% chỉ nói dòng ĐƯỢC CHẠY QUA, không nói hành vi được khẳng định.
+  Ca mới ghi bản ghi lịch sử THẲNG vào bảng `events` chứ không qua `bus.publish` (publish hôm nay validate theo
+  schema mới, nên không dựng nổi một bản ghi cũ). **Đo hai chiều**: hoàn nguyên `tu_log` → ĐỎ đúng
+  `collect.py:288 ValidationError`; khôi phục → 259 passed, coverage 100%. Rà cả họ lỗi: đây là chỗ DUY NHẤT
+  trong `console/src` dựng `Task` từ payload thô.
 - feat(keeper): **hạ tầng eval + bản ghi bằng model thật (gói sub CLI)** (#239). `keeper` là package duy nhất trong sáu package chưa có cổng eval; nay có `evals.py`, 4 bộ ca (21 ca), job CI `keeper-eval-replay` nối vào `needs` của `quality`. **Model thật bắt hai lỗi prompt mà unit test không thấy**: `triager` xếp `semver_jump: null` (pre-release) thành `low` hai lần liên tiếp — đúng ca suýt cho tự-merge một bản pre-release; và `release-clerk` viết một báo cáo bằng chứng MỘT CHIỀU thành "đã xác minh". `regression-guard` bị BỎ khỏi bộ ca sau khi đo: nó từ chối chép `before/after` từ lời kể của `patcher` — agent đúng, ca sai. Ghi bằng gói subscription CLI, không cần API key. 532 test, phủ 100% dòng + 100% nhánh.
 - fix(keeper): **xử lý nốt phát hiện audit — phép (d) cho drift, cổng phủ NHÁNH cho core/keeper** (#227). Bốn việc còn mở sau #226. (1) **Phép (d) `changelog_placeholder_drift`**: bốn ca thiếu dòng CHANGELOG hôm 2026-09-09 thì **ba là "quên ĐIỀN SỐ"** chứ không phải "quên viết dòng" (#161/#192 có mô tả đủ mà không có `(#n)`; #208 để nguyên `(#PENDING)`) — phép (c) mù với cả ba khi dòng đã tồn tại, và chỉ bắt được sau khi PR đã merge. Phép mới bắt NGAY, **thuần đọc file nên không phụ thuộc độ sâu clone** (khác phép (c) — đúng chỗ đã làm tôi mù ở #226). Lọc code span trước khi dò: chính CHANGELOG này *kể lại* các ca placeholder bằng văn xuôi, và một bộ dò báo động vì tài liệu MÔ TẢ nó là bộ dò người ta sẽ tắt. (2) **`CHANGELOG.md:677` còn `(#PRNUM)`** từ 2026-09-06 → điền `(#107)`, đo từ `git log`. (3) **`CONTRIBUTING.md` ghi `fail_under` 90/84/73** trong khi cả sáu package đã là **100** từ lâu — số liệu sai trong tài liệu hướng dẫn đóng góp là thứ người mới tin đầu tiên. (4) **`dependabot.yml` thiếu hẳn `xagents-core` và `keeper`** — hai package không được quét phụ thuộc, mà `xagents-core` là lõi cả sáu package dùng chung. **Cổng phủ nhánh**: đo được **198/4966 nhánh chưa phủ** dù cả sáu xanh 100% *dòng*; `branch = true` bật cho `xagents-core` (9 nhánh) và `keeper` (3) sau khi vá hết bằng test thật — 12 test mới, không nới ngưỡng, một `pragma: no cover` duy nhất cho stub `Protocol` `ModelClient.complete` (thân `...` là khai báo kiểu, không có đường chạy tới). Bốn package còn lại giữ nguyên, khoảng cách đã đo và ghi: console 12, gateway 27, Studio-creators 60, software-company 87. **Đo hai chiều**: hoàn nguyên `(#107)` → phép (d) exit **1** đúng dòng 677; khôi phục → exit **0**. core 458 test, keeper 471, cả hai 100% dòng + 100% nhánh.
 - docs(keeper): **điền số PR thật vào bảng theo dõi, ghi mục kết `/thi-hanh keeper`** (#225). Bảng §B còn `#PR` ở BT3–BT8 vì `sed` khi tạo từng PR khớp chuỗi `(#PR)` CÓ NGOẶC (khuôn dòng CHANGELOG) còn bảng viết `**xong #PR**` không ngoặc. Bảng này là nguồn sự thật duy nhất của đề bài (§11 của đặc tả đã trỏ về nó), nên để sai chính là thứ nó sinh ra để chống. Kèm mục kết phiên: nghiệm thu 3 063 test trên `main@64a9414`, hai việc `chờ người` (eval-record cần model thật, canary BT8 chưa chạy), ba khuôn lỗi lặp lại suốt tám gói.
@@ -30,17 +41,6 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   đã đo và vá cùng lỗi này 2026-09-05 (`CLI_NO_TOOL_TURNS`), studio không được port — nay port sang. Đo hai
   chiều bằng chính model thật: trước 1/2 pass, sau 2/2 pass; test cũ khẳng định `== "1"` sửa thành `> 1`.
 - feat(keeper): **BT5 — patcher trên worktree riêng, đường cấm, chạy khô** (#217). Ba thao tác (`bump_dependency`, `regen_derived`, `fix_docs`); `keeper run --dry-run` không chạm file nào (đo bằng hash cây thư mục). **`sc-security` bắt 4 lỗ, đã sửa**: đường GHI không có chốt checkout chung và `--root` mặc định `"."` (gõ trong checkout chung là ghi thẳng vào nó); `_changed_files` nuốt lỗi `git` nên chốt sau-khi-chạy thành rỗng; chốt `fail_under` chỉ đếm dòng nên đổi header TOML là lọt (nay parse `tomllib` và so GIÁ TRỊ); `.github/` và `.git/` không nằm trong bảng cấm — tức `keeper` gỡ được chính cổng CI đang ép nó. 272 test, phủ 100%.
-- fix(console): **console đọc lại bus có ticket cũ bằng `Task.tu_log`, không `model_validate`** (#PR). Console
-  chết ngay ở `/api/stream` với `ValidationError: assignee Input should be 'builder'` và mặt kính trực ban chỉ
-  còn một dòng đỏ "Server đọc được stream nhưng không đọc được bus" — không xem được gì. `company.events.Task`
-  đã có sẵn `tu_log()` viết đúng cho việc đọc lại bản ghi trước ADR-0037/PR-5d (`assignee: "platform"` cũ chuyển
-  thành `stack`), nhưng `collect._replay()` gọi thẳng `Task.model_validate()` nên bỏ qua đường tương thích đó.
-  Một dòng mã, kèm **ca hồi quy còn thiếu**: bản vá gốc chỉ được "xác minh bằng mắt" — đo lại cho thấy hoàn
-  nguyên nó vẫn **259/259 xanh**, tức phủ 100% chỉ nói dòng ĐƯỢC CHẠY QUA, không nói hành vi được khẳng định.
-  Ca mới ghi bản ghi lịch sử THẲNG vào bảng `events` chứ không qua `bus.publish` (publish hôm nay validate theo
-  schema mới, nên không dựng nổi một bản ghi cũ). **Đo hai chiều**: hoàn nguyên `tu_log` → ĐỎ đúng
-  `collect.py:288 ValidationError`; khôi phục → 259 passed, coverage 100%. Rà cả họ lỗi: đây là chỗ DUY NHẤT
-  trong `console/src` dựng `Task` từ payload thô.
 
 - fix(core): **`gate.request` tin `env.actor`, không tin `created_by` tự khai** (#212). Phát hiện NGHIÊM TRỌNG
   còn lại của `sc-security` ở K3.7, pre-existing từ trước khi hợp nhất: `PersistentGate.apply()` đọc thẳng
