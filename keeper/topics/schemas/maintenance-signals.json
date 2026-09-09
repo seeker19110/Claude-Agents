@@ -94,6 +94,20 @@
           "default": "keeper",
           "title": "Source",
           "type": "string"
+        },
+        "severity": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical",
+            null
+          ],
+          "description": "Mức nghiêm trọng do nguồn NGOÀI khai (Dependabot, code scanning). Không moi từ `detail`: detail là văn bản không tin cậy."
         }
       },
       "required": [
