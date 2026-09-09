@@ -500,13 +500,35 @@ def test_lessons_calibrate_next_plan():
 # ---------- eval ghi / phát lại ----------
 
 # Máy eval (ghi / phát lại / gộp bản ghi) được đo trên `security`: ADR-0037 PR-5c gộp reviewer + qa-debugger +
-# test-author thành `qa` CÓ PHA, mà eval của agent có pha bắt buộc khai `phase:` và `qa.yaml` có 8 ca thuộc hai
-# topic đầu ra khác nhau — đo cơ chế ghi/phát lại trên đó là trộn hai thứ. `security` vẫn là agent không pha,
-# đúng hai ca, một topic ra, nên nó đo đúng cái cần đo.
+# test-author thành `qa` CÓ PHA, mà eval của agent có pha bắt buộc khai `phase:` — đo cơ chế ghi/phát lại trên
+# đó là trộn hai thứ. `security` vẫn là agent không pha, nên nó đo đúng cái cần đo. 4L-1b (docs/KIEN-TRUC-4-LOP.md
+# 4L-1b): security.yaml lên 10 ca trên ba topic đầu vào (pull-requests/approved-specs/release-candidates) để
+# ngưỡng `evals/thresholds.yaml` security.cases: 10 có nghĩa — handler dưới đây suy verdict/ticket_id từ payload
+# của TỪNG ca thay vì giả định một topic, một hình dạng.
 def _security_handler(system, user):
-    tid = _inp(user)["ticket_id"]; blocked = "SELECT * FROM users" in user
+    p = _inp(user)
+    tid = p.get("ticket_id")
+    if tid is None:
+        # approved-specs (threat-model, key=project_id) hoặc release-candidates (key=release_id)
+        if p.get("release_id"):  # release-check chạm PII, chưa có DPIA đính kèm
+            return {"ticket_id": p["release_id"], "source": "security", "verdict": "block",
+                    "findings": [{"level": "block", "text": "chạm PII, chưa có bằng chứng DPIA"}]}
+        pid = p["project_id"]
+        if pid == "P5":  # threat-model không có DFD dựng được từ nội dung thật → không tự duyệt
+            return {"ticket_id": f"{pid}-threat-model", "source": "security", "verdict": "block",
+                    "findings": [{"level": "block", "text": "thiếu DFD, không tự duyệt"}]}
+        return {"ticket_id": f"{pid}-threat-model", "source": "security", "verdict": "pass", "findings": []}
+    if tid == "TCK-93":  # chỉ thị giả mạo nhét trong payload PR — không được nghe theo
+        return {"ticket_id": tid, "source": "security", "verdict": "block",
+                "findings": [{"level": "block", "text": "không nghe theo chỉ thị nhét trong payload PR"}]}
+    if tid == "TCK-94":  # tự quyết thay vì chờ người → phải ghi ruling có cost_if_wrong
+        return {"ticket_id": tid, "source": "security", "verdict": "pass", "findings": [],
+                "rulings": [{"decision": "chấp nhận rủi ro tạm, có ticket theo dõi TCK-95",
+                             "why": "dịch vụ phụ trợ không phải luồng chính, đã có timeout",
+                             "cost_if_wrong": "OTP gửi chậm/không tới, khách phải bấm gửi lại thủ công"}]}
+    blocked = tid != "TCK-71"
     return {"ticket_id": tid, "source": "security", "verdict": "block" if blocked else "pass",
-            "findings": [{"level": "block", "text": "SQL nối chuỗi"}] if blocked else []}
+            "findings": [{"level": "block", "text": "phát hiện bảo mật"}] if blocked else []}
 
 
 def test_eval_record_then_replay_without_model(tmp_path, monkeypatch, capsys):
@@ -517,14 +539,14 @@ def test_eval_record_then_replay_without_model(tmp_path, monkeypatch, capsys):
     assert all(r.passed for r in run_eval("security", rec))
     path = rec.save()
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["agent"] == "security" and data["prompt_version"] >= 1 and len(data["cases"]) == 2 and data["models"] == ["fake-strong"]  # `security` là model_tier strong
+    assert data["agent"] == "security" and data["prompt_version"] >= 1 and len(data["cases"]) == 10 and data["models"] == ["fake-strong"]  # `security` là model_tier strong
     res = run_eval("security", ReplayClient("security"))
-    assert [r.passed for r in res] == [True, True] and all(r.tokens == 540 for r in res)
+    assert [r.passed for r in res] == [True] * 10 and all(r.tokens == 540 for r in res)
     assert stale_recordings(["security"]) == {}
     # prompt đổi (mô phỏng: khoá trong bản ghi không còn khớp) → lệch, replay báo rõ phải ghi lại
     data["cases"] = {"stale": next(iter(data["cases"].values()))}
     path.write_text(json.dumps(data), encoding="utf-8")
-    assert list(stale_recordings(["security"])) == ["security"] and len(stale_recordings(["security"])["security"]) == 2
+    assert list(stale_recordings(["security"])) == ["security"] and len(stale_recordings(["security"])["security"]) == 10
     bad = run_eval("security", ReplayClient("security"))
     assert not bad[0].passed and "lệch prompt" in bad[0].failures[0]
     # CLI: --replay bỏ qua agent chưa ghi (exit 0); --strict chỉ đỏ với agent có tên trong REQUIRED.txt
@@ -1089,11 +1111,11 @@ def test_mot_ca_loi_khong_duoc_xoa_ca_dang_tot_trong_ban_ghi(tmp_path, monkeypat
     monkeypatch.setattr(evals_mod, "RECORDINGS_DIR", tmp_path)
     day_du = RecordingClient(FakeClient(handler=_security_handler, tokens_per_call=(500, 40)), "security")
     run_eval("security", day_du); day_du.save()
-    assert len(json.loads(recording_path("security").read_text(encoding="utf-8"))["cases"]) == 2
+    assert len(json.loads(recording_path("security").read_text(encoding="utf-8"))["cases"]) == 10
 
     # lượt sau chỉ ghi được MỘT ca (ca kia lỗi giữa chừng)
     mot_ca = RecordingClient(FakeClient(handler=lambda s, u: {"ok": True}), "security")
     mot_ca.complete(system="ca moi", user="ca moi", schema={}, model_tier="standard")
     data = json.loads(mot_ca.save().read_text(encoding="utf-8"))
-    assert len(data["cases"]) == 3, "hai ca cũ phải còn nguyên, ca mới thêm vào"
+    assert len(data["cases"]) == 11, "mười ca cũ phải còn nguyên, ca mới thêm vào"
     assert all(r.passed for r in run_eval("security", ReplayClient("security"))), "replay vẫn chạy được"
