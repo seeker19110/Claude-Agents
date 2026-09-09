@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- fix(core): **`HumanGate.request()` từ chối `created_by` rỗng/None** (#PR_NUMBER). Lỗ hổng bypass four-eyes
+- fix(core): **`HumanGate.request()` từ chối `created_by` rỗng/None** (#199). Lỗ hổng bypass four-eyes
   pre-existing (có trước K3.7): `decide()` chỉ kiểm `if req.created_by and req.created_by == by`, nên
   `created_by` rỗng/None ngắn mạch điều kiện, cho phép người tạo tự duyệt gate của chính mình. `request()` nay
   chặn tại nguồn (allowlist mặc định từ chối) thay vì để lộ ở `decide()`. Rà `GateRequest(` toàn repo: mọi call
