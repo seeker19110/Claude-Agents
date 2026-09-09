@@ -37,9 +37,10 @@ eval:
 	uv run python -m company.evals $(AGENT)
 eval-record:   # chạy model thật, lưu evals/recordings/$(AGENT).json — bắt buộc sau khi đổi prompt/skill (ADR-0010)
 	uv run python -m company.evals $(AGENT) --record --jobs $(or $(JOBS),1)
-eval-replay:   # như CI: phát lại từ bản ghi, không gọi model
-	uv run python -m company.evals all --replay
-eval-thresholds:  # như eval-replay --strict, in rõ agent nào tụt dưới evals/thresholds.yaml (4L-1a)
+eval-replay:   # như CI: phát lại từ bản ghi, không gọi model (đúng lệnh CI chạy, gồm cả --strict)
+	uv run python -m company.evals all --replay --strict
+eval-thresholds:  # BÍ DANH của eval-replay từ p3.3 (#PR-TAM): trước đó eval-replay thiếu --strict nên hai lệnh
+                  # khác nhau; nay giống hệt. Giữ tên vì CONTRIBUTING.md §3 dẫn nó khi xem agent nào tụt ngưỡng.
 	uv run python -m company.evals all --replay --strict
 run:
 	uv run python -m company.orchestrator run

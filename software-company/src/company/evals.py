@@ -27,14 +27,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
 from xagents_core.evals import CaseResult as CaseResult
 from xagents_core.evals import EvalSuite
 from xagents_core.evals import RecordingClient as CoreRecordingClient
 from xagents_core.evals import ReplayClient as CoreReplayClient
+from xagents_core.evals import Threshold as Threshold
 from xagents_core.evals import _get as _core_get
 from xagents_core.evals import _Probe as _Probe
 from xagents_core.evals import check as check
+from xagents_core.evals import check_thresholds as check_thresholds
+from xagents_core.evals import load_thresholds as _core_load_thresholds
 from xagents_core.evals import prompt_key as prompt_key
 
 from .blackboard import Blackboard
@@ -149,57 +151,12 @@ class _AgentOutcome:
         return sum(r.passed for r in self.res)
 
 
-@dataclass(frozen=True)
-class Threshold:
-    """Sàn điểm của một agent (4L-1a). `cases` chống thu nhỏ bộ ca để né `min_pass_ratio`: xoá bớt ca xấu
-    làm ratio đẹp lên nhưng `total` tụt dưới `cases` thì vẫn đỏ."""
-    min_pass_ratio: float
-    cases: int
-
-
 DEFAULT_THRESHOLDS_PATH = EVALS_DIR / "thresholds.yaml"
 
 
 def load_thresholds(path: Path | None = None) -> dict[str, Threshold]:
-    """Không có file → `{}` (tính năng không áp, không phải lỗi — agent mới chưa kịp có ngưỡng).
-    Có file nhưng sai hình (không phải mapping, thiếu trường) → `LLMError` rõ ràng thay vì KeyError mù mờ."""
-    p = path or DEFAULT_THRESHOLDS_PATH
-    if not p.exists():
-        return {}
-    try:
-        raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-    except yaml.YAMLError as e:
-        raise LLMError(f"{p}: sai cú pháp YAML: {e}") from e
-    if not isinstance(raw, dict):
-        raise LLMError(f"{p}: phải là mapping agent -> {{min_pass_ratio, cases}}")
-    out: dict[str, Threshold] = {}
-    for aid, v in raw.items():
-        if not isinstance(v, dict) or "min_pass_ratio" not in v or "cases" not in v:
-            raise LLMError(f"{p}: {aid} thiếu `min_pass_ratio` hoặc `cases`")
-        try:
-            out[aid] = Threshold(min_pass_ratio=float(v["min_pass_ratio"]), cases=int(v["cases"]))
-        except (TypeError, ValueError) as e:
-            raise LLMError(f"{p}: {aid} có `min_pass_ratio`/`cases` không phải số: {e}") from e
-    return out
-
-
-def check_thresholds(outcomes: list[_AgentOutcome], th: dict[str, Threshold]) -> list[str]:
-    """Dòng FAIL cho agent tụt dưới sàn (4L-1a). Tính SAU khi mọi outcome đã gom xong (dùng được với `--jobs`).
-    Agent không có trong `th` → không áp (agent mới, hoặc cố ý chưa đặt ngưỡng); `total == 0` → không áp
-    (không có ca eval thì không có gì để chấm, tránh chia 0 và tránh đỏ oan agent chưa có bộ ca)."""
-    fails: list[str] = []
-    for o in outcomes:
-        t = th.get(o.agent_id)
-        if t is None or o.total == 0:
-            continue
-        ratio = o.passed / o.total
-        if ratio < t.min_pass_ratio:
-            fails.append(f"FAIL {o.agent_id}: điểm {ratio:.2f} dưới ngưỡng {t.min_pass_ratio:.2f} "
-                        f"({o.passed}/{o.total} ca) — evals/thresholds.yaml")
-        if o.total < t.cases:
-            fails.append(f"FAIL {o.agent_id}: bộ ca còn {o.total} dưới ngưỡng {t.cases} ca — "
-                        f"bộ ca bị thu nhỏ, evals/thresholds.yaml")
-    return fails
+    """Đường dẫn mặc định là NGHĨA của company; cơ chế đọc/kiểm hình ở core (p3.3)."""
+    return _core_load_thresholds(path or DEFAULT_THRESHOLDS_PATH)
 
 
 def _summary(outcomes: list[_AgentOutcome], th: dict[str, Threshold] | None = None) -> None:

@@ -38,17 +38,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import yaml
 
 from .llm import Completion, LLMError, ModelClient
 from .tools import ToolSpec
 
-__all__ = ["CaseResult", "EvalSuite", "RecordingClient", "ReplayClient", "check", "prompt_key"]
+__all__ = ["CaseResult", "EvalSuite", "RecordingClient", "ReplayClient", "ScoredOutcome", "Threshold",
+           "check", "check_thresholds", "load_thresholds", "prompt_key"]
 
 REQUIRED_NAME = "REQUIRED.txt"  # agent BẮT BUỘC có bản ghi tươi; thiếu hoặc lệch phiên bản prompt → CI đỏ
 
@@ -292,3 +294,79 @@ class EvalSuite:
         out = [f"{'PASS' if r.passed else 'FAIL'} {agent_id}/{r.name} ({r.tokens} tok)"
                + "".join(f"\n   - {f}" for f in r.failures) for r in res]
         return [*out, f"{agent_id}: {sum(r.passed for r in res)}/{len(res)} pass"]
+
+
+# ---------- Cổng điểm eval (4L-1a của company, p3.3 mở cho cả studio) ----------
+#
+# Cơ chế ở core, NGHĨA ở từng công ty (ADR-0001). Cụ thể: core không biết `evals/thresholds.yaml` nằm ở đâu —
+# đường dẫn do người gọi truyền vào; core cũng không biết một công ty gác cổng bằng cái gì (company tách
+# `gate_ok`/`cases_ok`, studio dùng một cờ) — `check_thresholds` chỉ TRẢ VỀ dòng FAIL, ai gọi thì tự quyết mã thoát.
+
+
+class ScoredOutcome(Protocol):
+    """Thứ tối thiểu `check_thresholds` cần biết về kết quả một agent.
+
+    Cố ý là Protocol chứ không phải một dataclass của core: `company._AgentOutcome` còn mang `gate_ok` và
+    `cases_ok` — chính sách cổng RIÊNG của company. Đưa chúng lên core là đưa nghĩa của một công ty vào lõi
+    chung; bắt company đổi sang một dataclass của core là buộc nó bỏ hai trường ấy hoặc thêm một lớp chuyển
+    đổi vô ích. Duck-typed thì cả hai công ty giữ nguyên kiểu của mình và core không biết gì thừa."""
+
+    @property
+    def agent_id(self) -> str: ...  # pragma: no cover
+
+    @property
+    def total(self) -> int: ...  # pragma: no cover
+
+    @property
+    def passed(self) -> int: ...  # pragma: no cover
+
+
+@dataclass(frozen=True)
+class Threshold:
+    """Sàn điểm của một agent. `cases` chống thu nhỏ bộ ca để né `min_pass_ratio`: xoá bớt ca xấu
+    làm ratio đẹp lên nhưng `total` tụt dưới `cases` thì vẫn đỏ."""
+    min_pass_ratio: float
+    cases: int
+
+
+def load_thresholds(path: Path) -> dict[str, Threshold]:
+    """Không có file → `{}` (tính năng không áp, không phải lỗi — agent mới chưa kịp có ngưỡng).
+    Có file nhưng sai hình (không phải mapping, thiếu trường) → `LLMError` rõ ràng thay vì KeyError mù mờ.
+
+    `path` BẮT BUỘC: core dùng chung hai công ty nên không được hằng hoá `evals/` của một bên nào."""
+    if not path.exists():
+        return {}
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as e:
+        raise LLMError(f"{path}: sai cú pháp YAML: {e}") from e
+    if not isinstance(raw, dict):
+        raise LLMError(f"{path}: phải là mapping agent -> {{min_pass_ratio, cases}}")
+    out: dict[str, Threshold] = {}
+    for aid, v in raw.items():
+        if not isinstance(v, dict) or "min_pass_ratio" not in v or "cases" not in v:
+            raise LLMError(f"{path}: {aid} thiếu `min_pass_ratio` hoặc `cases`")
+        try:
+            out[aid] = Threshold(min_pass_ratio=float(v["min_pass_ratio"]), cases=int(v["cases"]))
+        except (TypeError, ValueError) as e:
+            raise LLMError(f"{path}: {aid} có `min_pass_ratio`/`cases` không phải số: {e}") from e
+    return out
+
+
+def check_thresholds(outcomes: Iterable[ScoredOutcome], th: dict[str, Threshold]) -> list[str]:
+    """Dòng FAIL cho agent tụt dưới sàn. Tính SAU khi mọi outcome đã gom xong (dùng được với `--jobs`).
+    Agent không có trong `th` → không áp (agent mới, hoặc cố ý chưa đặt ngưỡng); `total == 0` → không áp
+    (không có ca eval thì không có gì để chấm, tránh chia 0 và tránh đỏ oan agent chưa có bộ ca)."""
+    fails: list[str] = []
+    for o in outcomes:
+        t = th.get(o.agent_id)
+        if t is None or o.total == 0:
+            continue
+        ratio = o.passed / o.total
+        if ratio < t.min_pass_ratio:
+            fails.append(f"FAIL {o.agent_id}: điểm {ratio:.2f} dưới ngưỡng {t.min_pass_ratio:.2f} "
+                        f"({o.passed}/{o.total} ca) — evals/thresholds.yaml")
+        if o.total < t.cases:
+            fails.append(f"FAIL {o.agent_id}: bộ ca còn {o.total} dưới ngưỡng {t.cases} ca — "
+                        f"bộ ca bị thu nhỏ, evals/thresholds.yaml")
+    return fails
