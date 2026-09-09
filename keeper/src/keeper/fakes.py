@@ -50,7 +50,8 @@ class FakeGitHub:
         self._count("workflow_runs")
         return [
             WorkflowRun(databaseId=1, name="ci", status="completed", conclusion="success", headSha="abc123",
-                        createdAt="2026-09-08T00:00:00Z"),
+                        createdAt="2026-09-08T00:00:00Z", startedAt="2026-09-08T00:00:00Z",
+                        updatedAt="2026-09-08T00:00:12Z"),
         ]
 
     def merged_prs(self, since: str) -> list[PullRequest]:
