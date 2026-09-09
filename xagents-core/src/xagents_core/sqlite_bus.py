@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
@@ -151,9 +152,16 @@ class LeaseError(BusError): ...
 def _alive(pid: int) -> bool:
     """Tiến trình còn sống? Không dùng os.kill(pid, 0) trên Windows (ở đó nó TerminateProcess)."""
     if pid <= 0: return False
-    if os.name == "nt":
+    # `sys.platform` chứ không `os.name`: mypy THU HẸP theo `sys.platform` (PEP 484) nhưng không theo
+    # `os.name`. Với `os.name == "nt"`, mypy chạy trên Linux vẫn soi thân khối và đỏ ở `ctypes.windll`
+    # (`windll` chỉ tồn tại trên Windows), nên phải chú `# type: ignore[attr-defined]` — mà chú ấy lại THỪA
+    # khi mypy chạy trên Windows, và core bật `strict` nên "thừa" cũng là lỗi. Hệ quả trước 2026-09-09:
+    # `mypy src/xagents_core` KHÔNG BAO GIỜ xanh được trên cả hai nền tảng cùng lúc, và vì `core-static` chỉ
+    # chạy ubuntu nên CI không thấy nửa còn lại. Với `sys.platform` thì trên Linux cả khối là unreachable và
+    # trên Windows `windll` có thật — sạch ở cả hai, không cần chú nào.
+    if sys.platform == "win32":
         import ctypes
-        k32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        k32 = ctypes.windll.kernel32
         h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
         if not h: return False
         k32.CloseHandle(h); return True

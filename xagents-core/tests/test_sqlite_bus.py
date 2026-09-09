@@ -152,12 +152,14 @@ def test_del_nuot_loi_khi_dong_that_bai(bus):
 # ---------- Lease ----------
 
 def test_alive_tren_windows_dung_openprocess(monkeypatch):
+    """Nhánh nền tảng rẽ theo `sys.platform`, không phải `os.name` — xem chú thích trong `_alive`: chỉ
+    `sys.platform` mới cho mypy thu hẹp, nên chỉ nó mới làm `mypy` sạch trên CẢ Linux lẫn Windows."""
     calls: list[tuple] = []
 
     class _K32:
         def OpenProcess(self, flags, inherit, pid): calls.append((flags, pid)); return 0 if pid == 404 else 7
         def CloseHandle(self, h): calls.append(("close", h))
-    monkeypatch.setattr(SB.os, "name", "nt")
+    monkeypatch.setattr(SB.sys, "platform", "win32")
     monkeypatch.setitem(sys.modules, "ctypes", types.SimpleNamespace(windll=types.SimpleNamespace(kernel32=_K32())))
     assert SB._alive(404) is False           # OpenProcess trả handle rỗng → coi như đã chết
     assert SB._alive(123) is True and ("close", 7) in calls
@@ -165,7 +167,7 @@ def test_alive_tren_windows_dung_openprocess(monkeypatch):
 
 
 def test_alive_permission_error_la_con_song(monkeypatch):
-    monkeypatch.setattr(SB.os, "name", "posix")
+    monkeypatch.setattr(SB.sys, "platform", "linux")
 
     def kill(pid, sig): raise PermissionError
     monkeypatch.setattr(SB.os, "kill", kill)
@@ -174,7 +176,7 @@ def test_alive_permission_error_la_con_song(monkeypatch):
 
 @pytest.mark.parametrize("pid", [0, 2 ** 22 - 1])
 def test_alive_pid_khong_hop_le_hoac_da_chet(pid, monkeypatch):
-    monkeypatch.setattr(SB.os, "name", "posix")
+    monkeypatch.setattr(SB.sys, "platform", "linux")
 
     def kill(p, sig): raise ProcessLookupError
     monkeypatch.setattr(SB.os, "kill", kill)
@@ -182,7 +184,7 @@ def test_alive_pid_khong_hop_le_hoac_da_chet(pid, monkeypatch):
 
 
 def test_alive_nhan_ra_tien_trinh_dang_chay(monkeypatch):
-    monkeypatch.setattr(SB.os, "name", "posix")
+    monkeypatch.setattr(SB.sys, "platform", "linux")
     assert SB._alive(os.getpid()) is True     # `os.kill(pid, 0)` không ném: còn sống
 
 
