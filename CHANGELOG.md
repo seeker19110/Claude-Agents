@@ -6,6 +6,11 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(core): **`gate.request` tin `env.actor`, không tin `created_by` tự khai** (#PENDING). Phát hiện NGHIÊM TRỌNG
+  còn lại của `sc-security` ở K3.7, pre-existing từ trước khi hợp nhất: `PersistentGate.apply()` đọc thẳng
+  `created_by` trong evidence của một topic MỞ, nên một envelope `gate.request` mang `created_by` bịa là đủ để
+  chính người ghi tự duyệt gate của mình (four-eyes ở `decide()` so nhầm với tên bịa). Nay `created_by` lấy từ
+  `env.actor` — cùng bất biến `trusted_decision` đã áp cho `gate.decide`. ADR-0002; ca test đo hai chiều.
 - feat(keeper): **BT2 — adapter `gh` chỉ đọc, bộ đệm TTL, `FakeGitHub`** (#211). Bất biến I1 (`keeper` không có quyền ghi) thành mã: `_run()` ném `GitHubWriteAttempt` trước khi chạm subprocess. **Bảng chặn của đặc tả có lỗ, đo được ở đây**: `gh api` chuyển sang POST ngay khi có `-f/-F/--field/--raw-field/--input` mà không cần `-X`, nên `gh api repos/o/r/pulls/1/merge -f x=y` lọt qua bảng gốc — thêm năm cờ đó. Bộ đệm TTL 60s theo argv, đồng hồ tiêm được nên test không `sleep`. 61 test, phủ 100%.
 - feat(keeper): **BT1 — khung package thứ sáu, CoreConfig và topic** (#210). Cơ sở hạ tầng package, mô hình dữ liệu, schema topic bảo trì; mỗi phần có test đo hai chiều.
 - docs(keeper): **BT0 — đổi tên công ty bảo trì thành `keeper` + đặc tả triển khai** (#207). ADR-0006 đổi

@@ -95,7 +95,12 @@ class PersistentGate(HumanGate, Generic[E, A]):
         if a.action == "gate.request":
             if not isinstance(d.get("kind"), str): return
             if sid not in self.pending and not any(r.subject_id == sid and r.created_at == env.ts for r in self.history):
-                super().request(self.request_cls(created_at=env.ts, **self._request_kwargs(d)))
+                # `created_by` LẤY TỪ `env.actor`, không phải từ evidence tự khai (ADR-0002): `audit-log` là
+                # topic mở, nên evidence là lời khai của người ghi, còn `env.actor` là thứ bus thật sự kiểm —
+                # cùng một bất biến `trusted_decision` áp cho `gate.decide`, nay áp nốt cho `gate.request`.
+                # Người ghi bịa `created_by` của người khác thì four-eyes ở `decide()` bị vô hiệu.
+                kw = {**self._request_kwargs(d), "created_by": env.actor}
+                super().request(self.request_cls(created_at=env.ts, **kw))
         elif sid in self.pending:
             # `_trusted` (không phải đọc `d` thô ở trên): actor không đáng tin thì KHÔNG được đóng gate, dù
             # `apply` chạy trong tiến trình nào (CLI, orchestrator, replay lúc mở bus) — bản ghi mạo danh trước
