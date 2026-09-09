@@ -6,6 +6,26 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(core): **K3.6d2 — `AgentRunner` (phần ngoài) lên `xagents_core`; K3.6 XONG** (#PR). Nguyên tắc của
+  bước này gắt hơn mọi bước trước: *cơ chế lên core, **hành vi quan sát được của mỗi công ty giữ nguyên từng
+  byte***. Lên core: `__init__`, `_audit`, `run`, `run_context`, `write_context`, `publish`. Ở lại từng công ty:
+  `generate` và vòng lặp tool (chúng dựng prompt — prompt là khoá bản ghi eval, xem K3.6d1),
+  `generate_in_workspace`/`author_tests` (phụ thuộc `workspace.py`), `_filter_comments` (studio).
+  **Hai chỗ "lấy bản company" sẽ đổi hành vi studio âm thầm; cả hai giải bằng THAM SỐ chứ không bằng quyết
+  định**, nên không bên nào mất gì: (1) `write_context` của company audit `context_no_content` khi thiếu toàn
+  văn, mà `context_writes` của studio **không bao giờ có `content`** → chép nguyên bản là mỗi lần ghi context
+  của studio sinh một audit rác; nay là cờ `wants_content` (mặc định `False`). (2) `publish` của company dựng
+  envelope bằng `inp.child(...)` (nối `correlation_id`/`causation_id`), studio dựng `Envelope(...)` mới → cho
+  studio `child()` là **đổi nội dung event trên bus**, nghe như cải tiến nhưng là thay đổi dữ liệu; nay là hook
+  `_new_envelope`. Hai hook nữa cùng loại: `_audit_scope` (trường phạm vi `AuditLog` — khuôn K3.5a) và
+  `_produced_evidence` (câu evidence của `produced:*`, hai công ty ghi hai thứ khác nhau vào sổ).
+  **Đo hai chiều lần đầu để lộ một lỗ hổng của chính bộ test**: bật `wants_content` và ép `_new_envelope` dùng
+  `child()` làm **ba ca của core đỏ nhưng cả 557 ca của studio vẫn xanh** — nghĩa là nếu ai đó "dọn" hai hook ấy
+  đi cho gọn thì studio ghi audit rác và đổi hình dạng event mà không có gì trong suite studio đỏ. Đã thêm
+  `Studio-creators/tests/test_runner_core.py` chốt đúng ba hành vi ấy; đo lại thì cả hai đột biến làm studio đỏ.
+  Nghiệm thu ràng buộc prompt: `evals all --replay` **0 FAIL** cả hai công ty. **Không sửa một dòng test nào**
+  của hai công ty (1057 + 560 xanh).
+
 - refactor(core): **K3.6d1 — khung runner lên `xagents_core`; K3.6d tách đôi vì BẢN GHI EVAL** (#194).
   **Ràng buộc thật của K3.6d không phải độ lệch mã, mà là bản ghi eval.** Khoá bản ghi là
   `hash(system_prompt, user_message)`, và `user_message` do `build_user_message` trong `runner.py` sinh ra.
