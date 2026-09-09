@@ -6,6 +6,29 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(core): **K3.6a — `registry` lên `xagents_core`; K3.6 tách làm bốn bước** (#188). Đặc tả gộp
+  `registry` + `blackboard` + `runner` + `evals` vào MỘT PR. Đo `difflib` trước khi làm cho thấy bốn module
+  lệch rất khác nhau — `evals` **0.556**, `registry` **0.429**, `blackboard` **0.092**, `runner` **0.036**
+  (631 dòng company vs 336 studio, 13 hàm chỉ company có) — nên gộp cả bốn là đúng thứ K3.3a và K3.5 đã học
+  được là không nên. Bốn bước: **a `registry`** (bước này) → b `blackboard` → c `evals` → d `runner`.
+  **Hình dạng lệch của `registry`: một bên là TẬP CON của bên kia.** Ba hàm chỉ company có (`_load_phases`,
+  `owned_skills`, `reads_full`) đều là *thêm vào*, không phải *khác đi*; `_split`, `load_skill`,
+  `CORE_SECTIONS` và thân `load_agents` của studio giống company gần như từng ký tự. Studio chưa có `phases`
+  (ADR-0037), `context_namespace_read` (ADR-0020), kiểm chủ quản skill (ADR-0008) — nó chưa cần, chứ không làm
+  khác. Nên core = bản company, studio chỉ khai thêm cái nó có riêng.
+  Hai thứ mỗi công ty đưa vào, cả hai là **dữ liệu**: (1) **`spec_cls`** — studio có trường `tools` (ADR-0007
+  của studio: `web` cho `fact-checker` và `trend-researcher`) mà core không được biết; `load_agents` dựng đúng
+  lớp con nên nó không rơi mất, cùng lý do `envelope_cls` ở bus. (2) **`check_owners`** — mặc định `True` như
+  company, **studio truyền `False` và đó là sự thật ĐO ĐƯỢC**: `skills/` của studio hiện có ba skill không agent
+  nào nạp đầy đủ (`content-policy`, `cost-estimation`, `finops`), bật cổng là studio đỏ ngay lần nạp đầu. Ba
+  skill ấy là nợ có thật của studio; `test_ba_skill_chua_co_agent_chu_quan_la_no_co_that_khong_phai_khau_vi`
+  ghi lại đúng danh sách ấy và sẽ đỏ khi nợ được trả — lúc đó việc phải làm là đổi mặc định thành `True`.
+  `ROOT`/`AGENTS_DIR`/`SKILLS_DIR` nay suy từ `CORE.root` (`CoreConfig` thêm `agents_dir`, `skills_dir` cạnh
+  `schema_dir`). Ba tên cũ `_split`, `_load_phases`, `load_skill(name, core_only)` giữ nguyên chữ ký ở shim nên
+  không nơi gọi nào phải đổi. 19 ca mới ở `xagents-core/tests/test_registry.py` dựng một công ty giả trên
+  tmp_path — không mượn `agents/` thật của công ty nào, vì ca đọc `agents/` thật sẽ đỏ theo mỗi lần sửa prompt.
+  Đo hai chiều: dựng `AgentSpec` core thay vì `spec_cls` → studio 7 ca đỏ (trong đó ca `tools`), trả lại → 8 xanh.
+
 - refactor(core): **K3.5c — `sqlite_bus` lên `xagents_core`; studio nhận khoá, `latest()` và bus dùng được từ
   thread khác** (#187). `difflib` giữa hai `sqlite_bus.py` là **0.442** — cao nhất trong ba module của K3.5, và
   lần này con số ấy đúng theo nghĩa đen: cùng `_DDL`, cùng cách nạp lại `_log` khi mở, cùng câu `INSERT`, cùng

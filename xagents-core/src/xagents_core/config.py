@@ -69,6 +69,16 @@ class CoreConfig:
         return self.root / "topics" / "schemas"
 
     @property
+    def agents_dir(self) -> Path:
+        """`agents/` — một file Markdown mỗi agent, front matter là hợp đồng của nó."""
+        return self.root / "agents"
+
+    @property
+    def skills_dir(self) -> Path:
+        """`skills/` — kiến thức nạp vào prompt theo tên (ADR-0008)."""
+        return self.root / "skills"
+
+    @property
     def approvers_env(self) -> str:
         """Biến khai danh sách người được duyệt gate (four-eyes). Suy ra từ `prefix` thay vì là một trường
         riêng: hai nguồn cho một sự thật thì sớm muộn chúng lệch."""

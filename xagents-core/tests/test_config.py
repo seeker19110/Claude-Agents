@@ -29,6 +29,8 @@ def test_duong_dan_suy_tu_root_khong_tu_vi_tri_cua_core():
     cfg = _cfg()
     assert cfg.config_file == Path("/x/software-company/llm.yaml")
     assert cfg.schema_dir == Path("/x/software-company/topics/schemas")
+    assert cfg.agents_dir == Path("/x/software-company/agents")
+    assert cfg.skills_dir == Path("/x/software-company/skills")
     khac = CoreConfig(prefix="STUDIO", root=Path("/y/Studio-creators"), db_name="studio.sqlite")
     assert khac.config_file == Path("/y/Studio-creators/llm.yaml")
 
