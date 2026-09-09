@@ -6,6 +6,10 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs: **thêm bước "quét toàn repo trước khi tạo PR" vào `QUY-TRINH-GIT.md` §5** (#242). Rút từ chính sự cố PR
+  #193 (đỏ cổng `metadata` vì thiếu dòng CHANGELOG khi cherry-pick sang nhánh khác). Bước 0 mới: `grep` dẫn
+  chiếu chết trên toàn repo (không chỉ package đang sửa), kiểm CHANGELOG + bảng theo dõi thi-hành, `git
+  status`/`git diff --check` trên toàn diff, và `gh pr list --state open` trước khi `gh pr create`.
 - fix(console): **console đọc lại bus có ticket cũ bằng `Task.tu_log`, không `model_validate`** (#241). Console
   chết ngay ở `/api/stream` với `ValidationError: assignee Input should be 'builder'` và mặt kính trực ban chỉ
   còn một dòng đỏ "Server đọc được stream nhưng không đọc được bus" — không xem được gì. `company.events.Task`
