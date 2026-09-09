@@ -87,6 +87,12 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   tmp_path — không mượn `agents/` thật của công ty nào, vì ca đọc `agents/` thật sẽ đỏ theo mỗi lần sửa prompt.
   Đo hai chiều: dựng `AgentSpec` core thay vì `spec_cls` → studio 7 ca đỏ (trong đó ca `tools`), trả lại → 8 xanh.
 
+- refactor(studio): **4L-6 — rẽ nhánh trên model đã validate; vá lỗ mạo danh gate** (#190). `_rework`/
+  `_publish_video` validate `ReviewResult`/`PublishEvent` trước khi rẽ nhánh; video đã live không gọi lại
+  adapter. **Bảo mật**: `trusted_decision` (`gate_cli.py`) trước đây mặc định TIN mọi actor trừ khi actor hình
+  người mà lệch `evidence.by` — actor `"orchestrator"` giả `by="human:x"` từng đẩy được video lên nền tảng
+  thật. Vá thành allowlist mặc định từ chối, đúng mẫu `company/gate_cli.py`. `PersistentGate.apply`/
+  `_rehydrate` cùng lỗ, cùng vá. Phát hiện bởi `sc-security` khi chấm gói.
 - refactor(core): **K3.5c — `sqlite_bus` lên `xagents_core`; studio nhận khoá, `latest()` và bus dùng được từ
   thread khác** (#187). `difflib` giữa hai `sqlite_bus.py` là **0.442** — cao nhất trong ba module của K3.5, và
   lần này con số ấy đúng theo nghĩa đen: cùng `_DDL`, cùng cách nạp lại `_log` khi mở, cùng câu `INSERT`, cùng
