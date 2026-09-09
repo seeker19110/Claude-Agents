@@ -21,6 +21,7 @@ from xagents_core.evals import (
     _get,
     _Probe,
     check,
+    load_recording_score,
     prompt_key,
 )
 from xagents_core.llm import Completion, LLMError
@@ -281,3 +282,121 @@ def test_lop_con_phai_khai_bon_hook(tmp_path):
                 lambda: s.run_case("a", {}, None, None, None, None)):
         with pytest.raises(NotImplementedError):
             goi()
+
+
+# ---------- điểm trong bản ghi, dọn khoá rác (p3.3b/p3.3c) ----------
+
+class SuiteXoay(Suite):
+    """`run_case` trả kết quả KHÁC NHAU giữa các lần chạy — đúng thứ dao động mà `--record --runs N` đo.
+    Không mô phỏng được nó thì `runs=3` chỉ chứng minh vòng lặp chạy ba lần, không chứng minh điểm là trung bình."""
+
+    def __init__(self, root, chuoi):
+        super().__init__(root)
+        self.chuoi, self.lan = list(chuoi), 0
+
+    def run_case(self, agent_id, case, client, agents, bb, bus):
+        self.ket_qua = self.chuoi[self.lan % len(self.chuoi)]
+        self.lan += 1
+        return super().run_case(agent_id, case, client, agents, bb, bus)
+
+
+def _suite_xoay(tmp_path, chuoi) -> SuiteXoay:
+    (tmp_path / "evals").mkdir(exist_ok=True)
+    (tmp_path / "evals" / "bien-tap.yaml").write_text(yaml.safe_dump({"cases": [CASE]}), encoding="utf-8")
+    return SuiteXoay(tmp_path, chuoi)
+
+
+def test_ban_ghi_CU_khong_co_score_van_chay_binh_thuong(tmp_path):
+    """20 file bản ghi trên đĩa không có `score`. Hai trường mới là TUỲ CHỌN, nếu không thì đổi schema đồng
+    nghĩa với ghi lại cả 20 file bằng model thật trước khi CI xanh trở lại."""
+    s = _suite(tmp_path)
+    rec = RecordingClient(FakeClient('{"tieu_de": "xin chao"}'), "bien-tap", s)
+    s.run_eval("bien-tap", rec)
+    p = rec.save()
+    # hạ cấp về ĐÚNG hình dạng trước p3.3b: bỏ hai trường mới khỏi mọi ca
+    cu = json.loads(p.read_text(encoding="utf-8"))
+    for e in cu["cases"].values():
+        e.pop("score"); e.pop("runs")
+    p.write_text(json.dumps(cu, ensure_ascii=False), encoding="utf-8")
+    khoa = next(iter(cu["cases"]))
+
+    assert load_recording_score(cu, khoa) is None, "không có `score` là CHƯA ĐO, không phải điểm 0"
+    assert load_recording_score(cu, "khoa-khong-co") is None
+    assert load_recording_score({}, khoa) is None
+    (r,) = s.run_eval("bien-tap", ReplayClient("bien-tap", s))
+    assert r.passed and r.runs == 1 and r.pass_rate == 1.0
+
+
+def test_runs_1_ghi_ra_file_GIONG_hom_nay_ngoai_hai_truong_moi(tmp_path):
+    s = _suite(tmp_path)
+    rec = RecordingClient(FakeClient('{"tieu_de": "xin chao"}'), "bien-tap", s)
+    s.run_eval("bien-tap", rec)
+    got = json.loads(rec.save().read_text(encoding="utf-8"))
+
+    assert set(got) == {"agent", "prompt_version", "recorded_at", "models", "cases"}, "hình dạng ngoài không đổi"
+    (entry,) = got["cases"].values()
+    assert set(entry) == {"text", "model", "input_tokens", "output_tokens", "score", "runs"}
+    assert {k: v for k, v in entry.items() if k not in ("score", "runs")} == {
+        "text": '{"tieu_de": "xin chao"}', "model": "fake-1", "input_tokens": 1, "output_tokens": 2}
+    assert entry["score"] == 1.0 and entry["runs"] == 1
+    assert load_recording_score(got, next(iter(got["cases"]))) == 1.0
+
+
+def test_runs_3_goi_model_ba_lan_va_ghi_TI_LE_dat(tmp_path):
+    s = _suite_xoay(tmp_path, [{"tieu_de": "xin chao"}, {"tieu_de": "sai"}, {"tieu_de": "xin chao"}])
+    fake = FakeClient()
+    rec = RecordingClient(fake, "bien-tap", s, runs=3)
+    (r,) = s.run_eval("bien-tap", rec)
+
+    assert fake.calls == 3, "ba lần chạy = ba lượt gọi model, không phải một"
+    assert r.runs == 3 and r.pass_rate == pytest.approx(2 / 3)
+    assert not r.passed, "một lần hỏng trong ba là chưa đạt — `score` là số đo dao động, không phải cách làm tròn lên"
+    (entry,) = json.loads(rec.save().read_text(encoding="utf-8"))["cases"].values()
+    assert entry["runs"] == 3 and entry["score"] == pytest.approx(2 / 3)
+
+
+def test_ghi_score_KHONG_doi_prompt_key(tmp_path):
+    """Khoá băm `system`+`user`, không băm giá trị — nhưng khẳng định bằng phép đo, không bằng câu nói."""
+    s1, s2 = _suite(tmp_path), _suite(tmp_path)
+    mot = RecordingClient(FakeClient(), "bien-tap", s1, runs=1)
+    ba = RecordingClient(FakeClient(), "bien-tap", s2, runs=3)
+    s1.run_eval("bien-tap", mot); s2.run_eval("bien-tap", ba)
+    assert set(mot.entries) == set(ba.entries), "runs khác nhau mà khoá đổi thì mọi bản ghi cũ lệch ngay"
+
+
+def test_save_prune_to_don_khoa_ngoai_tap_con_save_tran_giu_nguyen(tmp_path):
+    s = _suite(tmp_path)
+    s.recordings_dir.mkdir(parents=True)
+    s.recording_path("bien-tap").write_text(json.dumps(
+        {"agent": "bien-tap", "prompt_version": 3, "cases": {"rac": {"text": "x", "model": "m"}}}), encoding="utf-8")
+
+    rec = RecordingClient(FakeClient(), "bien-tap", s)
+    s.run_eval("bien-tap", rec)
+    assert len(json.loads(rec.save().read_text(encoding="utf-8"))["cases"]) == 2, "save() trần vẫn GỘP như cũ"
+
+    rec2 = RecordingClient(FakeClient(), "bien-tap", s)
+    s.run_eval("bien-tap", rec2)
+    got = json.loads(rec2.save(prune_to=set(rec2.entries)).read_text(encoding="utf-8"))
+    assert set(got["cases"]) == set(rec2.entries) and "rac" not in got["cases"]
+
+
+def test_don_khoa_rac_KHONG_doi_hanh_vi_cua_stale_recordings(tmp_path):
+    """`stale_recordings` chấm theo "khoá HIỆN TẠI có mặt hay không"; dọn rác không được chạm tín hiệu ấy."""
+    s = _suite(tmp_path)
+    s.recordings_dir.mkdir(parents=True)
+    s.recording_path("bien-tap").write_text(json.dumps(
+        {"agent": "bien-tap", "prompt_version": 3, "cases": {"rac": {"text": "x", "model": "m"}}}), encoding="utf-8")
+    assert s.stale_recordings(["bien-tap"]) == {"bien-tap": ["c1"]}, "rác không che được tín hiệu phải ghi lại"
+
+    rec = RecordingClient(FakeClient(), "bien-tap", s)
+    s.run_eval("bien-tap", rec); rec.save(prune_to=set(rec.entries))
+    assert s.stale_recordings(["bien-tap"]) == {}, "dọn xong vẫn đủ khoá cho ca hiện tại"
+
+
+def test_prompt_version_van_chot_luc_INIT_ke_ca_khi_runs_3(tmp_path):
+    """Cửa sổ "file prompt đổi giữa chừng" rộng gấp N lần với `--runs N` — chốt lúc `__init__` càng phải giữ."""
+    s = _suite_xoay(tmp_path, [{"tieu_de": "xin chao"}])
+    rec = RecordingClient(FakeClient(), "bien-tap", s, runs=3)
+    s.load_agents = lambda: {"bien-tap": FakeSpec(version=99)}   # type: ignore[method-assign]
+    s.run_eval("bien-tap", rec)
+    assert json.loads(rec.save().read_text(encoding="utf-8"))["prompt_version"] == 3
