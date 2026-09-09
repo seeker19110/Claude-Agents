@@ -59,6 +59,12 @@ class AgentSpec:
     timeout_minutes: int
     prompt: str
     version: int = 1  # ADR-0004: tăng mỗi khi nội dung prompt đổi
+    # Đường dẫn THẬT của file nguồn, tương đối gốc công ty (`agents/<thư mục>/<id>.md`), do `load_agents` đặt.
+    # Không ghép lại từ `block`: `block` là NHÃN nghiệp vụ, không phải tên thư mục — `supervisor.md` khai
+    # `block: supervision` mà nằm ở `agents/supervisor/`, nên mọi chỗ ghép `agents/{block}/{id}.md` đều trỏ
+    # vào file không tồn tại (bản dẫn xuất bảo người ta "sửa nguồn" ở chỗ trống, và `keeper.drift` phép (a)
+    # mù hẳn với agent đó). Ai cần đường dẫn nguồn thì đọc trường này.
+    source_rel: str = ""
     skills_core: list[str] = field(default_factory=list)  # ADR-0008: skill phụ, chỉ nạp quy trình + checklist
     skill_text: str = field(default="")
     skill_core_text: str = field(default="")
@@ -154,6 +160,7 @@ def load_agents(agents_dir: Path, skills_dir: Path, spec_cls: type[S],
         fm, body = split_front_matter(p.read_text(encoding="utf-8"))
         fm["phases"] = {str(name): Phase(**(cfg or {})) for name, cfg in (fm.get("phases") or {}).items()}
         spec = spec_cls(prompt=body.strip(), **fm)
+        spec.source_rel = p.relative_to(agents_dir.parent).as_posix()
         dup = set(spec.skills) & set(spec.skills_core)
         if dup:
             raise ValueError(f"{spec.id}: skill vừa đầy đủ vừa rút gọn: {sorted(dup)}")

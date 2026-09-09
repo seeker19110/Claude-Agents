@@ -115,7 +115,10 @@ def render(spec: AgentSpec) -> str:
     """Toàn văn `.claude/agents/sc-<id>.md` cho một agent."""
     model = TIER_MODEL.get(spec.model_tier, "sonnet")
     role = role_summary(spec.prompt)
-    src = f"agents/{spec.block}/{spec.id}.md"
+    # Đường dẫn nguồn THẬT (`AgentSpec.source_rel`), không ghép từ `spec.block`: `block` là nhãn nghiệp vụ và
+    # `supervisor.md` khai `block: supervision` trong khi nằm ở `agents/supervisor/` — bản ghép cũ trỏ vào file
+    # không tồn tại suốt, và `keeper.drift` phép (a) vì thế không bao giờ so được version của supervisor.
+    src = spec.source_rel
     secs = sections(spec.prompt)
 
     parts = [
@@ -287,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if ns.cmd == "list":
         for s in sorted(load_agents().values(), key=lambda x: x.id):
-            print(f"agents/{s.block}/{s.id}.md  ->  .claude/agents/{target_name(s.id)}.md  version={s.version}")
+            print(f"{s.source_rel}  ->  .claude/agents/{target_name(s.id)}.md  version={s.version}")
         for g in load_gates().values():
             print(f"gates/checklists.md ({g.title})  ->  .claude/agents/{gate_name(g.kind)}.md")
         return 0

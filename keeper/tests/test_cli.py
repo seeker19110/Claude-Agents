@@ -235,3 +235,38 @@ def test_gate_request_boi_vai_ngoai_allowlist_bi_tu_choi(tmp_path: Path, khong_a
     assert main(["gate", "--db", str(tmp_path / "k.sqlite"), "request", "patch", "KEEP:x",
                  "--by", "patcher"]) == 3
     assert "quyền" in capsys.readouterr().err
+
+
+# --- lệnh `drift`: cổng máy cho luật cấm §5 + luật bắt buộc §10 (bộ dò đã có từ BT-keeper nhưng
+# --- không workflow nào gọi, nên #192/#208/#209 merge thiếu dòng CHANGELOG mà CI vẫn xanh).
+
+def _repo_sach(tmp_path: Path) -> Path:
+    """Repo tối thiểu mà cả ba phép của `drift.scan` đều không có gì để nói."""
+    repo = tmp_path / "repo"
+    (repo / ".claude" / "agents").mkdir(parents=True)
+    (repo / "software-company" / "tests" / "golden" / "agents").mkdir(parents=True)
+    (repo / "software-company" / "agents").mkdir(parents=True)
+    (repo / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
+    return repo
+
+
+def test_drift_sach_thi_thoat_0(tmp_path: Path, capsys):
+    repo = _repo_sach(tmp_path)
+    assert main(["drift", "--repo", str(repo)]) == 0
+    assert "sạch" in capsys.readouterr().out
+
+
+def test_drift_co_tin_hieu_thi_thoat_1_va_in_ra(tmp_path: Path, capsys):
+    """Chiều ngược: bản dẫn xuất trỏ nguồn không tồn tại → thoát KHÁC 0 để CI đỏ.
+
+    Đây đúng hình dạng bug thật đã sửa cùng gói: `sc-supervisor.md` trỏ `agents/supervision/` trong khi thư
+    mục thật là `agents/supervisor/`."""
+    repo = _repo_sach(tmp_path)
+    (repo / ".claude" / "agents" / "sc-foo.md").write_text(
+        "<!-- SINH TỰ ĐỘNG từ agents/supervision/foo.md version=1 — sửa nguồn rồi chạy make subagents -->\n",
+        encoding="utf-8")
+
+    assert main(["drift", "--repo", str(repo)]) == 1
+    out = capsys.readouterr().out
+    assert "DRIFT sc-foo.md" in out
+    assert "1 tín hiệu lệch" in out

@@ -20,6 +20,7 @@ from typing import get_args
 
 from pydantic import ValidationError
 
+from .drift import scan
 from .events import Ticket
 from .gates import GateKind
 from .patcher import HUMAN_ONLY_SEGMENTS, fix_docs
@@ -156,6 +157,29 @@ def _gate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _drift(args: argparse.Namespace) -> int:
+    """Phép (a)(b)(c) của `drift.scan` trên chính repo này — cổng máy cho luật cấm §5 và luật bắt buộc §10.
+
+    Bộ dò đã có từ BT-keeper và phủ 100% test, nhưng KHÔNG workflow nào gọi nó, nên ba PR (#192, #208, #209)
+    merge thiếu dòng CHANGELOG mà không cổng nào đỏ — công cụ tự soi chỉ có giá trị khi có thứ chạy nó.
+    Thoát khác 0 khi còn tín hiệu, để CI dùng trực tiếp."""
+    repo = Path(args.repo)
+    signals = scan(
+        claude_agents_dir=repo / ".claude" / "agents",
+        golden_agents_dir=repo / "software-company" / "tests" / "golden" / "agents",
+        company_root=repo / "software-company",
+        repo=repo,
+        changelog=repo / "CHANGELOG.md",
+    )
+    for s in signals:
+        print(f"DRIFT {s.subject}: {s.detail}")
+    if not signals:
+        print("drift: sạch (bản dẫn xuất khớp nguồn, golden khớp agent, mọi PR merged có dòng CHANGELOG)")
+        return 0
+    print(f"\n{len(signals)} tín hiệu lệch — xem AGENTS.md luật cấm §5 và luật bắt buộc §10.")
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="keeper", description="công ty bảo trì X-Agents")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -186,6 +210,9 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--by", required=True, help="NGƯỜI duyệt (`human:<tên>`)")
         p.add_argument("--reason", default="", help="lý do — người sau đọc bản ghi này, không đọc được đầu bạn")
     gate.set_defaults(func=_gate)
+    drift_p = sub.add_parser("drift", help="so bản dẫn xuất/golden/CHANGELOG với nguồn (thuần cục bộ)")
+    drift_p.add_argument("--repo", default=".", help="gốc repo cần soi (mặc định thư mục hiện tại)")
+    drift_p.set_defaults(func=_drift)
     args = parser.parse_args(argv)
     return int(args.func(args))
 

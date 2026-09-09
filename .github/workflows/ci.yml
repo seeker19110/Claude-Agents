@@ -418,6 +418,27 @@ jobs:
       - run: uv run mypy src/keeper --ignore-missing-imports
         working-directory: keeper
 
+  drift-check:
+    name: drift-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # `fetch-depth: 0` LÀ ĐIỀU KIỆN ĐÚNG SAI, không phải tinh chỉnh: phép (c) đọc `git log` tìm mọi commit
+      # `(#n)` đã merge. Với depth mặc định (1) `git log` chỉ có một commit, không PR nào bị soi, và cổng này
+      # sẽ XANH GIẢ — tệ hơn không có cổng, vì nó tạo cảm giác đã được canh.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.13"
+      - run: uv sync --locked
+      # Thuần cục bộ (đọc .git + file trên đĩa), không gọi mạng, không cần token.
+      - run: uv run python -m keeper.cli drift --repo .
+
   keeper-unit:
     name: keeper-unit
     runs-on: ${{ matrix.os }}
@@ -540,7 +561,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    needs: [static, unit, eval-replay, audit, studio-static, studio-unit, studio-eval-replay, golden-check, gateway-static, gateway-unit, console-static, console-unit, core-static, core-unit, keeper-static, keeper-unit, asset-scan, protection-guard]
+    needs: [static, unit, eval-replay, audit, studio-static, studio-unit, studio-eval-replay, golden-check, gateway-static, gateway-unit, console-static, console-unit, core-static, core-unit, keeper-static, keeper-unit, drift-check, asset-scan, protection-guard]
     if: always()
     steps:
       - name: Kiểm mọi job con đã success
