@@ -32,6 +32,18 @@ class GateRequest:
     reason: str = ""
     decided_by: str | None = None
     created_by: str | None = None
+    #: Thế hệ của gate — số thứ tự tăng dần do `HumanGate.request()` gán, KHÔNG phải dữ liệu người gọi điền.
+    #: Cùng một `subject_id` mở gate nhiều lần trong đời (duyệt → hỏng → mở lại), và `pending` khoá theo
+    #: `subject_id` nên gate mới ghi đè gate cũ dưới đúng cái tên đó; `seq` là thứ phân biệt được hai thế hệ.
+    #: Trước đây company phân biệt bằng `created_at.isoformat(microseconds)` — hỏng theo HAI đường:
+    #:  * `datetime.now()` trên Windows có bước ~15,6 ms (đo 2026-09-09: `timedelta(0)` giữa hai lần gọi liên
+    #:    tiếp), nên hai gate mở cách nhau <16 ms có CÙNG dấu thời gian → chung khoá `once` → lần quá hạn của
+    #:    gate thứ hai bị nuốt, đúng thứ TRAPS §1 khuôn 3 mà khoá ấy sinh ra để chặn;
+    #:  * lúc phát lại, gate được `request()` lại nên `created_at` là BÂY GIỜ, không phải mốc gốc — khoá đổi
+    #:    sau mỗi lần restart, và một gate đã escalate rồi lại escalate lần nữa.
+    #: Bộ đếm không mắc cả hai: nó không đọc đồng hồ, và phát lại cùng một log theo cùng thứ tự thì gate thứ
+    #: ba vẫn là gate thứ ba.
+    seq: int = 0
 
 
 def approvers(env_var: str, cfg: Any = None, cfg_path: tuple[str, ...] = ("gate", "approvers")) -> frozenset[str]:
@@ -62,12 +74,14 @@ class HumanGate:
         self.approvers = frozenset(approvers or ())
         self.pending: dict[str, GateRequest] = {}
         self.history: list[GateRequest] = []
+        self._seq = 0
 
     def request(self, req: GateRequest) -> GateRequest:
         # `created_by` rỗng/None làm ngắn mạch kiểm four-eyes ở decide() (`if req.created_by and ...`),
         # cho phép người tạo tự duyệt gate của chính mình — chặn ngay tại nguồn, đừng để lộ ở decide().
         if not (req.created_by or "").strip():
             raise PermissionError("gate phải có created_by (actor thật) — four-eyes cần biết ai đã tạo")
+        self._seq += 1; req.seq = self._seq
         self.pending[req.subject_id] = req; return req
 
     def decide(self, subject_id: str, decision: str, by: str, reason: str = "", *, enforce: bool = True) -> GateRequest:

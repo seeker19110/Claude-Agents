@@ -6,6 +6,18 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(core): **thế hệ gate là bộ đếm, không phải dấu thời gian tường** (#PR). Phát hiện 4 của audit
+  2026-09-09. `scheduler._the_he` phân biệt hai thế hệ gate của cùng `subject_id` bằng
+  `created_at.isoformat(microseconds)`, và nó hỏng theo HAI đường: (1) `datetime.now(UTC)` trên Windows có bước
+  ~15,6 ms — đo được `timedelta(0)` giữa hai lần gọi liên tiếp, 5/5 lần lặp — nên hai gate mở cách nhau <16 ms
+  mang CÙNG dấu thời gian, chung khoá `once`, và lần quá hạn của gate thứ hai bị nuốt: không audit
+  `gate.overdue`, không escalate, gate bể hạn nằm im y hệt gate mới — đúng thứ TRAPS §1 khuôn 3 mà khoá ấy sinh
+  ra để chặn; (2) lúc phát lại, gate được `request()` LẠI nên `created_at` là bây giờ chứ không phải mốc gốc,
+  khoá đổi sau mỗi restart và một gate đã escalate lại escalate lần nữa. Nay `HumanGate.request()` gán
+  `GateRequest.seq` tăng dần: không đọc đồng hồ, và phát lại cùng một log theo cùng thứ tự thì gate thứ ba vẫn
+  là gate thứ ba. Kèm theo: `test_overdue_khong_truyen_now_thi_lay_bay_gio` không còn dựa vào thời gian trôi
+  giữa hai dòng lệnh (biên "đúng bằng timeout thì chưa quá hạn" là cố ý, chỗ sai là ca test).
+
 - docs(adr): **ADR-0006 công ty con `Upkeep-crew` bảo trì toàn dự án** (#201). Chỉ là quyết định kiến
   trúc, chưa có mã: 6 khối / 8 agent / gate `upkeep`, 10 tính năng nâng cao (bậc rủi ro, bằng chứng đo hai
   chiều bắt buộc, ngân sách thay đổi, sổ nợ có đáo hạn), lộ trình 5 PR.

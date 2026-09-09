@@ -101,14 +101,21 @@ def _integrate_pending(o: Orchestrator, out: list[StepResult]) -> None:
     if res.actions: out.append(res)
 
 def _the_he(o: Orchestrator, sid: str) -> str:
-    """Thế hệ của gate đang mở cho `sid`: dấu thời gian tạo của `GateRequest`. Cùng một subject có thể mở gate
-    NHIỀU LẦN trong đời (duyệt → hỏng → mở lại; `escalation` sau `release`), và `HumanGate.pending` khoá theo
-    `subject_id` nên gate mới ghi đè gate cũ dưới đúng cái tên đó. Khoá `once` chỉ mang `sid` là lần quá hạn
-    của gate THỨ HAI bị lần quá hạn của gate thứ nhất nuốt: không audit `gate.overdue`, không escalate — gate
-    bể hạn nằm im y hệt một gate mới (TRAPS §1 khuôn 3). Gate đã rời `pending` (vừa được quyết) thì không còn
-    thế hệ để đọc; trả `"-"` để khoá vẫn xác định được, không ném."""
+    """Thế hệ của gate đang mở cho `sid`: số thứ tự `GateRequest.seq` do `HumanGate.request()` gán. Cùng một
+    subject có thể mở gate NHIỀU LẦN trong đời (duyệt → hỏng → mở lại; `escalation` sau `release`), và
+    `HumanGate.pending` khoá theo `subject_id` nên gate mới ghi đè gate cũ dưới đúng cái tên đó. Khoá `once`
+    chỉ mang `sid` là lần quá hạn của gate THỨ HAI bị lần quá hạn của gate thứ nhất nuốt: không audit
+    `gate.overdue`, không escalate — gate bể hạn nằm im y hệt một gate mới (TRAPS §1 khuôn 3).
+
+    Trước 2026-09-09 thế hệ là `created_at.isoformat(microseconds)`, và nó hỏng theo hai đường (chi tiết ở
+    `GateRequest.seq`): đồng hồ Windows bước ~15,6 ms nên hai gate mở gần nhau CÙNG dấu thời gian, và phát lại
+    thì `created_at` là bây giờ nên khoá đổi sau mỗi restart. Bộ đếm không đọc đồng hồ và phát lại cùng một
+    log cho cùng một số.
+
+    Gate đã rời `pending` (vừa được quyết) thì không còn thế hệ để đọc; trả `"-"` để khoá vẫn xác định được,
+    không ném."""
     r = o.gate.pending.get(sid)
-    return r.created_at.isoformat(timespec="microseconds") if r is not None else "-"
+    return str(r.seq) if r is not None else "-"
 
 
 def tick(o: Orchestrator, now: datetime | None = None) -> list[StepResult]:
