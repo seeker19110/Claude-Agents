@@ -1,0 +1,23 @@
+# Sàn ĐIỂM CHẤM theo agent. Cổng CI (`keeper.evals all --replay --strict`): agent trong file này mà bản ghi
+# tụt dưới `min_pass_ratio`, hoặc bộ ca bị thu nhỏ dưới `cases`, thì đỏ. Khác `evals/recordings/REQUIRED.txt`
+# (gác bản ghi THIẾU hoặc LỆCH phiên bản prompt) — file này gác điểm không được tụt so với hôm đo.
+#
+# Đo ngày 2026-09-09 bằng `claude-sonnet-5` qua provider `claude-code` (gói subscription), rồi phát lại:
+#   triager 6/6 · keeper-supervisor 5/5 · security-auditor 5/5 · release-clerk 5/5 = 1.00 cả bốn.
+# Sàn làm tròn xuống 0.05 theo quy ước `CONTRIBUTING.md` §3: điểm chấm dao động, đặt sàn bằng đúng điểm đo là
+# một lần đỏ ngẫu nhiên cũng chặn merge. `cases` = số ca đo được hôm đó, chống thu nhỏ bộ ca để làm đẹp ratio.
+#
+# Ghi lại eval bằng model thật mà điểm tụt dưới sàn thì phải nâng chất lượng prompt/ca TRƯỚC khi commit bản ghi
+# mới — KHÔNG hạ số ở đây để né đỏ (cùng nguyên tắc `fail_under = 100`, `AGENTS.md` cấm §6).
+keeper-supervisor:
+  min_pass_ratio: 0.95
+  cases: 5
+release-clerk:
+  min_pass_ratio: 0.95
+  cases: 5
+security-auditor:
+  min_pass_ratio: 0.95
+  cases: 5
+triager:
+  min_pass_ratio: 0.95
+  cases: 6

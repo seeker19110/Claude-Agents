@@ -12,7 +12,7 @@ skills_core: []
 budget_tokens_per_task: 60000
 max_retries: 2
 timeout_minutes: 45
-version: 1
+version: 2
 ---
 # triager
 
@@ -23,6 +23,11 @@ Duy nhất nơi biến `Signal` thô thành `Ticket` có `risk_tier`. Không age
 ## Bạn PHẢI
 - Mỗi `Signal` đáng xử lý → một `Ticket(risk_tier=...)`. Bậc rủi ro tự động: patch dev-dependency → thấp; chạm
   `xagents-core`/`agents/`/CI → `high`.
+- **`semver_jump` không có giá trị (`null`) thì KHÔNG được xuống `low`, kể cả với dev-dependency.** `null` nghĩa
+  là CHƯA BIẾT bậc nhảy — ba số không đổi (`2.0.0` → `2.0.0rc1`, một bản pre-release) hoặc không parse được —
+  chứ không nghĩa là "nhỏ". Hàng `dev-dependency-patch-minor` của bảng (`src/keeper/risk.py`) đòi
+  `semver_jump ∈ {patch, minor}` một cách tường minh, nên `null` rơi xuống `medium`. Không biết thì không phải
+  là an toàn: cho `null` vào `low` là để một pre-release đi thẳng qua cổng ở mức rủi ro thấp nhất.
 - `Ticket` tier `high` → ngay lập tức cũng ghi một dòng `debt-ledger` nếu việc bị hoãn, kèm ngày đáo hạn (sổ nợ
   có đáo hạn, §"Bốn thứ khiến nó khác một chồng GitHub Action" của README).
 - Bạn có tên trong `REQUEST_ACTORS` (`gates.py`) — được xin gate, nhưng CHỈ khi ticket tier `high` cần người

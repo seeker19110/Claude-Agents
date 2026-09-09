@@ -1,0 +1,46 @@
+{
+ "agent": "triager",
+ "prompt_version": 2,
+ "recorded_at": "2026-09-09T15:12:39.856074+00:00",
+ "models": [
+  "claude-sonnet-5"
+ ],
+ "cases": {
+  "a3365814ad14f18608903c2e": {
+   "text": "{\"ticket_id\": \"TCK-2026-09-09-SIG-1\", \"subject\": \"xagents-core/src/xagents_core/llm.py: docstring cli_exit_error lệch sau đổi phân loại lỗi\", \"risk_tier\": \"high\", \"signal_subjects\": [\"xagents-core/src/xagents_core/llm.py\"], \"signal_event_ids\": [\"SIG-1\"], \"due_at\": \"2026-09-16\", \"requires_gate\": false, \"status\": \"open\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 5834,
+   "output_tokens": 679
+  },
+  "a4e7ca9b98101457aba94c20": {
+   "text": "{\"ticket_id\": \"TCK-ruff-0.5.2\", \"subject\": \"ruff\", \"risk_tier\": \"low\", \"signal_subjects\": [\"ruff\"], \"signal_event_ids\": [\"SIG-2\"], \"due_at\": null, \"requires_gate\": false, \"status\": \"open\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 5856,
+   "output_tokens": 301
+  },
+  "34582ebf3b78ed05a3bd7350": {
+   "text": "{\"ticket_id\": \"TCK-SIG-3-pytest\", \"subject\": \"pytest\", \"risk_tier\": \"medium\", \"signal_subjects\": [\"pytest\"], \"signal_event_ids\": [\"SIG-3\"], \"due_at\": null, \"requires_gate\": false, \"status\": \"open\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 5857,
+   "output_tokens": 311
+  },
+  "ac2eaa0ca4aa7bb9bb0f66f6": {
+   "text": "{\"ticket_id\": \"TCK-SIG-4-requests-cve-2026-1111\", \"subject\": \"requests: CVE-2026-1111 RCE khi parse redirect (Dependabot alert #12)\", \"risk_tier\": \"high\", \"signal_subjects\": [\"requests\"], \"signal_event_ids\": [\"SIG-4\"], \"due_at\": \"2026-09-10T09:00:00+07:00\", \"requires_gate\": true, \"status\": \"open\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 5816,
+   "output_tokens": 499
+  },
+  "8f0f0c24afa5598ad9a2e9de": {
+   "text": "{\"ticket_id\": \"TCK-SIG-5-qa-drift\", \"subject\": \"software-company/agents/quality/qa.md\", \"risk_tier\": \"high\", \"signal_subjects\": [\"software-company/agents/quality/qa.md\"], \"signal_event_ids\": [\"SIG-5\"], \"due_at\": \"2026-09-16T00:00:00Z\", \"requires_gate\": true, \"status\": \"open\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 5844,
+   "output_tokens": 436
+  },
+  "2654f6451003801da9a5a7cd": {
+   "text": "{\"due_at\": null, \"requires_gate\": false, \"risk_tier\": \"low\", \"signal_subjects\": [\"docs/HUONG-DAN-VAN-HANH.md\"], \"status\": \"open\", \"subject\": \"Bổ sung dòng CHANGELOG thiếu cho PR đã merge (docs/HUONG-DAN-VAN-HANH.md)\", \"ticket_id\": \"TCK-SIG-6\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 5834,
+   "output_tokens": 522
+  }
+ }
+}
