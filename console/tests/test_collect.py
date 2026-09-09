@@ -99,7 +99,7 @@ def test_gate_da_quyet_khong_con_trong_danh_sach(company_db: Path, studio_db: Pa
 
 def test_gate_mang_du_kien_va_checklist(company_db: Path, studio_db: Path) -> None:
     pub = next(g for g in state(company_db, studio_db)["gates"] if g["id"] == "PUB-vid-042")
-    assert pub["kind"] == "publish" and pub["by"] == "publisher" and pub["trigger"] == "human:owner"
+    assert pub["kind"] == "publish" and pub["by"] == "desk" and pub["trigger"] == "human:owner"
     assert pub["title"] == "Ống kính 50mm"
     assert ["video_id", "vid-042"] in pub["facts"]
     assert [item for item, _ in pub["cl"]] == ["review:fact:pass", "thumbnail"]

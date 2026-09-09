@@ -57,6 +57,12 @@ class PersistentGate(HumanGate, Generic[E, A]):
     #: Tiền tố subject của gate nghiệm thu; `None` = công ty này không có khái niệm ấy (xem `trusted_decision`).
     UAT_PREFIX: str | None = "UAT-"
 
+    #: Actor được phép TẠO gate. `None` = không giới hạn (hành vi trước ADR-0008). Người (`is_human`) luôn được
+    #: phép và không cần có tên trong danh sách: gate CLI là đường của người, danh sách này nói về AGENT nào có
+    #: quyền mở một gate — allowlist theo vai, vì `gate.request` là việc hợp lệ của agent (khác `gate.decide`,
+    #: chỉ người). Lớp con của mỗi công ty đặt danh sách của mình; core không biết tên vai nào (ADR-0001 §2).
+    REQUEST_ACTORS: frozenset[str] | None = None
+
     def __init__(self, bus: InMemoryBus[E], *, envelope_cls: type[E], audit_cls: type[A],
                  request_cls: type[GateRequest] = GateRequest, **kw: Any) -> None:
         super().__init__(**kw)
@@ -65,6 +71,10 @@ class PersistentGate(HumanGate, Generic[E, A]):
         for env in bus.replay(topic="audit-log"):
             self.apply(env)
         bus.subscribe("audit-log", self.apply)  # quyết định từ tiến trình khác (gate CLI) đến qua bus.poll()
+
+    def _request_actor_allowed(self, actor: str) -> bool:
+        """Actor này có quyền TẠO gate không. Người luôn có; agent phải nằm trong `REQUEST_ACTORS` (nếu đặt)."""
+        return self.REQUEST_ACTORS is None or is_human(actor) or actor in self.REQUEST_ACTORS
 
     def _trusted(self, env: E) -> dict[str, Any] | None:
         """Điểm mở duy nhất của phép kiểm tin cậy: studio siết thêm `decision` phải nằm trong Literal của mình."""
@@ -99,6 +109,9 @@ class PersistentGate(HumanGate, Generic[E, A]):
                 # topic mở, nên evidence là lời khai của người ghi, còn `env.actor` là thứ bus thật sự kiểm —
                 # cùng một bất biến `trusted_decision` áp cho `gate.decide`, nay áp nốt cho `gate.request`.
                 # Người ghi bịa `created_by` của người khác thì four-eyes ở `decide()` bị vô hiệu.
+                # Actor lạ KHÔNG mở được gate: bỏ qua như mọi bản ghi dị thường khác (im lặng, không ném —
+                # replay của cả sổ gate không được sập vì một dòng log xấu). Chiều ghi thì ném ở `request()`.
+                if not self._request_actor_allowed(env.actor): return
                 kw = {**self._request_kwargs(d), "created_by": env.actor}
                 super().request(self.request_cls(created_at=env.ts, **kw))
         elif sid in self.pending:
@@ -117,6 +130,11 @@ class PersistentGate(HumanGate, Generic[E, A]):
         self.bus.publish(self._envelope(actor, action, data, by=by))
 
     def request(self, req: GateRequest) -> GateRequest:
+        # Chiều GHI ném lỗi thay vì im lặng: một vai không có quyền mở gate mà gọi `request()` là bug ở call
+        # site, phải lộ ngay — nếu chỉ bỏ qua ở `apply()` thì gate sống trong RAM của tiến trình này và biến
+        # mất khi tiến trình khác dựng lại từ replay (khuôn 2 `TRAPS.md`: state chỉ sống trong RAM).
+        if not self._request_actor_allowed(req.created_by or ""):
+            raise PermissionError(f"{req.created_by} không có quyền tạo gate (không phải người, không trong REQUEST_ACTORS)")
         r = super().request(req)
         env = self._envelope(req.created_by or "human", "gate.request", self._request_payload(req))
         # `created_at` phải là ts của CHÍNH envelope `gate.request`, không phải thời điểm dựng dataclass.

@@ -127,3 +127,36 @@ def test_company_gate_approvers_bat_khong_chan_nghiem_thu_khach(monkeypatch):
     orch.run()
     assert orch.lead.state["T1"] == "closed", "chữ ký khách không nằm trong allowlist người duyệt nội bộ vẫn phải đóng được nghiệm thu"
     assert not any(a.get("action") == "handler_error" for a in (e.payload for e in bus.replay(topic="audit-log")))
+
+
+def test_vai_ngoai_allowlist_khong_mo_duoc_gate(tmp_path, capsys):
+    """ADR-0008: `gate.request` là việc hợp lệ của AGENT, nhưng chỉ của bốn vai thật sự mở gate. `builder` mở
+    gate được nghĩa là bất kỳ agent nào cũng dựng được gate ma, hoặc dựng gate mang tên vai khác."""
+    from company.roles import ROLE
+
+    bus = InMemoryBus(); gate = PersistentGate(bus)
+    with pytest.raises(PermissionError):
+        gate.request(GateRequest(kind="spec", subject_id="SPEC-X", checklist=["prd"], created_by=ROLE.BUILDER))
+    assert gate.pending == {}
+    gate.request(GateRequest(kind="spec", subject_id="SPEC-P1", checklist=["prd"], created_by=ROLE.PRODUCT))
+    assert list(PersistentGate(bus).pending) == ["SPEC-P1"]   # tiến trình khác dựng lại: chỉ gate hợp lệ
+
+
+def test_cli_request_bao_loi_quyen_thay_vi_traceback(tmp_path, capsys):
+    from company.gate_cli import main as gate_main
+
+    db = str(tmp_path / "c.sqlite")
+    rc = gate_main(["--db", db, "request", "spec", "SPEC-X", "--by", "builder", "--checklist", "prd"])
+    assert rc == 3 and "không có quyền tạo gate" in capsys.readouterr().err
+
+
+def test_gate_cu_do_vai_truoc_adr_0037_tao_van_dung_lai_duoc():
+    """Đo trên `company.sqlite` thật (18293 event, 2026-09-09): 33 gate `gate.request` mang actor cũ
+    `release-engineer`/`account-manager`/`spec-writer`. Allowlist ADR-0008 mà bỏ nhóm này thì mỗi lần mở bus,
+    console và `gate_cli list` mất trắng 33 gate lịch sử — im lặng, không lỗi nào báo."""
+    from company.roles import LEGACY_GATE_ACTORS
+
+    bus = InMemoryBus(); gate = PersistentGate(bus)
+    for i, actor in enumerate(sorted(LEGACY_GATE_ACTORS)):
+        gate.request(GateRequest(kind="escalation", subject_id=f"OLD-{i}", checklist=["c"], created_by=actor))
+    assert len(PersistentGate(bus).pending) == len(LEGACY_GATE_ACTORS)

@@ -141,6 +141,43 @@ def test_created_by_lay_tu_actor_that_khong_phai_evidence_tu_khai(cfg):
     with pytest.raises(PermissionError):
         g.decide("G9", "approve", by="human:evil")
 
+# ---------- ADR-0008: allowlist vai được TẠO gate ----------
+
+class Acl(PersistentGate[FakeEnvelope, AuditLog]):
+    REQUEST_ACTORS = frozenset({"supervisor"})
+
+
+def _acl(bus):
+    return Acl(bus, envelope_cls=FakeEnvelope, audit_cls=AuditLog)
+
+
+def test_vai_ngoai_allowlist_khong_tao_duoc_gate_o_chieu_ghi(cfg):
+    """Chiều GHI ném lỗi chứ không im lặng: gate sống trong RAM rồi biến mất khi replay là khuôn lỗi cũ."""
+    g = _acl(Bus(cfg))
+    with pytest.raises(PermissionError):
+        g.request(GateRequest(kind="duyet", subject_id="G1", checklist=["c1"], created_by="builder"))
+    assert g.pending == {}
+
+
+def test_vai_ngoai_allowlist_khong_tao_duoc_gate_o_chieu_replay(cfg):
+    """Gate ma: `audit-log` MỞ nên envelope vẫn đi qua bus, nhưng không được vào sổ gate của ai."""
+    bus = Bus(cfg); g = _acl(bus)
+    bus.publish(_audit(actor="builder", action="gate.request", subject_id="MA-1", kind="duyet", checklist=["c1"]))
+    assert g.pending == {} and _acl(bus).pending == {}
+
+
+def test_nguoi_va_vai_trong_allowlist_van_tao_duoc_gate(cfg):
+    bus = Bus(cfg); g = _acl(bus)
+    g.request(GateRequest(kind="duyet", subject_id="G1", checklist=["c1"], created_by="supervisor"))
+    g.request(GateRequest(kind="duyet", subject_id="G2", checklist=["c1"], created_by="human:pm"))
+    assert sorted(_acl(bus).pending) == ["G1", "G2"]      # người không cần có tên trong REQUEST_ACTORS
+
+
+def test_khong_dat_allowlist_thi_giu_hanh_vi_cu(cfg):
+    bus = Bus(cfg); g = _gate(bus)                        # REQUEST_ACTORS = None
+    g.request(GateRequest(kind="duyet", subject_id="G1", checklist=["c1"], created_by="builder"))
+    assert list(_gate(bus).pending) == ["G1"]
+
 def test_uat_prefix_none_thi_gate_khong_nhan_quyet_dinh_he_thong(cfg):
     class NoUat(PersistentGate[FakeEnvelope, AuditLog]):
         UAT_PREFIX = None
