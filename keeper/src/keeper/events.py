@@ -1,0 +1,144 @@
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, Field
+from xagents_core.events import SCHEMA_VERSION as SCHEMA_VERSION
+from xagents_core.events import AuditLog as CoreAuditLog
+from xagents_core.events import Envelope as CoreEnvelope
+from xagents_core.events import SharedContext as CoreSharedContext
+from xagents_core.events import SupervisorAction as CoreSupervisorAction
+from xagents_core.events import SupervisorActionKind as SupervisorActionKind
+
+# Đặc tả §1 (`DAC-TA-KEEPER.md`) viết "9 giá trị" — ĐẾM SAI, đã đo lại: bảng "Topic của keeper" ở §1 liệt kê
+# tám topic riêng của công ty (maintenance-signals, maintenance-tickets, patch-proposals, verification-reports,
+# security-findings, debt-ledger, release-notes, supervisor-actions) CỘNG hai topic mở dùng chung với hai công
+# ty kia (audit-log, shared-context) = 10, không phải 9.
+Topic = Literal[
+    "maintenance-signals", "maintenance-tickets", "patch-proposals", "verification-reports",
+    "security-findings", "debt-ledger", "release-notes", "supervisor-actions",
+    "shared-context", "audit-log",
+]
+Namespace = Literal["knowledge"]
+RiskTier = Literal["low", "medium", "high"]
+SignalKind = Literal["dependency", "health", "drift", "security"]
+SemverJump = Literal["patch", "minor", "major"]
+
+ID_PATTERN = r"^[A-Za-z0-9_.:/-]{1,200}$"
+
+
+class Envelope(CoreEnvelope):
+    """Khung ở `xagents_core.events` (K3.5a); thu hẹp `topic` về `Literal` của `keeper` để publish một topic
+    lạ vẫn đỏ ngay ở lớp kiểu, trước khi chạm bus."""
+
+    topic: Topic
+
+
+class Signal(BaseModel):
+    """Một quan sát thô, chưa phán xét (`dependency-scout`, `health-monitor`, `drift-detector`,
+    `adapter:github`). `triager` gộp các signal trùng nhau (`dedupe`, `signals.py`) rồi mới thành `Ticket`."""
+    subject: str = Field(pattern=ID_PATTERN)  # đường dẫn file / tên gói / mã workflow bị chạm
+    kind: SignalKind
+    detail: str
+    semver_jump: SemverJump | None = None  # chỉ có nghĩa với kind="dependency"
+    is_dev: bool = False
+    evidence: str = ""
+    seen_count: int = 1
+    source: str = "keeper"
+
+
+class Ticket(BaseModel):
+    """`maintenance-signals` đã gom (`triager`) + `risk_tier` + hạn xử lý."""
+    ticket_id: str = Field(pattern=ID_PATTERN)
+    subject: str
+    risk_tier: RiskTier
+    signal_subjects: list[str] = []
+    due_at: str | None = None
+    requires_gate: bool = False
+    status: Literal["open", "in_progress", "blocked", "closed"] = "open"
+
+
+class PatchProposal(BaseModel):
+    """Nhánh + diff + phạm vi do `patcher`/`refactorer` chuẩn bị trên worktree riêng của ticket."""
+    ticket_id: str = Field(pattern=ID_PATTERN)
+    branch: str
+    operation: Literal["bump_dependency", "regen_derived", "fix_docs", "refactor"]
+    summary: str
+    files: list[str] = []
+
+
+class RunOutcome(BaseModel):
+    """Output THẬT của một lần chạy lệnh CI — không phải lời khai của model."""
+    cmd: str
+    exit_code: int
+    output_tail: str = ""
+
+
+class VerificationReport(BaseModel):
+    """Bằng chứng hai chiều bắt buộc (bất biến I2): `before.exit_code == 0` là báo cáo vô hiệu."""
+    ticket_id: str = Field(pattern=ID_PATTERN)
+    before: RunOutcome
+    after: RunOutcome
+    verified_by: Literal["workspace", "orchestrator"]
+    family_hits: list[str] = []
+    family_safe: list[str] = []
+
+
+class SecurityFinding(BaseModel):
+    """gitleaks / audit dependency / Scorecard, do `security-auditor` phát."""
+    subject: str
+    severity: Literal["low", "medium", "high", "critical"]
+    kind: Literal["secret", "dependency", "scorecard"]
+    detail: str
+
+
+class DebtEntry(BaseModel):
+    """Việc bảo trì đã hoãn, mang NGÀY đáo hạn.
+
+    Không phải `debt_due` của lõi: cơ chế đó (`xagents_core/supervisor.py:82,102-123`) đếm **chuỗi review liên
+    tiếp** không nhắc lại một mã nợ, không đo thời gian. `keeper` cần hạn theo lịch, nên đây là cơ chế riêng —
+    tên khác nhau có chủ ý để không ai tưởng hai thứ là một."""
+    subject: str
+    reason: str
+    due_at: str
+    tier: RiskTier
+
+
+class ReleaseNote(BaseModel):
+    """Dòng `CHANGELOG.md` + mục nhật ký phiên do `release-clerk` soạn."""
+    ticket_id: str = Field(pattern=ID_PATTERN)
+    pr_number: int | None = None  # None trước khi có số PR (`AGENTS.md` §10)
+    changelog_line: str
+    session_line: str
+
+
+class SharedContext(CoreSharedContext):
+    namespace: Namespace
+
+
+class AuditLog(CoreAuditLog):
+    # Trường PHẠM VI của keeper, cùng vai trò `ticket_id` ở company / `video_id` ở studio — lý do `AuditLog`
+    # lên core dưới dạng lớp cơ sở chứ không phải lớp dùng thẳng (xem docstring `xagents_core/events.py`).
+    ticket_id: str | None = None
+
+
+class SupervisorAction(CoreSupervisorAction):
+    """Không thêm trường nào — khung core đã đủ cho `keeper-supervisor` (dừng, hạ hạn mức, escalate)."""
+
+
+NAMESPACE_OWNERS: dict[str, set[str]] = {
+    "knowledge": {"keeper-supervisor"},  # bài học chung công ty, không thuộc ticket nào (ADR-0018 của studio/company)
+}
+
+PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
+    "maintenance-signals": Signal,
+    "maintenance-tickets": Ticket,
+    "patch-proposals": PatchProposal,
+    "verification-reports": VerificationReport,
+    "security-findings": SecurityFinding,
+    "debt-ledger": DebtEntry,
+    "release-notes": ReleaseNote,
+    "supervisor-actions": SupervisorAction,
+    "shared-context": SharedContext,
+    "audit-log": AuditLog,
+}

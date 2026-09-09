@@ -69,3 +69,11 @@ từng package ở `<pkg>/CODEMAP.md`.
 | Route HTTP, SSE, token phiên | `src/console/server.py` |
 | Giao diện | `src/console/static/index.html` (một file, không framework) |
 | Hợp đồng nội bộ giữa các lớp | `console/API.md` |
+
+## keeper — đầy đủ ở `keeper/docs/DAC-TA-KEEPER.md`
+
+| Muốn | Sửa |
+|---|---|
+| Tên công ty, gốc, tên bus | `keeper/src/keeper/core.py` |
+| Topic, model payload, chủ namespace | `keeper/src/keeper/events.py` + `keeper/topics/schemas/` |
+| Việc còn phải làm (BT2–BT8) | `keeper/docs/DAC-TA-KEEPER.md`; trạng thái ở `docs/thi-hanh/keeper.md` §B |

@@ -1,5 +1,5 @@
-# Root của uv workspace: cả repo là MỘT project, bốn thư mục là bốn package thành viên.
-# `uv sync` ở đây tạo một `.venv` chung và cài cả bốn ở chế độ editable theo MỘT `uv.lock`.
+# Root của uv workspace: cả repo là MỘT project, sáu thư mục là sáu package thành viên.
+# `uv sync` ở đây tạo một `.venv` chung và cài cả sáu ở chế độ editable theo MỘT `uv.lock`.
 # Root không có mã nguồn (package = false); chạy lệnh trong thư mục con vẫn dùng đúng .venv này.
 [project]
 name = "claude-agents"
@@ -9,6 +9,7 @@ requires-python = ">=3.11"
 dependencies = [
     "console",
     "gateway",
+    "keeper",
     "software-company",
     "video-creators",
     "xagents-core",
@@ -32,11 +33,12 @@ dev = [
 package = false
 
 [tool.uv.workspace]
-members = ["console", "gateway", "software-company", "Studio-creators", "xagents-core"]
+members = ["console", "gateway", "keeper", "software-company", "Studio-creators", "xagents-core"]
 
 [tool.uv.sources]
 console = { workspace = true }
 gateway = { workspace = true }
+keeper = { workspace = true }
 software-company = { workspace = true }
 video-creators = { workspace = true }
 xagents-core = { workspace = true }

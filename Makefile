@@ -1,6 +1,6 @@
-# Root của uv workspace — một lệnh cho cả năm package. Target riêng của từng package (demo, run, login...)
+# Root của uv workspace — một lệnh cho cả sáu package. Target riêng của từng package (demo, run, login...)
 # vẫn nằm trong Makefile của thư mục đó; `make -C gateway login` hoặc `cd gateway && make login`.
-MEMBERS := console gateway software-company Studio-creators xagents-core
+MEMBERS := console gateway keeper software-company Studio-creators xagents-core
 
 .PHONY: sync test cov lint types fix build clean $(MEMBERS)
 
