@@ -58,6 +58,28 @@ Hàng đợi ticket, ngân sách còn lại, sổ nợ quá hạn và gate chờ
 console (`cd console && uv run python -m console`). Ô nào ghi *"chưa chạy lần nào"* là chưa chạy thật — tab đó
 cố ý **không** hiện số 0.
 
+## Eval prompt
+
+Bốn agent có bộ ca eval (`evals/<agent>.yaml`), mỗi bộ ≥ 5 ca đo **phán xét có thể sai** chứ không đo hình
+dạng schema: `triager` (xếp `risk_tier`), `security-auditor` (phân loại phát hiện), `release-clerk` (soạn dòng
+`CHANGELOG.md`), `keeper-supervisor` (phản ứng của watchdog). Sáu agent còn lại chưa có bộ ca — lý do ở
+docstring `src/keeper/evals.py`; tóm tắt: đầu ra của chúng do CODE quyết (`scout.py`, `health.py`, `drift.py`)
+hoặc được gác bằng bằng chứng đo hai chiều chứ không bằng một `expect` trong YAML.
+
+```bash
+make eval-replay                        # như CI: phát lại từ bản ghi, KHÔNG gọi model, không chạm mạng
+make eval-record AGENT=triager          # model THẬT, ghi evals/recordings/triager.json (bước 3, CONTRIBUTING §3)
+```
+
+`make eval-record` cần **`keeper/llm.yaml`** — file này là bí mật (khoá API hoặc thư mục đăng nhập CLI) nên nó
+**gitignored, không bao giờ commit**; bản mẫu commit được là `llm.example.yaml`, trong đó có sẵn khối
+`backends:` đã dùng để ghi bộ bản ghi hiện tại (provider `claude-code`, gói subscription đã `claude login`,
+không cần `ANTHROPIC_API_KEY`).
+
+Hai cổng, hai lý do đỏ: `evals/recordings/REQUIRED.txt` gác **bản ghi** (thiếu, hoặc ghi ở phiên bản prompt cũ)
+và `evals/thresholds.yaml` gác **điểm chấm** (tụt dưới sàn đã đo, hoặc bộ ca bị thu nhỏ). Đổi prompt mà chưa
+ghi lại eval thì job CI `keeper-eval-replay` đỏ — đó là răng của luật "prompt là code".
+
 Hai biến môi trường: `KEEPER_MAX_PR_PER_WEEK` (trần PR bảo trì mỗi tuần, mặc định 5) và
 `KEEPER_GATE_APPROVERS` (danh sách người duyệt gate). Không đặt biến thứ hai thì allowlist TẮT — four-eyes vẫn
 còn, nhưng bất kỳ ai khác người tạo gate cũng ký được. Chi tiết ở `HUONG-DAN-VAN-HANH.md` §7.4.
@@ -67,8 +89,9 @@ còn, nhưng bất kỳ ai khác người tạo gate cũng ký được. Chi ti�
 Ba chỗ dưới đây là thật sự chưa có, không phải "sắp xong" — ghi ra để không ai đọc phần trên rồi tưởng công ty
 này đã tự bảo trì được repo:
 
-- **`evals/` chưa dựng.** `make eval-record` cần model THẬT, nên bước đó **chờ người**, không phải chờ mã. Cho
-  tới lúc đó, agent của `keeper` chưa có bản ghi eval offline nào để so.
+- **6/10 agent chưa có bộ ca eval.** Hạ tầng đã dựng và bốn agent phán xét đã có bản ghi thật (mục *Eval
+  prompt* ở trên), nhưng `dependency-scout`, `health-monitor`, `drift-detector`, `patcher`, `refactorer`,
+  `regression-guard` thì chưa — có chủ ý, không phải bỏ quên.
 - **Canary chưa chạy.** Nghiệm thu của BT8 là một chu kỳ thật trên chính X-Agents: `keeper` tự mở đúng một PR
   bảo trì có bằng chứng đo hai chiều, và PR đó merge. Chưa xảy ra.
 - **`open_pr()` chưa gọi `gh pr create`.** Ở BT7 "mở PR" nghĩa là soạn `release-notes` + ghi `pr.intent` vào

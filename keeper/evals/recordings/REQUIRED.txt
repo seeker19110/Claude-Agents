@@ -1,0 +1,12 @@
+# Agent BẮT BUỘC có bản ghi eval tươi. CI chạy `keeper.evals all --replay --strict`:
+# agent có tên ở đây mà thiếu bản ghi, hoặc bản ghi ghi ở phiên bản prompt cũ, thì CI đỏ.
+#
+# Cách dùng: chạy `make eval-record AGENT=<id>` bằng model thật, commit `evals/recordings/<id>.json`,
+# rồi thêm <id> vào danh sách dưới đây. Từ lúc đó mọi thay đổi prompt/skill của agent ấy buộc phải chạy
+# lại eval mới merge được (bước 3 của `CONTRIBUTING.md` §3).
+#
+# Sáu agent còn lại chưa có bộ ca — lý do ở docstring `src/keeper/evals.py` ("Vì sao chỉ 4/10 agent có bộ ca").
+keeper-supervisor
+release-clerk
+security-auditor
+triager

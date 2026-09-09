@@ -66,7 +66,7 @@ PR vá riêng.
 | BT4 | `risk.py` bảng dữ liệu + `ledger.py` có `due_at` + `budget.py` + `triage.py` | keeper | `feat(keeper)` | C3 | quyết `due_at` vs `streak` (A2-9) | là cơ chế mới, không phải dùng lại — phải nói rõ trong PR | **xong #215** |
 | BT5 | `worktree.py` (bọc `TicketWorkspace`) + `patcher.py` + `FORBIDDEN_PATHS` + `cli.py --dry-run` | keeper | `feat(keeper)` | C3 | chạm git thật, sai là hỏng worktree phiên khác | tuyệt đối không `reset --hard` checkout chung | **xong #217** |
 | BT6 | `evidence.require_two_way` + `family.py` + `audit.py` | keeper | `feat(keeper)` | C3 | I2 thành cổng máy | `verified_by` phải do code set, lọc qua `guard` | **xong #218** |
-| BT7 | `release.py` + `gates.py` + `orchestrator.py` + 8 agent md + golden + eval recordings + `assetscan` 4 chỗ | keeper | `feat(keeper)` | C3 | công ty chạy được | chạm `agents/` → 7 bước `CONTRIBUTING.md` §3; `eval-record` cần key thật | **xong #221**; bước `make eval-record` = `chờ người` (cần model thật) |
+| BT7 | `release.py` + `gates.py` + `orchestrator.py` + 8 agent md + golden + eval recordings + `assetscan` 4 chỗ | keeper | `feat(keeper)` | C3 | công ty chạy được | chạm `agents/` → 7 bước `CONTRIBUTING.md` §3; `eval-record` cần key thật | **xong #221**; bước `make eval-record` = **xong #237** (ghi bằng gói sub CLI, không cần API key) |
 | BT8 | tab console + `HUONG-DAN-VAN-HANH` + `TRUC-VA-DUNG-KHAN` + README; **canary** | console, docs | `feat(keeper)` | C2 (console/docs) + `chờ người` (canary) | nghiệm thu thật | canary cần `gh auth` + người merge | **xong #223** (console + tài liệu); **canary: chờ người** — cần `gh auth login` và người merge PR bảo trì đầu tiên (I1 cấm keeper tự merge) |
 
 **Cố ý không làm**

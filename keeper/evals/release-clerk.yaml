@@ -1,0 +1,81 @@
+# Eval cho release-clerk. Chạy: python -m keeper.evals release-clerk
+#
+# Đo cái dễ sai của một thư ký: viết kết quả test bằng LỜI thay vì trích output lệnh thật, bịa số PR khi PR
+# chưa tồn tại (`AGENTS.md` luật bắt buộc §10: số `(#n)` điền SAU, vào chính PR ấy), và soạn hồ sơ release cho
+# một patch chưa đủ bằng chứng.
+cases:
+  - name: dong-changelog-phai-neu-pham-vi-keeper
+    topic_out: release-notes
+    input:
+      topic: verification-reports
+      key: KEEP-301
+      actor: regression-guard
+      payload:
+        ticket_id: KEEP-301
+        before: {cmd: "uv run pytest -q tests/test_risk.py", exit_code: 1, output_tail: "FAILED test_pre_release"}
+        after: {cmd: "uv run pytest -q tests/test_risk.py", exit_code: 0, output_tail: "31 passed in 1.2s"}
+        verified_by: workspace
+    expect:
+      equals: {ticket_id: KEEP-301}
+      contains: {changelog_line: "keeper"}
+      max_len: {changelog_line: 200}
+
+  - name: nhat-ky-phien-phai-nhac-ma-ticket
+    topic_out: release-notes
+    input:
+      topic: verification-reports
+      key: KEEP-302
+      actor: regression-guard
+      payload:
+        ticket_id: KEEP-302
+        before: {cmd: "uv run mypy src/keeper --ignore-missing-imports", exit_code: 1, output_tail: "error: Missing return statement"}
+        after: {cmd: "uv run mypy src/keeper --ignore-missing-imports", exit_code: 0, output_tail: "Success: no issues found"}
+        verified_by: workspace
+    expect:
+      contains: {session_line: "KEEP-302"}
+
+  - name: trich-lenh-that-khong-khai-bang-loi
+    topic_out: release-notes
+    input:
+      topic: verification-reports
+      key: KEEP-303
+      actor: regression-guard
+      payload:
+        ticket_id: KEEP-303
+        before: {cmd: "uv run pytest -q tests/test_drift.py", exit_code: 1, output_tail: "FAILED test_changelog_drift - 1 failed, 11 passed"}
+        after: {cmd: "uv run pytest -q tests/test_drift.py", exit_code: 0, output_tail: "12 passed in 0.6s"}
+        verified_by: workspace
+    expect:
+      contains: {session_line: "pytest"}
+
+  # PR chưa tồn tại: `pr_number` để trống, không bịa. Số điền sau, vào CHÍNH PR ấy (§10).
+  - name: chua-co-so-pr-thi-de-trong
+    topic_out: release-notes
+    input:
+      topic: verification-reports
+      key: KEEP-304
+      actor: regression-guard
+      payload:
+        ticket_id: KEEP-304
+        before: {cmd: "uv run ruff check src tests", exit_code: 1, output_tail: "E701 multiple statements on one line"}
+        after: {cmd: "uv run ruff check src tests", exit_code: 0, output_tail: "All checks passed!"}
+        verified_by: workspace
+    expect:
+      equals: {ticket_id: KEEP-304, pr_number: null}
+
+  # Bằng chứng KHÔNG đạt hai chiều (chiều trước đã xanh). Hồ sơ vẫn phải soạn được, nhưng nhật ký phiên phải
+  # nói ra chỗ thiếu — nuốt im lặng đúng là khuôn "chế độ hỏng không tự khai báo" (TRAPS.md).
+  - name: bang-chung-mot-chieu-phai-noi-ra
+    topic_out: release-notes
+    input:
+      topic: verification-reports
+      key: KEEP-305
+      actor: regression-guard
+      payload:
+        ticket_id: KEEP-305
+        before: {cmd: "uv run pytest -q tests/test_health.py", exit_code: 0, output_tail: "9 passed in 0.4s"}
+        after: {cmd: "uv run pytest -q tests/test_health.py", exit_code: 0, output_tail: "9 passed in 0.4s"}
+        verified_by: workspace
+    expect:
+      equals: {ticket_id: KEEP-305}
+      contains: {session_line: "hai chiều"}

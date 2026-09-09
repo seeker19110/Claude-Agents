@@ -68,3 +68,8 @@ keeper/var/
 
 # keeper: dữ liệu chạy (state quan sát/triage) — không commit
 keeper/keeper.sqlite*
+
+# keeper: cấu hình model thật (khoá API / thư mục đăng nhập CLI). Chỉ commit keeper/llm.example.yaml.
+keeper/llm.yaml
+keeper/llm.yaml.bak
+keeper/llm.yaml.bak*

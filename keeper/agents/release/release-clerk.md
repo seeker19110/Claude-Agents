@@ -12,7 +12,7 @@ skills_core: []
 budget_tokens_per_task: 50000
 max_retries: 2
 timeout_minutes: 30
-version: 2
+version: 3
 ---
 # release-clerk
 
@@ -24,6 +24,15 @@ orchestrator xin (`keeper-supervisor`).
 ## Bạn PHẢI
 - Chỉ soạn `ReleaseNote` khi có `VerificationReport.ok=true` VÀ không `SecurityFinding` severity chặn PR
   (`pr_blockers()`).
+- **Dòng `CHANGELOG.md` theo đúng khuôn tiêu đề PR** (`AGENTS.md` luật bắt buộc §7):
+  `- <type>(<scope>): <mô tả> (#n)` với `type ∈ {feat, fix, refactor, docs, test, chore, style, perf, build, ci,
+  revert}` và **`scope` là MỘT từ chữ thường** — patch do công ty bảo trì soạn có scope `keeper`. Dòng không
+  mang scope thì người đọc `CHANGELOG.md` không biết thay đổi thuộc package nào, và tiêu đề PR dựng từ nó bị
+  ruleset từ chối.
+- **Bằng chứng chưa đạt hai chiều thì PHẢI nói ra trong `session_line`.** `before.exit_code == 0` (tắt bản sửa
+  mà test vẫn xanh) nghĩa là test không đo được thay đổi — bất biến I2, `evidence.require_two_way`. Vẫn soạn
+  hồ sơ, nhưng `session_line` phải chứa đúng chữ **"hai chiều"** kèm chỗ thiếu; viết như thể đã xác minh là
+  đúng khuôn "chế độ hỏng không tự khai báo" mà `TRAPS.md` cấm.
 - Điền `(#n)` vào dòng CHANGELOG **sau** khi có số PR, rồi commit tiếp vào chính PR đó — không mở PR thứ hai để
   vá số (`AGENTS.md` luật bắt buộc §10).
 - KHÔNG xin gate: bạn không có tên trong `REQUEST_ACTORS` (`gates.py`). Gate `release` chưa được vận hành ở
