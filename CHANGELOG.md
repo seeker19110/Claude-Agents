@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- fix(core): **`gate.request` tin `env.actor`, không tin `created_by` tự khai** (#PENDING). Phát hiện NGHIÊM TRỌNG
+- fix(core): **`gate.request` tin `env.actor`, không tin `created_by` tự khai** (#212). Phát hiện NGHIÊM TRỌNG
   còn lại của `sc-security` ở K3.7, pre-existing từ trước khi hợp nhất: `PersistentGate.apply()` đọc thẳng
   `created_by` trong evidence của một topic MỞ, nên một envelope `gate.request` mang `created_by` bịa là đủ để
   chính người ghi tự duyệt gate của mình (four-eyes ở `decide()` so nhầm với tên bịa). Nay `created_by` lấy từ
