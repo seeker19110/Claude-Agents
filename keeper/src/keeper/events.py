@@ -78,6 +78,18 @@ class RunOutcome(BaseModel):
     output_tail: str = ""
 
 
+class FamilySafeEntry(BaseModel):
+    """Một chỗ cùng cơ chế ĐÃ SOI và kết luận an toàn, mang theo LÝ DO — hình thu hẹp của `family.SafeSite`
+    cho bus (không có `mechanism`/`line`: chi tiết nội bộ của lượt rà, không cần lên topic).
+
+    `reason` bắt buộc có nội dung: trước bản sửa này `family_safe` chỉ là `list[str]` đường dẫn — đúng lúc
+    payload rời tiến trình để lên `verification-reports` thì lý do (thứ `family.py` ép buộc phải có,
+    `family.py:62-67`) bị vứt, và cái lên bus lại là "lời khai" hình dạng `family.py` được viết ra để chống
+    (`AGENTS.md` cấm §8, `TRAPS.md` §1)."""
+    path: str
+    reason: str = Field(min_length=1)
+
+
 class VerificationReport(BaseModel):
     """Bằng chứng hai chiều bắt buộc (bất biến I2): `before.exit_code == 0` là báo cáo vô hiệu."""
     ticket_id: str = Field(pattern=ID_PATTERN)
@@ -85,7 +97,7 @@ class VerificationReport(BaseModel):
     after: RunOutcome
     verified_by: Literal["workspace", "orchestrator"]
     family_hits: list[str] = []
-    family_safe: list[str] = []
+    family_safe: list[FamilySafeEntry] = []
 
 
 class SecurityFinding(BaseModel):

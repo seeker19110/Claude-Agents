@@ -65,7 +65,7 @@ PR vá riêng.
 | BT3 | `scout/health/drift` + `signals.dedupe` | keeper | `feat(keeper)` | C2 | ba phép so thuần cục bộ, test dễ | phép (c) báo giả trước mốc §10 → cần hằng số ngày có comment | **xong #PR** |
 | BT4 | `risk.py` bảng dữ liệu + `ledger.py` có `due_at` + `budget.py` + `triage.py` | keeper | `feat(keeper)` | C3 | quyết `due_at` vs `streak` (A2-9) | là cơ chế mới, không phải dùng lại — phải nói rõ trong PR | **xong #PR** |
 | BT5 | `worktree.py` (bọc `TicketWorkspace`) + `patcher.py` + `FORBIDDEN_PATHS` + `cli.py --dry-run` | keeper | `feat(keeper)` | C3 | chạm git thật, sai là hỏng worktree phiên khác | tuyệt đối không `reset --hard` checkout chung | **xong #PR** |
-| BT6 | `evidence.require_two_way` + `family.py` + `audit.py` | keeper | `feat(keeper)` | C3 | I2 thành cổng máy | `verified_by` phải do code set, lọc qua `guard` | chưa |
+| BT6 | `evidence.require_two_way` + `family.py` + `audit.py` | keeper | `feat(keeper)` | C3 | I2 thành cổng máy | `verified_by` phải do code set, lọc qua `guard` | **xong #PR** |
 | BT7 | `release.py` + `gates.py` + `orchestrator.py` + 8 agent md + golden + eval recordings + `assetscan` 4 chỗ | keeper | `feat(keeper)` | C3 | công ty chạy được | chạm `agents/` → 7 bước `CONTRIBUTING.md` §3; `eval-record` cần key thật | chưa (dự kiến `chờ người` ở bước eval-record) |
 | BT8 | tab console + `HUONG-DAN-VAN-HANH` + `TRUC-VA-DUNG-KHAN` + README; **canary** | console, docs | `feat(keeper)` | C2 (console/docs) + `chờ người` (canary) | nghiệm thu thật | canary cần `gh auth` + người merge | chưa |
 

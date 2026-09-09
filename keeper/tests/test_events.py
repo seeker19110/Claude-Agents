@@ -5,7 +5,7 @@ from typing import get_args
 import pytest
 from pydantic import ValidationError
 
-from keeper.events import PAYLOAD_MODELS, Envelope, Topic
+from keeper.events import PAYLOAD_MODELS, Envelope, FamilySafeEntry, Topic, VerificationReport
 
 
 def test_moi_topic_co_dung_mot_payload_model():
@@ -61,3 +61,32 @@ def test_cong_chong_lech_hop_dong_co_suc_manh_phan_biet(tmp_path, monkeypatch):
     props = set(schema["properties"]["payload"].get("properties", {}))
     assert props, "schema phải khai trường, nếu không test trên vô nghĩa"
     assert {"truong_khong_ton_tai"} - props == {"truong_khong_ton_tai"}
+
+
+# --- family_safe mang lý do lên bus (`sc-security`: lý do bị vứt đúng lúc payload rời tiến trình) ---------
+
+def _vr(**family_safe_kwargs):
+    return VerificationReport(
+        ticket_id="T-1",
+        before={"cmd": "pytest", "exit_code": 1},
+        after={"cmd": "pytest", "exit_code": 0},
+        verified_by="workspace",
+        family_hits=["src/a.py"],
+        **family_safe_kwargs,
+    )
+
+
+def test_family_safe_mang_ca_ly_do_khong_chi_duong_dan():
+    vr = _vr(family_safe=[{"path": "src/b.py", "reason": "chuỗi đã aware, không so naive"}])
+    assert vr.family_safe == [FamilySafeEntry(path="src/b.py", reason="chuỗi đã aware, không so naive")]
+
+
+def test_family_safe_chi_co_duong_dan_thieu_ly_do_thi_bi_tu_choi():
+    """Ca chiều ngược: bỏ `reason` khỏi entry — CÙNG payload không còn dựng được `VerificationReport`."""
+    with pytest.raises(ValidationError):
+        _vr(family_safe=[{"path": "src/b.py"}])
+
+
+def test_family_safe_ly_do_rong_thi_bi_tu_choi():
+    with pytest.raises(ValidationError):
+        _vr(family_safe=[{"path": "src/b.py", "reason": ""}])
