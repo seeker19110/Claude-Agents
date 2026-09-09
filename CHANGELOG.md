@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- feat(core): **allowlist vai được TẠO gate** (#PENDING). Nửa còn lại của lỗ hổng `gate.request` mà ADR-0002
+- feat(core): **allowlist vai được TẠO gate** (#216). Nửa còn lại của lỗ hổng `gate.request` mà ADR-0002
   cố ý hoãn: agent nào cũng dựng được gate ma. `PersistentGate.REQUEST_ACTORS` (ADR-0008) liệt kê vai được mở
   gate của từng công ty — người luôn được phép; chiều ghi ném `PermissionError` (bug ở call site phải lộ),
   chiều replay im lặng bỏ qua (một dòng log xấu không được làm sập sổ gate). **Đo trên `company.sqlite` thật
