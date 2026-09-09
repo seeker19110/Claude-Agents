@@ -16,6 +16,7 @@ ENV = "FAKE_GATE_APPROVERS"
 
 
 def _req(sid="G1", **kw):
+    kw.setdefault("created_by", "human:default")
     return GateRequest(kind="duyet", subject_id=sid, checklist=["c1"], **kw)
 
 
@@ -51,6 +52,21 @@ def test_approvers_cfg_path_sau_hai_muc(monkeypatch):
 
 
 # ---------- four-eyes + allowlist ----------
+
+@pytest.mark.parametrize("created_by", [None, "", "   "])
+def test_request_tu_choi_created_by_rong_hoac_none(created_by):
+    """created_by rỗng/None làm ngắn mạch four-eyes ở decide() — request() phải chặn trước khi vào pending."""
+    g = HumanGate()
+    with pytest.raises(PermissionError):
+        g.request(_req(created_by=created_by))
+    assert g.pending == {}
+
+
+def test_request_chap_nhan_created_by_hop_le():
+    g = HumanGate()
+    r = g.request(_req(created_by="human:a"))
+    assert r.created_by == "human:a" and "G1" in g.pending
+
 
 def test_decide_ghi_quyet_dinh_va_chuyen_sang_history():
     g = HumanGate()

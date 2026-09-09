@@ -64,6 +64,10 @@ class HumanGate:
         self.history: list[GateRequest] = []
 
     def request(self, req: GateRequest) -> GateRequest:
+        # `created_by` rỗng/None làm ngắn mạch kiểm four-eyes ở decide() (`if req.created_by and ...`),
+        # cho phép người tạo tự duyệt gate của chính mình — chặn ngay tại nguồn, đừng để lộ ở decide().
+        if not (req.created_by or "").strip():
+            raise PermissionError("gate phải có created_by (actor thật) — four-eyes cần biết ai đã tạo")
         self.pending[req.subject_id] = req; return req
 
     def decide(self, subject_id: str, decision: str, by: str, reason: str = "", *, enforce: bool = True) -> GateRequest:

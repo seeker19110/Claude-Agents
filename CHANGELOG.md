@@ -6,6 +6,12 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(core): **`HumanGate.request()` từ chối `created_by` rỗng/None** (#199). Lỗ hổng bypass four-eyes
+  pre-existing (có trước K3.7): `decide()` chỉ kiểm `if req.created_by and req.created_by == by`, nên
+  `created_by` rỗng/None ngắn mạch điều kiện, cho phép người tạo tự duyệt gate của chính mình. `request()` nay
+  chặn tại nguồn (allowlist mặc định từ chối) thay vì để lộ ở `decide()`. Rà `GateRequest(` toàn repo: mọi call
+  site sản phẩm đã truyền `created_by`; 1 test (`software-company/tests/test_delivery_and_gates.py::test_gate_timeouts`)
+  thiếu, đã sửa. ADR: `docs/adr/0005-gate-request-tu-choi-created-by-rong.md`.
 - refactor(core): **K3.7 — gates, gate_cli, supervisor hợp nhất hai chiều** (#198). Bước cuối kịch bản B:
   `xagents_core/{gates,gate_cli,supervisor,ticket_model}.py` mới, company/studio kế thừa, giữ tên method khác
   miền (`report()` studio, `sprint_report()` company). Company lần đầu có allowlist người duyệt
