@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field
 from xagents_core.events import SCHEMA_VERSION as SCHEMA_VERSION
@@ -11,7 +11,7 @@ from xagents_core.events import SupervisorAction as CoreSupervisorAction
 from xagents_core.events import SupervisorActionKind as SupervisorActionKind
 from xagents_core.events import can_transition as _can_transition
 
-from .roles import ROLE, Assignee, BuildPhase, ReviewSource
+from .roles import BUILD_PHASES, ROLE, Assignee, BuildPhase, ReviewSource
 
 Topic = Literal[
     "research-requests", "research-findings", "requirements-draft",
@@ -95,6 +95,31 @@ class Task(BaseModel):
     budget_usd: float | None = None  # trần chi phí tiền của ticket (tuỳ chọn); supervisor cắt khi chạm, ngoài budget_tokens
     priority: int = 3  # 1 = cao nhất (WSJF/MoSCoW quy về 1..5); delivery-lead dispatch theo priority rồi thứ tự tạo
     rulings: list[Ruling] = []  # ADR-0030
+
+    #: Từ vựng `assignee` của thời 21 agent (trước ADR-0037/PR-5d). Sáu giá trị ấy trùng đúng `BUILD_PHASES`:
+    #: chúng không biến mất khi gộp agent, chúng ĐỔI CHỖ — từ "ai làm" sang "mảng kỹ thuật nào" (`Task.stack`).
+    _ASSIGNEE_CU: ClassVar[frozenset[str]] = frozenset(BUILD_PHASES)
+
+    @classmethod
+    def tu_log(cls, raw: dict[str, Any]) -> Task:
+        """Dựng `Task` từ một bản ghi CŨ đọc lại từ bus/audit-log — dùng ở MỌI đường phát lại.
+
+        `Assignee` nay là `Literal["builder"]`, nhưng bus là bản ghi bền và bất biến: mọi ticket lập trước PR-5d
+        còn mang `assignee` là một trong sáu stack. `model_validate` thẳng tay trên chúng ném `ValidationError`
+        giữa `_rehydrate`, tức là trong `Orchestrator.__init__`, nên **không lệnh nào** mở nổi DB đó nữa — kể cả
+        `status` chỉ đọc. Đo trên `company.sqlite` của QLKH (2026-09-09): 18 293 event còn nguyên vẹn mà công ty
+        không khởi động lại được. Thắt schema thì phải nới đường ĐỌC LẠI lịch sử.
+
+        Không vứt thông tin: `assignee: "platform"` cũ mang đúng nghĩa `stack: "platform"` ngày nay, nên nó
+        chuyển sang `stack` (chỉ khi bản ghi chưa có `stack` riêng — bản ghi mới hơn thì tôn trọng nó).
+
+        Khoan dung ĐÚNG sáu giá trị lịch sử: `assignee` lạ vẫn ném, để một kế hoạch hỏng thật không lặng lẽ
+        biến mất khỏi hàng đợi sau restart.
+        """
+        if raw.get("assignee") in cls._ASSIGNEE_CU:
+            raw = {**raw, "assignee": ROLE.BUILDER, "stack": raw.get("stack") or raw["assignee"]}
+        return cls.model_validate(raw)
+
 
 class PullRequest(BaseModel):
     ticket_id: str

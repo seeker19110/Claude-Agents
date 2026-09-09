@@ -107,7 +107,13 @@ def merge_ticket_locked(o: Orchestrator, tid: str, res: StepResult, release_id: 
     integration = o._integration_of_ticket(tid)
     ws = o.workspace(tid)
     if integration is None or ws is None or not ws.path.exists():
-        o._audit("integration.skipped", {"release_id": release_id, "ticket_id": tid, "reason": "không có worktree"}, ticket_id=tid)
+        # Khoá `once`: nhánh này KHÔNG đổi trạng thái gì (`return True` ngay), nên mỗi nhịp watch gọi lại
+        # `merge_ticket` cho cùng ticket là ghi thêm một bản ghi y hệt. Đo trên `company.sqlite` của QLKH:
+        # 13 399 / 17 278 bản ghi audit-log là `integration.skipped` — 78% cả DB, và `metrics`/`console` đọc
+        # "sự thật" từ chính sổ này nên mọi thống kê bị pha loãng 4×. Các audit anh em cùng vòng lặp
+        # (`gate.overdue`, `gate.escalate` trong scheduler.py) đã có khoá; chỗ này sót.
+        o._audit("integration.skipped", {"release_id": release_id, "ticket_id": tid, "reason": "không có worktree"},
+                 ticket_id=tid, once=f"integration.skipped:{release_id}:{tid}")
         return True
     t = o.lead.tickets.get(tid)
     before = integration.sha()
