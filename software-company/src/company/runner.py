@@ -24,10 +24,12 @@ import argparse
 import json
 import sys
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from xagents_core.observe import Span, span, use_parent
 from xagents_core.runner import AgentRunner as CoreAgentRunner
 from xagents_core.runner import Generated as CoreGenerated
 from xagents_core.runner import RunnerError as RunnerError
@@ -55,6 +57,11 @@ NO_PROGRESS_WARN, NO_PROGRESS_STOP = 3, 5
 # Chỉ tool GHI mới đổi được trạng thái worktree → chỉ nó mới là "tiến bộ". Tool ĐỌC (`read_file`, `list_files`,
 # `search`, `run`) trả cùng kết quả bao nhiêu lần cũng không đưa ticket tiến thêm bước nào.
 WRITING_TOOLS = frozenset({"write_file", "delete_file"})
+
+# ADR-0009: span của lượt model vừa xong, để vòng tool gắn cha cho `tool.call`. `ContextVar` chứ không phải
+# thuộc tính instance: một `AgentRunner` được dùng lại cho nhiều ticket chạy SONG SONG trong `ThreadPoolExecutor`
+# của scheduler, nên một ô nhớ dùng chung sẽ gán lượt model của ticket A làm cha cho tool của ticket B.
+_TURN_SPAN: ContextVar[Span | None] = ContextVar("company_turn_span", default=None)
 
 
 
@@ -252,10 +259,24 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         supervisor mới trừ đúng ngân sách (không thì token của các lượt trước biến mất khỏi sổ)."""
         drain = getattr(self.client, "drain_retries", None)
         try:
-            c = self.client.complete(system=spec.system_prompt(phase), user=user, schema=schema, model_tier=spec.model_tier,
-                                     cache_key=spec.id if phase is None else f"{spec.id}[{phase}]",
-                                     tools=tools.specs() if tools else None, messages=messages,
-                                     workdir=tools.root if tools else None)
+            # ADR-0009 quyết định 3: span bao ĐÚNG lời gọi client, ở phía GỌI. `self.client` là một chuỗi bọc
+            # lồng nhau (routing → retry → recording/replay → adapter) với 12 hiện thực `complete`; đặt span
+            # trong client sinh 3 span cho MỘT lượt, và số span đổi theo `backends:` chứ không theo việc thật
+            # sự làm. Hệ quả cố ý: thời gian retry và thời gian đổi backend nằm TRONG span này.
+            with span("llm.complete", self.sink, agent=spec.id, tier=spec.model_tier, phase=phase) as sp:
+                c = self.client.complete(system=spec.system_prompt(phase), user=user, schema=schema, model_tier=spec.model_tier,
+                                         cache_key=spec.id if phase is None else f"{spec.id}[{phase}]",
+                                         tools=tools.specs() if tools else None, messages=messages,
+                                         workdir=tools.root if tools else None)
+                if sp is not None:
+                    sp.attrs.update(model=c.model, input_tokens=c.input_tokens, output_tokens=c.output_tokens,
+                                    cached_input_tokens=c.cached_input_tokens, tool_calls=len(c.tool_calls),
+                                    tool_mode=c.tool_mode or "loop")
+                    # `set` nằm TRONG nhánh này: quyết định 5 của ADR-0009 nói sink tắt phải "không tốn gì",
+                    # mà `ContextVar.set` vẫn cấp phát một `Token` kể cả khi giá trị là `None`. Sink tắt thì
+                    # `_TURN_SPAN` giữ giá trị lượt TRƯỚC, nhưng `use_parent` chỉ đọc nó để gắn cha cho span
+                    # `tool.call`, mà span đó cũng không sinh ra khi `tools.sink is None` — không phát gì.
+                    _TURN_SPAN.set(sp)
         except LLMError as e:
             if drain and (notes := drain()):
                 self._audit(spec, "llm_retry", inp, evidence=json.dumps({"attempts": len(notes), "notes": notes}, ensure_ascii=False))
@@ -321,8 +342,12 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
             msgs.append({"role": "assistant", "content": c.text,
                          "tool_calls": [{"id": t.id, "name": t.name, "args": t.args} for t in c.tool_calls]})
             for t in c.tool_calls:
-                try: out = tools.call(t)
-                except ToolError as e: out = f"lỗi: {e}"
+                # ADR-0009 quyết định 2: tool của lượt này là CON của lượt model vừa rồi. Span `llm.complete`
+                # đã đóng ở đây (model trả `tool_calls` rồi runner mới chạy tool), nên cha phải gắn tường minh
+                # — kéo dài span kia tới hết vòng tool thì latency của chính model không còn đọc được nữa.
+                with use_parent(_TURN_SPAN.get()):
+                    try: out = tools.call(t)
+                    except ToolError as e: out = f"lỗi: {e}"
                 out, hits = sanitize_tool_output(out)  # nội dung repo khách/web là DỮ LIỆU, lọc như payload ngoài
                 if hits:
                     self._audit(spec, "injection_sanitized", inp, evidence=f"tool {t.name}: " + "; ".join(hits[:5]))
@@ -437,14 +462,25 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
             inp = inp.model_copy(update={"payload": payload})
         user = build_user_message(spec, inp, topic_out, context, many=many)
         out_schema = output_schema(schema, spec.namespaces_write, many)
+        # `t0`/`duration_ms` GIỮ NGUYÊN: `metrics.collect` cộng nó thành `duration_ms_avg`. Span là cơ chế
+        # thứ hai chạy song song (ADR-0009 quyết định 1), không thay con số này.
         t0 = time.perf_counter()
-        if tools is None:
-            c = self._complete(spec, inp, user, out_schema, phase=phase); total, turns = c.tokens, 1
-            out_toks = c.output_tokens
-            usd, priced = self._cost(c)
-        else:
-            c, total, turns, usd, out_toks = self._tool_loop(spec, inp, user, out_schema, tools, max_turns, budget, phase)
-            priced = self._cost(c)[1]
+        with span("runner.step", self.sink, agent=agent_id, topic_out=topic_out, phase=phase,
+                  event=inp.event_id) as step:
+            if tools is None:
+                c = self._complete(spec, inp, user, out_schema, phase=phase); total, turns = c.tokens, 1
+                out_toks = c.output_tokens
+                usd, priced = self._cost(c)
+            else:
+                # Gán vào đối tượng của NGƯỜI GỌI và KHÔNG hoàn lại sau bước. Hôm nay vô hại vì mọi `ToolBox`
+                # đều dựng mới mỗi bước (`orch/worktree_flow.py:158,163`, `orchestrator.py:373`,
+                # `runner.py:523,564`, `tools.py:213`) — nhưng không có gì trong mã giữ điều đó đúng về sau:
+                # một `ToolBox` dùng lại giữa hai runner khác sink sẽ giữ nguyên sink của runner ĐẦU TIÊN.
+                if tools.sink is None: tools.sink = self.sink   # bảng tool dựng ở nơi khác vẫn phát cùng một sink
+                c, total, turns, usd, out_toks = self._tool_loop(spec, inp, user, out_schema, tools, max_turns, budget, phase)
+                priced = self._cost(c)[1]
+            if step is not None:
+                step.attrs.update(model=c.model, turns=turns, tokens=total)
         duration = int((time.perf_counter() - t0) * 1000)
         try:
             data = c.json()
