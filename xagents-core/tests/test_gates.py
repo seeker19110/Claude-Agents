@@ -112,7 +112,46 @@ def test_overdue_va_due_theo_bien_timeout():
 
 
 def test_overdue_khong_truyen_now_thi_lay_bay_gio():
+    """`created_at` lùi 1 giây thay vì dựa vào thời gian trôi giữa hai dòng lệnh.
+
+    Ca này từng ĐỎ trên Windows (2026-09-09): `datetime.now(UTC)` ở đó có bước ~15,6 ms, nên `request()` và
+    `overdue()` trong cùng một tick đọc ra cùng một mốc và hiệu là `timedelta(0)` — không lớn hơn `timeout=0`.
+    Không phải flake ngẫu nhiên: đỏ 5/5 lần lặp. Biên "đúng bằng timeout thì CHƯA quá hạn" là cố ý
+    (`test_overdue_va_due_theo_bien_timeout`), nên chỗ phải sửa là ca này, không phải phép so sánh.
+
+    Vẫn đo đúng thứ nó sinh ra để đo: `overdue()`/`due()` không nhận `now` thì phải tự đọc đồng hồ — mốc lùi 1
+    giây chỉ quá hạn khi baseline là bây giờ."""
     g = HumanGate(timeout=timedelta(0))
-    g.request(_req("X"))
+    g.request(_req("X", created_at=datetime.now(UTC) - timedelta(seconds=1)))
     assert [r.subject_id for r in g.overdue()] == ["X"]
     assert g.due()[1] == ["X"]
+
+
+# ---------- seq: hai thế hệ gate của cùng subject phải phân biệt được ----------
+
+def test_seq_tang_dan_va_khong_dua_vao_dong_ho():
+    """Hai gate cho CÙNG `subject_id` mở liên tiếp phải mang hai `seq` khác nhau.
+
+    Trước 2026-09-09 company phân biệt thế hệ bằng `created_at.isoformat(microseconds)`; trên Windows hai lần
+    `request()` liên tiếp cho cùng một dấu thời gian, nên khoá `once` của lần quá hạn thứ hai trùng lần thứ
+    nhất và bị nuốt — đúng lớp lỗi mà khoá ấy sinh ra để chặn. Bộ đếm không đọc đồng hồ nên không mắc."""
+    g = HumanGate()
+    a = g.request(_req("G1"))
+    b = g.request(_req("G1"))   # thế hệ hai, ghi đè thế hệ một dưới cùng `subject_id`
+    assert (a.seq, b.seq) == (1, 2), "hai thế hệ phải phân biệt được kể cả khi đồng hồ cho cùng một mốc"
+    assert g.pending["G1"] is b, "gate mới ghi đè gate cũ dưới cùng `subject_id` — đó chính là lý do cần `seq`"
+
+
+def test_seq_deterministic_khi_phat_lai_cung_thu_tu():
+    """Phát lại cùng một log theo cùng thứ tự thì gate thứ ba vẫn là gate thứ ba.
+
+    Đây là nửa thứ hai của lý do đổi sang bộ đếm: lúc rehydrate, gate được `request()` LẠI nên `created_at` là
+    bây giờ chứ không phải mốc gốc — khoá `once` đổi sau mỗi restart, và một gate đã escalate lại escalate lần
+    nữa. `seq` chỉ phụ thuộc thứ tự gọi, nên hai lần dựng cho cùng một dãy khoá."""
+    def dung() -> list[int]:
+        g = HumanGate()
+        for sid in ("A", "B", "A", "C"):
+            g.request(_req(sid))
+        return [r.seq for r in (g.pending["A"], g.pending["B"], g.pending["C"])]
+
+    assert dung() == dung() == [3, 2, 4]
