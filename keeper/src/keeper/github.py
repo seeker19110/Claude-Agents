@@ -97,6 +97,11 @@ class CodeScanningAlert(BaseModel):
 
 
 class WorkflowRun(BaseModel):
+    """`startedAt`/`updatedAt`: tên trường THẬT của `gh run list --json` (kiểm bằng `gh run list --json bogus`
+    để `gh` tự liệt kê trường hợp lệ — không phải `run_started_at`/`updated_at` của REST API thô, đó là tên
+    JSON của endpoint HTTP, `gh` CLI đặt tên khác). Mặc định `None`: bản ghi thiếu (gh cũ, hay run đang chạy
+    dở nên chưa có `updatedAt` kết thúc) không làm vỡ parse; `health.ci_duration_stats()` coi run thiếu một
+    trong hai mốc là chưa đo được, loại khỏi mẫu thay vì đoán 0."""
     model_config = {"extra": "ignore"}
     databaseId: int
     name: str = ""
@@ -104,6 +109,8 @@ class WorkflowRun(BaseModel):
     conclusion: str | None = None
     headSha: str = ""
     createdAt: str | None = None
+    startedAt: str | None = None
+    updatedAt: str | None = None
 
 
 class GitHubReader:
@@ -219,7 +226,8 @@ class GitHubReader:
 
     def workflow_runs(self) -> list[WorkflowRun]:
         ok, out = self._run(
-            "run", "list", "--json", "databaseId,name,status,conclusion,headSha,createdAt", "--limit", "50",
+            "run", "list", "--json",
+            "databaseId,name,status,conclusion,headSha,createdAt,startedAt,updatedAt", "--limit", "50",
         )
         if not ok:
             return []
