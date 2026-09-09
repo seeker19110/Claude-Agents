@@ -2,4 +2,4 @@
 # `union` gộp cả hai bên thay vì dừng rebase — đúng ý muốn: không dòng nào được mất.
 # Sau khi gộp, đọc lại khối để bỏ dòng trùng nếu có (git không sắp xếp giúp).
 CHANGELOG.md merge=union
-docs/DAC-TA-NANG-CAP-2026-09.md merge=union
+docs/archive/DAC-TA-NANG-CAP-2026-09.md merge=union

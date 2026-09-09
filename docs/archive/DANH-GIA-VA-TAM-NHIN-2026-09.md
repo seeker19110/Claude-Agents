@@ -1,5 +1,8 @@
 # Đánh giá sâu và tầm nhìn phát triển X-Agents — 09/2026
 
+> **Lưu trữ.** Đã bị `docs/DAC-TA-KICH-BAN-B.md` bọc; xem bảng theo dõi ở đó cho trạng thái hiện tại. Giữ file
+> này làm nguồn gốc lịch sử (đánh giá + ba mốc "Chân trời" vẫn được `docs/NGON-NGU.md` tham chiếu).
+
 Ngày lập: 2026-09-06 · Căn cứ: `main@d7c8271` (#108), khảo sát mã nguồn và tài liệu cả bốn package, ba báo cáo
 trước (`software-company/docs/reports/2026-09-06-ban-giao-khong-chay-duoc.md`,
 `Studio-creators/docs/DANH-GIA-NANG-CAP-XUONG-VIDEO.md`, `docs/DAC-TA-NANG-CAP-2026-09.md`).

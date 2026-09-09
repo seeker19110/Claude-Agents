@@ -118,6 +118,12 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   người mà lệch `evidence.by` — actor `"orchestrator"` giả `by="human:x"` từng đẩy được video lên nền tảng
   thật. Vá thành allowlist mặc định từ chối, đúng mẫu `company/gate_cli.py`. `PersistentGate.apply`/
   `_rehydrate` cùng lỗ, cùng vá. Phát hiện bởi `sc-security` khi chấm gói.
+- docs: **gom hai đặc tả tháng 9 đã bị `DAC-TA-KICH-BAN-B.md` bọc vào `docs/archive/`** — `DAC-TA-NANG-CAP-2026-09.md`
+  và `DANH-GIA-VA-TAM-NHIN-2026-09.md` chuyển sang `docs/archive/`, thêm ghi chú "đã lưu trữ" đầu file, sửa
+  các dẫn chiếu còn sống (`DAC-TA-KICH-BAN-B.md`, `KIEN-TRUC-4-LOP.md`, `NGON-NGU.md`,
+  `.claude/commands/thi-hanh.md`, `.gitattributes`) trỏ đúng đường dẫn mới. Không đổi nội dung, không đụng
+  `DAC-TA-KICH-BAN-B.md`/`DAC-TA-TRIEN-KHAI-KICH-BAN-B.md` (bảng theo dõi đang sống, PR tới #187) — hai file đó
+  không trùng lặp nội dung với nhau nên giữ nguyên chỗ, đúng bài học `KHUON-THI-HANH.md` §6 "một file thay ba".
 - refactor(core): **K3.5c — `sqlite_bus` lên `xagents_core`; studio nhận khoá, `latest()` và bus dùng được từ
   thread khác** (#187). `difflib` giữa hai `sqlite_bus.py` là **0.442** — cao nhất trong ba module của K3.5, và
   lần này con số ấy đúng theo nghĩa đen: cùng `_DDL`, cùng cách nạp lại `_log` khi mở, cùng câu `INSERT`, cùng
