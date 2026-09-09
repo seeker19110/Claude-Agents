@@ -59,6 +59,7 @@ from .delivery import DONE_STATES, DeliveryLead
 from .deploy import deploy
 from .events import Envelope
 from .gate_cli import PersistentGate
+from .gates import gate_approvers
 from .llm import LLMError, ModelClient, TransientError
 from .orch import fsm, gates_flow, rehydrate, release_fsm, scheduler, ticket_fsm, verify, worktree_flow
 from .orch.cli import main, source_fingerprint
@@ -187,7 +188,7 @@ class Orchestrator:
         bad = check_routes(self.agents)
         if bad: raise ValueError("ROUTES lệch front matter: " + "; ".join(bad))
         self.blackboard = Blackboard(bus, store=artifacts)
-        self.gate = PersistentGate(bus)
+        self.gate = PersistentGate(bus, approvers=gate_approvers())
         self.lead = DeliveryLead(bus, self.gate, max_retries=max_retries, batch_releases=batch_releases)
         self.lead.require_integration = self.integration is not None
         budget_usd = project_budget_usd if project_budget_usd is not None else getattr(client, "budget_usd", None)

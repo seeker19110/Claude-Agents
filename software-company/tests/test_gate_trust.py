@@ -7,7 +7,7 @@ import pytest
 from company.bus import InMemoryBus, PermissionDenied
 from company.events import AuditLog, Envelope
 from company.gate_cli import PersistentGate, trusted_decision
-from company.gates import GateRequest
+from company.gates import GateRequest, gate_approvers
 from company.orchestrator import main as orch_main
 
 
@@ -74,3 +74,31 @@ def test_subagent_actor_khong_dong_duoc_gate():
     assert "T1" in gate.pending and "T1" in PersistentGate(bus).pending
     gate.decide("T1", "approve", by="human:lead", reason="mock thiếu header X-Idempotency-Key")
     assert PersistentGate(bus).is_approved("T1")
+
+
+# ---------- K3.7: allowlist người duyệt của company (MẶC ĐỊNH TẮT) ----------
+
+def test_company_gate_approvers_mac_dinh_rong_khong_doi_hanh_vi(monkeypatch):
+    """Biến KHÔNG đặt = hành vi trước K3.7 y nguyên: chỉ four-eyes, ai (khác người tạo) cũng duyệt được.
+
+    Đây là ca chống hồi quy của chính việc thêm tính năng: allowlist là thứ MỚI với company, nên nếu nó bật
+    theo mặc định thì mọi gate đang chờ ở một dự án thật sẽ đột nhiên không ai ký được."""
+    monkeypatch.delenv("COMPANY_GATE_APPROVERS", raising=False)
+    assert gate_approvers() == frozenset()
+    bus = InMemoryBus(); gate = PersistentGate(bus, approvers=gate_approvers())
+    gate.request(GateRequest(kind="spec", subject_id="SPEC-1", created_by="delivery-lead", checklist=["c1"]))
+    assert gate.decide("SPEC-1", "approve", by="human:khong-co-trong-danh-sach").decision == "approve"
+    assert PersistentGate(bus).is_approved("SPEC-1")
+
+
+def test_company_gate_approvers_bat_thi_ep_four_eyes(monkeypatch):
+    """Đặt biến → chỉ người trong danh sách ký được; người ngoài bị từ chối bằng PermissionError, gate vẫn chờ."""
+    monkeypatch.setenv("COMPANY_GATE_APPROVERS", "human:pm, human:cto")
+    assert gate_approvers() == frozenset({"human:pm", "human:cto"})
+    bus = InMemoryBus(); gate = PersistentGate(bus, approvers=gate_approvers())
+    gate.request(GateRequest(kind="spec", subject_id="SPEC-2", created_by="delivery-lead", checklist=["c1"]))
+    with pytest.raises(PermissionError, match="COMPANY_GATE_APPROVERS"):
+        gate.decide("SPEC-2", "approve", by="human:nguoi-la")
+    assert "SPEC-2" in gate.pending
+    gate.decide("SPEC-2", "approve", by="human:pm")
+    assert PersistentGate(bus).is_approved("SPEC-2")   # replay không kiểm lại danh sách (có thể đã đổi)

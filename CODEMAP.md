@@ -32,7 +32,7 @@ từng package ở `<pkg>/CODEMAP.md`.
 | Lệnh lint/test theo stack khách | `src/company/stacks.py` | — |
 | Smoke sau deploy staging | `src/company/smoke.py`, hook `_smoke` trong orchestrator | `tests/test_smoke_evidence.py` |
 | Giao hàng (tag, nhánh release) | `Integration.deliver` trong `src/company/workspace.py`, `_deliver` orchestrator | `tests/test_delivery_real.py` |
-| Ngân sách, watchdog, escalate | `src/company/supervisor.py` | `tests/test_supervisor*.py` |
+| Ngân sách, watchdog, escalate | `src/company/supervisor.py`; cơ chế chung hai công ty (`Budget`, `_act_once`, `escalate_gate`, sổ nợ) ở `xagents-core/src/xagents_core/supervisor.py` (K3.7) | `tests/test_supervisor*.py`, `xagents-core/tests/test_supervisor.py` |
 | Adapter provider mới | `src/company/llm.py`; chọn theo tier: `routing.py` | `tests/test_llm_errors_and_misc.py` |
 | Ca eval | `evals/<agent>.yaml` → `make eval-record AGENT=<id>` | commit `evals/recordings/` |
 
