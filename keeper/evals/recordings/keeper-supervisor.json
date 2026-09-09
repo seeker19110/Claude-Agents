@@ -1,0 +1,40 @@
+{
+ "agent": "keeper-supervisor",
+ "prompt_version": 1,
+ "recorded_at": "2026-09-09T15:07:51.965598+00:00",
+ "models": [
+  "claude-sonnet-5"
+ ],
+ "cases": {
+  "9cdc2f038b83763ad2f402a1": {
+   "text": "{\"payload\": {\"target\": \"xagents-core/src/xagents_core/guard.py\", \"action\": \"escalate\", \"reason\": \"Nợ KEEP-401 quá hạn 39 ngày (đáo hạn 2026-08-01, hôm nay 2026-09-09), risk_tier=high — vượt ngưỡng cho phép, cần human gate quyết định ưu tiên xử lý ngay.\", \"evidence\": \"{\\\"subject\\\": \\\"xagents-core/src/xagents_core/guard.py\\\", \\\"due_at\\\": \\\"2026-08-01\\\", \\\"hom_nay\\\": \\\"2026-09-09\\\", \\\"risk_tier\\\": \\\"high\\\", \\\"tre_ngay\\\": 39, \\\"ticket_id\\\": \\\"KEEP-401\\\"}\"}, \"context_writes\": [{\"namespace\": \"knowledge\", \"content_ref\": \"debt-ledger/KEEP-401-overdue\", \"summary\": \"KEEP-401: nợ high-risk trên xagents-core/src/xagents_core/guard.py quá hạn 39 ngày (due 2026-08-01, escalate 2026-09-09). Bài học: nợ risk_tier=high cần theo dõi sát hạn đáo, escalate ngay khi vượt hạn để tránh tích tụ.\"}]}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 5398,
+   "output_tokens": 493
+  },
+  "ea233efb56ac2288b3d91115": {
+   "text": "{\"payload\": {\"target\": \"patcher/KEEP-402\", \"action\": \"pause\", \"reason\": \"Ticket KEEP-402: patcher lặp lỗi 'RunnerError: đầu ra không hợp lệ cho patch-proposals' 4 lần liên tiếp cùng thông điệp, vượt max_retries=2. Dừng patcher trên ticket này và escalate cho human gate quyết định (rà soát/rollback prompt hoặc contract schema patch-proposals); keeper-supervisor không tự sửa agents/skills.\", \"evidence\": \"{\\\"agent\\\":\\\"patcher\\\",\\\"lan\\\":4,\\\"loi\\\":\\\"RunnerError: đầu ra không hợp lệ cho patch-proposals\\\",\\\"max_retries\\\":2,\\\"khoang_cach\\\":\\\"4 nhịp liên tiếp, cùng thông điệp\\\",\\\"ticket_id\\\":\\\"KEEP-402\\\",\\\"actor_nguon\\\":\\\"keeper-orchestrator\\\"}\"}, \"context_writes\": [{\"namespace\": \"knowledge\", \"content_ref\": \"keeper/KEEP-402-patcher-error-loop\", \"summary\": \"Vấn đề: patcher lặp lỗi 'đầu ra không hợp lệ cho patch-proposals' 4 lần liên tiếp trên KEEP-402, vượt max_retries=2. Giải pháp: keeper-supervisor pause patcher trên ticket, escalate cho human gate xem xét rollback prompt/contract schema patch-proposals thay vì retry thêm. Bằng chứng: audit-log actor=keeper-orchestrator, action=agent.error_loop, lan=4.\"}]}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 12145,
+   "output_tokens": 1988
+  },
+  "9feb846e75445d1126725c71": {
+   "text": "{\"payload\": {\"target\": \"security-auditor\", \"action\": \"budget_cut\", \"reason\": \"KEEP-403: security-auditor vượt ngân sách token 3 lượt liên tiếp (184000/60000 mỗi lượt, 3.07x hạn mức) — cắt ngân sách và cảnh báo để tránh chi phí tiếp tục vượt kiểm soát\", \"evidence\": \"audit-log action=budget.exceeded actor=keeper-orchestrator ticket_id=KEEP-403 tokens=184000 evidence={agent: security-auditor, budget_tokens_per_task: 60000, da_dung: 184000, so_luot: 3}\"}, \"context_writes\": [{\"namespace\": \"knowledge\", \"content_ref\": \"keeper/knowledge/security-auditor-budget-overrun.md\", \"summary\": \"KEEP-403: security-auditor vượt budget_tokens_per_task (60000) tới 3 lượt liên tiếp, tổng 184000 token (~3.07x). Bài học: cần budget_cut + theo dõi sát các lượt kế tiếp; nếu tái diễn lần nữa (≥2 lần liên tiếp cùng lỗi) phải escalate lên human gate thay vì chỉ warn.\"}]}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 5367,
+   "output_tokens": 493
+  },
+  "ceddf2be593a1aef9bf90300": {
+   "text": "{\"payload\": {\"target\": \"drift-detector:KEEP-404\", \"action\": \"warn\", \"reason\": \"TransientError claude -p quá 900s xảy ra 1 lần (chưa vượt max_retries=2); lần thử kế tiếp cùng ticket đã thành công nên chưa tới ngưỡng pause/escalate. Ghi nhận để theo dõi nếu lặp lại lần 2.\", \"evidence\": \"audit-log actor=keeper-orchestrator key=drift-detector ticket=KEEP-404: lan=1, loi=TransientError: claude -p quá 900s, lan_thu_ke=thành công ở nhịp sau, max_retries=2\", \"context_writes\": [{\"namespace\": \"knowledge\", \"content_ref\": \"supervisor/KEEP-404-timeout-watch\", \"summary\": \"drift-detector gặp TransientError timeout 900s ở KEEP-404 (lần 1/2), tự phục hồi ở lần sau. Chưa cần hành động mạnh; nếu tái diễn lần 2 (đạt max_retries) → cần escalate/pause drift-detector và xem xét tăng timeout claude -p hoặc rollback prompt qua human gate.\"}]}}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 11723,
+   "output_tokens": 1300
+  },
+  "33eb952c1a17af25c6171018": {
+   "text": "{\"payload\": {\"target\": \"KEEP-405\", \"action\": \"escalate\", \"reason\": \"Gate patch pending_human quá hạn: chờ từ 2026-09-07T09:00:00Z, hôm nay 2026-09-09T09:00:00Z (2 ngày trễ), risk_tier=high — cần human gate quyết định ngay.\", \"evidence\": \"{\\\"kind\\\": \\\"patch\\\", \\\"trang_thai\\\": \\\"pending_human\\\", \\\"cho_tu\\\": \\\"2026-09-07T09:00:00Z\\\", \\\"hom_nay\\\": \\\"2026-09-09T09:00:00Z\\\", \\\"risk_tier\\\": \\\"high\\\", \\\"ticket_id\\\": \\\"KEEP-405\\\"}\"}, \"context_writes\": [{\"namespace\": \"knowledge\", \"content_ref\": \"debt-ledger/KEEP-405\", \"summary\": \"Nợ quá hạn: KEEP-405 gate patch (risk_tier=high) pending_human từ 2026-09-07, quá hạn 2 ngày tại 2026-09-09 → đã escalate. Đáo hạn gốc: 2026-09-07T09:00:00Z.\"}]}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 5403,
+   "output_tokens": 453
+  }
+ }
+}

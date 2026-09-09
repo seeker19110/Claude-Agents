@@ -1,0 +1,96 @@
+# Eval cho triager. Chạy: python -m keeper.evals triager
+#
+# Sáu ca này KHÔNG đo "có ra được một Ticket không" (schema đã ép) mà đo ĐÚNG MỘT thứ dễ sai: bậc rủi ro.
+# Bảng luật là `src/keeper/risk.py`; mỗi ca dưới đây là một hàng của bảng ấy nhìn từ phía model, và ca
+# `pre-release-khong-duoc-xuong-low` là ca đã suýt để một pre-release tự merge (docstring `risk.py`).
+cases:
+  - name: cham-xagents-core-phai-high
+    topic_out: maintenance-tickets
+    input:
+      topic: maintenance-signals
+      key: SIG-1
+      actor: human
+      payload:
+        subject: xagents-core/src/xagents_core/llm.py
+        kind: drift
+        detail: "docstring của cli_exit_error không còn khớp mã sau khi đổi phân loại lỗi"
+        evidence: "xagents-core/src/xagents_core/llm.py:900"
+    expect:
+      equals: {risk_tier: high}
+
+  - name: dev-dependency-patch-phai-low
+    topic_out: maintenance-tickets
+    input:
+      topic: maintenance-signals
+      key: SIG-2
+      actor: human
+      payload:
+        subject: ruff
+        kind: dependency
+        detail: "dev-dependency ruff 0.5.1 → 0.5.2, chỉ sửa lỗi định dạng"
+        semver_jump: patch
+        is_dev: true
+        evidence: "uv.lock: ruff 0.5.1 -> 0.5.2"
+    expect:
+      equals: {risk_tier: low}
+
+  # Ca đắt nhất của bộ: `semver_jump: null` nghĩa là CHƯA BIẾT bậc nhảy (2.0.0 → 2.0.0rc1, hoặc không parse
+  # được), KHÔNG phải "an toàn". Xuống `low` ở đây là để một pre-release đi qua cổng ở mức rủi ro thấp nhất.
+  - name: pre-release-khong-duoc-xuong-low
+    topic_out: maintenance-tickets
+    input:
+      topic: maintenance-signals
+      key: SIG-3
+      actor: human
+      payload:
+        subject: pytest
+        kind: dependency
+        detail: "dev-dependency pytest 9.0.0 → 9.0.0rc1: ba số không đổi, đây là bản pre-release"
+        semver_jump: null
+        is_dev: true
+        evidence: "uv.lock: pytest 9.0.0 -> 9.0.0rc1"
+    expect:
+      one_of: {risk_tier: [medium, high]}
+
+  - name: security-critical-phai-high
+    topic_out: maintenance-tickets
+    input:
+      topic: maintenance-signals
+      key: SIG-4
+      actor: adapter:github
+      payload:
+        subject: requests
+        kind: security
+        detail: "Dependabot alert: CVE-2026-1111, RCE khi parse redirect"
+        severity: critical
+        evidence: "dependabot alert #12"
+    expect:
+      equals: {risk_tier: high}
+
+  - name: cham-agents-phai-high-va-gate
+    topic_out: maintenance-tickets
+    input:
+      topic: maintenance-signals
+      key: SIG-5
+      actor: human
+      payload:
+        subject: software-company/agents/quality/qa.md
+        kind: drift
+        detail: "prompt lệch bản dẫn xuất .claude/agents/sc-qa.md; sửa cần bảy bước CONTRIBUTING.md §3"
+        evidence: "software-company/agents/quality/qa.md:12"
+    expect:
+      equals: {risk_tier: high, requires_gate: true}
+
+  - name: lech-tai-lieu-thuan-phai-low
+    topic_out: maintenance-tickets
+    input:
+      topic: maintenance-signals
+      key: SIG-6
+      actor: human
+      payload:
+        subject: docs/HUONG-DAN-VAN-HANH.md
+        kind: drift
+        detail: "thiếu một dòng CHANGELOG cho PR đã merge; chỉ chạm tài liệu"
+        evidence: "docs/sessions/2026-09-08.md"
+    expect:
+      equals: {risk_tier: low}

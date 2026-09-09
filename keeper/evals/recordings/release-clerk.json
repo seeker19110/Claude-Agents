@@ -1,0 +1,40 @@
+{
+ "agent": "release-clerk",
+ "prompt_version": 3,
+ "recorded_at": "2026-09-09T15:13:31.417858+00:00",
+ "models": [
+  "claude-sonnet-5"
+ ],
+ "cases": {
+  "62c14e93767c700648bf8a13": {
+   "text": "{\"$PARAMETER_NAME\": \"payload\", \"ticket_id\": \"KEEP-301\", \"changelog_line\": \"- fix(keeper): sửa lỗi test_pre_release trong tests/test_risk.py (#n)\", \"session_line\": \"KEEP-301: verification hai chiều đạt — before `uv run pytest -q tests/test_risk.py` exit_code=1 (FAILED test_pre_release), after cùng lệnh exit_code=0 (31 passed in 1.2s); không có SecurityFinding chặn PR. Chờ số PR để điền vào changelog_line (#n) sau khi mở PR.\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 5527,
+   "output_tokens": 455
+  },
+  "154d83e4d8b91f859d069ab7": {
+   "text": "{\"ticket_id\": \"KEEP-302\", \"pr_number\": null, \"changelog_line\": \"- fix(keeper): sửa lỗi mypy \\\"Missing return statement\\\" trong src/keeper (#TBD)\", \"session_line\": \"KEEP-302: VerificationReport hai chiều đầy đủ — before (`uv run mypy src/keeper --ignore-missing-imports`) exit_code=1 (\\\"error: Missing return statement\\\"), after cùng lệnh exit_code=0 (\\\"Success: no issues found\\\"); không có SecurityFinding chặn PR. Chờ PR được mở để điền số (#n) vào dòng CHANGELOG.\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 11669,
+   "output_tokens": 823
+  },
+  "45a8fe58d9799139210a4242": {
+   "text": "{\"ticket_id\": \"KEEP-303\", \"changelog_line\": \"- fix(keeper): sửa lỗi drift changelog khiến test_changelog_drift thất bại (#n)\", \"session_line\": \"KEEP-303: VerificationReport hai chiều đầy đủ — before (`uv run pytest -q tests/test_drift.py`, exit_code=1, \\\"FAILED test_changelog_drift - 1 failed, 11 passed\\\") và after (cùng lệnh, exit_code=0, \\\"12 passed in 0.6s\\\"); không có SecurityFinding chặn PR. Chờ điền số PR (#n) sau khi PR được tạo, commit tiếp vào chính PR đó.\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 11327,
+   "output_tokens": 699
+  },
+  "a5c8ac79697d13ce8b36ccfb": {
+   "text": "{\"ticket_id\": \"KEEP-304\", \"changelog_line\": \"- fix(keeper): sửa lỗi ruff E701 (multiple statements on one line) trong src/tests (#n)\", \"session_line\": \"KEEP-304: verification hai chiều đầy đủ — before `uv run ruff check src tests` exit_code=1 (E701 multiple statements on one line), after cùng lệnh exit_code=0 (All checks passed!); không có SecurityFinding chặn PR. Chờ số PR để điền vào dòng CHANGELOG.\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 5505,
+   "output_tokens": 351
+  },
+  "ae0394cf47d0107daf389fb4": {
+   "text": "{\"ticket_id\": \"KEEP-305\", \"pr_number\": null, \"changelog_line\": \"- fix(keeper): KEEP-305 sửa lỗi health check (#n)\", \"session_line\": \"KEEP-305: VerificationReport ok=true (uv run pytest -q tests/test_health.py, before và after đều exit_code=0, \\\"9 passed in 0.4s\\\"). Bằng chứng CHƯA đạt hai chiều: before.exit_code=0 với cùng output như after nghĩa là bộ test không phân biệt được trạng thái trước/sau khi sửa — thiếu chứng minh test thất bại khi tắt bản sửa (I2, evidence.require_two_way). Không có SecurityFinding chặn PR trong dữ liệu đầu vào. Chờ số PR để điền vào dòng CHANGELOG trong cùng PR đó; chưa xin gate release (chưa vận hành ở BT7).\"}",
+   "model": "claude-sonnet-5",
+   "input_tokens": 11704,
+   "output_tokens": 963
+  }
+ }
+}

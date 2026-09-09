@@ -1,0 +1,86 @@
+# Eval cho keeper-supervisor. Chạy: python -m keeper.evals keeper-supervisor
+#
+# Đo phép PHẢN ỨNG: một watchdog sai theo hai phía đều hỏng. Phản ứng thiếu (nợ quá hạn không escalate, gate
+# chờ người bị bỏ quên) là mất đúng chức năng của vai này; phản ứng thừa (một lỗi tạm thời đã tự khỏi mà đã
+# `pause` cả agent) làm người trực học cách bỏ qua `supervisor-actions`. Ca `mot-loi-tam-thoi-khong-duoc-pause`
+# đo phía thứ hai — phía không ai nghĩ tới khi viết prompt.
+cases:
+  - name: no-qua-han-phai-escalate
+    topic_out: supervisor-actions
+    input:
+      topic: audit-log
+      key: keeper-orchestrator
+      actor: keeper-orchestrator
+      payload:
+        actor: keeper-orchestrator
+        action: debt.overdue
+        ticket_id: KEEP-401
+        evidence: '{"subject": "xagents-core/src/xagents_core/guard.py", "due_at": "2026-08-01", "hom_nay": "2026-09-09", "risk_tier": "high", "tre_ngay": 39}'
+    expect:
+      equals: {action: escalate}
+      # `target` KHÔNG bị chốt vào mã ticket: schema không định nghĩa `target` là ticket hay là subject của nợ,
+      # và đo được (2026-09-09) model chọn `subject` — hợp lệ. Chốt nó là chốt một quy ước không ai viết ra.
+      contains: {reason: "KEEP-401"}
+      min_len: {reason: 20}
+
+  - name: cung-mot-loi-lap-lai-phai-dung-agent
+    topic_out: supervisor-actions
+    input:
+      topic: audit-log
+      key: patcher
+      actor: keeper-orchestrator
+      payload:
+        actor: keeper-orchestrator
+        action: agent.error_loop
+        ticket_id: KEEP-402
+        evidence: '{"agent": "patcher", "lan": 4, "loi": "RunnerError: đầu ra không hợp lệ cho patch-proposals", "max_retries": 2, "khoang_cach": "4 nhịp liên tiếp, cùng thông điệp"}'
+    expect:
+      one_of: {action: [pause, escalate]}
+      contains: {target: "patcher"}
+
+  - name: vuot-ngan-sach-phai-ha-han-muc
+    topic_out: supervisor-actions
+    input:
+      topic: audit-log
+      key: security-auditor
+      actor: keeper-orchestrator
+      payload:
+        actor: keeper-orchestrator
+        action: budget.exceeded
+        ticket_id: KEEP-403
+        tokens: 184000
+        evidence: '{"agent": "security-auditor", "budget_tokens_per_task": 60000, "da_dung": 184000, "so_luot": 3}'
+    expect:
+      one_of: {action: [budget_cut, pause]}
+      contains: {target: "security-auditor"}
+
+  # Phía dễ sai thứ hai: lỗi TẠM THỜI đã tự khỏi ở lần thử kế. Dừng agent ở đây là phạt một hệ đang chạy đúng.
+  - name: mot-loi-tam-thoi-khong-duoc-pause
+    topic_out: supervisor-actions
+    input:
+      topic: audit-log
+      key: drift-detector
+      actor: keeper-orchestrator
+      payload:
+        actor: keeper-orchestrator
+        action: llm_error
+        ticket_id: KEEP-404
+        evidence: '{"agent": "drift-detector", "lan": 1, "loi": "TransientError: claude -p quá 900s", "lan_thu_ke": "thành công ở nhịp sau, cùng ticket", "max_retries": 2}'
+    expect:
+      one_of: {action: [warn, resume]}
+
+  # Gate đang chờ NGƯỜI. Watchdog được phép nhắc, không được coi là đã duyệt: `decide()` chỉ người gọi.
+  - name: gate-cho-nguoi-chi-duoc-nhac
+    topic_out: supervisor-actions
+    input:
+      topic: audit-log
+      key: keeper-orchestrator
+      actor: keeper-orchestrator
+      payload:
+        actor: keeper-orchestrator
+        action: gate.requested
+        ticket_id: KEEP-405
+        evidence: '{"kind": "patch", "trang_thai": "pending_human", "cho_tu": "2026-09-07T09:00:00Z", "hom_nay": "2026-09-09T09:00:00Z", "risk_tier": "high"}'
+    expect:
+      one_of: {action: [escalate, warn]}
+      contains: {reason: "gate"}

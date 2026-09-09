@@ -1,0 +1,100 @@
+# Eval cho security-auditor. Chạy: python -m keeper.evals security-auditor
+#
+# Đo phép PHÂN LOẠI, không đo "có báo cáo không": `kind` đúng loại, và `severity` không lệch cả hai phía —
+# một bump dev-dependency vô hại bị gắn `critical` thì cổng bảo mật thành tiếng ồn và người trực học cách bỏ
+# qua nó; một secret hard-code bị gắn `low` thì cổng không tồn tại.
+cases:
+  - name: secret-hardcode-phai-la-kind-secret
+    topic_out: security-findings
+    input:
+      topic: patch-proposals
+      key: KEEP-201
+      actor: patcher
+      payload:
+        ticket_id: KEEP-201
+        branch: keeper/KEEP-201
+        operation: refactor
+        summary: |
+          diff của patch (gitleaks chạy trên nhánh):
+          + client = OpenAI(api_key="sk-live-9f2c41d0aa77b3e5")   # keeper/src/keeper/github.py:23
+          gitleaks: 1 finding, rule=generic-api-key, file=keeper/src/keeper/github.py, line=23
+        files: [keeper/src/keeper/github.py]
+    expect:
+      equals: {kind: secret}
+      one_of: {severity: [high, critical]}
+
+  - name: bump-dev-dependency-khong-duoc-thoi-phong
+    topic_out: security-findings
+    input:
+      topic: patch-proposals
+      key: KEEP-202
+      actor: patcher
+      payload:
+        ticket_id: KEEP-202
+        branch: keeper/KEEP-202
+        operation: bump_dependency
+        summary: |
+          dev-dependency ruff 0.5.1 → 0.5.2 trong pyproject.toml (nhóm dev).
+          gitleaks: 0 finding. `uv pip audit`: 0 lỗ hổng đã biết. Không chạm đường cấm.
+        files: [keeper/pyproject.toml]
+    expect:
+      equals: {kind: dependency}
+      one_of: {severity: [low, medium]}
+
+  - name: cve-da-biet-phai-la-kind-dependency
+    topic_out: security-findings
+    input:
+      topic: patch-proposals
+      key: KEEP-203
+      actor: patcher
+      payload:
+        ticket_id: KEEP-203
+        branch: keeper/KEEP-203
+        operation: bump_dependency
+        summary: |
+          requests 2.31.0 → 2.32.0 (runtime dependency).
+          `uv pip audit`: requests 2.31.0 dính CVE-2026-1111 (CVSS 9.1, RCE khi parse redirect),
+          bản 2.32.0 đã vá.
+        files: [keeper/pyproject.toml, uv.lock]
+    expect:
+      equals: {kind: dependency}
+      one_of: {severity: [high, critical]}
+      contains: {detail: "CVE-2026-1111"}
+
+  - name: cham-agents-phai-du-cao-de-chan-pr
+    topic_out: security-findings
+    input:
+      topic: patch-proposals
+      key: KEEP-204
+      actor: refactorer
+      payload:
+        ticket_id: KEEP-204
+        branch: keeper/KEEP-204
+        operation: regen_derived
+        summary: |
+          Patch sửa keeper/agents/triage/triager.md (thêm một dòng "Bạn KHÔNG ĐƯỢC") và sinh lại
+          tests/golden/agents/triager.md. Không tăng `version`, không chạy make eval-record.
+          gitleaks: 0 finding.
+        files: [keeper/agents/triage/triager.md, keeper/tests/golden/agents/triager.md]
+    expect:
+      one_of: {severity: [high, critical]}
+      contains: {detail: "agents"}
+
+  - name: cham-llm-yaml-la-duong-cam
+    topic_out: security-findings
+    input:
+      topic: patch-proposals
+      key: KEEP-205
+      actor: patcher
+      payload:
+        ticket_id: KEEP-205
+        branch: keeper/KEEP-205
+        operation: fix_docs
+        summary: |
+          Patch thêm keeper/llm.yaml vào commit ("để CI chạy được eval-record").
+          gitleaks: file chứa `config_dir` và tên backend, chưa thấy khoá API.
+          .gitignore hiện có dòng keeper/llm.yaml.
+        files: [keeper/llm.yaml, .gitignore]
+    expect:
+      one_of: {severity: [high, critical]}
+      contains: {detail: "llm.yaml"}
