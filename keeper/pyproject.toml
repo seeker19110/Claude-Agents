@@ -4,8 +4,8 @@ version = "0.1.0"
 description = "Công ty bảo trì tự vận hành X-Agents: quan sát → triage → vá → verify → gate? → release, chỉ đọc GitHub"
 requires-python = ">=3.11"
 dependencies = [
-    "pydantic>=2.6",
-    "pyyaml>=6",
+    "pydantic>=2.13.5",
+    "pyyaml>=6.0.3",
     "xagents-core",   # lõi chung (ADR gốc 0001); mã theo bảy bước K3.1-K3.7
 ]
 
@@ -15,9 +15,9 @@ xagents-core = { workspace = true }
 [dependency-groups]
 dev = [
     "mypy>=2.3.1",
-    "pytest>=8",
+    "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
-    "ruff>=0.5",
+    "ruff>=0.16.6",
 ]
 
 [build-system]
