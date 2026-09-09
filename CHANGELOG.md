@@ -6,6 +6,9 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs: **4l — 4L-4 vẫn chờ người, kết phiên đợt 3-4** (#197). 4L-6 (#190), 4L-7 (#196) merge sau K3.5c/K3.6
+  (#187-#195); 7/8 mã bảng B xong. 4L-4 đủ điều kiện K3.6 nhưng `_prune()` lệch hash bản ghi eval, cần key
+  model thật (cùng ràng buộc 4L-1b) — phiên remote không có key. Chỉ tài liệu.
 - feat(studio): **4L-7 — trace một video và hẹn hoãn sống sót restart** (#196). Studio không có gì tương đương
   `company.trace`: muốn biết một video đã đi qua những gì, ai ký gate publish và vì lý do gì là phải mở SQLite
   tra tay. Phần chung của hai công ty (cấu trúc dòng, đọc `audit-log`, tổng kết, cách in) lên
