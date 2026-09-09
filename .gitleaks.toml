@@ -2,7 +2,7 @@
 [extend]
 useDefault = true
 
-[allowlist]
+[[allowlists]]
 description = """gateway/src/gateway/auth.py chứa OAuth client id/secret CÔNG KHAI của Google Antigravity IDE
 (client desktop: giá trị nằm sẵn trong IDE và trong repo gốc donghanhcungban/Plugin-For-Hermes, không thể giữ bí mật).
 Chỉ bỏ qua đúng hằng số đó, đúng giá trị đó, trong đúng file đó — đổi giá trị hay chép sang file khác là gitleaks báo lại.
@@ -12,4 +12,25 @@ condition = "AND"   # phải khớp CẢ đường dẫn lẫn regex (mặc đ�
 paths = ['''gateway/src/gateway/auth\.py''']
 regexes = [
   '''_PUBLIC_CLIENT_SECRET_SUFFIX = "K58FWR486LdLJ1mLB8sXC4z6qDAf"''',
+]
+
+[[allowlists]]
+description = """Giá trị BỊA trong fixture eval của `security-auditor` (`keeper`). Agent đó có việc là phát hiện
+bí mật hard-code, nên ca eval của nó BUỘC phải chứa một chuỗi hình dạng bí mật — đó là thứ nó phải nhận ra.
+
+Chuỗi này do phiên 2026-09-09 sinh ra khi viết ca, chưa bao giờ là khoá thật của ai. Bản trên cây đã đổi sang
+placeholder entropy 0 (`sk-live-XXXXXXXXXXXXXXXX`, gitleaks không báo vì cần entropy), nhưng gitleaks quét CẢ
+LỊCH SỬ (`fetch-depth: 0`) nên hai commit của #237 vẫn còn giá trị cũ. Gỡ khỏi lịch sử thì phải rewrite +
+force-push — `AGENTS.md` cấm rewrite lịch sử, nên miễn trừ đúng MỘT giá trị này là cách trung thực còn lại.
+
+Hẹp có chủ ý: khớp cả đường dẫn LẪN đúng chuỗi đó. Một giá trị khác, hay cùng giá trị ở file khác, gitleaks
+báo lại như thường."""
+regexTarget = "line"
+condition = "AND"
+paths = [
+  '''keeper/evals/security-auditor\.yaml''',
+  '''keeper/evals/recordings/security-auditor\.json''',
+]
+regexes = [
+  '''sk-live-9f2c41d0aa77b3e5''',
 ]
