@@ -18,7 +18,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   package. Diff lock chỉ đổi dòng `specifier`, **không version nào được giải khác đi** — bản nâng là nâng sàn,
   không phải nâng gói. **Đo hai chiều**: bỏ `uv.lock` mà giữ pyproject (đúng hiện trạng chín PR kia) →
   `uv sync --locked` **exit 1** "lockfile needs to be updated"; có lock → exit 0. Cả sáu package xanh:
-  gateway 251, console 259, core 477, studio 587, keeper 532, company 1098 = **3 204 test**, phủ 100%.
+  gateway 251, console 297, core 477, studio 587, keeper 532, company 1098 = **3 242 test**, phủ 100%
+  (đo lại sau khi rebase lên `main` mang #243/#244 — console tăng 259 → 297 vì hai PR đó, không phải vì PR này).
 
 - docs: **thêm bước "quét toàn repo trước khi tạo PR" vào `QUY-TRINH-GIT.md` §5** (#242). Rút từ chính sự cố PR
   #193 (đỏ cổng `metadata` vì thiếu dòng CHANGELOG khi cherry-pick sang nhánh khác). Bước 0 mới: `grep` dẫn
