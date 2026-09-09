@@ -41,6 +41,10 @@ class Signal(BaseModel):
     kind: SignalKind
     detail: str
     semver_jump: SemverJump | None = None  # chỉ có nghĩa với kind="dependency"
+    # Chỉ có nghĩa với kind="security" (dependabot / code-scanning alert). Trường RIÊNG chứ không moi từ
+    # `detail`: `risk.py` xếp `security >= high` thành tier `high`, và một quyết định rủi ro không được dựa
+    # vào việc dò chuỗi trong văn bản tự do do NGOÀI công ty viết (`detail` nằm trong `untrusted_fields`).
+    severity: Literal["low", "medium", "high", "critical"] | None = None
     is_dev: bool = False
     evidence: str = ""
     seen_count: int = 1

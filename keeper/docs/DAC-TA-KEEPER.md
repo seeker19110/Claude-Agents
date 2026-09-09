@@ -175,10 +175,32 @@ ngay tuần sau).
 
 | File | Thay đổi |
 |---|---|
-| `risk.py` | `risk_tier(signal) -> "low" | "medium" | "high"` — **bảng dữ liệu**, không chuỗi `if` (bài học K1.7: bảng chuyển trạng thái tra cứu được thì test được). `high`: semver major · chạm `xagents-core/` · chạm `*/agents/` hay `*/skills/` · chạm `.github/` · chạm mục coverage của `pyproject.toml` · security ≥ high. `low`: patch/minor của dev-dependency · lệch tài liệu thuần |
-| `ledger.py` | `DebtEntry(subject, reason, due_at, tier)`, `overdue(now)` → escalate. **Dùng lại** cơ chế `debt_due` của company, không dựng mới: đọc `software-company/src/company/orch/` trước khi viết dòng đầu tiên |
+| `risk.py` | `risk_tier(signal) -> "low" | "medium" | "high"` — **bảng dữ liệu**, không chuỗi `if` (bài học K1.7: bảng chuyển trạng thái tra cứu được thì test được). `high`: semver major · chạm `xagents-core/` · chạm `*/agents/` hay `*/skills/` · chạm `.github/` · chạm mục coverage của `pyproject.toml` · security ≥ high. `low`: patch/minor của dev-dependency · lệch tài liệu thuần. `semver_jump is None` (pre-release, đo ở BT3) KHÔNG rơi vào `low` — chưa biết bậc nhảy thì là `medium` |
+| `ledger.py` | `DebtEntry(subject, reason, due_at, tier)`, `overdue(now)` → escalate. **Cơ chế MỚI, KHÔNG dùng lại `debt_due`** — xem "Đo lại: `debt_due` không dùng lại được" ngay dưới bảng. `now` tiêm được, không gọi `datetime.now()` trong thân hàm |
 | `budget.py` | `can_open_pr()` = `len(GitHubReader.open_prs()) == 0` **và** `len(merged_prs(7 ngày)) < KEEPER_MAX_PR_PER_WEEK` (mặc định 5). Hàng đợi FIFO theo `risk_tier` rồi tuổi signal |
 | `triage.py` | `triager` biến `maintenance-signals` → `maintenance-tickets`; tier `high` đính kèm yêu cầu gate `keeper` |
+
+**Đo lại: `debt_due` không dùng lại được** (bản trước của mục này viết "dùng lại cơ chế `debt_due` của company,
+đọc `software-company/src/company/orch/` trước khi viết dòng đầu tiên" — sai hai lần, đã đo):
+
+1. **Sai địa chỉ.** Cơ chế nằm ở LÕI: `xagents-core/src/xagents_core/supervisor.py:82` khai `self.debt_due`.
+   `software-company/src/company/orch/gates_flow.py:88` chỉ *tiêu thụ* nó (đọc danh sách rồi mở gate escalation).
+   Đọc `orch/` trước khi viết `ledger.py` là đọc chỗ dùng, không phải chỗ có cơ chế.
+2. **Sai bản chất.** `supervisor.py:102-123` (`_count_debt`) đếm **chuỗi review liên tiếp** mà một nguồn không
+   nhắc lại một mã nợ (`rec["streak"][src]`), và bắn khi chuỗi chạm bội số ngưỡng (`rec["fired"]` → `times`).
+   Không dòng nào đọc đồng hồ: quá hạn ở lõi là quá hạn theo **số lần**, không theo **ngày**.
+
+`DebtEntry(due_at=…)` là quá hạn theo **lịch** — một ngữ nghĩa khác hẳn, nên là cơ chế mới trong
+`keeper/src/keeper/ledger.py`, không import từ `company` và **không đặt trùng tên khái niệm**: định danh ở
+`keeper` là `due_at` / `is_overdue` / `Ledger.overdue`; không ĐỊNH DANH nào trong `keeper/src/` tên `debt_due`
+(chỉ có docstring nhắc tới nó để giải thích vì sao hai thứ khác nhau).
+Lý do đầy đủ nằm trong docstring của `ledger.py` để người sửa sau đọc được tại chỗ.
+
+**Thế hệ của khoá chống-trùng** (`triage.py`): không phải `GateRequest.seq` (`xagents-core/src/xagents_core/gates.py:84`,
+`keeper` chưa có gate lúc triage) cũng không phải `Task.retry` (chưa có `Task`), mà là **số vòng đời ticket đã
+ĐÓNG của chủ thể đó**, do orchestrator đếm và truyền vào `triager(generation=…)`. Cùng nguyên tắc với hai cái
+kia: thế hệ tăng khi vòng đời trước KẾT THÚC, không theo mỗi vòng quét — thế hệ theo vòng quét thì mỗi vòng ra
+một ticket mới và chống-trùng thành vô nghĩa.
 
 Đo hai chiều: `KEEPER_MAX_PR_PER_WEEK=0` → `can_open_pr()` False, orchestrator không mở PR; bỏ kiểm → test đỏ
 vì PR được mở. Cho `open_prs()` trả 1 PR → phải chặn.
