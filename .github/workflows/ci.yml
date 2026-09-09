@@ -261,7 +261,14 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
+      # `shell: bash` cho CẢ hai nền tảng: mặc định của `run:` trên windows-latest là `pwsh`, và bước này
+      # từng đỏ ở đó với đúng thông điệp "414 passed ... coverage 100.00%" rồi `exit code 1` — pytest xanh,
+      # tiến trình trả 1. Không tái hiện được tại chỗ (Windows 11, cùng Python 3.13.15, cùng lệnh, kể cả chạy
+      # dưới pwsh với `$ErrorActionPreference='stop'` và ép `uv` cài lại): khác biệt nằm ở lớp bọc pwsh của
+      # runner, không ở test. Ba bước này vốn viết theo POSIX và `bash` có sẵn trên cả ba ảnh runner, nên cho
+      # chúng cùng một vỏ là bỏ hẳn một lớp ngữ nghĩa chỉ-Windows khỏi cổng chất lượng.
       - run: uv run pytest -q --cov --cov-report=term-missing
+        shell: bash
         working-directory: gateway
 
   # console (trực ban hợp nhất): chỉ stdlib, phụ thuộc hai công ty qua path dependency.
@@ -311,7 +318,14 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
+      # `shell: bash` cho CẢ hai nền tảng: mặc định của `run:` trên windows-latest là `pwsh`, và bước này
+      # từng đỏ ở đó với đúng thông điệp "414 passed ... coverage 100.00%" rồi `exit code 1` — pytest xanh,
+      # tiến trình trả 1. Không tái hiện được tại chỗ (Windows 11, cùng Python 3.13.15, cùng lệnh, kể cả chạy
+      # dưới pwsh với `$ErrorActionPreference='stop'` và ép `uv` cài lại): khác biệt nằm ở lớp bọc pwsh của
+      # runner, không ở test. Ba bước này vốn viết theo POSIX và `bash` có sẵn trên cả ba ảnh runner, nên cho
+      # chúng cùng một vỏ là bỏ hẳn một lớp ngữ nghĩa chỉ-Windows khỏi cổng chất lượng.
       - run: uv run pytest -q --cov --cov-report=term-missing
+        shell: bash
         working-directory: console
 
   # Lõi chung của mọi công ty (ADR gốc 0001). `strict = true` từ ngày đầu (K6.1): core là chỗ hai công ty
@@ -370,7 +384,14 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python }}
       - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
+      # `shell: bash` cho CẢ hai nền tảng: mặc định của `run:` trên windows-latest là `pwsh`, và bước này
+      # từng đỏ ở đó với đúng thông điệp "414 passed ... coverage 100.00%" rồi `exit code 1` — pytest xanh,
+      # tiến trình trả 1. Không tái hiện được tại chỗ (Windows 11, cùng Python 3.13.15, cùng lệnh, kể cả chạy
+      # dưới pwsh với `$ErrorActionPreference='stop'` và ép `uv` cài lại): khác biệt nằm ở lớp bọc pwsh của
+      # runner, không ở test. Ba bước này vốn viết theo POSIX và `bash` có sẵn trên cả ba ảnh runner, nên cho
+      # chúng cùng một vỏ là bỏ hẳn một lớp ngữ nghĩa chỉ-Windows khỏi cổng chất lượng.
       - run: uv run pytest -q --cov --cov-report=term-missing
+        shell: bash
         working-directory: xagents-core
 
   # Tài sản prompt của repo là chuỗi cung ứng (ADR-0022): injection, ký tự ẩn, lệnh nguy hiểm, khóa lộ
