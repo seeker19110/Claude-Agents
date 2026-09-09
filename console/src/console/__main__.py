@@ -25,6 +25,7 @@ from pathlib import Path
 from console.server import (
     DEFAULT_COMPANY_DB,
     DEFAULT_HOST,
+    DEFAULT_KEEPER_DB,
     DEFAULT_PORT,
     DEFAULT_STUDIO_DB,
     generate_token,
@@ -38,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python -m console", description="Console điều hành hợp nhất (chạy cục bộ).")
     p.add_argument("--company-db", type=Path, default=DEFAULT_COMPANY_DB, help="SQLite bus của software-company")
     p.add_argument("--studio-db", type=Path, default=DEFAULT_STUDIO_DB, help="SQLite bus của Studio-creators")
+    p.add_argument("--keeper-db", type=Path, default=DEFAULT_KEEPER_DB, help="SQLite bus của keeper (công ty bảo trì)")
     p.add_argument("--host", default=DEFAULT_HOST, help="địa chỉ bind (chỉ loopback, trừ khi có --i-know)")
     p.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"cổng (mặc định {DEFAULT_PORT})")
     mode = p.add_mutually_exclusive_group()
@@ -164,6 +166,7 @@ def main(argv: list[str] | None = None) -> int:
             allow_submit=args.allow_submit,
             company_db=args.company_db,
             studio_db=args.studio_db,
+            keeper_db=args.keeper_db,
         )
     except OSError as e:
         print(f"[-] Không mở được {args.host}:{args.port}: {e}")
@@ -181,6 +184,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Token file:  {token_path}  (quyền 0600, mới mỗi lần chạy)")
     print(f"  company.db:  {args.company_db}{'' if args.company_db.exists() else '  (chưa có — phần này sẽ trống)'}")
     print(f"  studio.db:   {args.studio_db}{'' if args.studio_db.exists() else '  (chưa có — phần này sẽ trống)'}")
+    print(f"  keeper.db:   {args.keeper_db}"
+          f"{'' if args.keeper_db.exists() else '  (chưa có — tab bảo trì ghi “chưa chạy lần nào”)'}")
     print("-" * 68)
     print("  Token đã được chèn sẵn vào trang; cứ mở URL trên là dùng được. Ctrl-C để dừng.")
     print("=" * 68)

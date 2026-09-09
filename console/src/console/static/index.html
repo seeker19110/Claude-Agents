@@ -73,6 +73,8 @@ h1,h2,h3{margin:0;text-wrap:balance;font-weight:600;letter-spacing:-.01em}
 .nav .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-muted)}
 .nav[aria-current="true"] .cnt{color:var(--accent-ink)}
 .nav .dot{width:6px;height:6px;border-radius:50%;background:var(--warn);flex:none}
+.kp-gates{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.kp-gates li{padding:10px 12px;background:var(--surface-2);border-radius:8px;font-size:13px}
 .rail-foot{margin-top:auto;padding:12px 18px 0;border-top:1px solid var(--line-soft);display:flex;flex-direction:column;gap:7px}
 .pool{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2)}
 .pool .bar{flex:1;height:4px;background:var(--surface-2);border-radius:2px;overflow:hidden}
@@ -385,6 +387,7 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
       <button class="nav" data-v="phieu">Phễu sản phẩm<span class="cnt" id="nav-phieu">—</span></button>
       <button class="nav" data-v="phan-mem">Xưởng phần mềm<span class="cnt" id="nav-tickets">—</span></button>
       <button class="nav" data-v="video">Xưởng video<span class="cnt" id="nav-videos">—</span></button>
+      <button class="nav" data-v="bao-tri">Công ty bảo trì<span class="cnt" id="nav-keeper">—</span></button>
       <button class="nav" data-v="chi-phi">Chi phí &amp; hạn mức</button>
       <button class="nav" data-v="nhat-ky">Nhật ký</button>
       <button class="nav" data-v="cai-dat">Cài đặt model</button>
@@ -590,6 +593,37 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
       <div class="sect">
         <div class="sect-head"><h2 id="ret-title">Đường giữ chân</h2><p>phần trăm người còn xem theo mốc thời gian; chỗ rơi sâu nhất được đánh dấu</p></div>
         <div class="chartbox"><div id="chart-ret"></div></div>
+      </div>
+    </section>
+
+    <!-- ============ BẢO TRÌ (keeper) ============ -->
+    <section class="view" id="v-bao-tri">
+      <div class="sect">
+        <div class="sect-head"><h2>Công ty bảo trì</h2>
+          <p>ô nào chưa chạy lần nào thì ghi thẳng “chưa chạy lần nào” — không có số 0 nào ở đây là một thành tích</p></div>
+        <div class="tiles" id="kp-tiles"></div>
+      </div>
+      <div class="sect">
+        <div class="sect-head"><h2>Hàng đợi ticket bảo trì</h2><p>ticket chưa có dòng release nào — tức chưa đi hết một vòng</p></div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Ticket</th><th>Chủ thể</th><th>Bậc rủi ro</th><th>Trạng thái</th><th>Hạn</th></tr></thead>
+            <tbody id="kp-tickets"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sect">
+        <div class="sect-head"><h2>Sổ nợ quá hạn</h2><p>mục đã tới hoặc quá ngày đáo hạn, quá hạn lâu nhất lên đầu</p></div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Chủ thể</th><th>Lý do hoãn</th><th>Bậc</th><th>Đáo hạn</th></tr></thead>
+            <tbody id="kp-debts"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sect">
+        <div class="sect-head"><h2>Gate đang chờ người</h2><p>duyệt ở màn Trực ban, hoặc bằng <code>keeper gate</code></p></div>
+        <ul id="kp-gates" class="kp-gates"></ul>
       </div>
     </section>
 

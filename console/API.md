@@ -19,7 +19,7 @@ Không dùng framework web. Chỉ `http.server`, `json`, `sqlite3` và hai gói 
 ## `collect.py`
 
 ```python
-def collect(company_db: Path | None, studio_db: Path | None,
+def collect(company_db: Path | None, studio_db: Path | None, keeper_db: Path | None = None,
             gateway_token_file: Path | None = None,
             gateway_url: str = "http://127.0.0.1:1123") -> dict
 ```
@@ -112,7 +112,15 @@ công ty đó bao giờ).
   // "chưa đo được" (`empty: true`) là hai trạng thái khác nhau, trang phải tô khác nhau (ADR-0003, xem `.tile.zero`
   // ở `static/index.html`). Xưởng phần mềm; không có bản riêng cho studio (đã dùng chung `company.metrics`).
   "loops": {"turns_p50": 6.5, "turns_p90": 15.0, "turns_max": 25, "capped_ratio": 0.08,
-             "no_progress_ratio": 0.0, "retry_max_ratio": 0.12, "n": 40, "empty": false}
+             "no_progress_ratio": 0.0, "retry_max_ratio": 0.12, "n": 40, "empty": false},
+  // BT8: công ty bảo trì `keeper`. `ran=false` (chưa cấu hình DB, chưa có file, HOẶC file có mà log rỗng) →
+  // MỌI `cards[].v` là `null` và trang in `empty_note` thay cho số. `v: 0` chỉ xuất hiện khi `ran=true`, tức
+  // là một số 0 THẬT. Bốn ô luôn có mặt, đúng thứ tự `KEEPER_KEYS`.
+  "keeper": {"ran": true, "empty_note": "chưa chạy lần nào",
+             "cards": [{"k": "Hàng đợi ticket", "v": 1, "n": "2 ticket bảo trì đã mở"}, …],
+             "tickets": [{"id":"KT-1","subject":"docs/…","tier":"high","due":"…","gate":true,"st":"open"}],
+             "debts": [{"subject":"…","reason":"…","due":"…","tier":"medium"}],
+             "gates": [ … như `gates` ở trên, `xuong="keeper"` … ]}
 }
 ```
 
@@ -129,6 +137,7 @@ Nguồn của từng phần:
 | `log` | `audit-log`, mới nhất trước, tối đa 200 bản ghi |
 | `delivery`, `pending_decisions`, `running`, `deadlocks` | `truth.py`: `release-candidates` + `release-events` + audit (`delivery.done`, `release.void`, `release.staged`, `integration.merged`, `orchestrated`, `gate.decide`) + `gate.pending/history` |
 | `tickets[].integrated/sha/human_hint/hint/gate`, `reviews[].trim/at`, `gates[].effect` | `truth.py` — sự thật git (merge commit), hint agent đang cầm, ngữ cảnh bị cắt khi chấm, hậu quả khi duyệt |
+| `keeper` | `maintenance-tickets` + `debt-ledger` (`keeper.ledger.Ledger.overdue`) + `release-notes` + `PersistentGate` của `keeper`; hạn mức tuần từ `keeper.budget.max_pr_per_week()` (`KEEPER_MAX_PR_PER_WEEK`). Số PR đang mở THẬT là câu trả lời của `gh` — console không gọi `gh` nên không nói con số đó |
 | `loops` | `company.metrics.collect(bus)["loops"]` — audit `tools_used` (`turns`, `capped`, `max_turns`) + `ticket.blocked` trên ticket có `tasks` |
 
 `hours` làm tròn xuống. `sev`: `over` khi ≥ 24 giờ (quá hạn), `warn` khi ≥ 12 giờ
@@ -137,11 +146,11 @@ Nguồn của từng phần:
 ## `decide.py`
 
 ```python
-def decide(company_db: Path | None, studio_db: Path | None, *,
+def decide(company_db: Path | None, studio_db: Path | None, keeper_db: Path | None = None, *,
            subject_id: str, xuong: str, decision: str, by: str, reason: str) -> dict
 ```
 
-- `xuong` ∈ `{"software-company", "Studio-creators"}` chọn DB và lớp `HumanGate` tương ứng.
+- `xuong` ∈ `{"software-company", "Studio-creators", "keeper"}` chọn DB và lớp `HumanGate` tương ứng.
 - `decision` phải nằm trong `Decision` của công ty đó; sai thì `ValueError`.
 - Gọi đúng `HumanGate.decide(...)` của công ty, **không tự dựng event**, để four-eyes,
   allowlist người duyệt và ghi audit đi qua đúng đường của repo.
@@ -151,13 +160,15 @@ def decide(company_db: Path | None, studio_db: Path | None, *,
 ## `submit.py`
 
 ```python
-def submit(company_db: Path | None, studio_db: Path | None, *,
+def submit(company_db: Path | None, studio_db: Path | None, keeper_db: Path | None = None, *,
            xuong: str, topic: str, payload: dict, actor: str) -> dict
 ```
 
 - Giao việc = publish một event do NGƯỜI tạo vào bus SQLite của xưởng. `FORMS` liệt kê topic nạp tay được
   và trường payload làm `key`: software-company `research-requests` / `clarification-answers` (key `project_id`),
-  Studio-creators `channel-briefs` (key `channel_id`) — cùng quy ước với CLI `publish` của từng công ty.
+  Studio-creators `channel-briefs` (key `channel_id`), keeper `maintenance-signals` (key `subject`) — cùng quy
+  ước với CLI `publish` của từng công ty. `keeper` KHÔNG có form cho `maintenance-tickets`: ticket phải đi qua
+  `triager` để có `risk_tier` (`keeper.core.HUMAN_TOPICS`).
 - Đi qua đúng `SQLiteBus` + `Envelope` của công ty nên payload được kiểm theo `topics/schemas/<topic>.json`;
   bus từ chối → `SubmitError` (400) nguyên văn. Sai `xuong`/`topic`/`actor`/thiếu key → `ValueError` (400).
 - File bus chưa có thì tạo (như CLI): yêu cầu đầu tiên của công ty chưa chạy lần nào là chuyện bình thường.

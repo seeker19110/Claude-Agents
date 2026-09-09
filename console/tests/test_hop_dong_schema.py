@@ -24,7 +24,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 CONSOLE_SRC = [ROOT / "console" / "src" / "console" / f for f in ("collect.py", "truth.py")]
-PACKAGES = {"software-company": "company", "Studio-creators": "studio"}
+# `keeper` có mặt vì `collect.py` đọc payload của công ty bảo trì (`maintenance-tickets`, `debt-ledger`,
+# `release-notes`) — thiếu nó thì trường console đọc riêng của keeper không schema nào chứa và test đỏ.
+PACKAGES = {"software-company": "company", "Studio-creators": "studio", "keeper": "keeper"}
 
 # Đọc payload của envelope: `e.payload.get("x")`, `payload.get("x", …)`, `p.get("x")`, `p["x"]`.
 # Biến `p` là quy ước dùng khắp `collect.py`/`truth.py` cho `e.payload` — bắt nó là bắt đúng chỗ console chạm
@@ -72,7 +74,7 @@ def truong_trong_schema() -> dict[str, list[str]]:
         for f in sorted((ROOT / pkg / "topics" / "schemas").glob("*.json")):
             for k in _payload_props(json.loads(f.read_text(encoding="utf-8"))):
                 ra.setdefault(k, []).append(f"{pkg}/{f.stem}")
-    assert len(ra) > 50, "không nạp được schema của hai công ty"
+    assert len(ra) > 50, "không nạp được schema của ba công ty"
     return ra
 
 

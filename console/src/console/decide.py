@@ -21,7 +21,8 @@ from studio.sqlite_bus import SQLiteBus as StudioBus
 
 COMPANY = "software-company"
 STUDIO = "Studio-creators"
-XUONG = (COMPANY, STUDIO)
+KEEPER = "keeper"
+XUONG = (COMPANY, STUDIO, KEEPER)
 
 
 class GateError(Exception):
@@ -31,6 +32,14 @@ class GateError(Exception):
 def _decisions(literal: Any) -> tuple[str, ...]:
     """Verb hợp lệ của một công ty = `Decision` của công ty đó trừ `pending` (không ai "quyết định" là chờ tiếp)."""
     return tuple(d for d in get_args(literal) if d != "pending")
+
+
+def _keeper_gate(bus: Any) -> Any:
+    """Gate của công ty bảo trì mang allowlist `KEEPER_GATE_APPROVERS` (`keeper.gates.gate_approvers`) — cùng
+    đường mà `keeper gate <quyết định>` của người đi qua. Không đặt biến → tập rỗng → chỉ còn four-eyes."""
+    from keeper.gates import PersistentGate as KeeperPersistentGate
+    from keeper.gates import gate_approvers as keeper_gate_approvers
+    return KeeperPersistentGate(bus, approvers=keeper_gate_approvers())
 
 
 def _studio_gate(bus: Any) -> Any:
@@ -49,15 +58,27 @@ def _company_gate(bus: Any) -> Any:
     return company_gate_cli.PersistentGate(bus, approvers=company_gate_approvers())
 
 
-def decide(company_db: Path | None, studio_db: Path | None, *,
+def _bus(xuong: str, db: Path) -> Any:
+    """Bus BỀN VỮNG của đúng xưởng — ghi quyết định thì phải ghi vào file, khác `collect.py` (chỉ đọc)."""
+    if xuong == COMPANY:
+        return CompanyBus(db)
+    if xuong == STUDIO:
+        return StudioBus(db)
+    from keeper.bus import KeeperBus
+    from keeper.core import CORE as KEEPER_CORE
+    return KeeperBus(KEEPER_CORE, db)
+
+
+def decide(company_db: Path | None, studio_db: Path | None, keeper_db: Path | None = None, *,
            subject_id: str, xuong: str, decision: str, by: str, reason: str) -> dict[str, Any]:
     """Duyệt/từ chối một gate đang chờ. Trả `{"ok", "subject_id", "decision", "event_id"}`.
 
     `ValueError` khi `xuong` hoặc `decision` sai; `GateError` (thông điệp tiếng Việt) cho mọi lỗi còn lại."""
     if xuong not in XUONG:
         raise ValueError(f"xưởng lạ: {xuong} (chỉ nhận {' | '.join(XUONG)})")
-    db = company_db if xuong == COMPANY else studio_db
-    allowed = _decisions(CompanyDecision if xuong == COMPANY else StudioDecision)
+    from keeper.gates import Decision as KeeperDecision
+    db = {COMPANY: company_db, STUDIO: studio_db, KEEPER: keeper_db}[xuong]
+    allowed = _decisions({COMPANY: CompanyDecision, STUDIO: StudioDecision, KEEPER: KeeperDecision}[xuong])
     if decision not in allowed:
         raise ValueError(f"quyết định lạ: {decision} (chỉ nhận {' | '.join(allowed)})")
     if not subject_id.strip():
@@ -67,9 +88,9 @@ def decide(company_db: Path | None, studio_db: Path | None, *,
     if db is None or not Path(db).exists():
         raise GateError(f"chưa có file DB của {xuong}: {db or '(chưa cấu hình)'}")
 
-    bus = CompanyBus(Path(db)) if xuong == COMPANY else StudioBus(Path(db))
+    bus = _bus(xuong, Path(db))
     try:
-        gate = _company_gate(bus) if xuong == COMPANY else _studio_gate(bus)
+        gate = {COMPANY: _company_gate, STUDIO: _studio_gate, KEEPER: _keeper_gate}[xuong](bus)
         written: list[Any] = []
         bus.subscribe("audit-log", written.append)  # bắt chính envelope gate.decide mà gate vừa ghi
         try:

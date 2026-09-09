@@ -37,6 +37,16 @@ from company.events import Envelope as CompanyEnvelope
 from company.events import Task
 from company.registry import load_agents as load_company_agents
 from company.supervisor import Supervisor as CompanySupervisor
+from keeper.budget import WINDOW_DAYS as KEEPER_WINDOW_DAYS
+from keeper.budget import max_pr_per_week
+from keeper.bus import KeeperMemoryBus
+from keeper.core import CORE as KEEPER_CORE
+from keeper.events import DebtEntry
+from keeper.events import Envelope as KeeperEnvelope
+from keeper.events import ReleaseNote as KeeperNote
+from keeper.events import Ticket as KeeperTicket
+from keeper.gates import PersistentGate as KeeperGate
+from keeper.ledger import Ledger
 from studio import gate_cli as studio_gate_cli
 from studio import llm as studio_llm
 from studio import routing as studio_routing
@@ -54,6 +64,16 @@ _LOOPS_EMPTY = {"turns_p50": None, "turns_p90": None, "turns_max": None, "capped
 
 COMPANY = "software-company"
 STUDIO = "Studio-creators"
+KEEPER = "keeper"
+#: Chữ thay cho MỌI con số của tab `keeper` khi công ty bảo trì chưa chạy lần nào (BT8, `DAC-TA-KEEPER.md` §10).
+#: Một số 0 màu xanh và một hệ thống chưa từng chạy nhìn giống hệt nhau — nên khi chưa chạy thì không có số nào,
+#: kể cả "0 ticket quá hạn". Đo từ đêm vận hành QLKH 05/09 (`console/TRAPS.md`).
+KEEPER_EMPTY_NOTE = "chưa chạy lần nào"
+#: Bốn ô của tab `keeper`, THỨ TỰ CỐ ĐỊNH: nhãn + ghi chú khi chưa chạy. Khoá đi riêng ở `KEEPER_KEYS` để bản
+#: "đã chạy" và bản "chưa chạy" không thể lệch số ô — lệch là một ô im lặng biến mất.
+KEEPER_KEYS = ("queue", "budget", "overdue", "gates")
+KEEPER_CARDS = (("Hàng đợi ticket", KEEPER_EMPTY_NOTE), ("Ngân sách còn lại", KEEPER_EMPTY_NOTE),
+                ("Nợ quá hạn", KEEPER_EMPTY_NOTE), ("Gate đang chờ", KEEPER_EMPTY_NOTE))
 TIERS = ("strong", "standard", "light")
 CONTROL_TOPICS = frozenset({"audit-log", "shared-context", "supervisor-actions"})  # như CONTROL_TOPICS của hai orchestrator
 ORCHESTRATOR = "orchestrator"
@@ -446,6 +466,77 @@ class StudioView(_View):
         return sum(1 for st in self.desk.state.values() if st in STUCK_STATES) if self.ok else 0
 
 
+class KeeperView(_View):
+    """`keeper` (công ty bảo trì): ticket bảo trì + sổ nợ + gate, replay trên log đã đọc.
+
+    KHÔNG dựng `KeeperOrchestrator`: constructor của nó mở `KeeperBus` (SQLite bền vững) — tức `CREATE TABLE` +
+    đổi journal mode trên chính DB của công ty đang chạy, đúng thứ mà nguyên tắc "chỉ đọc" ở đầu file cấm. Cùng
+    lý do console không dùng `SQLiteBus` cho hai công ty kia. Máy trạng thái thì vẫn là của `keeper`:
+    `PersistentGate` của `keeper` cho sổ gate, `Ledger.overdue` của `keeper` cho nợ quá hạn.
+
+    Ngân sách hiện ở đây là ngân sách ĐỌC ĐƯỢC TỪ BUS: hạn mức tuần (`KEEPER_MAX_PR_PER_WEEK`), số dòng release
+    đã soạn trong 7 ngày, và số ý định mở PR chưa có số PR (`ReleaseNote.pr_number is None`). Số PR đang mở
+    THẬT là câu trả lời của `gh` (`budget.can_open_pr`, bất biến I3) — console không gọi `gh`, nên nó không
+    được phép nói con số ấy.
+    """
+
+    def _read(self) -> list[Any]:
+        return _envelopes(self.db, KeeperEnvelope)
+
+    def _replay(self) -> None:
+        self.bus = _load_bus(KeeperMemoryBus(KEEPER_CORE, enforce_owners=False), self.envelopes)
+        self.gate = KeeperGate(self.bus)
+        self.ledger = Ledger()
+        self.mtickets: dict[str, KeeperTicket] = {}
+        self.mnotes: dict[str, tuple[datetime, KeeperNote]] = {}
+        for env in self.envelopes:
+            if env.topic == "maintenance-tickets":
+                t = KeeperTicket.model_validate(env.payload)
+                self.mtickets[t.ticket_id] = t
+            elif env.topic == "debt-ledger":
+                self.ledger.add(DebtEntry.model_validate(env.payload))
+            elif env.topic == "release-notes":
+                n = KeeperNote.model_validate(env.payload)
+                self.mnotes[n.ticket_id] = (env.ts, n)
+
+    @property
+    def ran(self) -> bool:
+        """Đã chạy lần nào chưa. `ok` mà log RỖNG vẫn là chưa chạy — đó chính là chỗ số 0 màu xanh sinh ra."""
+        return self.ok and bool(self.envelopes)
+
+    def tickets(self) -> list[dict[str, Any]]:
+        """Hàng đợi: ticket chưa có dòng release nào (`release-notes` là dấu "đã xong một vòng",
+        `orchestrator.tick`) — không đọc `status == "closed"`, không mã nào trong `keeper/src/` đặt trạng thái ấy."""
+        return [{"id": t.ticket_id, "subject": t.subject, "tier": t.risk_tier, "due": t.due_at or "",
+                 "gate": t.requires_gate, "st": t.status}
+                for t in self.mtickets.values() if t.ticket_id not in self.mnotes]
+
+    def debts(self, now: datetime) -> list[dict[str, Any]]:
+        return [{"subject": d.subject, "reason": d.reason, "due": d.due_at, "tier": d.tier}
+                for d in self.ledger.overdue(now)]
+
+    def budget(self, now: datetime) -> dict[str, Any]:
+        window = now - timedelta(days=KEEPER_WINDOW_DAYS)
+        week = sum(1 for ts, _ in self.mnotes.values() if ts >= window)
+        cap = max_pr_per_week()
+        return {"max_per_week": cap, "notes_week": week, "left": max(0, cap - week),
+                "intents": sum(1 for _, n in self.mnotes.values() if n.pr_number is None)}
+
+    def block(self, now: datetime) -> dict[str, Any]:
+        """Khối `keeper` của `/api/state`. Chưa chạy lần nào → mọi `v` là `null` và trang in `empty_note`;
+        KHÔNG có ô nào mang số 0."""
+        if not self.ran:
+            return {"ran": False, "empty_note": KEEPER_EMPTY_NOTE, "tickets": [], "debts": [], "gates": [],
+                    "cards": [{"k": k, "v": None, "n": n} for k, n in KEEPER_CARDS]}
+        tickets, debts, gates, bud = self.tickets(), self.debts(now), self.gates(now), self.budget(now)
+        values = {"queue": len(tickets), "budget": bud["left"], "overdue": len(debts), "gates": len(gates)}
+        notes = {"queue": f"{len(self.mtickets)} ticket bảo trì đã mở", "budget": f"trần {bud['max_per_week']}/tuần"
+                 + (f" · {bud['intents']} ý định PR chưa có số" if bud["intents"] else ""),
+                 "overdue": f"{len(self.ledger.entries)} mục trong sổ nợ", "gates": "cần người ký"}
+        return {"ran": True, "empty_note": KEEPER_EMPTY_NOTE, "tickets": tickets, "debts": debts, "gates": gates,
+                "cards": [{"k": k, "v": values[key], "n": notes[key]} for key, (k, _) in zip(KEEPER_KEYS, KEEPER_CARDS, strict=True)]}
+
+
 # ---------- backends: llm.yaml (routing.status) rồi mới đến gateway ----------
 
 def _routing_status() -> list[dict[str, Any]] | None:
@@ -584,13 +675,16 @@ def _tiles(company: CompanyView, studio: StudioView, views: list[_View], now: da
     }
 
 
-def collect(company_db: Path | None, studio_db: Path | None,
+def collect(company_db: Path | None, studio_db: Path | None, keeper_db: Path | None = None,
             gateway_token_file: Path | None = None,
             gateway_url: str = "http://127.0.0.1:1123") -> dict[str, Any]:
     """Trạng thái hợp nhất của hai công ty + gateway (xem `console/API.md`). Không bao giờ ném: nguồn nào hỏng thì
     `sources[<nguồn>].ok = false` kèm lý do và phần dữ liệu của nguồn đó rỗng."""
     now = datetime.now(UTC).astimezone()
     company, studio = CompanyView(COMPANY, company_db), StudioView(STUDIO, studio_db)
+    keeper = KeeperView(KEEPER, keeper_db)
+    # `views` là danh sách nuôi các ô CHI PHÍ/TOKEN của trang Trực ban. `keeper` KHÔNG có tên trong đó: nó chưa
+    # có `llm.yaml` nào và chưa gọi model lần nào, nên cộng nó vào chỉ thêm một số 0 vô nghĩa vào mẫu số.
     views: list[_View] = [company, studio]
 
     backends = _routing_status()
@@ -603,10 +697,13 @@ def collect(company_db: Path | None, studio_db: Path | None,
     log = [row for _, row in sorted((r for v in views for r in v.log()), key=lambda r: r[0], reverse=True)[:LOG_LIMIT]]
     return {
         "generated_at": now.isoformat(timespec="seconds"),
-        "sources": {COMPANY: company.source, STUDIO: studio.source,
+        "sources": {COMPANY: company.source, STUDIO: studio.source, KEEPER: keeper.source,
                     "gateway": {"ok": gateway_error is None, "url": gateway_url, "error": gateway_error}},
         "tiles": _tiles(company, studio, views, now),
-        "gates": company.gates(now) + studio.gates(now),
+        # Gate của `keeper` đi CHUNG hàng đợi Trực ban: người trực có một chỗ duy nhất để ký, và `decide.py`
+        # đã biết đường ghi cho cả ba xưởng. Tab `keeper` đếm lại chúng cho riêng mình.
+        "gates": company.gates(now) + studio.gates(now) + keeper.gates(now),
+        "keeper": keeper.block(now),
         "tickets": company.tickets(),
         "prs": company.prs(),
         "reviews": company.reviews(),

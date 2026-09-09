@@ -6,7 +6,7 @@ import {filter} from "./tiles.js";
 import {$, $$, Q, esc, hay, hl} from "./util.js";
 
 /* ---------- hàng đợi gate ---------- */
-export const KIND={plan:"kế hoạch",publish:"đăng",escalation:"leo thang",acceptance:"nghiệm thu",replies:"trả lời",spec:"đặc tả",release:"phát hành"};
+export const KIND={plan:"kế hoạch",publish:"đăng",escalation:"leo thang",acceptance:"nghiệm thu",replies:"trả lời",spec:"đặc tả",release:"phát hành",patch:"bản vá"};
 export function renderQueue(){
   const all=st().gates||[], q=$("#queue");
   const gates=all.filter(g=>hay(g.id,g.title,g.xuong,g.by,KIND[g.kind]||g.kind));

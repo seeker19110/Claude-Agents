@@ -36,6 +36,13 @@ FORBIDDEN_ARGS = ("-X", "--method", "-f", "-F", "--field", "--raw-field", "--inp
 # nếu không sẽ chặn nhầm một lời gọi đọc hợp lệ.
 _VALUE_FLAGS = frozenset({
     "--repo", "-R", "--json", "--limit", "--state", "--head", "--base", "--since", "--search", "-q", "--jq",
+    # Cờ của `gh pr create` — thêm ở BT8 sau khi khảo sát đường canary. Cùng HỌ lỗi với `--repo delete-me` đã
+    # sửa ở BT2 (`AGENTS.md` bắt buộc §5: sửa một lỗi thì rà cả họ lỗi đó), và ở đây nó cắn thật: một PR bảo trì
+    # có tiêu đề đúng bằng chữ "merge"/"close"/"delete"/"edit", hoặc `--body-file edit`, hoặc `--label delete`,
+    # sẽ ném `GitHubWriteAttempt` — chặn nhầm một lời gọi ĐỌC/TẠO-PR hợp lệ. Bảng cấm soi SUBCOMMAND, nên mọi cờ
+    # nhận giá trị đều phải nằm ở đây, không chỉ những cờ tình cờ đã dùng.
+    "--title", "-t", "--body", "-b", "--body-file", "-F", "--label", "-l", "--assignee", "-a",
+    "--milestone", "-m", "--project", "-p", "--reviewer", "-r", "--template", "-T",
 })
 
 CACHE_TTL_SECONDS = 60.0

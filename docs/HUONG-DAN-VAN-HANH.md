@@ -11,10 +11,12 @@ Mục lục
 4. [Chạy thử offline](#4-chạy-thử-offline-không-tốn-hạn-mức)
 5. [Vận hành software-company](#5-vận-hành-software-company)
 6. [Vận hành Studio-creators](#6-vận-hành-studio-creators) — 6.3 nối YouTube thật
-7. [Vận hành gateway](#7-vận-hành-gateway)
-8. [Theo dõi, chi phí, sự cố](#8-theo-dõi-chi-phí-sự-cố)
-9. [Bảo trì: sửa agent, skill, model](#9-bảo-trì-sửa-agent-skill-model)
-10. [Checklist hàng ngày](#10-checklist-hàng-ngày)
+7. [Vận hành keeper (công ty bảo trì)](#7-vận-hành-keeper-công-ty-bảo-trì)
+8. [Vận hành gateway](#8-vận-hành-gateway)
+9. [Trực ban hợp nhất (console)](#9-trực-ban-hợp-nhất-console)
+10. [Theo dõi, chi phí, sự cố](#10-theo-dõi-chi-phí-sự-cố)
+11. [Bảo trì: sửa agent, skill, model](#11-bảo-trì-sửa-agent-skill-model)
+12. [Checklist hàng ngày](#12-checklist-hàng-ngày)
 
 ---
 
@@ -749,7 +751,74 @@ ghi 0 kèm evidence. Chưa có: playlist, Shorts flag, đổi lịch/gỡ video 
 
 Schema của từng topic ở `topics/schemas/*.json`; mẫu tài liệu ở `templates/`.
 
-## 7. Vận hành gateway
+## 7. Vận hành keeper (công ty bảo trì)
+
+Mọi lệnh chạy trong `keeper/`. Trạng thái trong `keeper.sqlite`. Khách hàng số 0 của nó là **chính repo này**:
+nó đọc tín hiệu (dependabot, CI, trôi tài liệu), gom thành ticket bảo trì có bậc rủi ro, và chỉ được mở PR khi
+có bằng chứng đo hai chiều. Nó **không có quyền ghi** ngoài nhánh/commit/PR của chính nó (bất biến I1,
+`keeper/docs/DAC-TA-KEEPER.md` §0).
+
+### 7.1 Chạy một vòng
+
+```bash
+cd keeper
+uv run python -m keeper.cli run --tickets tickets.json --root ../Claude-Agents-wt-keeper --dry-run
+uv run python -m keeper.cli watch --db keeper.sqlite --repo .. --interval 300 --max-ticks 1
+```
+
+- `run --dry-run` in **kế hoạch** (ticket → thao tác → file sẽ đụng) và không chạm một byte nào. Bỏ `--dry-run`
+  là thi hành thật; `--root` **bắt buộc** và phải là một worktree PHỤ — `patcher` từ chối ghi vào checkout chung.
+- `watch` là vòng `watch → triage → patch → verify → gate? → release`. `--max-ticks 1` chạy đúng một nhịp rồi
+  thoát (dùng khi muốn xem nó làm gì trước khi thả chạy dài). Bỏ `--max-ticks` là chạy mãi.
+- `--repo` là repo để hỏi `gh` (**chỉ đọc**; `keeper/src/keeper/github.py` chặn mọi argv ghi bằng mã).
+
+### 7.2 Xem hàng đợi
+
+```bash
+uv run python -m keeper.cli gate --db keeper.sqlite list      # gate đang chờ người
+```
+
+Hàng đợi ticket, ngân sách còn lại, sổ nợ quá hạn và gate chờ đọc gọn hơn ở tab **Công ty bảo trì** của console
+(§9). Ô nào ghi *"chưa chạy lần nào"* thì đúng nghĩa đen là chưa chạy — nó **không** hiện số 0.
+
+### 7.3 Duyệt gate
+
+```bash
+uv run python -m keeper.cli gate --db keeper.sqlite approve KT-12 --by human:truc-ban --reason "bằng chứng hai chiều đủ"
+uv run python -m keeper.cli gate --db keeper.sqlite reject  KT-12 --by human:truc-ban --reason "thiếu rà họ lỗi"
+```
+
+Quyết định nhận được: `approve`, `request_changes`, `reject`, `hold`, `rollback`. **Cả năm đều ĐÓNG gate** —
+không giá trị nào "mở lại" ticket; muốn `keeper` làm lại một việc thì phải phát `supervisor-actions`
+`resume` tường minh. `--by` bắt buộc là NGƯỜI (`human:<tên>`); `--by patcher` bị từ chối ngay tại CLI.
+
+Duyệt trên console cũng đi đúng đường này (cùng `PersistentGate`, cùng four-eyes, cùng `audit-log`).
+
+### 7.4 Hai biến môi trường
+
+| Biến | Mặc định | Nghĩa |
+|---|---|---|
+| `KEEPER_MAX_PR_PER_WEEK` | `5` | trần PR bảo trì merge trong 7 ngày. Đọc **mỗi lần** hỏi ngân sách, nên hạ giữa đêm có hiệu lực ngay. Gõ sai kiểu (không phải số) → quay về mặc định, không nổ và cũng không thành "không giới hạn". |
+| `KEEPER_GATE_APPROVERS` | **rỗng** | danh sách người được duyệt gate `keeper`, ngăn cách bằng dấu phẩy. |
+
+```bash
+export KEEPER_MAX_PR_PER_WEEK=2
+export KEEPER_GATE_APPROVERS="human:truc-ban,human:cto"
+```
+
+> **Không đặt `KEEPER_GATE_APPROVERS` KHÔNG có nghĩa là "không ai duyệt được".** Tập rỗng ở lớp gate nghĩa là
+> **allowlist tắt**: four-eyes vẫn còn (người duyệt phải khác người tạo gate), nhưng *bất kỳ ai khác người tạo*
+> cũng ký được. Đây là hành vi mặc định của lõi (`xagents_core.gates.approvers`), giống hệt
+> `COMPANY_GATE_APPROVERS` / `STUDIO_GATE_APPROVERS` — nhưng người vận hành phải biết, vì "chưa cấu hình" đọc
+> như "chặt hơn" trong khi thực tế là "lỏng hơn". Muốn siết thì đặt biến.
+
+### 7.5 Chưa có gì ở đây
+
+- `keeper/evals/` chưa dựng: `make eval-record` cần model thật, nên bước đó **chờ người**.
+- Canary (một chu kỳ thật trên chính X-Agents, tự mở đúng một PR bảo trì có bằng chứng) **chưa chạy**.
+- `keeper` chưa có `llm.yaml` nào, nên nó không xuất hiện ở màn *Cài đặt model* của console.
+
+## 8. Vận hành gateway
 
 ```bash
 cd gateway
@@ -772,9 +841,10 @@ curl http://127.0.0.1:1123/v1/models
   tài khoản thì gửi email của tài khoản đó làm bearer.
 - Chạy trên VPS: copy file token lên, `start`; refresh token tự làm mới.
 
-## 8. Trực ban hợp nhất (console)
+## 9. Trực ban hợp nhất (console)
 
-Một trang web cục bộ nhìn cả hai công ty trên một màn hình, thay cho việc mở bốn cửa sổ `status` / `report` / `gate_cli`.
+Một trang web cục bộ nhìn cả ba công ty (software-company, Studio-creators, keeper) trên một màn hình, thay cho
+việc mở bốn cửa sổ `status` / `report` / `gate_cli`.
 
 ```bash
 cd console
@@ -784,11 +854,12 @@ uv run python -m console --allow-decide  # mở khoá các nút quyết định 
 ```
 
 Mở đúng địa chỉ terminal in ra (có token phiên trong đó). Đường dẫn DB khác mặc định thì chỉ ra bằng
-`--company-db` / `--studio-db`.
+`--company-db` / `--studio-db` / `--keeper-db`.
 
-Năm màn hình: **Trực ban** (hàng đợi gate của cả hai xưởng xếp theo mức quá hạn, ô số event/token/PR chưa kiểm,
+Sáu màn hình chính: **Trực ban** (hàng đợi gate của cả ba công ty xếp theo mức quá hạn, ô số event/token/PR chưa kiểm,
 chi phí 14 ngày theo tier, bảng gói tài khoản đang xoay), **Xưởng phần mềm** (bảng ticket, PR chờ review, kết quả
-review), **Xưởng video** (dây chuyền video, số liệu sau khi đăng, đường giữ chân), **Chi phí & hạn mức**
+review), **Xưởng video** (dây chuyền video, số liệu sau khi đăng, đường giữ chân), **Công ty bảo trì** (hàng đợi
+ticket bảo trì, ngân sách còn lại, sổ nợ quá hạn, gate chờ — xem §7), **Chi phí & hạn mức**
 (trần dự án, ngân sách token từng ticket, chi phí theo agent, can thiệp của supervisor), **Nhật ký** (audit-log
 có bộ lọc). Trang tự làm mới 10 giây một lần, có nút tạm dừng, và ngưng làm mới khi ngăn kéo chi tiết đang mở.
 
@@ -799,14 +870,17 @@ Cần biết khi vận hành:
 - **Token sinh mỗi lần chạy**, ghi `console/.console-token` (quyền 600, đã gitignore). Tắt server là token hết hiệu
   lực. Server chỉ bind loopback; `--host` khác bị từ chối khởi động.
 - **Quyết định đi qua đúng `HumanGate` của công ty**: four-eyes (người duyệt phải khác người tạo), allowlist
-  `STUDIO_GATE_APPROVERS` và `audit-log` vẫn áp như khi dùng `gate_cli`. Ô "Bạn là" trên ngăn kéo chính là `--by`.
+  (`COMPANY_GATE_APPROVERS` / `STUDIO_GATE_APPROVERS` / `KEEPER_GATE_APPROVERS`) và `audit-log` vẫn áp như khi
+  dùng `gate_cli` hay `keeper gate`. Ô "Bạn là" trên ngăn kéo chính là `--by`.
 - **Công ty chưa chạy bao giờ** (chưa có file DB) không phải lỗi: trang hiện trạng thái rỗng kèm lý do, không hiện
-  số 0 giả. Mất liên lạc với server thì có dải cảnh báo trên cùng và số liệu giữ nguyên lần đọc cuối.
+  số 0 giả. Tab *Công ty bảo trì* ghi thẳng **"chưa chạy lần nào"** vào mọi ô — kể cả ô "nợ quá hạn", vì một số 0
+  màu xanh và một hệ thống chưa từng chạy nhìn giống hệt nhau. Mất liên lạc với server thì có dải cảnh báo trên
+  cùng và số liệu giữ nguyên lần đọc cuối.
 - Console **đọc** SQLite trong lúc orchestrator đang ghi, không khoá gì; số liệu trễ tối đa một nhịp làm mới.
 
 Chi tiết: [`../console/README.md`](../console/README.md), quyết định thiết kế ở `console/docs/adr/0001-console-hop-nhat.md`.
 
-## 9. Theo dõi, chi phí, sự cố
+## 10. Theo dõi, chi phí, sự cố
 
 **Audit-log là nguồn sự thật.** Mọi lời gọi model, tool, gate, hành động supervisor đều là bản ghi `audit-log` trong
 SQLite; `status` / `report` / `metrics` đọc từ đó.
@@ -824,7 +898,7 @@ SQLite; `status` / `report` / `metrics` đọc từ đó.
 Ngân sách: mỗi brief/ticket phải có `estimate_tokens`; code từ chối kế hoạch nếu `budget_tokens < estimate × 1.5`.
 software-company còn có trần `budget_usd` theo dự án: 80% warn, 100% pause cho tới khi người `resume`.
 
-## 10. Bảo trì: sửa agent, skill, model
+## 11. Bảo trì: sửa agent, skill, model
 
 | Việc | Cần làm |
 |---|---|
@@ -848,7 +922,7 @@ uv run python -m company.evals all --replay --strict   # studio: python -m studi
 Quy trình Git: [`QUY-TRINH-GIT.md`](QUY-TRINH-GIT.md). Không commit `llm.yaml`, `media.yaml`, `*.sqlite`, `output/`,
 token gateway.
 
-## 11. Checklist hàng ngày
+## 12. Checklist hàng ngày
 
 1. `gateway status`: còn tài khoản sẵn sàng không; `claude auth status` còn đăng nhập không.
 2. `orchestrator status` từng công ty: có gate nào chờ người, event nào hoãn lâu, ticket nào pause.
