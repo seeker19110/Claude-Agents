@@ -37,7 +37,7 @@ Checklist 9 mục cuối đặc tả: company **6 ✅ 3 ◐**, studio **3 ✅ 6 
 | L1 ngữ cảnh / chỉ dẫn / DoD / đường lui | ✅ | ✅ | `test_golden_agents.py:26` ép 6 mục; `product.md:206-215` | | |
 | L1 định dạng đầu ra máy đọc | ✅ | ✅ | `runner.py:54,109-121`; `topics/schemas/*.json` | | |
 | L1 ví dụ input–output trong prompt | ❌ | ❌ | chỉ ở `evals/*.yaml` làm test | | (sau 1) |
-| L1 bộ test cố định, cổng chấm điểm | ◐ | ◐ | `--strict` không đỏ khi ca fail; security 2 bản ghi | 1 | **1** |
+| L1 bộ test cố định, cổng chấm điểm | ✅ | ◐ | `--strict` đỏ khi ca fail/thiếu (1a #182); security 10 ca, ngưỡng `cases: 10` (1b #204) | 1 | **1** |
 | L2 tool có schema, tách đọc/ghi/chạy | ✅ | ✅ | `WorkspaceTools(...)` `tools.py:68-91` | | |
 | L2 chốt duyệt tool tác dụng phụ | ✅* | ✅* | *thay bằng không cấp tool + gate `gates.py:9` | 2 | **8** |
 | L2 lỗi tool có hướng dẫn | ✅ | ✅ | `tools.py:196,97,118,138` | | |
@@ -74,7 +74,7 @@ không nâng mức C1.
 | 4L | Việc | Lớp | PR | Mức | Ưu | Nhược / rủi ro | Khi nào |
 |---|---|---|---|---|---|---|---|
 | **1a** | `evals/thresholds.yaml` + CI đỏ khi điểm dưới ngưỡng | L1 | `feat(company)` | C2 | lần đầu biết chỉnh prompt là cải thiện hay hồi quy | ngưỡng sai → đỏ vì nhiễu; ngưỡng = **bẫy hồi quy**, không phải chỉ tiêu | xong #182 |
-| **1b** | security 2 → ≥ 10 ca, ghi lại model thật | L1 | `chore(company)` | C2 + người | ngưỡng có nghĩa | cần máy có key, 7 bước | chờ người: cần máy có key model thật + chạy đủ 7 bước CONTRIBUTING §3 |
+| **1b** | security 2 → ≥ 10 ca, ghi lại model thật | L1 | `chore(company)` | C2 + người | ngưỡng có nghĩa | cần máy có key, 7 bước | xong #204 |
 | **2** | audit `tools_trace` từng lời gọi tool (hash, ms, args cắt) | L2 | `feat(core)` | C2 | nhìn thấy gọi lặp; tiền đề 3 | args có dữ liệu khách → hash/cắt, `content` không ghi | xong #183 |
 | **3** | cắt vòng tool khi không tiến bộ (nhắc ở 3, cắt ở 5) | L3 | `feat(company)` | **C3** | cắt sớm ticket kiểu 956k token | dương tính giả nếu không loại tool ghi xen giữa; mỗi cắt +1 retry | xong #184 |
 | **4** | tỉa tool output cũ trong vòng (ADR-0040) | L3 | `docs` + `feat(core)` | **C3** | lượt cuối không đắt gấp mười lượt đầu | **đổi hành vi agent**; lệch hash mọi bản ghi eval | chờ người: K3.6 đã merge (#187-#196), nhưng tỉa đổi `user_message` ở lượt >3 → lệch hash bản ghi eval → phải ghi lại bằng **model thật** (như 4L-1b). Phiên remote không có key/`llm.yaml` — cần máy có key + 7 bước CONTRIBUTING §3 |

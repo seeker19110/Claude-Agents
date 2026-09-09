@@ -41,7 +41,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 - docs(sessions): **ghi phiên vá `gate.request` created_by** (#200). Chỉ nối `docs/sessions/2026-09-09.md`,
   không đổi hành vi.
-- chore(company): **4L-1b — security ≥ 10 ca eval** (#PENDING). `evals/security.yaml` 2 → 10 ca, phủ 6 nhóm:
+- chore(company): **4L-1b — security ≥ 10 ca eval** (#204). `evals/security.yaml` 2 → 10 ca, phủ 6 nhóm:
   (a) spec `kind=application` có `runtime` → threat-model; (b) release-check chạm PII thiếu DPIA → block; (c)
   `risk_tags` auth/payment/pii mỗi tag một ca deep-review; (d) payload PR chứa chỉ thị giả mạo → không nghe theo;
   (e) threat-model thiếu DFD → không tự duyệt; (f) `rulings[].cost_if_wrong` khi tự quyết thay vì chờ người.
