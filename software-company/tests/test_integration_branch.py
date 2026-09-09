@@ -320,3 +320,24 @@ def test_branch_ahead_khong_no_khi_ref_branch_bien_mat(tmp_path):
     _git(repo, "update-ref", "-d", f"refs/heads/{ws.branch}")
     assert orch._branch_ahead("T1") is False, "git lỗi → False, không ném"
     assert orch._branch_ahead("KHONG-CO-TICKET-NAY") is False, "không có workspace → False"
+
+
+def test_integration_skipped_chi_ghi_mot_lan_cho_moi_ticket():
+    """Nhánh "không có worktree" KHÔNG đổi trạng thái gì, nên mỗi nhịp watch gọi lại là ghi thêm một bản ghi
+    y hệt vào audit-log.
+
+    Đo trên dữ liệu chạy thật (`company.sqlite` của QLKH, 2026-09-09): `integration.skipped` chiếm
+    13 399 / 17 278 bản ghi audit-log — 78% cả sổ. Không phải chuyện dung lượng: `metrics.py` và
+    `console/collect.py` đọc "sự thật" từ chính sổ này, nên mọi thống kê bị pha loãng bởi một nhánh no-op.
+
+    Đo hai chiều: bỏ `once=` khỏi `_audit` trong `worktree_flow.merge_ticket` thì ca này đỏ với 5 bản ghi."""
+    from company.orchestrator import StepResult
+
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    for _ in range(5):
+        assert orch._merge_ticket("TCK-1", StepResult("integration", "integration", "-"), "REL-1")
+
+    ghi = [e for e in bus.replay(topic="audit-log")
+           if json.loads(e.payload["evidence"]).get("ticket_id") == "TCK-1"
+           and e.payload["action"] == "integration.skipped"]
+    assert len(ghi) == 1, f"5 nhịp phải để lại đúng 1 bản ghi, nhận được {len(ghi)}"

@@ -9,6 +9,23 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 - docs(adr): **ADR-0006 công ty con `Upkeep-crew` bảo trì toàn dự án** (#201). Chỉ là quyết định kiến
   trúc, chưa có mã: 6 khối / 8 agent / gate `upkeep`, 10 tính năng nâng cao (bậc rủi ro, bằng chứng đo hai
   chiều bắt buộc, ngân sách thay đổi, sổ nợ có đáo hạn), lộ trình 5 PR.
+- fix(company): **DB chạy thật không mở lại được sau khi `Assignee` thắt về `builder`** (#PR). Audit toàn diện
+  2026-09-09 chạy `company.orchestrator status` trên `company.sqlite` của QLKH (17,9 MB, 18 293 event) và nhận
+  `ValidationError: assignee — Input should be 'builder' [input_value='platform']` **trong `Orchestrator.__init__`**:
+  ADR-0037/PR-5d gộp 21 agent thành 5 và thu `Assignee` về một giá trị, nhưng bus là bản ghi bền — 7 bản ghi
+  `plan.proposed` và mọi event `tasks` lập trước đó còn mang từ vựng cũ. Vì vỡ ở `_rehydrate`, **không lệnh nào**
+  mở nổi DB đó nữa, kể cả `status` chỉ đọc; restart = mất dịch vụ vĩnh viễn. Vá: `Task.tu_log()` — một đường đọc
+  khoan dung dùng ở **mọi** đường phát lại (`_dispatch_plan(replaying)`, `delivery._replay_task`,
+  `supervisor._on`, `supervisor._sprint_report`), đường sinh MỚI (`ticket_fsm:98`) và `guard` lúc publish vẫn
+  nghiêm ngặt. Sáu `assignee` cũ trùng đúng `BUILD_PHASES` nên chúng chuyển sang `Task.stack` thay vì bị vứt;
+  `assignee` lạ vẫn ném. Rà cả họ (luật 5): vá chỗ thứ nhất xong thì chỗ thứ hai (`supervisor.replay`) lộ ra —
+  cả 4 chỗ đọc lại đều đã đổi. Bằng chứng: `status` trên chính DB đó nay in đủ 38 ticket và 101 ruling.
+- fix(company): **`integration.skipped` ngập audit-log — 78% cả sổ** (#PR). Cùng lần audit: 13 399 / 17 278 bản
+  ghi audit-log của QLKH là `integration.skipped`. Nhánh "không có worktree" trong `worktree_flow.merge_ticket`
+  `return True` mà không đổi trạng thái gì, nên mỗi nhịp watch ghi lại một bản y hệt — trong khi các audit anh em
+  cùng vòng lặp (`gate.overdue`, `gate.escalate`) đều có khoá `once`. Không phải chuyện dung lượng: `metrics.py`
+  và `console/collect.py` đọc "sự thật" từ chính sổ này. Thêm `once=f"integration.skipped:{release_id}:{tid}"`.
+
 - docs(sessions): **ghi phiên vá `gate.request` created_by** (#200). Chỉ nối `docs/sessions/2026-09-09.md`,
   không đổi hành vi.
 - fix(core): **`HumanGate.request()` từ chối `created_by` rỗng/None** (#199). Lỗ hổng bypass four-eyes

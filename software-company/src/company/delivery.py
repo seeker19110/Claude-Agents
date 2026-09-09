@@ -177,7 +177,7 @@ class DeliveryLead:
         nên trước đây khôi phục từ log không biết ticket đã bị trả về: ticket có đủ review pass cũ lại thành `approved`,
         ticket phụ thuộc được dispatch, nhánh trống sau `fresh()` được "tích hợp". Ở đây: task mới hơn (retry tăng hoặc
         hint đổi) của ticket đã biết → ticket về `dispatched` với task đó, review cũ bỏ."""
-        t = Task.model_validate(env.payload)
+        t = Task.tu_log(env.payload)   # đường phát lại: bản ghi có thể mang `assignee` trước PR-5d
         old = self.tickets.get(t.ticket_id)
         if old is None or (t.retry <= old.retry and t.hint == old.hint): return
         self.tickets[t.ticket_id] = t; self.state[t.ticket_id] = "dispatched"

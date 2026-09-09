@@ -241,7 +241,10 @@ def _check_plan(o: Orchestrator, tickets: list[Task], project: str) -> list[str]
 
 def _dispatch_plan(o: Orchestrator, plan_id: str, replaying: bool = False) -> list[str]:
     plan = o.plans[plan_id]
-    pending = [Task.model_validate(t) for t in plan["tickets"] if t["ticket_id"] not in o.lead.tickets]
+    # Phát lại đọc bản ghi CŨ (`Task.tu_log` khoan dung với từ vựng trước PR-5d); kế hoạch MỚI do model
+    # vừa sinh thì vẫn nghiêm ngặt — khoan dung ở đó là để lọt một `assignee` sai vào hàng đợi.
+    build = Task.tu_log if replaying else Task.model_validate
+    pending = [build(t) for t in plan["tickets"] if t["ticket_id"] not in o.lead.tickets]
     done: list[str] = []
     prev, o.lead.replaying = o.lead.replaying, replaying
     try:

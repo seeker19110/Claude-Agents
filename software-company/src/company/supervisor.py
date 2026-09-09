@@ -102,7 +102,8 @@ class Supervisor(SupervisorBase):
                 self.project_granted[pid] = self.project_cost[pid]
                 self.project_paused.discard(pid); self.project_warned.discard(pid)
         elif env.topic == "tasks":
-            t = Task.model_validate(env.payload)
+            # `_on` chạy cho cả event mới lẫn `replay()` lúc rehydrate — dùng đường khoan dung.
+            t = Task.tu_log(env.payload)
             self.ticket_project[t.ticket_id] = t.project_id
             self.budgets.setdefault(t.ticket_id, self._budget(t, t.budget_usd))
             if t.retry >= self.max_retries:
@@ -204,7 +205,7 @@ class Supervisor(SupervisorBase):
     def _sprint_report(self) -> dict:
         tickets: dict[str, dict[str, Any]] = {}
         for env in self.bus.replay(topic="tasks"):
-            t = Task.model_validate(env.payload); b = self.budgets.get(t.ticket_id)
+            t = Task.tu_log(env.payload); b = self.budgets.get(t.ticket_id)   # duyệt lại CẢ lịch sử `tasks`
             tickets[t.ticket_id] = {"estimate_tokens": t.estimate_tokens, "budget_tokens": t.budget_tokens,
                                     "retry": t.retry, "actual_tokens": b.used if b else 0,
                                     "review_tokens": b.review_used if b else 0,
