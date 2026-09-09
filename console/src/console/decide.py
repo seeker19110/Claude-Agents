@@ -12,6 +12,7 @@ from typing import Any, get_args
 
 from company import gate_cli as company_gate_cli
 from company.gates import Decision as CompanyDecision
+from company.gates import gate_approvers as company_gate_approvers
 from company.sqlite_bus import SQLiteBus as CompanyBus
 from studio import gate_cli as studio_gate_cli
 from studio.gates import Decision as StudioDecision
@@ -42,6 +43,12 @@ def _studio_gate(bus: Any) -> Any:
     return studio_gate_cli.PersistentGate(bus, approvers=gate_approvers(cfg))
 
 
+def _company_gate(bus: Any) -> Any:
+    """Gate của công ty gia công mang theo allowlist người duyệt (`COMPANY_GATE_APPROVERS`, K3.7) — cùng đường
+    console duyệt studio, không thì console là lối tắt bỏ qua allowlist mà CLI/orchestrator company đều tuân."""
+    return company_gate_cli.PersistentGate(bus, approvers=company_gate_approvers())
+
+
 def decide(company_db: Path | None, studio_db: Path | None, *,
            subject_id: str, xuong: str, decision: str, by: str, reason: str) -> dict[str, Any]:
     """Duyệt/từ chối một gate đang chờ. Trả `{"ok", "subject_id", "decision", "event_id"}`.
@@ -62,7 +69,7 @@ def decide(company_db: Path | None, studio_db: Path | None, *,
 
     bus = CompanyBus(Path(db)) if xuong == COMPANY else StudioBus(Path(db))
     try:
-        gate = company_gate_cli.PersistentGate(bus) if xuong == COMPANY else _studio_gate(bus)
+        gate = _company_gate(bus) if xuong == COMPANY else _studio_gate(bus)
         written: list[Any] = []
         bus.subscribe("audit-log", written.append)  # bắt chính envelope gate.decide mà gate vừa ghi
         try:

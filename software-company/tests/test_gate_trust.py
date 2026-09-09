@@ -8,6 +8,8 @@ from company.bus import InMemoryBus, PermissionDenied
 from company.events import AuditLog, Envelope
 from company.gate_cli import PersistentGate, trusted_decision
 from company.gates import GateRequest, gate_approvers
+from company.llm import FakeClient
+from company.orchestrator import Orchestrator
 from company.orchestrator import main as orch_main
 
 
@@ -102,3 +104,26 @@ def test_company_gate_approvers_bat_thi_ep_four_eyes(monkeypatch):
     assert "SPEC-2" in gate.pending
     gate.decide("SPEC-2", "approve", by="human:pm")
     assert PersistentGate(bus).is_approved("SPEC-2")   # replay không kiểm lại danh sách (có thể đã đổi)
+
+
+def test_company_gate_approvers_bat_khong_chan_nghiem_thu_khach(monkeypatch):
+    """`sc-security` (K3.7): bật `COMPANY_GATE_APPROVERS` không được làm gate `UAT-*` (nghiệm thu) hết đóng được
+    — chữ ký khách (`signed_by` trong `acceptance-results`) là chuỗi tự do, không phải id một người duyệt nội
+    bộ, nên `_close_acceptance_gate` phải gọi `enforce=False`. Trước bản vá: `enforce` mặc định `True` khiến
+    `PermissionError` bị `_close_acceptance_gate` nuốt thành `handler_error`, ticket đóng băng vĩnh viễn dù
+    `acceptance-results` đã "đã ký"."""
+    from test_orchestrator import _drive_to_plan, _pub, handler
+
+    monkeypatch.setenv("COMPANY_GATE_APPROVERS", "human:po,human:release-manager")
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    _drive_to_plan(bus, orch)
+    orch.run()
+    rid = orch.lead.releases[0]
+    orch.gate.decide(rid, "approve", by="human:release-manager")
+    orch.run()
+
+    _pub(bus, "acceptance-results", rid, "ops",
+         {"release_id": rid, "project_id": "P1", "verdict": "accepted", "signed_by": "customer:khong-trong-danh-sach"})
+    orch.run()
+    assert orch.lead.state["T1"] == "closed", "chữ ký khách không nằm trong allowlist người duyệt nội bộ vẫn phải đóng được nghiệm thu"
+    assert not any(a.get("action") == "handler_error" for a in (e.payload for e in bus.replay(topic="audit-log")))
