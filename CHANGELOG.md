@@ -6,6 +6,16 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- test(company): **cổng chết trong `test_adr0012` lấy bằng socket giữ chỗ, không phải `port + 1`**. Ca
+  `test_resolve_host_va_default_fetcher_tren_server_that` giả định cổng kế bên cổng server là cổng trống —
+  **vô căn cứ**: `port` do OS cấp từ dải ephemeral nên `port + 1` cũng ephemeral và có thể đang bị tiến trình
+  khác giữ; lúc đó kết nối thành công và `ToolError` không được ném. Đã ĐỎ THẬT trên `unit (windows-latest,
+  3.13)` ở #247 với đúng thông điệp `DID NOT RAISE ToolError` — một cổng xanh lâu nay chỉ vì môi trường tình
+  cờ thuận, không vì mã đúng. Nay lấy cổng chết bằng một socket đã `bind` nhưng **không `listen`** và **giữ
+  nguyên tới hết ca**: kết nối bị từ chối tất định, mà không ai giành được cổng vì chính ca test đang giữ —
+  hết cửa sổ đua, không chỉ thu hẹp. **Đo hai chiều**: dựng đúng điều kiện của CI (chiếm sẵn `port + 1`) →
+  mã cũ **không ném ToolError**, tái hiện nguyên văn lỗi; mã mới 6/6 lần chạy đều pass. 1098 test, phủ 100%.
+
 - ci: **PR do máy sinh qua được cổng `metadata`** (#247). Hai vá nối tiếp nhau, cùng một họ lỗi "cấu hình chỉ
   sinh ra PR hỏng". (1) `dependabot.yml` gắn nhãn `dependencies` + `no-changelog` cho mọi PR nó mở: cổng
   `metadata` đòi dòng CHANGELOG mà dependabot không viết được, nên thiếu nhãn là **mọi** PR dependabot đỏ —

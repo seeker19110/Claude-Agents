@@ -4,6 +4,7 @@ thiệp giữa vòng. Không gọi mạng: fetcher giả, client giả."""
 from __future__ import annotations
 
 import json
+import socket
 import threading
 import urllib.error
 from dataclasses import replace
@@ -349,9 +350,17 @@ def test_resolve_host_va_default_fetcher_tren_server_that(monkeypatch):
         status, ctype, data = web_mod.default_fetcher(f"http://127.0.0.1:{port}/redirect", trusted)
         assert status == 200 and "xin chao" in data.decode("utf-8") and "html" in ctype
 
-        # cổng không ai lắng nghe: OSError của socket phải hoá thành ToolError rõ (dòng 123-124)
-        with pytest.raises(ToolError, match="không lấy được"):
-            web_mod.default_fetcher(f"http://127.0.0.1:{port + 1}/", trusted)
+        # cổng không ai lắng nghe: OSError của socket phải hoá thành ToolError rõ (dòng 123-124).
+        # Cổng chết lấy bằng một socket ĐÃ bind nhưng KHÔNG listen, và GIỮ nguyên tới hết ca: kết nối tới
+        # nó bị từ chối tất định, mà không ai giành được cổng vì chính ta đang giữ. Bản cũ dùng `port + 1`
+        # và giả định cổng kế bên trống — vô căn cứ, vì `port` là cổng ephemeral do OS cấp nên `port + 1`
+        # cũng nằm trong dải ephemeral. Đã ĐỎ thật trên `unit (windows-latest, 3.13)` ở #247 với đúng
+        # thông điệp "DID NOT RAISE ToolError": có người nghe ở cổng kế bên nên kết nối thành công.
+        with socket.socket() as dead:
+            dead.bind(("127.0.0.1", 0))          # bind mà không listen -> mọi kết nối bị từ chối
+            dead_port = dead.getsockname()[1]
+            with pytest.raises(ToolError, match="không lấy được"):
+                web_mod.default_fetcher(f"http://127.0.0.1:{dead_port}/", trusted)
     finally:
         srv.shutdown(); t.join(timeout=5); srv.server_close()
 
