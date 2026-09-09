@@ -17,6 +17,11 @@ from company.workspace import TicketWorkspace
 from test_orchestrator import T1, _agent_of, _drive_to_plan, _inp
 from test_tools_and_agentic import _first_turn, _init_repo, _pr, _tc
 
+# `token_estimate` (p3.2a) là số đo CHẨN ĐOÁN, phát ở mọi bước agent: sai số giữa ước lượng của `fit` và
+# token thật trong `usage`. Các khẳng định dưới đây đo TRÌNH TỰ SỰ VIỆC của luồng, nên lọc nó ra —
+# chính nó được đo riêng ở `test_adr0012.py::test_runner_audits_token_estimate_sau_moi_buoc`.
+DIAG = {"token_estimate"}
+
 TEST_FILE = "tests/test_feature.py"
 TEST_BODY = "from feature import f\n\n\ndef test_f():\n    assert f() == 1\n"
 SRC_BODY = "def f():\n    return 1\n"
@@ -45,7 +50,7 @@ def test_author_tests_dien_bang_chung_that_va_do_la_dung(tmp_path: Path) -> None
     assert status == "red", "test đỏ khi chưa có code là kết quả ĐÚNG"
     assert p["files"] == [TEST_FILE], "danh sách file do git nói, không phải model khai"
     assert p["branch"] == "ticket/T1" and len(p["commit"]) >= 7 and p["blind"] is True
-    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG]
     assert acts == ["tools_used", "tools_trace", "tests_red_as_expected"]
 
 
@@ -73,7 +78,7 @@ def test_author_tests_xanh_ngay_la_dang_ngo(tmp_path: Path) -> None:
     _, status = AgentRunner(bus, FakeClient(handler=lambda s, u: _ts(_inp(u)), tool_handler=th)).author_tests(
         "qa", _task(), ws)
     assert status == "green"
-    assert [e.payload["action"] for e in bus.replay(topic="audit-log")][-1] == "tests_green_before_code"
+    assert [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG][-1] == "tests_green_before_code"
 
 
 def test_author_tests_khong_viet_gi_thi_khong_co_bo_test_rong(tmp_path: Path) -> None:
@@ -167,7 +172,7 @@ def test_stack_khong_phan_vung_duoc_thi_di_duong_cu_va_noi_thang(tmp_path: Path)
     orch = Orchestrator(bus, FakeClient(handler=_handler, tool_handler=_tool_handler), repo=repo, base="main", test_author=True)
     _drive_to_plan(bus, orch); orch.run()
     assert not list(bus.replay(topic="test-suites")), "không phân vùng được thì KHÔNG chạy test-author"
-    acts = {e.payload["action"] for e in bus.replay(topic="audit-log")}
+    acts = {e.payload["action"] for e in bus.replay(topic="audit-log")} - DIAG
     assert "tests_authored_by_assignee" in acts, "mất lớp bảo vệ thì phải ghi lại, không im lặng"
 
 
@@ -253,7 +258,7 @@ def test_giu_file_do_dang_cua_lan_truoc_thanh_wip_truoc_khi_viet_tiep(tmp_path: 
         "qa", _task(), ws)
     assert (ws.path / "tests" / "test_do_dang.py").exists()
     assert sorted(g.payloads[0]["files"]) == sorted([TEST_FILE, "tests/test_do_dang.py"])
-    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG]
     assert "workspace_kept" in acts and "workspace_reset" not in acts
 
 

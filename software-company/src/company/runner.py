@@ -213,6 +213,10 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         super().__init__(bus, client, agents or load_agents(), blackboard, max_input_chars,
                          default_max_input_chars=DEFAULT_MAX_INPUT_CHARS)
         self.pricing = getattr(client, "pricing", None)
+        # Input token THẬT của lượt ĐẦU trong bước hiện tại, để đối chiếu với ước lượng của `fit` (p3.2a).
+        # Phải là lượt đầu chứ không phải lượt cuối: từ lượt hai trở đi prompt đã mang thêm cả hội thoại
+        # tool, mà `fit` chỉ đo prompt ban đầu — so lượt cuối là so hai thứ khác nhau rồi gọi đó là sai số.
+        self._first_input: int | None = None
 
     def _audit_scope(self, inp: Envelope) -> dict[str, Any]:
         return {"ticket_id": inp.payload.get("ticket_id") or (inp.key if inp.topic == "tasks" else None),
@@ -284,6 +288,7 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
             raise
         if drain and (notes := drain()):
             self._audit(spec, "llm_retry", inp, evidence=json.dumps({"attempts": len(notes), "notes": notes}, ensure_ascii=False))
+        if self._first_input is None: self._first_input = c.input_tokens
         return c
 
     def _tool_loop(self, spec: AgentSpec, inp: Envelope, user: str, schema: dict[str, Any], tools: ToolBox,
@@ -455,6 +460,7 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
 
         schema = None if context_only else payload_schema(topic_out)
         raw_ctx, paths = self._context(project_of(inp), spec)
+        self._first_input = None   # `_complete` ghi vào đây ở lượt đầu của CHÍNH bước này
         payload, context, budget_ = fit(spec.system_prompt(phase), inp.payload, raw_ctx,
                                         min(spec.max_input_chars or self.max_input_chars, self.max_input_chars), paths=paths)
         if budget_.trimmed:
@@ -482,6 +488,12 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
             if step is not None:
                 step.attrs.update(model=c.model, turns=turns, tokens=total)
         duration = int((time.perf_counter() - t0) * 1000)
+        # p3.2a: `fit` chạy TRƯỚC lời gọi nên chỉ có ước lượng; `usage` chỉ có SAU. Nối hai đầu ở đây, sau
+        # lượt, bằng một audit RIÊNG — không gộp vào `context_trimmed` vì sai số phải đo được ở MỌI bước,
+        # kể cả bước không bị cắt; chỉ đo ở bước bị cắt là chỉ thấy đuôi phân phối.
+        budget_.actual_tokens = self._first_input or 0
+        self._audit(spec, "token_estimate", inp, evidence=json.dumps(budget_.report(), ensure_ascii=False),
+                    phase=phase)
         try:
             data = c.json()
             if not isinstance(data, dict): raise BusError("đầu ra phải là JSON object")

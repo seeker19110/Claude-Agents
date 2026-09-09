@@ -20,6 +20,11 @@ from company.tools import WorkspaceTools
 from company.workspace import TicketWorkspace
 from test_tools_and_agentic import _init_repo, _pr, _task_env, _tc
 
+# `token_estimate` (p3.2a) là số đo CHẨN ĐOÁN, phát ở mọi bước agent: sai số giữa ước lượng của `fit` và
+# token thật trong `usage`. Các khẳng định dưới đây đo TRÌNH TỰ SỰ VIỆC của luồng, nên lọc nó ra —
+# chính nó được đo riêng ở `test_adr0012.py::test_runner_audits_token_estimate_sau_moi_buoc`.
+DIAG = {"token_estimate"}
+
 
 def _c(name: str, ah: str = "a1", oh: str = "o1", ok: bool = True) -> dict[str, Any]:
     """Một phần tử của `ToolBox.calls` (hình dạng 4L-2: có `args_hash`, `out_hash`, `ms`)."""
@@ -36,7 +41,7 @@ def _run(tmp_path, th, **kw):
     client = FakeClient(handler=lambda s, u: _pr({"ticket_id": "T1"}), tool_handler=th)
     g = AgentRunner(bus, client).generate("builder", _task_env(), "pull-requests",
                                           tools=WorkspaceTools(_ws(tmp_path)).toolbox(), **kw)
-    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG]
     return g, acts, bus, client
 
 
@@ -51,7 +56,7 @@ def _run_voi_file_lon(tmp_path, th, n_files: int, chars: int = 6000, **kw):
     client = FakeClient(handler=lambda s, u: _pr({"ticket_id": "T1"}), tool_handler=th)
     g = AgentRunner(bus, client).generate("builder", _task_env(), "pull-requests",
                                           tools=WorkspaceTools(ws).toolbox(), **kw)
-    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG]
     return g, acts, bus, client
 
 

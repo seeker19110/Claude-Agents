@@ -32,6 +32,11 @@ from company.tools import ToolBox, ToolCall, ToolError, ToolSpec, WorkspaceTools
 from company.workspace import TicketWorkspace
 from test_orchestrator import T1, T2, _agent_of, _drive_to_plan, _inp, _pub, handler
 
+# `token_estimate` (p3.2a) là số đo CHẨN ĐOÁN, phát ở mọi bước agent: sai số giữa ước lượng của `fit` và
+# token thật trong `usage`. Các khẳng định dưới đây đo TRÌNH TỰ SỰ VIỆC của luồng, nên lọc nó ra —
+# chính nó được đo riêng ở `test_adr0012.py::test_runner_audits_token_estimate_sau_moi_buoc`.
+DIAG = {"token_estimate"}
+
 
 def _init_repo(path: Path) -> Path:
     path.mkdir()
@@ -211,7 +216,7 @@ def test_tool_loop_runs_tools_then_final_answer(tmp_path):
     assert g.turns == 2 and g.tool_calls == {"read_file": 1, "write_file": 1} and g.tokens == 2 * 1300
     assert [c["tools"] for c in client.calls] == [["read_file", "write_file", "delete_file", "list_files", "search", "run"]] * 2
     assert "# Tool" in client.calls[0]["user"] and "run test" in client.calls[0]["user"]
-    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG]
     assert acts == ["tools_used", "tools_trace"], "4L-2: một audit tools_trace mỗi lượt, ngay sau tools_used"
     used = json.loads(next(e.payload["evidence"] for e in bus.replay(topic="audit-log") if e.payload["action"] == "tools_used"))
     # 4L-5: model tự chốt ở lượt 2 (không hết `max_turns`=25 mặc định) → không chạm trần
@@ -266,7 +271,7 @@ def test_tools_trace_mode_cli_khong_co_vet(tmp_path):
     ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
     bus = InMemoryBus()
     AgentRunner(bus, _CliOnlyClient()).generate("builder", _task_env(), "pull-requests", tools=WorkspaceTools(ws).toolbox())
-    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG]
     assert acts == ["tools_used", "tools_trace"]
     tr = json.loads(next(e.payload["evidence"] for e in bus.replay(topic="audit-log") if e.payload["action"] == "tools_trace"))
     assert tr["mode"] == "cli" and tr["calls"] == []
@@ -370,7 +375,7 @@ def test_generate_in_workspace_overrides_model_claims_with_git_evidence(tmp_path
     assert p["impact"]["files"] == ["feature.py", "test_feature.py"] and p["summary"] == "đã làm"
     log = subprocess.run(["git", "-C", str(repo), "log", "--oneline", "ticket/T1"], capture_output=True, text=True, encoding="utf-8").stdout
     assert "feat(T1): thêm f" in log and "+def f():" in ws.diff()
-    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG]
     assert acts == ["tools_used", "tools_trace", "local_checks"]
 
 
@@ -388,7 +393,7 @@ def test_generate_in_workspace_rejects_pr_without_changes(tmp_path):
     bus = InMemoryBus()
     with pytest.raises(RunnerError, match="không sửa file"):
         AgentRunner(bus, client).generate_in_workspace("builder", _task_env(), ws)
-    assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["tools_used", "tools_trace", "invalid_output"]
+    assert [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG] == ["tools_used", "tools_trace", "invalid_output"]
 
 
 # ---------- orchestrator với repo thật ----------
