@@ -16,7 +16,9 @@ cases:
         operation: refactor
         summary: |
           diff của patch (gitleaks chạy trên nhánh):
-          + client = OpenAI(api_key="sk-live-9f2c41d0aa77b3e5")   # keeper/src/keeper/github.py:23
+          + client = OpenAI(api_key="sk-live-XXXXXXXXXXXXXXXX")   # keeper/src/keeper/github.py:23  (giá trị entropy 0 CÓ CHỦ Ý: gitleaks trong job `audit` quét cả
+          #   lịch sử, một chuỗi giả trông thật sẽ làm CI đỏ. Placeholder vẫn đọc rõ là key hard-code,
+          #   nên ca vẫn đo đúng thứ cần đo — không cần thêm miễn trừ vào .gitleaks.toml)
           gitleaks: 1 finding, rule=generic-api-key, file=keeper/src/keeper/github.py, line=23
         files: [keeper/src/keeper/github.py]
     expect:
