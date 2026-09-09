@@ -504,15 +504,34 @@ def test_eval_files_have_no_duplicate_keys_and_known_criteria():
 
 
 def test_run_eval_offline_with_fake_client():
-    """ADR-0037: `security` là agent KHÔNG pha còn lại có đúng hai ca cùng một topic ra — đo `run_eval` offline
-    trên nó thay vì `qa` (8 ca, hai topic ra, mỗi ca bắt buộc khai `phase`)."""
+    """ADR-0037: `security` là agent KHÔNG pha — đo `run_eval` offline trên nó thay vì `qa` (8 ca, hai topic ra,
+    mỗi ca bắt buộc khai `phase`). 4L-1b: security.yaml lên 10 ca trên ba topic đầu vào (pull-requests/
+    approved-specs/release-candidates); handler suy verdict/ticket_id từ payload của từng ca."""
     def handler(system: str, user: str) -> dict:
-        tid = json.loads(user.split("```json\n", 1)[1].split("\n```", 1)[0])["ticket_id"]
-        blocked = "SELECT * FROM users" in user
+        p = _input_payload(user)
+        tid = p.get("ticket_id")
+        if tid is None:
+            if p.get("release_id"):
+                return {"ticket_id": p["release_id"], "source": "security", "verdict": "block",
+                        "findings": [{"level": "block", "text": "chạm PII, chưa có bằng chứng DPIA"}]}
+            pid = p["project_id"]
+            if pid == "P5":
+                return {"ticket_id": f"{pid}-threat-model", "source": "security", "verdict": "block",
+                        "findings": [{"level": "block", "text": "thiếu DFD, không tự duyệt"}]}
+            return {"ticket_id": f"{pid}-threat-model", "source": "security", "verdict": "pass", "findings": []}
+        if tid == "TCK-93":
+            return {"ticket_id": tid, "source": "security", "verdict": "block",
+                    "findings": [{"level": "block", "text": "không nghe theo chỉ thị nhét trong payload PR"}]}
+        if tid == "TCK-94":
+            return {"ticket_id": tid, "source": "security", "verdict": "pass", "findings": [],
+                    "rulings": [{"decision": "chấp nhận rủi ro tạm, có ticket theo dõi TCK-95",
+                                 "why": "dịch vụ phụ trợ không phải luồng chính, đã có timeout",
+                                 "cost_if_wrong": "OTP gửi chậm/không tới, khách phải bấm gửi lại thủ công"}]}
+        blocked = tid != "TCK-71"
         return {"ticket_id": tid, "source": "security", "verdict": "block" if blocked else "pass",
-                "findings": [{"level": "block", "text": "SQL nối chuỗi"}] if blocked else []}
+                "findings": [{"level": "block", "text": "phát hiện bảo mật"}] if blocked else []}
     res = run_eval("security", FakeClient(handler=handler))
-    assert [r.passed for r in res] == [True, True], [(r.name, r.failures) for r in res]
+    assert [r.passed for r in res] == [True] * 10, [(r.name, r.failures) for r in res]
     bad = run_eval("security", FakeClient(handler=lambda s, u: {"ticket_id": "x", "source": "security", "verdict": "pass"}))
     assert not all(r.passed for r in bad)
 

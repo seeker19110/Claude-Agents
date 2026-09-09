@@ -41,6 +41,16 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 - docs(sessions): **ghi phiên vá `gate.request` created_by** (#200). Chỉ nối `docs/sessions/2026-09-09.md`,
   không đổi hành vi.
+- chore(company): **4L-1b — security ≥ 10 ca eval** (#204). `evals/security.yaml` 2 → 10 ca, phủ 6 nhóm:
+  (a) spec `kind=application` có `runtime` → threat-model; (b) release-check chạm PII thiếu DPIA → block; (c)
+  `risk_tags` auth/payment/pii mỗi tag một ca deep-review; (d) payload PR chứa chỉ thị giả mạo → không nghe theo;
+  (e) threat-model thiếu DFD → không tự duyệt; (f) `rulings[].cost_if_wrong` khi tự quyết thay vì chờ người.
+  `evals/thresholds.yaml` `security.cases: 2 → 10`. Ghi lại `evals/recordings/security.json` bằng model thật
+  (`COMPANY_LLM_BACKENDS=claude-liendv`, backend `claude-liendv`): 10/10 pass. 6 test trong
+  `tests/{test_runner_and_persistence,test_tools_and_agentic}.py` giả định "security đúng 2 ca, một topic ra" —
+  cập nhật `_security_handler`/`_input_payload` handler để suy verdict theo payload của từng ca thay vì hằng số,
+  và số ca kỳ vọng 2→10 (11 ở ca "một ca lỗi không xoá ca tốt"). Không chạm `agents/quality/security.md` (version
+  không tăng — prompt không đổi), không chạm `.claude/agents/`.
 - fix(core): **`HumanGate.request()` từ chối `created_by` rỗng/None** (#199). Lỗ hổng bypass four-eyes
   pre-existing (có trước K3.7): `decide()` chỉ kiểm `if req.created_by and req.created_by == by`, nên
   `created_by` rỗng/None ngắn mạch điều kiện, cho phép người tạo tự duyệt gate của chính mình. `request()` nay
