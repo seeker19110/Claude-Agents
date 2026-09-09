@@ -116,7 +116,7 @@ Nghiệm thu: `grep -ril upkeep . --include="*.md"` rỗng. Chưa có mã → kh
 | `keeper/src/keeper/__init__.py` | docstring luật của package + `__version__` |
 | `keeper/src/keeper/core.py` | `CORE = CoreConfig(prefix="KEEPER", root=Path(__file__).resolve().parents[2], db_name="keeper.sqlite", topic_acl=…, payload_models=…, namespace_owners=…)` |
 | `keeper/src/keeper/events.py` | `Topic` Literal 9 giá trị; model `Signal`, `Ticket`, `PatchProposal`, `VerificationReport`, `DebtEntry`, `SecurityFinding`; `PAYLOAD_MODELS`, `NAMESPACE_OWNERS` |
-| `keeper/topics/schemas/*.json` | 9 schema sinh từ pydantic bằng script, như hai công ty kia |
+| `keeper/topics/schemas/*.json` | 9 schema **viết tay** rồi ép khớp bằng test `set(get_args(Topic)) == set(bus._schemas)` (`Studio-creators/tests/test_bus.py:46`). Đo 2026-09-09: **không có script sinh schema nào** trong repo — "sinh từ pydantic" ở hai công ty kia là mô tả nguồn gốc khái niệm, không phải một lệnh chạy được |
 | `.github/workflows/ci.yml` | job `keeper-static` + `keeper-unit` (3.11, 3.13; ubuntu + windows) theo khuôn `core-static`/`core-unit` |
 
 Đo hai chiều: bỏ `keeper` khỏi `members` → `uv sync` không thấy package → `pytest` đỏ `ModuleNotFoundError`;
@@ -268,16 +268,8 @@ chứng hai chiều, và PR đó merge. Không có PR thật thì BT8 chưa xong
 
 ## 11. Bảng theo dõi
 
-| Mã | PR | Trạng thái |
-|---|---|---|
-| BT0 | ADR đổi tên + đặc tả (#207) | đang mở |
-| BT1 | khung package | chưa |
-| BT2 | adapter GitHub | chưa |
-| BT3 | khối watch | chưa |
-| BT4 | triage + ngân sách | chưa |
-| BT5 | patcher | chưa |
-| BT6 | bằng chứng + họ lỗi | chưa |
-| BT7 | release + gate + orchestrator | chưa |
-| BT8 | console + canary | chưa |
+Bảng theo dõi **không nằm ở đây**. Trạng thái từng BT (kèm mức C1/C2/C3, đợt, `sc-*` chấm, và những chỗ tài liệu
+này đo lại thấy sai) sống ở một chỗ duy nhất: `docs/thi-hanh/keeper.md` §B.
 
-Cập nhật cột trạng thái **trong chính PR** làm ra thay đổi, không để lại cho một PR dọn dẹp.
+Hai bảng cùng nói tám việc thì sửa một chỗ là lệch chỗ kia — đúng bệnh `docs/KHUON-THI-HANH.md` §6 mô tả. Cập nhật
+trạng thái **trong chính PR** làm ra thay đổi, không để lại cho một PR dọn dẹp.
