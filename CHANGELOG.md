@@ -17,7 +17,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   `GateRequest.seq` tăng dần: không đọc đồng hồ, và phát lại cùng một log theo cùng thứ tự thì gate thứ ba vẫn
   là gate thứ ba. Kèm theo: `test_overdue_khong_truyen_now_thi_lay_bay_gio` không còn dựa vào thời gian trôi
   giữa hai dòng lệnh (biên "đúng bằng timeout thì chưa quá hạn" là cố ý, chỗ sai là ca test).
-- ci: **chân Windows cho `core`/`gateway`/`console`; `mypy` core sạch trên cả hai nền tảng** (#PR). Phát hiện
+- ci: **chân Windows cho `core`/`gateway`/`console`; `mypy` core sạch trên cả hai nền tảng** (#205). Phát hiện
   5 của audit 2026-09-09: chỉ `unit` (software-company) và `studio-unit` có chân Windows. Ba package kia — gồm
   `xagents-core`, nơi K3.1–K3.7 vừa dồn TOÀN BỘ cơ chế chung của hai công ty — chưa từng chạy trên Windows,
   nên package rủi ro cao nhất lại có phạm vi nền tảng hẹp nhất. Hậu quả đo được: lỗi thế hệ gate (#203) tái
