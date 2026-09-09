@@ -225,3 +225,15 @@ def test_cau_loi_goi_dung_ten_bien_cua_ben_goi():
 def test_che_do_la_thi_bao_loi_thay_vi_doan():
     with pytest.raises(SandboxError, match="không hợp lệ"):
         sandbox_from_settings("kín", "docker", "img", "X_SANDBOX", which=lambda _: "/x")
+
+
+def test_container_spawn_khi_popen_khong_mo_duoc_stdin(tmp_path):
+    """`Popen(stdin=PIPE)` vẫn có thể trả `proc.stdin is None` — hết file descriptor, hay bị wrapper thay thế.
+
+    Không có vế `is not None` thì đây là `AttributeError` ngay khi spawn, và ContainerSandbox mất luôn đường
+    báo lỗi tử tế: tiến trình ĐÃ khởi động rồi mới nổ, nên container ở lại mà không ai giữ handle."""
+    proc = _FakeProc()                      # `stdin` là None
+    h = ContainerSandbox("docker", "img:1", popen=lambda *a, **k: proc).spawn(
+        RunSpec(argv=["x"], cwd=tmp_path, env={"LANG": "vi"}))
+
+    assert h.poll() is None                 # vẫn trả handle dùng được, không nổ

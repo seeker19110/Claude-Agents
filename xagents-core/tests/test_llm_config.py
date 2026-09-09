@@ -169,3 +169,17 @@ def test_max_input_chars_khong_doc_o_cap_backend():
     khoản nào còn hạn mức — một lỗi chỉ lộ ra khi backend đầu hết quota."""
     b = LLMConfig(max_input_chars=100).backend_config({"max_input_chars": 5})
     assert b.max_input_chars == 100
+
+
+def test_select_backends_khong_co_prefer_thi_khong_dung_toi(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """`routing:` không khai `prefer` → lọc backend xong là hết việc, không dựng dict rỗng.
+
+    Cấu hình tối thiểu (chỉ `backends:`) là cấu hình MẶC ĐỊNH của một công ty mới, nên nhánh này chạy nhiều
+    hơn nhánh có `prefer`; đọc `self.routing["prefer"]` vô điều kiện sẽ là `KeyError` ngay lần nạp đầu."""
+    p = _yaml(tmp_path, "backends: [{name: a, provider: fake}, {name: b, provider: fake}]\n")
+    monkeypatch.setenv("DEMO_LLM_BACKENDS", "b")
+
+    cfg = load_config(_core(tmp_path), p, cls=LLMConfig)
+
+    assert [b["name"] for b in cfg.backends] == ["b"]
+    assert "prefer" not in cfg.routing

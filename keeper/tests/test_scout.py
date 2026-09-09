@@ -136,3 +136,14 @@ def test_hau_to_van_phan_loai_duoc_khi_ba_so_co_doi(old, new, cho):
     """Đối chứng: hậu tố KHÔNG làm mất khả năng phân loại khi phần số thật sự đổi — nếu nhánh `ov == nv` viết
     quá rộng (ví dụ so cả chuỗi) thì ba ca này thành `None` và test đỏ."""
     assert scout.semver_jump(old, new) == cho
+
+
+def test_dev_package_names_bo_qua_entry_khong_co_ten(tmp_path: Path) -> None:
+    """Entry chỉ có ràng buộc phiên bản, không có tên (`>=1.0`) → `re.split` trả chuỗi RỖNG.
+
+    Không có vế `if pkg` thì một chuỗi rỗng lọt vào `names`, và `_norm("")` sẽ khiến mọi phép so tên sau đó
+    coi "" là một gói dev có thật."""
+    (tmp_path / "pyproject.toml").write_text(
+        '[dependency-groups]\ndev = [">=1.0", "pytest>=8"]\n', encoding="utf-8")
+
+    assert scout.dev_package_names(tmp_path) == {"pytest"}

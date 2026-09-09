@@ -74,6 +74,14 @@ chỉ lo `tools="rw"`). Cái rơi ra ngoài luôn rơi vào im lặng.
 
 ## 3. Bẫy thao tác git / CI
 
+**`(#PENDING)` trong CHANGELOG nay là CI ĐỎ — để TRỐNG, đừng đặt chỗ giữ.** Từ phép (d) của `keeper drift`,
+mọi `(#PRNUM)`/`(#PENDING)`/`(#n)` **ngoài dấu backtick** trong `CHANGELOG.md` làm job `drift-check` đỏ. Lý do
+có phép này: 3/4 ca thiếu dòng CHANGELOG (2026-09-09) là *quên điền số* chứ không phải quên viết dòng, và một
+chỗ giữ chỗ không ai quay lại điền thì tệ hơn không có gì — nó trông như đã xong. *Cách làm đúng theo luật 10*:
+commit 1 viết dòng CHANGELOG **kết thúc không có số**; sau `gh pr create` thì commit 2 thêm `(#<n>)` vào chính
+PR đó. Muốn NHẮC TỚI một placeholder trong văn xuôi (kể lại một bug, trích luật) thì bọc backtick — phép (d)
+bỏ qua code span, đúng để tài liệu mô tả được nó mà không tự làm mình đỏ.
+
 **`quality` đỏ với 0 failure — run đã bị thay thế, không phải lỗi.** Mắc ba lần trong phiên 2026-09-08 (#172,
 #173, #174). Luật 10 bắt điền `(#<n>)` vào chính PR đó, mà số PR chỉ có sau khi tạo PR — nên luôn có commit thứ
 hai đẩy sau commit thứ nhất vài chục giây. `concurrency: cancel-in-progress` cắt run đầu, và `quality` **cố ý**

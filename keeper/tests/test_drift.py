@@ -255,3 +255,37 @@ def test_scan_tong_hop(tmp_path: Path) -> None:
         repo=repo, changelog=repo / "CHANGELOG.md",
     )
     assert isinstance(out, list)
+
+
+# --- phép (d): chỗ trống chưa điền số PR. Ba trong bốn ca thiếu dòng CHANGELOG (2026-09-09) là "quên điền
+# --- số" chứ không phải "quên viết dòng" — phép (c) mù với chúng khi dòng đã tồn tại.
+
+def test_placeholder_bat_cho_trong_that(tmp_path: Path) -> None:
+    cl = tmp_path / "CHANGELOG.md"
+    cl.write_text("- feat(x): việc gì đó (#PRNUM)\n", encoding="utf-8")
+
+    out = drift.changelog_placeholder_drift(cl)
+    assert len(out) == 1
+    assert out[0].subject == "changelog-L1"
+    assert out[0].evidence == "(#PRNUM)"
+
+
+def test_placeholder_im_voi_van_xuoi_trong_backtick(tmp_path: Path) -> None:
+    """Chiều ngược của ca trên: CHANGELOG **kể lại** các ca placeholder bằng văn xuôi.
+
+    Chính `CHANGELOG.md` của repo có hai dòng như vậy (mô tả bug và mô tả luật §10). Một bộ dò báo động vì
+    tài liệu MÔ TẢ nó là bộ dò người ta sẽ tắt — nên chỗ trong code span không tính."""
+    cl = tmp_path / "CHANGELOG.md"
+    cl.write_text("- fix: đổi `(#208)` về `(#PENDING)` → đỏ; điền `(#<n>)` rồi commit (#226)\n", encoding="utf-8")
+
+    assert drift.changelog_placeholder_drift(cl) == []
+
+
+def test_placeholder_khong_co_file_thi_im(tmp_path: Path) -> None:
+    assert drift.changelog_placeholder_drift(tmp_path / "khong-co.md") == []
+
+
+def test_placeholder_so_that_khong_bi_bat(tmp_path: Path) -> None:
+    cl = tmp_path / "CHANGELOG.md"
+    cl.write_text("- feat(x): việc gì đó (#226)\n", encoding="utf-8")
+    assert drift.changelog_placeholder_drift(cl) == []

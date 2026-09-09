@@ -33,6 +33,10 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 source = ["src/keeper"]
+# Phủ NHÁNH, không chỉ dòng. `fail_under = 100` trên dòng vẫn để lọt nhánh chưa đi: đo 2026-09-09 cả sáu
+# package xanh 100% dòng mà còn 198 nhánh chưa phủ. Với một repo mà sản phẩm chính là logic quyết định
+# (guard, gate, fail-closed), nhánh mới là thứ đáng chặn. keeper đi trước vì khoảng cách nhỏ nhất (3).
+branch = true
 
 [tool.coverage.report]
 # Cả sáu package phủ 100% dòng: ngưỡng bằng đúng mức đạt được, nên mất một dòng phủ là CI đỏ.
