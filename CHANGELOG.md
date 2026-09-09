@@ -6,6 +6,10 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs: **thêm bước "quét toàn repo trước khi tạo PR" vào `QUY-TRINH-GIT.md` §5** — rút từ chính sự cố PR
+  #193 (đỏ cổng `metadata` vì thiếu dòng CHANGELOG khi cherry-pick sang nhánh khác). Bước 0 mới: `grep` dẫn
+  chiếu chết trên toàn repo (không chỉ package đang sửa), kiểm CHANGELOG + bảng theo dõi thi-hành, `git
+  status`/`git diff --check` trên toàn diff, và `gh pr list --state open` trước khi `gh pr create`.
 - fix(console): **console đọc lại bus có ticket cũ bằng `Task.tu_log`, không `model_validate`** (#241). Console
   chết ngay ở `/api/stream` với `ValidationError: assignee Input should be 'builder'` và mặt kính trực ban chỉ
   còn một dòng đỏ "Server đọc được stream nhưng không đọc được bus" — không xem được gì. `company.events.Task`
@@ -199,10 +203,6 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   **Không sửa một dòng test nào** của hai công ty (1057 + 557 xanh). **K3.6d2 (`AgentRunner`) chưa làm**:
   `difflib` 0.14 trên 411 dòng company / 202 studio, `_tool_loop`+`_turns` 0.12, `write_context` 0.15.
 
-- docs: **thêm bước "quét toàn repo trước khi tạo PR" vào `QUY-TRINH-GIT.md` §5** — rút từ chính sự cố PR
-  #193 (đỏ cổng `metadata` vì thiếu dòng CHANGELOG khi cherry-pick sang nhánh khác). Bước 0 mới: `grep` dẫn
-  chiếu chết trên toàn repo (không chỉ package đang sửa), kiểm CHANGELOG + bảng theo dõi thi-hành, `git
-  status`/`git diff --check` trên toàn diff, và `gh pr list --state open` trước khi `gh pr create`.
 - docs: **làm rõ `QUY-TRINH-GIT.md` §2c — code + commit tại chỗ trong khi chờ PR khác merge** (#193). Luật
   "chỉ một PR mở tại một thời điểm" chỉ khoá bước `gh pr create`/merge, không khoá code hay commit — ghi rõ
   thành câu chữ tường minh thay vì để ngầm hiểu, kèm quy trình cụ thể (nhánh/worktree riêng, commit tại chỗ,

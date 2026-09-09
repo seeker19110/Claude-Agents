@@ -111,7 +111,7 @@ origin` + `git rebase origin/main` trên nhánh việc kế tiếp (giữ lại 
 
 Không commit secret, `llm.yaml`, khóa API, hay dữ liệu thật. Không gọi provider trả phí trong test.
 
-## 5. Pull request — bốn bước làm liền một mạch
+## 5. Pull request — năm bước làm liền một mạch
 
 0. **Quét toàn repo trước khi tạo PR** — không chỉ đọc diff của chính mình. Bỏ bước này là chỗ đã sinh
    lỗi thật (PR #193 đỏ `metadata` vì thiếu dòng CHANGELOG khi cherry-pick sang nhánh khác, phải vá thêm
