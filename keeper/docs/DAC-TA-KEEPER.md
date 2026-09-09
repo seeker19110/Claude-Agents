@@ -270,7 +270,7 @@ chứng hai chiều, và PR đó merge. Không có PR thật thì BT8 chưa xong
 
 | Mã | PR | Trạng thái |
 |---|---|---|
-| BT0 | ADR đổi tên + đặc tả | đang mở |
+| BT0 | ADR đổi tên + đặc tả (#207) | đang mở |
 | BT1 | khung package | chưa |
 | BT2 | adapter GitHub | chưa |
 | BT3 | khối watch | chưa |
