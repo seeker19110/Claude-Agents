@@ -39,6 +39,7 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8200
 DEFAULT_COMPANY_DB = REPO_ROOT / "software-company" / "company.sqlite"
 DEFAULT_STUDIO_DB = REPO_ROOT / "Studio-creators" / "studio.sqlite"
+DEFAULT_KEEPER_DB = REPO_ROOT / "keeper" / "keeper.sqlite"
 
 MAX_BODY_BYTES = 1 << 20  # 1 MiB: body của /api/gate/decide chỉ là vài trường ngắn.
 
@@ -182,6 +183,7 @@ class ConsoleServer(ThreadingHTTPServer):
         allow_submit: bool = False,
         company_db: Path | None = None,
         studio_db: Path | None = None,
+        keeper_db: Path | None = None,
         llm_yaml: dict[str, Path] | None = None,
         static_dir: Path = STATIC_DIR,
         stream_max_seconds: float | None = None,
@@ -196,6 +198,7 @@ class ConsoleServer(ThreadingHTTPServer):
         self.allow_submit = allow_submit
         self.company_db = company_db
         self.studio_db = studio_db
+        self.keeper_db = keeper_db
         self.llm_yaml = llm_yaml
         self.static_dir = Path(static_dir)
         # None = stream sống tới khi client đóng (chế độ chạy thật). Test đặt một giá trị nhỏ
@@ -388,7 +391,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         from console.collect import collect  # nhập trễ: lớp dữ liệu do agent khác viết song song.
 
         try:
-            state = collect(self.server.company_db, self.server.studio_db)
+            state = collect(self.server.company_db, self.server.studio_db, self.server.keeper_db)
         except Exception:
             logger.exception("collect() thất bại")
             self._error(HTTPStatus.INTERNAL_SERVER_ERROR, "không đọc được trạng thái")
@@ -435,7 +438,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         if self.command == "HEAD":
             return
 
-        dbs = (self.server.company_db, self.server.studio_db)
+        dbs = (self.server.company_db, self.server.studio_db, self.server.keeper_db)
         fingerprint: str | None = None
         last_beat = 0.0
         deadline = None if self.server.stream_max_seconds is None else time.monotonic() + self.server.stream_max_seconds
@@ -445,7 +448,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
                 if current != fingerprint:
                     fingerprint = current
                     try:
-                        state = collect(self.server.company_db, self.server.studio_db)
+                        state = collect(self.server.company_db, self.server.studio_db, self.server.keeper_db)
                     except Exception:
                         logger.exception("collect() thất bại trong /api/stream")
                         self.wfile.write(sse_frame("error", {"error": "không đọc được trạng thái"}))
@@ -478,6 +481,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             result = decide(
                 self.server.company_db,
                 self.server.studio_db,
+                self.server.keeper_db,
                 subject_id=args["subject_id"],
                 xuong=args["xuong"],
                 decision=args["decision"],
@@ -513,6 +517,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             result = submit(
                 self.server.company_db,
                 self.server.studio_db,
+                self.server.keeper_db,
                 xuong=payload["xuong"],
                 topic=payload["topic"],
                 payload=payload["payload"],
@@ -620,6 +625,7 @@ def make_server(
     allow_submit: bool = False,
     company_db: Path | None = None,
     studio_db: Path | None = None,
+    keeper_db: Path | None = None,
     llm_yaml: dict[str, Path] | None = None,
     static_dir: Path = STATIC_DIR,
     stream_max_seconds: float | None = None,
@@ -633,6 +639,7 @@ def make_server(
         allow_submit=allow_submit,
         company_db=company_db,
         studio_db=studio_db,
+        keeper_db=keeper_db,
         llm_yaml=llm_yaml,
         static_dir=static_dir,
         stream_max_seconds=stream_max_seconds,

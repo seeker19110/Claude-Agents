@@ -51,6 +51,29 @@ mở lại là replay dựng lại đúng chỗ, event chưa xử lý (`deferred
 > **cố ý không giết chúng** — đó là cả điểm của "deployed là container đang chạy". Giết tiến trình
 > orchestrator chỉ dừng các agent; sản phẩm của khách vẫn nhận request, vẫn giữ cổng, vẫn ghi dữ liệu.
 
+**Tắt riêng `keeper` mà không tắt hai công ty kia.** `keeper` là một tiến trình RIÊNG (`keeper.cli watch`) trên
+một bus riêng (`keeper.sqlite`), nên nó dừng độc lập — dừng đúng tiến trình đó là xong, không cần chạm
+`orchestrator run` của hai công ty:
+
+```bash
+# xem có tiến trình keeper nào đang chạy không (Windows / PowerShell)
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+  Where-Object CommandLine -match 'keeper.cli watch' | Select-Object ProcessId, CommandLine
+# Linux/macOS: pgrep -af 'keeper.cli watch'
+```
+
+Dừng tiến trình đó (Ctrl-C ở cửa sổ đang chạy nó là cách sạch nhất). An toàn như Mức 3: trạng thái nằm trong
+`keeper.sqlite`, mở lại là replay đúng chỗ.
+
+Muốn nó **chạy tiếp nhưng không mở PR nào nữa** thay vì tắt hẳn — hạ trần ngân sách rồi khởi động lại nó:
+
+```bash
+export KEEPER_MAX_PR_PER_WEEK=0        # cổng `budget` của `pr_blockers()` chặn mọi ticket
+cd keeper && uv run python -m keeper.cli watch --db keeper.sqlite --repo ..
+```
+
+Nó vẫn triage và vẫn ghi `pr.blocked` kèm tên cổng chặn vào `audit-log`, nên hàng đợi không im lặng biến mất.
+
 ### Mức 4 — dừng SẢN PHẨM đang chạy (container)
 
 Mỗi môi trường là một compose project riêng, tên do code đặt: `company-<project_id>-<env>` với

@@ -497,6 +497,7 @@ name = "console"
 version = "0.1.0"
 source = { editable = "console" }
 dependencies = [
+    { name = "keeper" },
     { name = "software-company" },
     { name = "video-creators" },
 ]
@@ -511,6 +512,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "keeper", editable = "keeper" },
     { name = "software-company", editable = "software-company" },
     { name = "video-creators", editable = "Studio-creators" },
 ]

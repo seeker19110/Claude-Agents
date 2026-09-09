@@ -320,3 +320,27 @@ def test_truong_lam_gh_api_thanh_post_chieu_nguoc(monkeypatch, tmp_path):
     monkeypatch.setattr(github_mod.subprocess, "run", spy)
     GitHubReader(tmp_path)._run("api", "repos/o/r/pulls/1/merge", "-f", "merge_method=squash")
     assert len(spy.calls) == 1   # đã CHẠY thật — đúng thứ bảng chặn đầy đủ ngăn được
+
+
+@pytest.mark.parametrize("argv", [
+    ("pr", "create", "--title", "merge", "--body-file", "b.md"),
+    ("pr", "create", "--title", "x", "--body-file", "edit"),
+    ("pr", "create", "--title", "x", "--label", "delete"),
+    ("pr", "create", "--title", "close"),
+    ("pr", "create", "-t", "merge", "-b", "x"),
+])
+def test_gia_tri_cua_co_khong_bi_soi_nhu_subcommand(argv, tmp_path, monkeypatch):
+    """Cùng HỌ với `--repo delete-me` đã sửa ở BT2: bảng cấm soi SUBCOMMAND, nên giá trị của một cờ không được
+    đem so với bảng đó. Ở đây nó cắn thật — một PR bảo trì có tiêu đề đúng bằng chữ "merge" hoặc nhãn "delete"
+    sẽ bị chặn như một lời gọi ghi, trong khi `gh pr create` chính là thứ bất biến I1 CHO PHÉP."""
+    spy = _RunSpy()
+    monkeypatch.setattr(github_mod.subprocess, "run", spy)
+    GitHubReader(tmp_path)._run(*argv)          # không ném
+    assert len(spy.calls) == 1
+
+
+def test_gia_tri_cua_co_chieu_nguoc(tmp_path, monkeypatch):
+    """Chiều ngược: bỏ các cờ của `gh pr create` khỏi `_VALUE_FLAGS` → đúng lời gọi trên bị chặn nhầm."""
+    monkeypatch.setattr(github_mod, "_VALUE_FLAGS", frozenset({"--repo", "-R"}))
+    with pytest.raises(GitHubWriteAttempt):
+        GitHubReader(tmp_path)._run("pr", "create", "--title", "merge", "--body-file", "b.md")

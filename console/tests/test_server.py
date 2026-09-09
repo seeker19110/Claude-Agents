@@ -98,7 +98,7 @@ def fake_modules(monkeypatch: pytest.MonkeyPatch):
             raise state["__raise__"]
         return state
 
-    def decide(company_db: Any, studio_db: Any, **kw: Any) -> dict[str, Any]:
+    def decide(company_db: Any, studio_db: Any, keeper_db: Any = None, **kw: Any) -> dict[str, Any]:
         calls["decide"].append(kw)
         result = box["decide_result"]
         if isinstance(result, Exception):
@@ -108,7 +108,7 @@ def fake_modules(monkeypatch: pytest.MonkeyPatch):
     calls["submit"] = []
     box["submit_result"] = {"ok": True, "xuong": "software-company", "topic": "research-requests", "key": "P1", "event_id": "e9"}
 
-    def submit(company_db: Any, studio_db: Any, **kw: Any) -> dict[str, Any]:
+    def submit(company_db: Any, studio_db: Any, keeper_db: Any = None, **kw: Any) -> dict[str, Any]:
         calls["submit"].append((company_db, studio_db, kw))
         result = box["submit_result"]
         if isinstance(result, Exception):

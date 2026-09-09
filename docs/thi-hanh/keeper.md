@@ -67,7 +67,7 @@ PR vá riêng.
 | BT5 | `worktree.py` (bọc `TicketWorkspace`) + `patcher.py` + `FORBIDDEN_PATHS` + `cli.py --dry-run` | keeper | `feat(keeper)` | C3 | chạm git thật, sai là hỏng worktree phiên khác | tuyệt đối không `reset --hard` checkout chung | **xong #PR** |
 | BT6 | `evidence.require_two_way` + `family.py` + `audit.py` | keeper | `feat(keeper)` | C3 | I2 thành cổng máy | `verified_by` phải do code set, lọc qua `guard` | **xong #PR** |
 | BT7 | `release.py` + `gates.py` + `orchestrator.py` + 8 agent md + golden + eval recordings + `assetscan` 4 chỗ | keeper | `feat(keeper)` | C3 | công ty chạy được | chạm `agents/` → 7 bước `CONTRIBUTING.md` §3; `eval-record` cần key thật | **xong #PR**; bước `make eval-record` = `chờ người` (cần model thật) |
-| BT8 | tab console + `HUONG-DAN-VAN-HANH` + `TRUC-VA-DUNG-KHAN` + README; **canary** | console, docs | `feat(keeper)` | C2 (console/docs) + `chờ người` (canary) | nghiệm thu thật | canary cần `gh auth` + người merge | chưa |
+| BT8 | tab console + `HUONG-DAN-VAN-HANH` + `TRUC-VA-DUNG-KHAN` + README; **canary** | console, docs | `feat(keeper)` | C2 (console/docs) + `chờ người` (canary) | nghiệm thu thật | canary cần `gh auth` + người merge | **xong #PR** (console + tài liệu); **canary: chờ người** — cần `gh auth login` và người merge PR bảo trì đầu tiên (I1 cấm keeper tự merge) |
 
 **Cố ý không làm**
 

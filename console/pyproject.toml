@@ -3,13 +3,15 @@ name = "console"
 version = "0.1.0"
 description = "Console điều hành hợp nhất cho các công ty AI của X-Agents"
 requires-python = ">=3.11"
-# Không có phụ thuộc runtime ngoài hai công ty: server dùng thư viện chuẩn (http.server, sqlite3).
+# Không có phụ thuộc runtime ngoài BA công ty: server dùng thư viện chuẩn (http.server, sqlite3).
 dependencies = [
+    "keeper",
     "software-company",
     "video-creators",
 ]
 
 [tool.uv.sources]
+keeper = { workspace = true }
 software-company = { workspace = true }
 video-creators = { workspace = true }
 
