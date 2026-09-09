@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- docs(adr): **ADR-0006 công ty con `Upkeep-crew` bảo trì toàn dự án** (#PR). Chỉ là quyết định kiến
+- docs(adr): **ADR-0006 công ty con `Upkeep-crew` bảo trì toàn dự án** (#201). Chỉ là quyết định kiến
   trúc, chưa có mã: 6 khối / 8 agent / gate `upkeep`, 10 tính năng nâng cao (bậc rủi ro, bằng chứng đo hai
   chiều bắt buộc, ngân sách thay đổi, sổ nợ có đáo hạn), lộ trình 5 PR.
 - docs(sessions): **ghi phiên vá `gate.request` created_by** (#200). Chỉ nối `docs/sessions/2026-09-09.md`,
