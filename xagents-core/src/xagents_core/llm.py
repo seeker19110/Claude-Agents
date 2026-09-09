@@ -43,6 +43,7 @@ from .tools import ToolCall, ToolSpec
 
 __all__ = [
     "ARGV_LIMIT",
+    "CACHE_TTL",
     "CLAUDE_EFFORT",
     "CLI_BASE_FLAGS",
     "CLI_SUBTYPE_ERRORS",
@@ -61,6 +62,7 @@ __all__ = [
     "Refused",
     "TransientError",
     "anthropic_input_tokens",
+    "cache_control",
     "check_argv",
     "cli_effort_args",
     "cli_env",
@@ -78,8 +80,22 @@ __all__ = [
 
 C = TypeVar("C", bound="LLMConfig")
 
+# Bảng ĐÓNG như `CLAUDE_EFFORT`: giá trị ngoài bảng phải hỏng to thay vì lặng lẽ rơi về mặc định. `None` =
+# không khai `ttl` trong body (Anthropic mặc định 5 phút) — mặc định TẮT, body y hệt trước p3.2.
+CACHE_TTL = ("5m", "1h")
+
 TIERS = ("strong", "standard", "light")   # light: việc cơ học/ngắn (intake, clarifier, publisher, supervisor) — model rẻ nhất
 TRANSIENT_HTTP = frozenset({408, 409, 425, 429, 500, 502, 503, 504, 529})
+
+
+def cache_control(ttl: str | None = None) -> dict[str, str]:
+    """Một breakpoint cache của Anthropic. Không cấu hình TTL → đúng `{"type": "ephemeral"}` như trước p3.2.
+
+    TTL 1 giờ KHÔNG cần header `anthropic-beta` (tài liệu Anthropic, mục API reference của prompt
+    caching): nó là một khoá trong chính block `cache_control`. Task pack p3.2 giả định phải có beta
+    header — không đúng với tài liệu hiện hành, nên ở đây không sinh header nào.
+    """
+    return {"type": "ephemeral"} if ttl is None else {"type": "ephemeral", "ttl": ttl}
 
 
 class LLMError(Exception):
@@ -95,6 +111,12 @@ class Refused(LLMError):
 
 class TransientError(LLMError):
     """Lỗi vận chuyển (mạng, quá tải, rate limit): thử lại được, không phải lỗi của agent."""
+
+
+def _check_ttl(value: str) -> str:
+    if value not in CACHE_TTL:
+        raise LLMError(f"cache_ttl={value!r} không hợp lệ; chỉ nhận {list(CACHE_TTL)} (llm.yaml hoặc <PREFIX>_CACHE_TTL)")
+    return value
 
 
 def neutral_messages(user: str, messages: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -299,6 +321,13 @@ class LLMConfig:
     backends: list[dict[str, Any]] = field(default_factory=list)   # mỗi phần tử = một backend, cùng khoá như cấp trên
     routing: dict[str, Any] = field(default_factory=dict)          # cooldown_s, transient_cooldown_s, prefer{tier: backend}
     max_input_chars: int = 120_000   # trần ký tự prompt (≈ 37k token); runner cắt payload/blackboard theo `context.py`
+    # TTL của breakpoint cache Anthropic. `None` = không khai `ttl` (mặc định 5 phút của provider) → body
+    # y hệt trước p3.2. `"1h"` giữ entry qua khoảng nghỉ dài NHƯNG giá GHI cache gấp đôi (1.25× → 2×), nên
+    # chỉ lãi khi cùng một tiền tố được đọc lại ≥ 3 lần trong giờ đó — mặc định TẮT có chủ đích.
+    #
+    # Khác `max_input_chars` (thuộc cả hệ): TTL là tính năng của PROVIDER, nên đọc được ở cấp backend —
+    # một tài khoản Anthropic bật TTL dài không buộc backend OpenAI-compat bên cạnh phải hiểu khoá này.
+    cache_ttl: str | None = None
 
     def model_for(self, tier: str) -> str:
         """light → standard → strong: backend không có model rẻ thì dùng model tầm trung, không bao giờ lùi lên tier cao
@@ -320,6 +349,7 @@ class LLMConfig:
         self.base_url = data.get("base_url", self.base_url)
         self.max_tokens = int(data.get("max_tokens", self.max_tokens))
         if "extra" in data: self.extra = dict(data.get("extra") or {})
+        if data.get("cache_ttl") is not None: self.cache_ttl = _check_ttl(str(data["cache_ttl"]))
 
     def apply_yaml(self, data: Mapping[str, Any]) -> None:
         """Khoá chỉ đọc được ở GỐC `llm.yaml`."""
@@ -340,6 +370,8 @@ class LLMConfig:
         self.api_key = env.get(core.env_name("LLM_API_KEY"), self.api_key)
         if env.get(core.env_name("MAX_INPUT_CHARS")):
             self.max_input_chars = int(env[core.env_name("MAX_INPUT_CHARS")])
+        if env.get(core.env_name("CACHE_TTL")):
+            self.cache_ttl = _check_ttl(env[core.env_name("CACHE_TTL")])
 
     def select_backends(self, env: Mapping[str, str], core: CoreConfig) -> None:
         """`<PREFIX>_LLM_BACKENDS` lọc/sắp thứ tự `backends:`. Tách khỏi `apply_env` và gọi SAU CÙNG trong
@@ -550,7 +582,7 @@ class AnthropicClient:
                  messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion:
         kwargs: dict[str, Any] = dict(
             model=self.cfg.model_for(model_tier), max_tokens=self.cfg.max_tokens,
-            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+            system=[{"type": "text", "text": system, "cache_control": cache_control(self.cfg.cache_ttl)}],
             messages=self._messages(neutral_messages(user, messages)),
             thinking={"type": "adaptive"},
             output_config={"effort": self.cfg.effort.get(model_tier, "medium"),
@@ -558,7 +590,18 @@ class AnthropicClient:
             **self.cfg.extra,
         )
         if tools:
-            kwargs["tools"] = [{"name": t.name, "description": t.description, "input_schema": t.parameters} for t in tools]
+            specs = [{"name": t.name, "description": t.description, "input_schema": t.parameters} for t in tools]
+            # Breakpoint cache THỨ HAI, trên định nghĩa tool CUỐI (p3.2b). Thứ tự dựng tiền tố của
+            # Anthropic là `tools` → `system` → `messages`, nên một breakpoint duy nhất trên system vẫn
+            # cache cả phần tool — nhưng cache theo TIỀN TỐ: đổi một byte trong system là mất luôn phần
+            # tool đứng trước nó. Mà system prompt ĐỔI theo pha (`spec.system_prompt(phase)`, ADR-0037)
+            # trong khi danh sách tool thì không, nên mỗi lần đổi pha là ghi lại cache cho cả bảng tool.
+            # Breakpoint trên tool cuối cho phần tool một điểm đọc riêng, sống qua mọi thay đổi của system.
+            #
+            # KHÔNG đặt breakpoint trong `messages`: phần đó xoay vòng mỗi lượt (`_prune` tỉa tool result
+            # cũ — ADR-0007), tức là SỬA lịch sử, nên một marker ở đó chỉ ghi entry mới rồi không ai đọc.
+            specs[-1]["cache_control"] = cache_control(self.cfg.cache_ttl)
+            kwargs["tools"] = specs
         try:
             with self._client.messages.stream(**kwargs) as stream:
                 msg = stream.get_final_message()

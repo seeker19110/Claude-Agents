@@ -38,6 +38,11 @@ from company.sqlite_bus import SQLiteBus
 from company.supervisor import Supervisor
 from company.workspace import TicketWorkspace, WorkspaceError, exclude_worktrees
 
+# `token_estimate` (p3.2a) là số đo CHẨN ĐOÁN, phát ở mọi bước agent: sai số giữa ước lượng của `fit` và
+# token thật trong `usage`. Các khẳng định dưới đây đo TRÌNH TỰ SỰ VIỆC của luồng, nên lọc nó ra —
+# chính nó được đo riêng ở `test_adr0012.py::test_runner_audits_token_estimate_sau_moi_buoc`.
+DIAG = {"token_estimate"}
+
 
 def _pr_env(tid="TCK-1"):
     return Envelope(topic="pull-requests", key=tid, actor="builder", payload=PullRequest(
@@ -133,7 +138,7 @@ def test_runner_rejects_invalid_output_and_audits_it():
     client = FakeClient(responses=[{"ticket_id": "TCK-1", "source": "reviewer", "verdict": "maybe"}])
     with pytest.raises(RunnerError, match="không hợp lệ"):
         AgentRunner(bus, client).run("qa", _pr_env(), "review-results")
-    assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["invalid_output"]
+    assert [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG] == ["invalid_output"]
     assert not list(bus.replay(topic="review-results"))
 
 
@@ -160,7 +165,7 @@ def test_runner_llm_error_is_audited():
     bus = InMemoryBus()
     with pytest.raises(LLMError):
         AgentRunner(bus, FakeClient()).run("qa", _pr_env(), "review-results")
-    assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["llm_error"]
+    assert [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG] == ["llm_error"]
 
 
 def test_batch_schema_boc_schema_thanh_items():
@@ -208,7 +213,7 @@ def test_write_context_bo_qua_namespace_khong_thuoc_agent():
     done = runner.write_context("product", _pr_env(),
                                 [{"namespace": "threat-model", "content_ref": "x", "summary": "s"}])
     assert done == []
-    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG]
     assert "context_rejected" in acts
 
 
@@ -217,7 +222,7 @@ def test_write_context_bo_qua_khi_khong_co_blackboard():
     runner = AgentRunner(bus, FakeClient(), blackboard=None)
     done = runner.write_context("product", _pr_env(), [{"namespace": "prd", "content_ref": "x", "summary": "s"}])
     assert done == []
-    assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["context_rejected"]
+    assert [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG] == ["context_rejected"]
 
 
 def test_publish_bao_loi_khi_bus_tu_choi_payload():
@@ -225,7 +230,7 @@ def test_publish_bao_loi_khi_bus_tu_choi_payload():
     runner = AgentRunner(bus, FakeClient())
     with pytest.raises(RunnerError, match="đầu ra không hợp lệ"):
         runner.publish("qa", _pr_env(), "review-results", {"khong-hop-le": True})
-    assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["invalid_output"]
+    assert [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG] == ["invalid_output"]
 
 
 def test_generate_in_workspace_commit_that_bai_hoa_thanh_runner_error(tmp_path):

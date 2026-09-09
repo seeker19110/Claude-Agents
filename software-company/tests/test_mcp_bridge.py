@@ -19,6 +19,11 @@ from company.tools import ToolBox, ToolSpec, WorkspaceTools
 from company.workspace import TicketWorkspace
 from test_tools_and_agentic import _init_repo, _pr, _task_env
 
+# `token_estimate` (p3.2a) là số đo CHẨN ĐOÁN, phát ở mọi bước agent: sai số giữa ước lượng của `fit` và
+# token thật trong `usage`. Các khẳng định dưới đây đo TRÌNH TỰ SỰ VIỆC của luồng, nên lọc nó ra —
+# chính nó được đo riêng ở `test_adr0012.py::test_runner_audits_token_estimate_sau_moi_buoc`.
+DIAG = {"token_estimate"}
+
 
 def _box() -> ToolBox:
     tb = ToolBox()
@@ -140,7 +145,7 @@ def test_runner_binds_toolbox_and_cli_runs_the_whole_tool_loop_once(tmp_path):
     assert "Read(**/.env)" in args[args.index("--settings") + 1], "deny file bí mật là lớp chặn thứ hai"
     assert args[args.index("--allowedTools") + 1] == ",".join(tool_full_name(n) for n in
                                                               ["read_file", "write_file", "delete_file", "list_files", "search", "run"])
-    assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["tools_used", "tools_trace"]
+    assert [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG] == ["tools_used", "tools_trace"]
     ev = json.loads(next(iter(bus.replay(topic="audit-log"))).payload["evidence"])
     assert ev["calls"] == {"read_file": 1, "write_file": 1}
     tr = json.loads(next(e.payload["evidence"] for e in bus.replay(topic="audit-log") if e.payload["action"] == "tools_trace"))

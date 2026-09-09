@@ -42,6 +42,16 @@ retry_base: 1.0
 # ≈ 37k token với 120000. COMPANY_MAX_INPUT_CHARS ghi đè.
 max_input_chars: 120000
 
+# TTL của breakpoint cache (chỉ provider `anthropic` hiểu). BỎ TRỐNG = mặc định 5 phút của Anthropic, và body
+# request không mang khoá `ttl` nào — giống hệt trước p3.2. Chỉ nhận `5m` hoặc `1h`; viết sai thì hỏng to.
+# `1h` giữ cache qua khoảng nghỉ dài nhưng GIÁ GHI GẤP ĐÔI (1.25x -> 2x): chỉ lãi khi cùng một tiền tố
+# (bảng tool + system prompt của một agent) được đọc lại ít nhất ba lần trong giờ đó. Đo `cache_hit` trong
+# audit trước khi bật. Đọc được cả ở cấp `backends:` — TTL là tính năng của provider, không của cả hệ.
+# COMPANY_CACHE_TTL ghi đè.
+# CHỈ provider `anthropic` đọc khoá này. Khai nó trên một backend openai-compat / codex / claude-code là vô
+# hại nhưng KHÔNG có tác dụng và KHÔNG có cảnh báo — `apply_backend_yaml` nhận khoá cho mọi provider.
+# cache_ttl: 1h
+
 # Bảng giá USD / 1M token, khớp theo TIỀN TỐ tên model (không phân biệt hoa thường). Thiếu cached_input → input/10;
 # thiếu cache_write → = input. Model không có trong bảng → cost_usd = 0 và bị đếm ở `unpriced_calls` (không phải miễn phí).
 # Điền theo bảng giá hiện hành của provider; số dưới đây chỉ là ví dụ định dạng.

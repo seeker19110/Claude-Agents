@@ -6,11 +6,14 @@ kịch bản B: dòng nào chuyển package thì test phủ dòng đó chuyển 
 """
 from __future__ import annotations
 
+import json
+
 from xagents_core.context import (
     CHARS_PER_TOKEN,
     MIN_KEEP,
     ContextBudget,
     _prune,
+    chars_counter,
     cut_middle,
     fit,
     trim_payload,
@@ -116,7 +119,7 @@ def test_bao_cao_ngan_sach_du_truong_cho_audit():
     b = ContextBudget(max_input_chars=10_000, system_chars=100, payload_chars=200, context_chars=300)
     r = b.report()
     assert set(r) == {"max_input_chars", "system", "payload", "context", "trimmed_payload", "trimmed_context",
-                      "est_tokens"}
+                      "est_tokens", "counted_tokens", "actual_tokens", "estimate_error"}
     assert r["est_tokens"] == int(600 / CHARS_PER_TOKEN) and r["trimmed_context"] == {}
     assert not b.trimmed, "chưa cắt gì thì `trimmed` phải False"
 
@@ -153,3 +156,74 @@ def test_trim_payload_dung_sau_64_vong_khi_khong_the_nho_hon():
 
     assert removed > 0
     assert sum(1 for v in data.values() if len(v) > MIN_KEEP) > 0   # còn ứng viên ⇒ đã hết 64 vòng
+# ---------- p3.2a: đo bằng token thật thay vì len(str) ----------
+
+def _golden_case():
+    """Ca chuẩn của `fit`: payload nhiều chuỗi dài, ba namespace ngắn/vừa/dài (water-filling đi qua cả ba nhánh)."""
+    system = "S" * 1_000
+    payload = {"ticket_id": "T1", "diff": "a" * 50_000, "summary": "s", "notes": ["n" * 3_000, "m" * 900]}
+    ctx = {"prd": {"version": 1, "content_ref": "docs/prd.md", "summary": "PRD", "content": "p" * 30_000},
+           "glossary": {"version": 1, "content_ref": "g.md", "summary": "g", "content": "g" * 500},
+           "arch": {"version": 2, "content_ref": "a.md", "summary": "a", "content": "A" * 9_000}}
+    return system, payload, ctx
+
+
+def test_fit_khong_counter_giong_hom_nay_tung_byte():
+    """CHIỀU NGƯỢC 1 — ràng buộc số một của p3.2.
+
+    `fit` sinh ra `context` đi thẳng vào `build_user_message`; lệch một byte là mọi bản ghi eval lệch theo
+    (TRAPS.md:102). Chuỗi vàng chốt cứng: băm SHA-256 của (payload, context) đo TRƯỚC khi thêm `counter`.
+    Đổi số này là tuyên bố phải ghi lại 20 bản ghi eval bằng model thật — không được sửa cho test xanh.
+    """
+    import hashlib
+    p, c, b = fit(*_golden_case(), max_input_chars=20_000, paths={"prd": "store/prd/latest.md"})
+    blob = json.dumps([p, c], ensure_ascii=False, sort_keys=True)
+    assert hashlib.sha256(blob.encode()).hexdigest() == "e7008575f2c19b9d6e23b9f5cf48a250067d81bd9982a57b58d5cdf3961f5ce1"
+    # các trường cũ của report cũng không được đổi nghĩa
+    assert {k: v for k, v in b.report().items() if k in {"payload", "context", "trimmed_payload", "trimmed_context", "est_tokens"}} == {
+        "payload": 10_422, "context": 7_108, "trimmed_payload": 43_568,
+        "trimmed_context": {"prd": 26_855, "arch": 5_855}, "est_tokens": 5_790}
+
+
+def test_chars_counter_la_hanh_vi_mac_dinh():
+    """`chars_counter` phải đo ĐÚNG đơn vị của `max_input_chars` (ký tự). Chia cho CHARS_PER_TOKEN ở đây sẽ
+    nới hạn mức lên 3.2 lần — đổi hành vi, không phải giữ nguyên."""
+    assert chars_counter("abcđ") == 4
+    p1, c1, _ = fit(*_golden_case(), max_input_chars=20_000, counter=chars_counter)
+    p2, c2, _ = fit(*_golden_case(), max_input_chars=20_000)
+    assert (p1, c1) == (p2, c2)
+
+
+def test_counter_tuy_bien_cat_nhieu_hon():
+    """Counter giả báo 10× → cùng `max_input_chars` nhưng ngân sách thật hẹp đi 10 lần → cắt nhiều hơn thấy rõ."""
+    system, payload, ctx = _golden_case()
+    _p0, _c0, b0 = fit(system, payload, ctx, max_input_chars=20_000)
+    p, _c, b = fit(system, payload, ctx, max_input_chars=20_000, counter=lambda s: len(s) * 10)
+    assert b.trimmed_payload > b0.trimmed_payload, "counter đắt hơn thì payload phải bị cắt nhiều hơn"
+    assert len(json.dumps(p, ensure_ascii=False)) < len(json.dumps(_p0, ensure_ascii=False))
+    assert sum(b.trimmed_context.values()) > sum(b0.trimmed_context.values())
+    assert b.counted_tokens == 10 * (b.system_chars + b.payload_chars + b.context_chars)
+
+
+def test_counted_tokens_mac_dinh_la_uoc_luong_theo_ky_tu():
+    _p, _c, b = fit(*_golden_case(), max_input_chars=20_000)
+    assert b.counted_tokens == b.est_tokens
+
+
+def test_estimate_error():
+    """counted 1000 / actual 800 → +0.25; actual == 0 → 0.0 (không chia cho 0, không báo sai số bịa)."""
+    b = ContextBudget(max_input_chars=1, system_chars=0, counted_tokens=1_000, actual_tokens=800)
+    assert b.estimate_error == 0.25
+    assert ContextBudget(max_input_chars=1, system_chars=0, counted_tokens=1_000).estimate_error == 0.0
+    assert ContextBudget(max_input_chars=1, system_chars=0, counted_tokens=600, actual_tokens=800).estimate_error == -0.25
+    assert b.report()["counted_tokens"] == 1_000 and b.report()["actual_tokens"] == 800
+    assert b.report()["estimate_error"] == 0.25
+
+
+def test_estimate_error_lam_tron_dung_4_chu_so():
+    """Mọi ca khác dùng số tròn (±0.25) nên không phân biệt được "làm tròn 4" với 2 hay với không làm tròn.
+    counted 1000 / actual 810 → 190/810 = 0.234567901…: đúng 0.2346, không phải 0.23 và không phải số đầy đủ."""
+    b = ContextBudget(max_input_chars=1, system_chars=0, counted_tokens=1_000, actual_tokens=810)
+    assert b.estimate_error == 0.2346
+    assert b.estimate_error != round(190 / 810, 2) and b.estimate_error != 190 / 810
+    assert b.report()["estimate_error"] == 0.2346

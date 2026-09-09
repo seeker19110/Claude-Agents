@@ -183,3 +183,23 @@ def test_select_backends_khong_co_prefer_thi_khong_dung_toi(tmp_path: Path, monk
 
     assert [b["name"] for b in cfg.backends] == ["b"]
     assert "prefer" not in cfg.routing
+# ---------- p3.2c: TTL cache dài, mặc định TẮT ----------
+
+def test_cache_ttl_mac_dinh_tat_va_doc_duoc_o_ca_hai_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """TTL là tính năng của PROVIDER (chỉ Anthropic hiểu), nên khác `max_input_chars`: đọc được ở cấp backend
+    để một tài khoản bật TTL dài mà tài khoản kia không phải theo."""
+    assert LLMConfig().cache_ttl is None, "mặc định TẮT: body y hệt hôm nay"
+    p = _yaml(tmp_path, "provider: anthropic\ncache_ttl: 1h\nbackends:\n  - name: a\n  - name: b\n    cache_ttl: 5m\n")
+    cfg = load_config(_core(tmp_path), p, cls=LLMConfig)
+    assert cfg.cache_ttl == "1h"
+    assert cfg.backend_config(cfg.backends[0]).cache_ttl == "1h", "backend thừa kế cấp trên"
+    assert cfg.backend_config(cfg.backends[1]).cache_ttl == "5m", "backend ghi đè được"
+    monkeypatch.setenv("DEMO_CACHE_TTL", "5m")
+    assert load_config(_core(tmp_path), p, cls=LLMConfig).cache_ttl == "5m", "biến môi trường thắng file"
+
+
+def test_cache_ttl_sai_gia_tri_hong_to(tmp_path: Path):
+    """Bảng ĐÓNG như `CLAUDE_EFFORT`: `1 hour` viết sai thì phải báo, không được lặng lẽ rơi về 5 phút."""
+    p = _yaml(tmp_path, "provider: anthropic\ncache_ttl: 1 hour\n")
+    with pytest.raises(LLMError, match="cache_ttl"):
+        load_config(_core(tmp_path), p, cls=LLMConfig)

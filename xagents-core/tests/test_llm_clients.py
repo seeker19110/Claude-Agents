@@ -747,3 +747,67 @@ def test_openai_messages_assistant_khong_co_tool_calls():
         {"role": "assistant", "content": "xong rồi"},
         {"role": "user", "content": "cảm ơn"},
     ]
+# ---------- p3.2b/c: breakpoint cache thứ hai + TTL dài ----------
+
+def _breakpoints(obj):
+    """Mọi `cache_control` trong một cây JSON, kèm đường đi — test khẳng định VỊ TRÍ, không chỉ số lượng."""
+    out = []
+    def walk(node, path):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == "cache_control": out.append((path, v))
+                else: walk(v, f"{path}.{k}")
+        elif isinstance(node, list):
+            for i, v in enumerate(node): walk(v, f"{path}[{i}]")
+    walk(obj, "")
+    return out
+
+
+def _tools3():
+    return [ToolSpec(n, f"tool {n}", {"type": "object"}) for n in ("read_file", "write_file", "run")]
+
+
+def test_breakpoint_cache_o_dinh_nghia_tool_cuoi_va_system(monkeypatch):
+    """Thứ tự dựng tiền tố của Anthropic là `tools` → `system` → `messages` (skill `claude-api`,
+    shared/prompt-caching.md: "Render order is: tools -> system -> messages").
+
+    Vì `spec.system_prompt(phase)` ĐỔI theo pha (ADR-0037) mà danh sách tool thì không, một breakpoint duy nhất
+    trên system nghĩa là đổi pha làm trượt cache cả phần tool. Breakpoint thứ hai đặt trên ĐỊNH NGHĨA TOOL CUỐI
+    — ranh giới ổn định đứng trước system — để phần tool vẫn hit khi system đổi.
+    """
+    seen = _fake_sdk(monkeypatch, _Msg([_Block("text", text="{}")], _Usage()))
+    AnthropicClient(_cfg()).complete(system="s", user="u", schema={"type": "object"},
+                                     model_tier="strong", tools=_tools3())
+    kw = seen["kwargs"]
+    assert kw["tools"][-1]["cache_control"] == {"type": "ephemeral"}, "breakpoint trên tool CUỐI"
+    assert all("cache_control" not in t for t in kw["tools"][:-1]), "chỉ tool cuối, không phải mọi tool"
+    assert kw["system"][-1]["cache_control"] == {"type": "ephemeral"}, "breakpoint system giữ nguyên"
+    assert _breakpoints(kw["messages"]) == [], "không breakpoint nào trong phần xoay vòng của messages"
+    assert len(_breakpoints(kw["tools"]) + _breakpoints(kw["system"])) == 2, "đúng 2 breakpoint, trần của Anthropic là 4"
+
+
+def test_khong_co_tool_thi_van_dung_mot_breakpoint(monkeypatch):
+    seen = _fake_sdk(monkeypatch, _Msg([_Block("text", text="{}")], _Usage()))
+    AnthropicClient(_cfg()).complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
+    assert "tools" not in seen["kwargs"] and len(_breakpoints(seen["kwargs"]["system"])) == 1
+
+
+def test_ttl_mac_dinh_tat_body_y_het_hom_nay(monkeypatch):
+    """CHIỀU NGƯỢC 3: không cấu hình `cache_ttl` → không khoá `ttl` nào trong body, và KHÔNG header
+    `anthropic-beta` (`extra_headers`) — TTL 1 giờ hôm nay không cần beta header."""
+    seen = _fake_sdk(monkeypatch, _Msg([_Block("text", text="{}")], _Usage()))
+    AnthropicClient(_cfg()).complete(system="s", user="u", schema={"type": "object"},
+                                     model_tier="strong", tools=_tools3())
+    kw = seen["kwargs"]
+    assert all("ttl" not in v for _p, v in _breakpoints(kw["tools"]) + _breakpoints(kw["system"]))
+    assert "extra_headers" not in kw
+
+
+def test_ttl_dai_bat_qua_cau_hinh(monkeypatch):
+    seen = _fake_sdk(monkeypatch, _Msg([_Block("text", text="{}")], _Usage()))
+    AnthropicClient(_cfg(cache_ttl="1h")).complete(system="s", user="u", schema={"type": "object"},
+                                                   model_tier="strong", tools=_tools3())
+    kw = seen["kwargs"]
+    assert kw["system"][-1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+    assert kw["tools"][-1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+    assert "extra_headers" not in kw, "TTL 1h không cần anthropic-beta (shared/prompt-caching.md § API reference)"

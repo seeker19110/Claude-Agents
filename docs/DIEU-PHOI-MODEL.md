@@ -107,3 +107,27 @@ model khác thì cho `claude-sonnet-4-6` qua Antigravity hoặc dùng provider `
 
 Kiểm nhanh trạng thái gateway: `cd gateway && make status`. Trạng thái backend trong tiến trình orchestrator: ghi chú
 `llm_retry` trong audit-log.
+
+## 6. Prompt cache (chỉ backend `anthropic`)
+
+Anthropic dựng tiền tố cache theo thứ tự **`tools` → `system` → `messages`**, và cache là **so khớp tiền tố**: đổi
+một byte ở vị trí N là hỏng mọi breakpoint từ N trở đi.
+
+Hai breakpoint, cả hai đều nằm ở phần **ổn định**, không breakpoint nào trong `messages`:
+
+| Vị trí | Vì sao ở đó |
+|---|---|
+| định nghĩa **tool cuối** | bảng tool của một agent là bất biến, còn `system` đổi theo pha (ADR-0037). Không có breakpoint riêng thì mỗi lần đổi pha là ghi lại cache cho cả bảng tool. |
+| block `system` cuối | tiền tố lớn nhất và lặp nhiều nhất: system prompt + skill của agent (ADR-0004). |
+
+`messages` **cố ý không có breakpoint**: `_prune` (ADR-0007) tỉa tool result cũ mỗi lượt, tức là *sửa lịch sử* —
+một marker ở đó chỉ ghi entry mới rồi không lượt nào đọc lại, trả tiền ghi cache mà không bao giờ thu.
+
+`cache_ttl` (`llm.yaml` hoặc `COMPANY_CACHE_TTL`): bỏ trống = mặc định 5 phút của provider, body **không** mang
+khoá `ttl` nào. `1h` giữ entry qua khoảng nghỉ dài nhưng **giá ghi gấp đôi** (1.25× → 2×): điểm hoà vốn lùi từ 2
+lên 3 lượt đọc cùng tiền tố. Chỉ bật khi khoảng cách giữa hai lượt cùng agent thường xuyên vượt 5 phút. TTL dài
+**không** cần header `anthropic-beta` — nó là một khoá trong chính block `cache_control`.
+
+Đo hiệu quả: `cache_hit` trong audit-log (= `cached_input_tokens / input_tokens`). Bằng 0 liên tục ở backend
+Anthropic nghĩa là có thứ gì đó đổi trong tiền tố mỗi lượt. Backend OpenAI-compatible đi đường khác hẳn
+(`prompt_cache_key`, tự lùi khi server trả 400) và **không** nhận `cache_ttl`.

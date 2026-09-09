@@ -6,12 +6,16 @@ from __future__ import annotations
 import json
 import threading
 import urllib.error
+from dataclasses import replace
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
 import company.web as web_mod
 from company.blackboard import Blackboard
 from company.bus import InMemoryBus
+from company.context import ContextBudget
 from company.events import Envelope, PullRequest, Task
 from company.guard import guard_payload, sanitize_text, scan
 from company.llm import (
@@ -23,6 +27,7 @@ from company.llm import (
     Pricing,
     RetryingClient,
     TransientError,
+    anthropic_input_tokens,
     make_client,
 )
 from company.metrics import collect, prometheus
@@ -176,7 +181,7 @@ def test_retrying_client_retries_transient_only_and_runner_audits():
     rc = RetryingClient(_Flaky(2), retries=3, base=1.0, sleep=waits.append)
     bus = InMemoryBus(); r = AgentRunner(bus, rc).run("qa", _pr_env(), "review-results")
     assert r.tokens == 15 and len(waits) == 2 and 1.0 <= waits[0] < waits[1] <= 2.5, "backoff mũ"
-    assert _acts(bus) == ["llm_retry", "produced:review-results"]
+    assert [x for x in _acts(bus) if x != "token_estimate"] == ["llm_retry", "produced:review-results"]
     ev = json.loads(next(e.payload["evidence"] for e in bus.replay(topic="audit-log") if e.payload["action"] == "llm_retry"))
     assert ev["attempts"] == 2 and "503" in ev["notes"][0]
     bus2 = InMemoryBus()
@@ -847,3 +852,103 @@ def test_qa_debugger_nhan_lich_su_hong_cua_dung_ticket_minh_dang_cham():
         "chỉ lỗi của ticket đang chấm; lỗi ticket khác là nhiễu"
 
     assert _with_chan_doan(_pr_env("T3"), o) == {}, "ticket sạch thì không bơm gì, khỏi tốn ngữ cảnh"
+
+
+# ---------- p3.2a: sai số ước-lượng-vs-token-thật thành audit đo được ----------
+
+def _estimate(bus):
+    return json.loads(next(e.payload["evidence"] for e in bus.replay(topic="audit-log")
+                           if e.payload["action"] == "token_estimate"))
+
+
+def test_runner_audits_token_estimate_sau_moi_buoc():
+    """`fit` chạy TRƯỚC lời gọi nên chỉ biết ước lượng; `usage` chỉ có SAU. Runner nối hai đầu bằng một audit
+    riêng phát sau lượt: `counted_tokens` từ `fit`, `actual_tokens` = input token THẬT của lượt ĐẦU."""
+    bus = InMemoryBus(); client = FakeClient(responses=[REVIEW])
+    AgentRunner(bus, client, max_input_chars=30_000).run("qa", _pr_env(diff="+" * 100_000), "review-results")
+    rep = _estimate(bus)
+    assert rep["actual_tokens"] == 1_000, "token thật lấy từ usage của lượt đầu, không phải ước lượng"
+    assert rep["counted_tokens"] == rep["est_tokens"] > 0
+    assert rep["estimate_error"] == round((rep["counted_tokens"] - 1_000) / 1_000, 4)
+
+
+def test_token_estimate_phat_ca_khi_khong_cat():
+    """Sai số phải đo được ở MỌI lượt, không chỉ lượt bị cắt — nếu không thì chỉ thấy sai số ở đuôi phân phối."""
+    bus = InMemoryBus(); client = FakeClient(responses=[REVIEW])
+    AgentRunner(bus, client).run("qa", _pr_env(diff="+x = 1"), "review-results")
+    acts = _acts(bus)
+    assert "context_trimmed" not in acts and "token_estimate" in acts
+
+
+def test_estimate_error_dung_cho_ca_hai_quy_uoc_usage():
+    """`Completion.input_tokens` LUÔN là tổng input đã tính tiền ở cả hai backend — Anthropic cộng cache vào
+    (`anthropic_input_tokens`), OpenAI-compat vốn đã gồm. Không đúng thế thì cùng một prompt cho hai sai số
+    khác nhau và con số vô nghĩa với một trong hai."""
+    anth = Completion(text="", input_tokens=anthropic_input_tokens(
+        SimpleNamespace(input_tokens=500, cache_read_input_tokens=9_000, cache_creation_input_tokens=500))[0],
+        output_tokens=0, model="m")
+    oai = Completion(text="", input_tokens=10_000, output_tokens=0, model="m", cached_input_tokens=9_000)
+    assert anth.input_tokens == oai.input_tokens == 10_000
+    for c in (anth, oai):
+        b = ContextBudget(max_input_chars=1, system_chars=0, counted_tokens=12_500, actual_tokens=c.input_tokens)
+        assert b.estimate_error == 0.25
+
+
+class _MoiLuotMotSo(FakeClient):
+    """Client giả cục bộ: mỗi lượt trả một `input_tokens` KHÁC nhau rõ rệt.
+
+    `FakeClient.tokens_per_call` là một hằng cho mọi lượt, nên với nó lượt đầu và lượt cuối bằng nhau và
+    không ca nào phân biệt được `_first_input` lấy đầu hay lấy cuối. Dựng ở đây thay vì sửa `FakeClient`:
+    mọi bản ghi eval đều khoá trên hành vi hiện tại của nó."""
+
+    def __init__(self, seq: list[int], **kw: Any) -> None:
+        super().__init__(**kw)
+        self.seq, self.n = seq, 0
+
+    def complete(self, **kw: Any) -> Completion:  # type: ignore[override]
+        c = super().complete(**kw)
+        tok = self.seq[min(self.n, len(self.seq) - 1)]
+        self.n += 1
+        return replace(c, input_tokens=tok)
+
+
+def test_actual_tokens_lay_luot_DAU_khong_phai_luot_cuoi(tmp_path):
+    """Vòng tool 3 lượt với input token 1000 → 5000 → 9000: `actual_tokens` phải là 1 000.
+
+    Từ lượt hai trở đi prompt mang thêm cả hội thoại tool, mà `fit` chỉ đo prompt ban đầu — so `counted_tokens`
+    với lượt cuối (9 000) là so hai thứ khác nhau rồi gọi đó là sai số. Cũng không phải tổng (15 000)."""
+    tb = research_toolbox(_init_repo(tmp_path / "repo"), None)
+    def th(msgs, tools):
+        return [_tc("list_files", path=".")] if sum(m["role"] == "assistant" for m in msgs) < 2 else []
+    bus = InMemoryBus()
+    client = _MoiLuotMotSo([1_000, 5_000, 9_000], handler=lambda s, u: dict(REVIEW), tool_handler=th)
+    g = AgentRunner(bus, client).generate("qa", _pr_env(), "review-results", tools=tb)
+    assert g.turns == 3, "ca chỉ có nghĩa khi thật sự có ≥3 lượt để đầu khác cuối"
+    rep = _estimate(bus)
+    assert rep["actual_tokens"] == 1_000, f"lượt ĐẦU; 9 000 là lượt cuối, 15 000 là tổng (được {rep['actual_tokens']})"
+    assert rep["estimate_error"] == round((rep["counted_tokens"] - 1_000) / 1_000, 4)
+
+
+def test_first_input_reset_giua_hai_buoc_lien_tiep():
+    """Cùng một `AgentRunner` chạy hai bước: bước sau phải báo token của CHÍNH nó, không rò từ bước trước.
+    `_first_input` chỉ ghi khi đang là None, nên thiếu dòng reset đầu `generate` thì mọi bước sau đời runner
+    đều báo lại con số của bước đầu tiên — sai số trông ổn định giả tạo."""
+    bus = InMemoryBus()
+    client = _MoiLuotMotSo([1_000, 7_000], handler=lambda s, u: dict(REVIEW))
+    r = AgentRunner(bus, client)
+    r.run("qa", _pr_env(), "review-results")
+    r.run("qa", _pr_env(), "review-results")
+    reps = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log")
+            if e.payload["action"] == "token_estimate"]
+    assert [x["actual_tokens"] for x in reps] == [1_000, 7_000], "bước hai không được mang số của bước một"
+
+
+def test_khong_phat_token_estimate_khi_model_nem_loi():
+    """Ca ĐẶC TẢ hành vi hiện tại: `_complete` ném `LLMError` → có audit `llm_error`, KHÔNG có `token_estimate`.
+
+    Audit sai số nằm sau khối `with span(...)` nên lỗi giữa chừng bỏ qua nó. Hệ quả cố ý cần được ghim: bước
+    hỏng không đóng góp một điểm dữ liệu sai số nào (`actual_tokens` sẽ là 0 và sai số bịa ra là 0.0)."""
+    bus = InMemoryBus()
+    with pytest.raises(LLMError):
+        AgentRunner(bus, FakeClient(responses=[])).run("qa", _pr_env(), "review-results")
+    assert _acts(bus) == ["llm_error"], "chỉ llm_error; token_estimate không phát khi lượt hỏng"
