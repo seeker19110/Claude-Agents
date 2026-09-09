@@ -111,8 +111,19 @@ origin` + `git rebase origin/main` trên nhánh việc kế tiếp (giữ lại 
 
 Không commit secret, `llm.yaml`, khóa API, hay dữ liệu thật. Không gọi provider trả phí trong test.
 
-## 5. Pull request — bốn bước làm liền một mạch
+## 5. Pull request — năm bước làm liền một mạch
 
+0. **Quét toàn repo trước khi tạo PR** — không chỉ đọc diff của chính mình. Bỏ bước này là chỗ đã sinh
+   lỗi thật (PR #193 đỏ `metadata` vì thiếu dòng CHANGELOG khi cherry-pick sang nhánh khác, phải vá thêm
+   một commit). Quét gồm:
+   - `grep -rn` tên file/API vừa đổi (đổi tên, xoá, di chuyển) trên **toàn repo**, không chỉ package đang
+     sửa — dẫn chiếu chết ở ADR, session log, CHANGELOG cũ vẫn được phép còn (đó là bản ghi lịch sử), nhưng
+     dẫn chiếu ở tài liệu **đang sống** (README, ARCHITECTURE, CODEMAP, `.claude/`, `.gitattributes`) phải sửa.
+   - `docs/thi-hanh/<mã>.md` hoặc bảng theo dõi liên quan (nếu có) đã cập nhật cột "khi nào" chưa.
+   - Dòng CHANGELOG ở "Chưa phát hành" đã có cho đúng thay đổi này chưa (cổng `metadata` đỏ nếu thiếu).
+   - `git status` sạch (không sót file định thêm mà quên `git add`, không sót file tạm không định commit).
+   - `git diff --check` sạch trên **toàn diff** so với `main`, không chỉ file vừa sửa gần nhất.
+   - `gh pr list --state open` — còn PR khác mở thì làm theo §2c, không tạo PR mới.
 1. **Kiểm tiêu đề trước khi tạo PR.** Cổng `metadata` chặn tiêu đề sai:
    ```
    ^(feat|fix|refactor|docs|test|chore|style|perf|build|ci|revert)(\([a-z0-9._/-]+\))?!?: .+
