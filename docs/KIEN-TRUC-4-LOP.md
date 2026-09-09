@@ -51,7 +51,7 @@ Checklist 9 mục cuối đặc tả: company **6 ✅ 3 ◐**, studio **3 ✅ 6 
 | L3 tỉa trạng thái qua vòng | ◐ | ◐ | `fit` cắt một lần trước vòng (`runner.py:325`) | | **4** |
 | L3 đo vòng (p50/p90, chạm trần) | ✅ | ❌ | `metrics.collect()["loops"]` + 6 gauge + ô console (company); studio chưa | | **5** |
 | L4 nút không LLM | ✅ | ✅ | `_check_plan` `ticket_fsm.py:207-241`, smoke `verify.py:51`; `renderer.py`, `desk.py` | | |
-| L4 rẽ nhánh theo kiểu | ✅ | ◐ | `routes.py:322-324`; studio 4 chỗ so chuỗi | 5 | **6** |
+| L4 rẽ nhánh theo kiểu | ✅ | ✅ | `routes.py:322-324`; studio `_rework`/`_publish_video` validate model trước rẽ nhánh | 5 | **6** |
 | L4 kiểm lược đồ ở biên | ✅ | ✅ | pydantic + JSON Schema lúc publish `bus.py:317-356` | 4 | |
 | L4 gate trước hành động không hoàn tác | ✅ | ✅ | `deploy_production` `delivery.py:313`; publish sau gate `PUB-` | 2 | |
 | L4 chính sách lỗi từng nút | ✅ | ✅ | transient → hoãn; nội dung → retry → blocked → gate; unhandled → gate `gates_flow.py:245-257` | 9 | |
@@ -79,7 +79,7 @@ không nâng mức C1.
 | **3** | cắt vòng tool khi không tiến bộ (nhắc ở 3, cắt ở 5) | L3 | `feat(company)` | **C3** | cắt sớm ticket kiểu 956k token | dương tính giả nếu không loại tool ghi xen giữa; mỗi cắt +1 retry | xong #184 |
 | **4** | tỉa tool output cũ trong vòng (ADR-0040) | L3 | `docs` + `feat(core)` | **C3** | lượt cuối không đắt gấp mười lượt đầu | **đổi hành vi agent**; lệch hash mọi bản ghi eval | chờ người: đợi K3.6 merge (≥ 5 ngày lịch sau K3.5, ngoài phạm vi `/thi-hanh 4l`) |
 | **5** | `metrics.loops` p50/p90/capped + ô console | L3 | `feat(company)` | C2 | rẻ nhất, số đã có | ô mới phải theo console ADR-0003 (rỗng = xám) | xong #185 |
-| **6** | studio validate trước rẽ nhánh (4 chỗ) | L4 | `refactor(studio)` | **C3** | đóng lỗ L4 còn lại của studio | chạm `events.py` lúc dời bus | chờ người: đợi K3.5c (`sqlite_bus` lên core) merge — chưa có ở `main` lúc thi hành (2026-09-08 17:18) |
+| **6** | studio validate trước rẽ nhánh (4 chỗ) | L4 | `refactor(studio)` | **C3** | đóng lỗ L4 còn lại của studio | chạm `events.py` lúc dời bus | đợt 3, sau K3.5c |
 | **7** | `xagents_core.trace` + `studio.trace` + `deferred` bền | L4 | `feat(studio)` | **C3** | studio ngang company | copy = thêm fork → phải lên core | chờ người: đợi K3.5c merge |
 | **8** | ARCHITECTURE: "vì sao không chốt mức tool", năm package; bảng K3 cập nhật | — | `docs` | C1 | chặn hiểu nhầm | — | xong #181 |
 
