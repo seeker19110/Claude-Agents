@@ -6,6 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(sessions): **ghi phiên vá `gate.request` created_by** (#200). Chỉ nối `docs/sessions/2026-09-09.md`,
+  không đổi hành vi.
 - fix(core): **`HumanGate.request()` từ chối `created_by` rỗng/None** (#199). Lỗ hổng bypass four-eyes
   pre-existing (có trước K3.7): `decide()` chỉ kiểm `if req.created_by and req.created_by == by`, nên
   `created_by` rỗng/None ngắn mạch điều kiện, cho phép người tạo tự duyệt gate của chính mình. `request()` nay
