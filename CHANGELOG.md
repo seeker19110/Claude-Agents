@@ -16,6 +16,12 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   hết cửa sổ đua, không chỉ thu hẹp. **Đo hai chiều**: dựng đúng điều kiện của CI (chiếm sẵn `port + 1`) →
   mã cũ **không ném ToolError**, tái hiện nguyên văn lỗi; mã mới 6/6 lần chạy đều pass. 1098 test, phủ 100%.
 
+- fix(console): **áp lại `ticket.blocked`/`ticket.already_integrated` từ audit-log khi console replay** (#248).
+  `CompanyView._replay()` chỉ gọi `DeliveryLead.replay(env)`, mà `DeliveryLead.handlers` không có mục cho topic
+  `audit-log` — hai hành động chỉ sống trong RAM của orchestrator lúc chạy thật (được `orch/rehydrate.py` dựng
+  lại khi mở lại tiến trình) chưa từng được console áp lại. Đo được 2026-09-10 (QLKH): TCK-CR-STAGE-001-02 đã
+  `merged` từ 2026-09-06, nhưng console vẫn báo `blocked` mãi mãi và tự sinh cảnh báo "bế tắc im lặng" giả trên
+  Trực ban.
 - ci: **PR do máy sinh qua được cổng `metadata`** (#247). Hai vá nối tiếp nhau, cùng một họ lỗi "cấu hình chỉ
   sinh ra PR hỏng". (1) `dependabot.yml` gắn nhãn `dependencies` + `no-changelog` cho mọi PR nó mở: cổng
   `metadata` đòi dòng CHANGELOG mà dependabot không viết được, nên thiếu nhãn là **mọi** PR dependabot đỏ —

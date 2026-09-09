@@ -289,6 +289,23 @@ class CompanyView(_View):
                 if t.ticket_id not in self.lead.tickets:
                     self.lead.tickets[t.ticket_id] = t
                     self.lead.state[t.ticket_id] = "dispatched"
+            elif env.topic == "audit-log":
+                # `DeliveryLead.replay()` không có handler cho topic `audit-log` (xem `DeliveryLead.handlers`), nên
+                # ba hành động dưới đây — chỉ sống trong RAM của orchestrator lúc chạy thật, được `orch/rehydrate.py`
+                # dựng lại từ audit-log khi mở lại tiến trình — chưa từng được áp lại ở đây. Hậu quả đo được
+                # 2026-09-10: TCK-CR-STAGE-001-02 blocked → escalation approve → `mark_done_already_integrated` đưa
+                # thẳng về `merged` (đúng, orchestrator báo đúng) nhưng console vẫn coi là `blocked` mãi mãi vì state
+                # đó chỉ tồn tại trong RAM của orchestrator, không tự "xảy ra lại" khi console replay từ đầu — sinh
+                # cảnh báo "bế tắc im lặng" giả cho một ticket đã xong từ nhiều ngày trước.
+                a, d = env.payload, _evidence(env.payload)
+                if a.get("action") == "ticket.blocked" and d.get("ticket_id"):
+                    self.lead.state[str(d["ticket_id"])] = "blocked"
+                elif a.get("action") == "ticket.already_integrated" and d.get("state"):
+                    self.lead.state[str(d["ticket_id"])] = str(d["state"])
+                elif a.get("action") == "integration.merged" and d.get("ticket_id"):
+                    prev_r, self.lead.replaying = self.lead.replaying, True
+                    try: self.lead.mark_integrated(str(d["ticket_id"]))
+                    finally: self.lead.replaying = prev_r
             self.lead.replay(env)
             self.sup.replay(env)
         self.report = self.sup.sprint_report()
