@@ -6,6 +6,10 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs: **thêm bước "quét toàn repo trước khi tạo PR" vào `QUY-TRINH-GIT.md` §5** — rút từ chính sự cố PR
+  #193 (đỏ cổng `metadata` vì thiếu dòng CHANGELOG khi cherry-pick sang nhánh khác). Bước 0 mới: `grep` dẫn
+  chiếu chết trên toàn repo (không chỉ package đang sửa), kiểm CHANGELOG + bảng theo dõi thi-hành, `git
+  status`/`git diff --check` trên toàn diff, và `gh pr list --state open` trước khi `gh pr create`.
 - docs: **làm rõ `QUY-TRINH-GIT.md` §2c — code + commit tại chỗ trong khi chờ PR khác merge** (#193). Luật
   "chỉ một PR mở tại một thời điểm" chỉ khoá bước `gh pr create`/merge, không khoá code hay commit — ghi rõ
   thành câu chữ tường minh thay vì để ngầm hiểu, kèm quy trình cụ thể (nhánh/worktree riêng, commit tại chỗ,
