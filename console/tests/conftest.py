@@ -85,7 +85,9 @@ def build_studio_db(path: Path) -> Path:
     _produced(bus, StudioEnvelope, StudioAudit, actor="script-writer", topic_out="scripts", tokens=12_000,
               video_id="vid-042")
     gate_request(bus, StudioEnvelope, StudioAudit, kind="publish", subject_id="PUB-vid-042",
-                 checklist=["review:fact:pass", "thumbnail"], created_by="publisher", age_hours=13,
+                 # `desk` chứ không phải `publisher`: gate `publish` do desk mở (`studio/orchestrator.py`).
+                 # `publisher` chưa từng mở gate nào — ADR-0008 (allowlist vai tạo gate) làm lộ chỗ fixture bịa.
+                 checklist=["review:fact:pass", "thumbnail"], created_by="desk", age_hours=13,
                  triggered_by="human:owner")
     gate_request(bus, StudioEnvelope, StudioAudit, kind="plan", subject_id="PLAN-ch1", checklist=["pillar"],
                  created_by="channel-strategist", age_hours=2)

@@ -21,6 +21,7 @@ from xagents_core.gate_cli import trusted_decision as trusted_decision
 from .bus import InMemoryBus
 from .events import AuditLog, Envelope
 from .gates import GateKind, GateRequest, HumanGate, gate_approvers
+from .roles import LEAD_ACTOR, LEGACY_GATE_ACTORS, ROLE
 
 DECISIONS: tuple[str, ...] = ("approve", "request_changes", "reject", "hold", "rollback")
 
@@ -34,6 +35,13 @@ class PersistentGate(CorePersistentGate[Envelope, AuditLog], HumanGate):
 
     Cơ chế ở core; ở đây chỉ nói core dùng LỚP nào của company (`Envelope`, `AuditLog`, `GateRequest`) — nếu
     không, `replay()` trả về envelope core và mọi kiểm tra `topic: Topic` biến mất."""
+
+    #: Vai được mở gate ở công ty gia công (ADR-0008), đo từ chính các call site `gate.request`:
+    #: `product` (gate `spec`, `orch/ticket_fsm.py`), `supervisor` (gate `escalation`, `orch/gates_flow.py`),
+    #: `ops` (gate `acceptance` + escalation của `release_fsm`), `delivery-lead` (gate `release`, `delivery.py`).
+    #: Người (`human:*`) không cần có tên ở đây — gate CLI là đường của người.
+    #: `LEGACY_GATE_ACTORS`: tên trước ADR-0037 còn trong bus cũ — đo trên `company.sqlite` thật, xem `roles.py`.
+    REQUEST_ACTORS = frozenset({ROLE.PRODUCT, ROLE.SUPERVISOR, ROLE.OPS, LEAD_ACTOR}) | LEGACY_GATE_ACTORS
 
     def __init__(self, bus: InMemoryBus, **kw):
         super().__init__(bus, envelope_cls=Envelope, audit_cls=AuditLog, request_cls=GateRequest, **kw)
@@ -67,7 +75,10 @@ def main(argv: list[str] | None = None) -> int:
         if not items:  # gate không có gì để kiểm thì việc duyệt chỉ là bấm nút
             print("cần --checklist (danh sách mục người duyệt phải kiểm, ngăn cách bằng dấu phẩy)", file=sys.stderr)
             return 2
-        gate.request(GateRequest(kind=ns.kind, subject_id=ns.subject_id, created_by=ns.by, checklist=items))
+        try:  # `--by` là vai không có quyền mở gate (ADR-0008): báo như mọi lỗi quyền khác, không traceback
+            gate.request(GateRequest(kind=ns.kind, subject_id=ns.subject_id, created_by=ns.by, checklist=items))
+        except PermissionError as e:
+            print(str(e), file=sys.stderr); return 3
         print(f"requested {ns.kind} {ns.subject_id}"); return 0
     try:
         done = gate.decide(ns.subject_id, ns.cmd, by=ns.by, reason=ns.reason)

@@ -6,6 +6,12 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(core): **allowlist vai được TẠO gate** (#PENDING). Nửa còn lại của lỗ hổng `gate.request` mà ADR-0002
+  cố ý hoãn: agent nào cũng dựng được gate ma. `PersistentGate.REQUEST_ACTORS` (ADR-0008) liệt kê vai được mở
+  gate của từng công ty — người luôn được phép; chiều ghi ném `PermissionError` (bug ở call site phải lộ),
+  chiều replay im lặng bỏ qua (một dòng log xấu không được làm sập sổ gate). **Đo trên `company.sqlite` thật
+  18293 event trước khi siết**: 33 gate lịch sử do vai trước ADR-0037 tạo → `LEGACY_GATE_ACTORS` giữ chúng lại.
+  Lộ luôn một fixture bịa của console (`publisher` chưa từng mở gate nào; gate `publish` do `desk` mở).
 - fix(studio): **`claude -p` không tool cần > 1 lượt** (#214). `--max-turns 1` cắt đúng lượt CLI ép
   `--json-schema` → `error_max_turns`: `make eval-record` bằng model thật chết 1/2 ca ở `seo-optimizer`. Company
   đã đo và vá cùng lỗi này 2026-09-05 (`CLI_NO_TOOL_TURNS`), studio không được port — nay port sang. Đo hai

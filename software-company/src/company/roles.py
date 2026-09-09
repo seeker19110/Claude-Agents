@@ -86,6 +86,13 @@ class PHASE:
 
 LEAD_ACTOR: Final = "delivery-lead"  # actor của event do delivery.py phát — không phải agent
 
+# Tên vai TRƯỚC ADR-0037 vẫn nằm trong bus cũ, ánh xạ về vai hôm nay. Không phải id agent nữa — chỉ dùng để
+# ĐỌC LẠI lịch sử (ADR-0008: allowlist vai được tạo gate). Đo 2026-09-09 trên `company.sqlite` thật (18293
+# event): `gate.request` mang actor `release-engineer` (19), `account-manager` (13), `spec-writer` (1) — bỏ
+# chúng ra khỏi allowlist là đánh rơi 33 gate lịch sử khỏi replay. `support-docs` cùng nhóm gộp với hai tên
+# `ops` kia nên có mặt cho đủ họ, dù DB ở đây không có bản ghi nào.
+LEGACY_GATE_ACTORS: Final = frozenset({"spec-writer", "release-engineer", "account-manager", "support-docs"})
+
 # Agent viết code; từ PR-5d chỉ còn một (`bus.ENGINEERING_ACTORS` là producer hợp lệ của `pull-requests`).
 ENGINEERING: tuple[str, ...] = (ROLE.BUILDER,)
 
