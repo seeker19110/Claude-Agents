@@ -509,7 +509,7 @@ package đang gọi `company.llm.load_config()` không đổi.
 >   prompt giữ nguyên từng byte, nghiệm thu bằng `evals all --replay` hai công ty 0 FAIL.
 >   `context_writes_schema` ở lại từng công ty (company đòi `content` ADR-0012, studio không), nên
 >   `output_schema` NHẬN nó làm tham số.
->   **d2 (XONG, #PR) — K3.6 kết thúc ở đây.** Nguyên tắc gắt hơn mọi bước trước: *cơ chế lên core, **hành vi
+>   **d2 (XONG, #195) — K3.6 kết thúc ở đây.** Nguyên tắc gắt hơn mọi bước trước: *cơ chế lên core, **hành vi
 >   quan sát được của mỗi công ty giữ nguyên từng byte***. Lên core: `__init__`, `_audit`, `run`,
 >   `run_context`, `write_context`, `publish`. Ở lại: `generate` + vòng lặp tool (chạm prompt),
 >   `generate_in_workspace`/`author_tests` (phụ thuộc `workspace.py`), `_filter_comments` (studio).
