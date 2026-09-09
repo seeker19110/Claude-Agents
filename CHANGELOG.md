@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- test(company): **cổng chết trong `test_adr0012` lấy bằng socket giữ chỗ, không phải `port + 1`**. Ca
+- test(company): **cổng chết trong `test_adr0012` lấy bằng socket giữ chỗ, không phải `port + 1`** (#249). Ca
   `test_resolve_host_va_default_fetcher_tren_server_that` giả định cổng kế bên cổng server là cổng trống —
   **vô căn cứ**: `port` do OS cấp từ dải ephemeral nên `port + 1` cũng ephemeral và có thể đang bị tiến trình
   khác giữ; lúc đó kết nối thành công và `ToolError` không được ném. Đã ĐỎ THẬT trên `unit (windows-latest,
