@@ -17,6 +17,18 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   `GateRequest.seq` tăng dần: không đọc đồng hồ, và phát lại cùng một log theo cùng thứ tự thì gate thứ ba vẫn
   là gate thứ ba. Kèm theo: `test_overdue_khong_truyen_now_thi_lay_bay_gio` không còn dựa vào thời gian trôi
   giữa hai dòng lệnh (biên "đúng bằng timeout thì chưa quá hạn" là cố ý, chỗ sai là ca test).
+- ci: **chân Windows cho `core`/`gateway`/`console`; `mypy` core sạch trên cả hai nền tảng** (#PR). Phát hiện
+  5 của audit 2026-09-09: chỉ `unit` (software-company) và `studio-unit` có chân Windows. Ba package kia — gồm
+  `xagents-core`, nơi K3.1–K3.7 vừa dồn TOÀN BỘ cơ chế chung của hai công ty — chưa từng chạy trên Windows,
+  nên package rủi ro cao nhất lại có phạm vi nền tảng hẹp nhất. Hậu quả đo được: lỗi thế hệ gate (#203) tái
+  hiện được trên Windows mà CI không hề thấy. Ba package này không bỏ lại nhánh chỉ-POSIX nào nên chân Windows
+  đo `--cov` luôn (kiểm tại chỗ: cả ba đúng 100% trên Windows), khác `unit`/`studio-unit` phải bỏ coverage.
+  `core-static` cũng thành hai nền tảng, và để nó xanh được thì `sqlite_bus._alive` rẽ nhánh theo
+  `sys.platform` thay vì `os.name`: mypy THU HẸP theo `sys.platform` chứ không theo `os.name`, nên chú
+  `# type: ignore[attr-defined]` ở `ctypes.windll` CẦN trên Linux lại THỪA trên Windows — và core bật `strict`
+  nên "thừa" cũng là lỗi. Tức là `mypy src/xagents_core` chưa bao giờ xanh được ở cả hai nơi cùng lúc; nay
+  sạch cả hai, không cần chú nào. Kèm phát hiện 7: `actions/checkout` v4 → v7 ở `protection-guard` và
+  `pr-policy` (hai chỗ cuối còn v4, đang sinh cảnh báo Node 20 deprecated).
 
 - docs(adr): **ADR-0006 công ty con `Upkeep-crew` bảo trì toàn dự án** (#201). Chỉ là quyết định kiến
   trúc, chưa có mã: 6 khối / 8 agent / gate `upkeep`, 10 tính năng nâng cao (bậc rủi ro, bằng chứng đo hai

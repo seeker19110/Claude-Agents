@@ -235,14 +235,24 @@ jobs:
 
   gateway-unit:
     name: gateway-unit
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python: ["3.11", "3.13"]   # cận dưới của requires-python và bản mới nhất đang dùng
+        include:
+          # Chân Windows. Ba package này KHÔNG có chân Windows nào cho tới 2026-09-09, trong khi K3.1–K3.7
+          # vừa dồn toàn bộ cơ chế chung của hai công ty vào `xagents-core` — package rủi ro cao nhất lại có
+          # phạm vi nền tảng hẹp nhất. Đo được hậu quả: `test_overdue_khong_truyen_now_thi_lay_bay_gio` đỏ
+          # tái hiện được trên Windows (đồng hồ bước ~15,6 ms) mà CI không hề thấy, xem #203.
+          # Khác `unit`/`studio-unit`: ba package này KHÔNG có nhánh chỉ-POSIX nào bỏ lại, nên chân Windows
+          # đo `--cov` luôn — đã kiểm tại chỗ, cả ba đạt đúng 100% trên Windows.
+          - os: windows-latest
+            python: "3.13"
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -275,14 +285,24 @@ jobs:
 
   console-unit:
     name: console-unit
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python: ["3.11", "3.13"]   # cận dưới của requires-python và bản mới nhất đang dùng
+        include:
+          # Chân Windows. Ba package này KHÔNG có chân Windows nào cho tới 2026-09-09, trong khi K3.1–K3.7
+          # vừa dồn toàn bộ cơ chế chung của hai công ty vào `xagents-core` — package rủi ro cao nhất lại có
+          # phạm vi nền tảng hẹp nhất. Đo được hậu quả: `test_overdue_khong_truyen_now_thi_lay_bay_gio` đỏ
+          # tái hiện được trên Windows (đồng hồ bước ~15,6 ms) mà CI không hề thấy, xem #203.
+          # Khác `unit`/`studio-unit`: ba package này KHÔNG có nhánh chỉ-POSIX nào bỏ lại, nên chân Windows
+          # đo `--cov` luôn — đã kiểm tại chỗ, cả ba đạt đúng 100% trên Windows.
+          - os: windows-latest
+            python: "3.13"
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -298,10 +318,17 @@ jobs:
   # tin cậy, nó không được lỏng hơn nơi gọi nó.
   core-static:
     name: core-static
-    runs-on: ubuntu-latest
+    # Hai nền tảng, không phải một: `_alive` của `sqlite_bus` có nhánh riêng cho Windows, và chú kiểu cho
+    # nhánh ấy CẦN trên Linux lại THỪA trên Windows (`strict` coi "thừa" là lỗi). Chỉ chạy ubuntu thì repo
+    # không bao giờ biết `mypy` của nửa còn lại đỏ — đúng thứ đã xảy ra tới 2026-09-09.
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -318,14 +345,24 @@ jobs:
 
   core-unit:
     name: core-unit
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python: ["3.11", "3.13"]   # cận dưới của requires-python và bản mới nhất đang dùng
+        include:
+          # Chân Windows. Ba package này KHÔNG có chân Windows nào cho tới 2026-09-09, trong khi K3.1–K3.7
+          # vừa dồn toàn bộ cơ chế chung của hai công ty vào `xagents-core` — package rủi ro cao nhất lại có
+          # phạm vi nền tảng hẹp nhất. Đo được hậu quả: `test_overdue_khong_truyen_now_thi_lay_bay_gio` đỏ
+          # tái hiện được trên Windows (đồng hồ bước ~15,6 ms) mà CI không hề thấy, xem #203.
+          # Khác `unit`/`studio-unit`: ba package này KHÔNG có nhánh chỉ-POSIX nào bỏ lại, nên chân Windows
+          # đo `--cov` luôn — đã kiểm tại chỗ, cả ba đạt đúng 100% trên Windows.
+          - os: windows-latest
+            python: "3.13"
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -367,7 +404,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Bảo vệ nhánh đã có hiệu lực chưa
         env:
