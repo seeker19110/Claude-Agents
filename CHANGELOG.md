@@ -6,6 +6,37 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(core): **K3.6c — `evals` lên `xagents_core`; cổng CI của mỗi công ty giữ nguyên** (#191). `difflib`
+  trên cả file **0.556** — cao nhất trong bốn module của K3.6 — nhưng con số gộp ấy giấu mất chuyện đáng kể.
+  Đo TỪNG symbol: `prompt_key`/`recording_path`/`load_recording`/`load_cases`/`_get` = **1.00**,
+  `outdated_versions` 0.99, `_lines` 0.98, `required_agents` 0.97, `_Probe` 0.91, `check`/`run_eval` 0.84,
+  `stale_recordings` 0.83 — nửa trên là **cùng một mã chép hai lần**. Nửa dưới lệch vì **ba lý do khác nhau**,
+  và chỉ một trong ba là "một bên đi xa hơn":
+  1. **`RecordingClient` (0.29) — hợp nhất HAI CHIỀU.** Company có hai thứ studio không có, cả hai là bài học
+     từ sự cố thật 2026-09-05: chốt `prompt_version` lúc `__init__`, và `save()` **gộp** thay vì ghi đè. Studio
+     có một thứ company không có: `if not c.tool_calls` — chỉ ghi câu trả lời cuối (ADR-0007). Lấy bản company
+     như đặc tả viết là **mất cái thứ ba**; core giữ cả ba. Đặc tả đã lường trước đúng điểm này.
+  2. **`_run_case` (0.14) — miền, không phải cơ chế.** Company có `phase` (ADR-0037), studio có `many`+`extra`.
+     Không có phần chung đáng gộp; nó ở lại từng công ty như **hook**.
+  3. **`main` (0.62) + `CaseResult` (0.52) — CHÍNH SÁCH CỔNG.** Chỗ dễ sai nhất của bước này: hai bên quyết
+     định "cái gì làm CI đỏ" **khác nhau** — company tách `gate_ok` (bản ghi) khỏi `cases_ok` (điểm chấm) và
+     chỉ đỏ vì điểm khi có `--fail-on-score`; studio đỏ khi **bất kỳ** ca nào không chạy được. Lấy `main` của
+     company là **âm thầm nới lỏng cổng của studio**. Nên `main` ở lại từng công ty, và `CaseResult` của core
+     mang **hai sự thật có tên** thay vì một cờ: `broken_recording` (hỏng vì bản ghi — cổng của company) và
+     `errored` (không chạy được vì bất kỳ lý do gì — cổng của studio). Hai trường, hai chính sách, không bên
+     nào mất gì.
+  `case_errors` là tuple lớp lỗi do từng công ty khai (`RunnerError`, `LLMError`) chứ **không** phải
+  `except Exception` ở core: nuốt cả lỗi lập trình thì một `KeyError` trong `run_case` hiện ra như "model trả
+  sai", và eval báo FAIL cho một nguyên nhân nằm ở code. Có ca canh.
+  **Không sửa một dòng test nào của hai công ty** (1057 + 543 xanh). Điều đó đòi giữ nguyên bốn **seam** mà 20
+  chỗ test đang dùng: `RECORDINGS_DIR`/`EVALS_DIR` (biến module), `load_cases` và `_run_case` (hàm module).
+  `EvalSuite` vì thế đọc chúng **qua biến/hàm module** chứ không tính từ `self.root` — tính từ `self.root` là
+  seam im lặng hết tác dụng: ca vẫn xanh, nhưng `monkeypatch` không còn tới được nơi nó nhắm, và test ghi đè
+  bản ghi thật của repo. Đây là lần thứ ba trong chuỗi K3.6 gặp đúng khuôn ấy (sau `scope_of` ở K3.6b).
+  28 ca mới ở `xagents-core/tests/test_evals.py` dựng một `EvalSuite` con trên `tmp_path`. Đo hai chiều: bỏ
+  `if not c.tool_calls` và bỏ `errored` → core 3 ca đỏ **và** studio
+  `test_replay_exit_code_ignores_grading_but_not_stale_recordings` đỏ; trả lại → xanh.
+
 - refactor(core): **K3.6b — `blackboard` lên `xagents_core`; studio nhận khoá, `rehydrate()`, `content` toàn
   văn** (#189). `difflib` **0.092** trên 114 dòng company vs 30 studio, 9 hàm chỉ company có — nhưng con số thấp
   ấy KHÔNG nói hai blackboard khác bản chất: cả hai làm đúng một việc (nghe `shared-context`, giữ bản có
