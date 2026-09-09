@@ -78,16 +78,15 @@ def test_hai_chu_namespace_ghi_song_song_khong_mat_ban_ghi(monkeypatch):
 
     `scope_of` chạy ngay trước lúc đọc version: cho cả hai luồng gặp nhau ở đúng điểm đó bằng Barrier mở đúng cửa
     sổ tranh chấp một cách xác định — không sleep, nên không phụ thuộc tốc độ máy."""
-    import company.blackboard as bbm
-    real = bbm.scope_of
-    inside = threading.Barrier(2, timeout=10)
+    bus = InMemoryBus(); bb = Blackboard(bus)
+    real = bb.scope_of          # K3.6b: `scope_of` là PHƯƠNG THỨC (nó đọc `global_namespaces` từ `cfg`),
+    inside = threading.Barrier(2, timeout=10)   # nên vá trên instance chứ không trên module
 
     def _scope(ns, pid):
         try: inside.wait()      # cả hai luồng phải cùng ở trong scope_of rồi mới đi tiếp
         except threading.BrokenBarrierError: pass
         return real(ns, pid)
-    monkeypatch.setattr(bbm, "scope_of", _scope)
-    bus = InMemoryBus(); bb = Blackboard(bus)
+    monkeypatch.setattr(bb, "scope_of", _scope)
 
     def w(actor: str) -> None:
         bb.write(actor, "api-contract", "openapi.yaml", actor, content=actor * 50, project_id="P1")

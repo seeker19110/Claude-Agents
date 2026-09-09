@@ -57,6 +57,9 @@ class CoreConfig:
     # ở công ty này lại là từ vựng nghiệp vụ ở công ty kia: "jailbreak" với phòng làm video là câu tấn công, với
     # công ty gia công phần mềm là yêu cầu bảo mật app di động (`skills/mobile.md`). Xem `guard.py` quyết định 2.
     extra_injection_patterns: tuple[tuple[str, str], ...] = ()
+    # Namespace blackboard KHÔNG thuộc dự án nào (company: `knowledge` — bài học estimate-vs-actual dùng chung).
+    # Ở đây chứ không phải hằng trong `blackboard.py` vì danh sách namespace là của từng công ty (ADR-0018).
+    global_namespaces: frozenset[str] = frozenset()
 
     @property
     def config_file(self) -> Path:

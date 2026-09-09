@@ -6,6 +6,33 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(core): **K3.6b — `blackboard` lên `xagents_core`; studio nhận khoá, `rehydrate()`, `content` toàn
+  văn** (#189). `difflib` **0.092** trên 114 dòng company vs 30 studio, 9 hàm chỉ company có — nhưng con số thấp
+  ấy KHÔNG nói hai blackboard khác bản chất: cả hai làm đúng một việc (nghe `shared-context`, giữ bản có
+  `version` lớn nhất, `write` là đọc-version-rồi-publish). Studio chỉ **chưa làm phần còn lại**. Hình dạng lệch
+  giống K3.5b, nên cách xử lý cũng giống: core giữ toàn bộ cơ chế, mỗi công ty đưa vào dữ liệu và lớp
+  (`cfg.global_namespaces`, `envelope_cls`/`context_cls`, bảng `EXT`).
+  **Bước này sửa lại một quyết định của K3.5a, có lý do.** K3.5a xếp `project_id` và `content` chung với
+  `rulings` vào "thứ company thêm", vì lúc ấy nó chỉ nhìn *model* `SharedContext`. K3.6b chuyển chính
+  `blackboard.py` lên core, và nhìn từ đó thì hai trường ấy **là hai cơ chế của blackboard** — phân vùng
+  (ADR-0018) và toàn văn thay vì con trỏ (ADR-0012) — chứ không phải trường của một miền. Một blackboard chung
+  không đọc được chúng thì phần lớn thân nó phải đi qua hook, tức cơ chế bị xé làm hai chỗ. `rulings` (ADR-0030)
+  ở lại company: đó mới thật là tên gọi của một miền. Ca canh của K3.5a
+  (`test_khung_khong_mang_truong_pham_vi_cua_ben_nao`) **không bị nới lỏng** mà đổi thành cấm THEO TỪNG LỚP:
+  `project_id` vẫn bị cấm trên `Envelope`/`AuditLog`/`SupervisorAction`, chỉ được phép trên `SharedContext`.
+  **Đổi hành vi studio, có chủ ý**: khoá khi đánh version (hai chủ cùng namespace chạy song song không còn mất
+  bản ghi), `rehydrate()` dựng lại từ bus khi mở lại SQLite (trước đây mở lại `studio.sqlite` là blackboard
+  RỖNG), `content` toàn văn, `all()`/`overview()`, phân vùng theo dự án (chưa dùng — studio không truyền
+  `project_id` ở đâu cả). Payload `shared-context` của studio nay mang thêm hai khoá null; schema studio là
+  `additionalProperties: true` ở tầng payload nên không có gì đỏ, và hai trường đã khai thẳng vào schema ấy.
+  **`scope_of`/`context_key` của company thôi là hàm module, thành phương thức**: chúng đọc `global_namespaces`,
+  mà bảng ấy nay ở `CoreConfig` — giữ hàm module là hai nguồn cho một luật. Nơi duy nhất gọi chúng ngoài
+  blackboard là một ca test, đã đổi sang vá phương thức.
+  **Một ca test tự viết ra đã suýt vô nghĩa**: hai ca "ghi song song không mất bản ghi" (core + studio) ban đầu
+  chỉ spawn thread rồi mong có va chạm — đo hai chiều cho thấy **bỏ hẳn khoá chúng vẫn xanh**. Đã viết lại theo
+  đúng kỹ thuật company đã dùng: một `Barrier` trong `scope_of` mở cửa sổ tranh chấp một cách xác định. Sau khi
+  sửa: bỏ khoá → cả hai đỏ, trả lại → cả hai xanh.
+
 - refactor(core): **K3.6a — `registry` lên `xagents_core`; K3.6 tách làm bốn bước** (#188). Đặc tả gộp
   `registry` + `blackboard` + `runner` + `evals` vào MỘT PR. Đo `difflib` trước khi làm cho thấy bốn module
   lệch rất khác nhau — `evals` **0.556**, `registry` **0.429**, `blackboard` **0.092**, `runner` **0.036**

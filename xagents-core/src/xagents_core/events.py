@@ -69,13 +69,27 @@ class Envelope(BaseModel):
 
 
 class SharedContext(BaseModel):
-    """Một mục trên blackboard. Company thêm `project_id`, `content`, `rulings`; studio không có khái niệm
-    tương đương, nên chúng ở lớp con chứ không ở đây."""
+    """Một mục trên blackboard.
+
+    **K3.6b sửa lại một quyết định của K3.5a, có lý do.** K3.5a xếp `project_id` và `content` chung với
+    `rulings` vào "thứ company thêm", vì lúc ấy nó chỉ nhìn *model* `SharedContext` và ba trường đều là trường
+    company có mà studio không. K3.6b chuyển chính `blackboard.py` lên core, và nhìn từ đó thì hai trường ấy
+    không phải trường của một miền: chúng LÀ hai cơ chế của blackboard — *phân vùng* (`project_id`) và *toàn
+    văn thay vì con trỏ* (`content`, ADR-0012). Một blackboard chung không đọc được chúng thì phần lớn thân nó
+    phải đi qua hook, tức là cơ chế bị xé ra làm hai chỗ.
+
+    `rulings` (ADR-0030 của company) ở lại lớp con: đó mới thật là tên gọi của một miền.
+
+    Studio nhận hai trường luôn `None`. Payload của studio vì thế mang thêm hai khoá null; schema
+    `shared-context` của studio là `additionalProperties: true` ở tầng payload nên không có gì đỏ, và hai
+    trường đã được khai thẳng vào schema ấy để nó nói đúng thứ đi qua nó."""
 
     namespace: str      # lớp con thu hẹp thành `Namespace` Literal của công ty mình
     version: int
     content_ref: str
     summary: str = ""
+    project_id: str | None = None  # None = phạm vi toàn công ty (vd. `knowledge`); dự án khác nhau không ghi đè nhau
+    content: str | None = None     # toàn văn artifact; bus là nguồn sự thật, artifact store chỉ mirror ra file
 
 
 class AuditLog(BaseModel):

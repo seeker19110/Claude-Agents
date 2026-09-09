@@ -480,7 +480,17 @@ package đang gọi `company.llm.load_config()` không đổi.
 >   Một điểm đặc tả không nhắc: **`spec_cls`**. Studio có trường `tools` (ADR-0007 của studio) mà core không
 >   được biết, nên `load_agents` phải dựng ĐÚNG lớp `AgentSpec` của công ty — dựng bằng lớp core là làm rơi
 >   trường ấy im lặng, cùng cái bẫy `envelope_cls` ở K3.5b.
-> - **K3.6b `blackboard`, K3.6c `evals`, K3.6d `runner`**: chưa làm.
+> - **K3.6b — `blackboard`: XONG (#189).** Hình dạng lệch **giống K3.5b** (một bên thiếu), nên cách xử lý cũng
+>   giống: core giữ toàn bộ cơ chế, công ty đưa vào dữ liệu (`cfg.global_namespaces`, `EXT`) và lớp
+>   (`envelope_cls`/`context_cls`). Đặc tả viết đúng cả hai gạch (`blackboard`: bản company; studio
+>   `write(Namespace)` → `str`), nhưng bỏ sót một hệ quả: **`project_id` và `content` phải lên core cùng nó**.
+>   K3.5a đã xếp hai trường ấy vào "thứ company thêm" khi chỉ nhìn model; nhìn từ blackboard thì chúng LÀ hai
+>   cơ chế của blackboard (phân vùng ADR-0018, toàn văn ADR-0012). Ca canh của K3.5a không bị nới lỏng mà đổi
+>   thành cấm theo từng lớp — `project_id` vẫn cấm trên `AuditLog`, chỉ mở trên `SharedContext`.
+>   Điểm thứ hai đặc tả không lường: `scope_of`/`context_key` của company **thôi là hàm module** (chúng đọc
+>   `global_namespaces`, nay ở `CoreConfig`), nên một ca test vá hàm module phải đổi sang vá phương thức —
+>   không đổi thì ca ấy vẫn xanh mà không còn đo gì.
+> - **K3.6c `evals`, K3.6d `runner`**: chưa làm.
 
 ### PR K3.7 `refactor(core): K3.7 — gates, gate_cli, supervisor hợp nhất hai chiều`
 
