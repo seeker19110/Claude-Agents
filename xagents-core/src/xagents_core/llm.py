@@ -473,7 +473,10 @@ class ModelClient(Protocol):
 
     def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
                  cache_key: str | None = None, tools: list[ToolSpec] | None = None,
-                 messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion: ...
+                 messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion: ...  # pragma: no cover
+    # `pragma: no cover` như các stub Protocol ở `evals.py`: thân `...` là KHAI BÁO KIỂU, không có đường chạy
+    # nào tới nó (mọi lời gọi đi vào hiện thực cụ thể). Đây là miễn trừ cho thứ không thực thi được, không
+    # phải cho thứ chưa được test — đừng dùng khuôn này cho code có nhánh thật.
 
 
 def cli_env(keep_prefixes: tuple[str, ...] = ()) -> dict[str, str]:

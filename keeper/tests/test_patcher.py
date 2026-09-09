@@ -511,3 +511,19 @@ def test_bo_bot_mot_nguong_cung_la_ha(root: Path):
     with pytest.raises(ForbiddenPath):
         apply_edits(root, [Edit("Makefile", MAKEFILE)], operation="fix_docs", ticket_id="T1")
     assert (root / "Makefile").read_text(encoding="utf-8") == hai
+
+
+def test_changed_files_ban_ghi_doi_ten_bi_cut_khong_no(monkeypatch, tmp_path: Path):
+    """`R` ở cuối output mà KHÔNG có trường `origPath` theo sau → bỏ qua, không IndexError.
+
+    `git status -z` để `origPath` thành trường NUL riêng; output bị cắt ngang (đĩa đầy, pipe đứt, git bị giết)
+    cho ra đúng hình dạng này. Không có vế `i < len(toks) and toks[i]` thì đây là `IndexError` giữa lúc
+    `regen_derived` đang chốt — chốt nổ còn tệ hơn chốt sai, vì nó giấu luôn kết quả thật."""
+    class _R:
+        returncode = 0
+        stdout = "R  keeper/agents/moi.md\0"   # thiếu hẳn trường origPath phía sau
+        stderr = ""
+
+    monkeypatch.setattr(patcher.subprocess, "run", lambda *a, **k: _R())
+
+    assert patcher._changed_files(tmp_path) == ["keeper/agents/moi.md"]

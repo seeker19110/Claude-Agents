@@ -6,7 +6,15 @@ kịch bản B: dòng nào chuyển package thì test phủ dòng đó chuyển 
 """
 from __future__ import annotations
 
-from xagents_core.context import CHARS_PER_TOKEN, ContextBudget, _prune, cut_middle, fit, trim_payload
+from xagents_core.context import (
+    CHARS_PER_TOKEN,
+    MIN_KEEP,
+    ContextBudget,
+    _prune,
+    cut_middle,
+    fit,
+    trim_payload,
+)
 
 
 def _turn(idx: int, tool_content: str = "ket qua") -> list[dict]:
@@ -117,3 +125,31 @@ def test_cut_middle_giu_dau_va_cuoi():
     s = "A" * 500 + "Z" * 500
     out = cut_middle(s, 400)
     assert out.startswith("A") and out.endswith("Z") and "cắt" in out and len(out) < len(s)
+
+
+def test_strings_bo_qua_gia_tri_khong_phai_chuoi_dict_list():
+    """Payload JSON có cả số, bool và `null` — `_strings` phải rơi thẳng xuống `return`, không nổ.
+
+    Ba nhánh `isinstance` đều trượt là ca THƯỜNG GẶP (`{"exit_code": 0, "ok": true}`), nên nếu hàm giả định
+    luôn rơi vào một trong ba thì `trim_payload` hỏng với gần như mọi payload thật."""
+    # `limit` phải NHỎ hơn payload, nếu không `trim_payload` thoát ở vòng đầu và `_strings` không hề chạy.
+    payload = {"exit_code": 0, "ok": True, "ghi_chu": None, "log": "x" * (MIN_KEEP * 4)}
+
+    data, removed = trim_payload(payload, limit=MIN_KEEP)
+
+    assert removed > 0                                   # chuỗi dài đã bị cắt
+    assert (data["exit_code"], data["ok"], data["ghi_chu"]) == (0, True, None)   # ba giá trị kia nguyên vẹn
+
+
+def test_trim_payload_dung_sau_64_vong_khi_khong_the_nho_hon():
+    """Trần 64 vòng là chốt chống lặp vô hạn — ca này đi HẾT 64 vòng, không `break` giữa chừng.
+
+    Mỗi vòng cắt đúng chuỗi dài nhất xuống `MIN_KEEP`, nên nó rời khỏi tập ứng viên (`len(s) > MIN_KEEP`).
+    Với hơn 64 chuỗi cùng cỡ, tập ứng viên vẫn còn khi vòng thứ 64 kết thúc: `break` ở `size <= limit` không
+    bao giờ đúng, `break` ở `not strs` cũng chưa tới. Không có trần này thì hàm treo hẳn."""
+    payload = {f"k{i}": "x" * (MIN_KEEP + 10) for i in range(70)}
+
+    data, removed = trim_payload(payload, limit=100)
+
+    assert removed > 0
+    assert sum(1 for v in data.values() if len(v) > MIN_KEEP) > 0   # còn ứng viên ⇒ đã hết 64 vòng

@@ -221,3 +221,14 @@ def test_pham_vi_bon_adapter_chua_len_core():
         "Cầu MCP (`_toolbox`, `bind_toolbox`, `_complete_mcp`, ADR-0024) ở LẠI company: studio không có khái "
         "niệm tương đương, đưa lên core là bắt một bên mang 255 dòng `mcp_bridge.py` nó không bao giờ gọi.")
     assert not hasattr(m, "_complete_mcp") and not hasattr(m.ClaudeCodeClient, "bind_toolbox"), _bo_qua
+
+
+def test_find_codex_binary_localappdata_co_nhung_khong_co_ban_nao(monkeypatch, tmp_path):
+    """%LOCALAPPDATA% tồn tại mà KHÔNG có `codex.exe` nào → trả lại tên, không nổ vì `cands[0]` trên list rỗng.
+
+    Đây là trạng thái của gần như mọi máy Windows chưa cài app Codex — tức là nhánh THƯỜNG GẶP hơn nhánh
+    tìm thấy, chứ không phải ca hiếm."""
+    monkeypatch.setattr("xagents_core.llm.shutil.which", lambda b: None)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))     # thư mục có thật, nhưng rỗng
+
+    assert find_codex_binary("codex") == "codex"

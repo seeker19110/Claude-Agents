@@ -401,3 +401,16 @@ def test_watch_khong_nuot_gitub_write_attempt(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(o, "tick", _no)
     with pytest.raises(GitHubWriteAttempt):
         o.watch(interval=0.0, max_ticks=2)
+
+
+def test_apply_bo_qua_topic_khong_thuoc_chuoi_trang_thai(tmp_path: Path):
+    """Nhánh cuối của `_apply`: topic không khớp mệnh đề nào thì rơi ra ngoài, KHÔNG nổ.
+
+    `_apply` chạy cho cả replay lẫn event mới, nên một topic lạ trên bus (do phiên bản sau thêm, hay do công
+    ty khác dùng chung bus) phải là việc bình thường — nổ ở đây là sập replay của cả orchestrator."""
+    o = _orc(tmp_path)
+    truoc = (dict(o.reports), dict(o.notes))
+
+    o._apply(Envelope(topic="patch-proposals", key="T-1", actor=CODE_ACTOR, payload={"gi-do": 1}))
+
+    assert (dict(o.reports), dict(o.notes)) == truoc

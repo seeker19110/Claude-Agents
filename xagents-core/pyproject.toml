@@ -67,6 +67,9 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 source = ["src/xagents_core"]
+# Phủ NHÁNH, không chỉ dòng — xem lý do ở `keeper/pyproject.toml`. core đi cùng đợt vì nó là lõi hai
+# công ty dùng chung: một nhánh sai ở đây hỏng cả sáu package, nên nó đáng chặn chặt nhất.
+branch = true
 
 [tool.coverage.report]
 # Như bốn package kia: ngưỡng bằng đúng mức đạt được, mất một dòng phủ là CI đỏ.

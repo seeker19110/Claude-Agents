@@ -58,9 +58,10 @@ CI (`.github/workflows/ci.yml`) chạy đúng những cổng đó, thêm `audit`
 `golden-check`. Job tổng hợp tên `quality` là required status check của `main` — **thêm job con mới thì phải nối
 vào `needs` của nó**, nếu không kết quả của job đó không được tính.
 
-Ngưỡng coverage nằm trong `pyproject.toml` (`fail_under`: 90 cho software-company, 84 cho Studio-creators, 73 cho
-gateway). Nó
-đặt ở mức đang đạt được để chặn tụt lùi — nâng lên khi coverage thật tăng, đừng hạ xuống để PR qua cổng.
+Ngưỡng coverage nằm trong `pyproject.toml`: `fail_under = 100` ở **cả sáu** package (software-company,
+Studio-creators, gateway, console, xagents-core, keeper). Nó đặt ở mức đang đạt được để chặn tụt lùi — nâng lên
+khi coverage thật tăng, đừng hạ xuống để PR qua cổng. Lưu ý: 100 này là phủ **dòng**; không package nào bật
+`branch = true`, nên nhánh chưa được cổng nào chặn (đo 2026-09-09: 198/4966 nhánh chưa phủ).
 
 ## 3. Sửa `agents/` hoặc `skills/` — checklist bắt buộc
 

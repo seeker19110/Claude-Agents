@@ -189,3 +189,19 @@ def test_notify_bao_dung_subscriber_cua_topic_va_sao(cfg):
     e = _tin()
     bus._notify(subs, e)
     assert thay == [e, e]
+
+
+def test_nullable_fields_bo_qua_schema_kieu_boolean(cfg):
+    """JSON Schema cho phép một property là `true`/`false` thay vì object — không phải dict thì bỏ qua.
+
+    Không có vế `isinstance(spec, dict)` thì `spec.get("type")` là `AttributeError` ngay lúc nạp schema, tức
+    là một schema hợp lệ theo chuẩn làm sập cả bus."""
+    d = cfg.root / "topics" / "schemas"
+    raw = json.loads((d / "noi-bo.json").read_text(encoding="utf-8"))
+    raw["properties"]["payload"] = {"type": "object", "properties": {
+        "gi_cung_duoc": True,                       # schema boolean, hợp lệ theo chuẩn
+        "co_the_null": {"type": ["string", "null"]},
+    }}
+    (d / "noi-bo.json").write_text(json.dumps(raw), encoding="utf-8")
+
+    assert Bus(cfg).nullable_fields("noi-bo") == frozenset({"co_the_null"})

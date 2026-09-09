@@ -717,3 +717,33 @@ def test_claude_core_khong_co_complete_mac_dinh():
     """Cố ý: một `complete()` "không tool" mặc định sẽ im lặng nuốt mất chiến lược tool của bên nào quên ghi đè,
     mà im lặng đúng là thứ TRAPS.md §1 cấm. Lớp con phải tự khai."""
     assert "complete" not in vars(ClaudeCodeClient)
+
+
+def test_openai_post_cacheable_body_khong_co_cache_key_thi_khong_bat_co(monkeypatch):
+    """Gọi THÀNH CÔNG mà body không mang `prompt_cache_key` → không được bật `_cache_key_ok`.
+
+    Cờ này nghĩa là "server ĐÃ nhận cache key", nên bật nó sau một lượt không hề gửi key là kết luận từ bằng
+    chứng không tồn tại — và nó dán luôn cho backend, khiến lượt sau tin nhầm là cache đang chạy."""
+    c = _oa()
+    monkeypatch.setattr(c, "_post", lambda body: _ok_body())
+
+    c._post_cacheable({"a": 1})             # không có prompt_cache_key
+
+    assert c._cache_key_ok is None          # vẫn "chưa biết", không phải True
+
+
+def test_openai_messages_assistant_khong_co_tool_calls():
+    """Assistant chỉ trả văn bản (không gọi tool) — vẫn phải vào `out`, không mất message.
+
+    Lượt cuối của mọi vòng tool đúng là hình dạng này: model thôi gọi tool và trả lời. Bỏ sót nó là mất chính
+    câu trả lời cuối."""
+    out = OpenAICompatClient._messages("hệ thống", [
+        {"role": "assistant", "content": "xong rồi"},
+        {"role": "user", "content": "cảm ơn"},
+    ])
+
+    assert out == [
+        {"role": "system", "content": "hệ thống"},
+        {"role": "assistant", "content": "xong rồi"},
+        {"role": "user", "content": "cảm ơn"},
+    ]

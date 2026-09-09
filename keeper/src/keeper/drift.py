@@ -30,6 +30,12 @@ _SC_SRC_RE = re.compile(r"<!--\s*SINH TỰ ĐỘNG từ (?P<src>\S+) version=(?P
 _GOLDEN_RE = re.compile(r"<!--\s*golden agent=(?P<id>\S+) version=(?P<ver>\d+)\s*-->")
 _FRONT_MATTER_VERSION_RE = re.compile(r"(?m)^version:\s*(?P<ver>\d+)\s*$")
 _PR_REF_RE = re.compile(r"\(#(?P<n>\d+)\)")
+# Phép (d): chỗ đáng lẽ là số PR nhưng còn là chỗ trống. Đo từ dữ liệu thật chứ không đoán khuôn: bốn ca thiếu
+# dòng CHANGELOG tìm ra ngày 2026-09-09 thì BA là "quên điền số" chứ không phải "quên viết dòng" — #208 để
+# nguyên `(#PENDING)`, #161 và #192 viết đủ mô tả mà không có `(#n)` nào. Phép (c) mù với cả ba khi dòng đã
+# tồn tại, nên nó chỉ bắt được chúng khi PR đã merge; phép này bắt NGAY, trước merge.
+_INLINE_CODE_RE = re.compile(r"`[^`]*`")
+_PLACEHOLDER_RE = re.compile(r"\(#(?:PRNUM|PENDING|TBD|n|N|<n>|\?+)\)")
 
 # Mốc chặn dưới cho phép (c) — đo được TỪ ĐÂU, không đoán: `AGENTS.md` bắt buộc §10 ("Tài liệu đi CÙNG PR,
 # không đi sau nó" — dòng CHANGELOG/nhật ký phiên phải nằm trong CHÍNH PR làm ra thay đổi) chỉ có hiệu lực từ
@@ -151,10 +157,33 @@ def changelog_drift(repo: Path, changelog: Path, *, cutoff: datetime = CHANGELOG
     return out
 
 
+def changelog_placeholder_drift(changelog: Path) -> list[Signal]:
+    """Phép (d): dòng CHANGELOG còn chỗ trống thay cho số PR (`(#PRNUM)`, `(#PENDING)`, `(#n)`...).
+
+    Thuần đọc file, không cần `git log` — nên KHÔNG phụ thuộc độ sâu clone, khác phép (c). Đó là điểm mạnh
+    riêng của nó: phép (c) trên một clone `--depth 1` sẽ im lặng, phép này thì không."""
+    if not changelog.exists():
+        return []
+    out: list[Signal] = []
+    for i, line in enumerate(changelog.read_text(encoding="utf-8").splitlines(), start=1):
+        # Bỏ đoạn trong backtick TRƯỚC khi dò: chính CHANGELOG này kể lại các ca placeholder bằng văn xuôi
+        # (`đổi (#208) về (#PENDING)`, `điền (#<n>) rồi commit`), và một bộ dò báo động vì tài liệu MÔ TẢ nó
+        # là bộ dò người ta sẽ tắt. Chỗ trống thật không bao giờ nằm trong code span.
+        if m := _PLACEHOLDER_RE.search(_INLINE_CODE_RE.sub(" ", line)):
+            out.append(Signal(
+                subject=f"changelog-L{i}", kind="drift",
+                detail=f"CHANGELOG.md dòng {i} còn chỗ trống {m.group(0)} thay cho số PR — điền `(#<n>)` rồi "
+                       f"commit tiếp vào CHÍNH PR đó (AGENTS.md luật bắt buộc §10)",
+                evidence=m.group(0),
+            ))
+    return out
+
+
 def scan(*, claude_agents_dir: Path, golden_agents_dir: Path, company_root: Path, repo: Path,
           changelog: Path) -> list[Signal]:
     return (
         sc_agent_drift(claude_agents_dir, company_root)
         + golden_drift(golden_agents_dir, company_root)
         + changelog_drift(repo, changelog)
+        + changelog_placeholder_drift(changelog)
     )
