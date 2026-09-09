@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- ci: **PR do máy sinh qua được cổng `metadata`** — hai vá nối tiếp nhau, cùng một họ lỗi "cấu hình chỉ
+- ci: **PR do máy sinh qua được cổng `metadata`** (#247). Hai vá nối tiếp nhau, cùng một họ lỗi "cấu hình chỉ
   sinh ra PR hỏng". (1) `dependabot.yml` gắn nhãn `dependencies` + `no-changelog` cho mọi PR nó mở: cổng
   `metadata` đòi dòng CHANGELOG mà dependabot không viết được, nên thiếu nhãn là **mọi** PR dependabot đỏ —
   đo trên #246: **35/36 check xanh, chỉ `metadata` đỏ** đúng vì lý do đó. Cùng quy ước với PR do
