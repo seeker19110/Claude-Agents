@@ -24,9 +24,15 @@ import argparse
 import json
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from xagents_core.runner import Generated as CoreGenerated
+from xagents_core.runner import RunnerError as RunnerError
+from xagents_core.runner import RunResult as CoreRunResult
+from xagents_core.runner import output_schema as _core_output_schema
+from xagents_core.runner import payload_schema as _core_payload_schema
 
 from .blackboard import Blackboard
 from .bus import SCHEMA_DIR, BusError, InMemoryBus
@@ -50,7 +56,6 @@ NO_PROGRESS_WARN, NO_PROGRESS_STOP = 3, 5
 WRITING_TOOLS = frozenset({"write_file", "delete_file"})
 
 
-class RunnerError(Exception): ...
 
 
 def _stagnant(calls: list[dict[str, Any]], window: int = 10) -> tuple[int, dict[str, Any] | None]:
@@ -87,10 +92,8 @@ def project_of(env: Envelope) -> str | None:
 
 
 def payload_schema(topic: str) -> dict[str, Any]:
-    p = SCHEMA_DIR / f"{topic}.json"
-    if not p.exists():
-        raise RunnerError(f"không có schema cho topic {topic}")
-    return json.loads(p.read_text(encoding="utf-8"))["properties"]["payload"]
+    """Chữ ký cũ `(topic)` — thư mục schema nay là tham số của core."""
+    return _core_payload_schema(SCHEMA_DIR, topic)
 
 
 def artifact_store(db: Path) -> Path:
@@ -142,15 +145,9 @@ def context_writes_schema(namespaces: list[str]) -> dict[str, Any]:
 
 
 def output_schema(schema: dict[str, Any] | None, namespaces: list[str], many: bool) -> dict[str, Any]:
-    """Schema gốc gửi cho model. Agent không sở hữu namespace và chỉ trả một payload: giữ nguyên schema topic.
-    Ngược lại bọc thành {"payload"|"items": ..., "context_writes": [...]} (structured output cần object ở gốc)."""
-    if schema is None:  # context-only
-        return {"type": "object", "properties": {"context_writes": context_writes_schema(namespaces)}, "required": ["context_writes"]}
-    if not namespaces and not many:
-        return schema
-    props: dict[str, Any] = {"items": {"type": "array", "items": schema}} if many else {"payload": schema}
-    if namespaces: props["context_writes"] = context_writes_schema(namespaces)
-    return {"type": "object", "properties": props, "required": ["items" if many else "payload"]}
+    """Chữ ký cũ. `context_writes_schema` của company (bắt buộc `content`, ADR-0012) truyền xuống core làm
+    tham số: hình dạng ấy là HỢP ĐỒNG ĐẦU RA của agent, tức prompt, nên nó ở lại đây."""
+    return _core_output_schema(schema, namespaces, many, context_writes_schema(namespaces))
 
 
 def batch_schema(schema: dict[str, Any]) -> dict[str, Any]:
@@ -158,24 +155,17 @@ def batch_schema(schema: dict[str, Any]) -> dict[str, Any]:
 
 
 @dataclass
-class RunResult:
-    output: Envelope
-    tokens: int
-    model: str
-    cost_usd: float = 0.0
+class RunResult(CoreRunResult):
+    output: Envelope        # thu hẹp `Any` của core về Envelope của company (tiền lệ K3.5a)
+    cost_usd: float = 0.0   # studio chưa tính tiền nên trường này ở lớp con
 
 
 @dataclass
-class Generated:
-    """Đầu ra model đã qua kiểm tra schema nhưng CHƯA publish (để code xác định quyết định, vd. delivery-lead dispatch)."""
-    payloads: list[dict[str, Any]]
-    tokens: int
-    model: str
+class Generated(CoreGenerated):
+    """Đầu ra model đã qua kiểm tra schema nhưng CHƯA publish (để code xác định quyết định, vd. delivery-lead dispatch).
+
+    Bảy trường chung ở `xagents_core.runner.Generated`; năm trường dưới là của company (studio không ghi cái nào)."""
     output_tokens: int = 0        # phần agent thật sự sinh ra; ngân sách ticket đo theo đây
-    context_writes: list[dict[str, Any]] = field(default_factory=list)
-    cache_hit_ratio: float = 0.0  # phần input lấy từ prompt cache, để đo hiệu quả cache trong audit-log
-    turns: int = 1                # số lượt gọi model (1 = không dùng tool)
-    tool_calls: dict[str, int] = field(default_factory=dict)  # tên tool → số lần gọi
     cost_usd: float = 0.0
     priced: bool = True           # False = model không có trong bảng giá (cost_usd = 0 nhưng KHÔNG miễn phí)
     duration_ms: int = 0

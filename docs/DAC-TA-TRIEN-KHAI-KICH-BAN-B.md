@@ -500,7 +500,17 @@ package đang gọi `company.llm.load_config()` không đổi.
 >   `EVALS_DIR → core.root/"evals"` làm đúng như đặc tả, nhưng phải đi **qua biến module** chứ không tính từ
 >   `self.root`: 20 chỗ test dùng `monkeypatch.setattr(evals, "RECORDINGS_DIR", …)` làm seam, và tính từ
 >   `self.root` là seam ấy im lặng hết tác dụng. Cùng khuôn với `scope_of` ở K3.6b.
-> - **K3.6d `runner`**: chưa làm.
+> - **K3.6d — TÁCH ĐÔI; d1 XONG (#PR).** Lý do tách không phải độ lệch mã mà là **bản ghi eval**: khoá bản
+>   ghi là `hash(system_prompt, user_message)` và `user_message` do `build_user_message` sinh ra. Đo trực
+>   tiếp — thêm MỘT DẤU CÁCH vào prompt studio thì `evals all --replay` báo lệch toàn bộ. Hợp nhất bất kỳ CHỮ
+>   nào trong prompt đòi `make eval-record` bằng model thật cho 20 agent (7 bước `CONTRIBUTING.md` §3, cần API
+>   key) — không phải việc của một PR chuyển mã.
+>   **d1 (xong)**: `RunnerError`, `RunResult`, `Generated`, `payload_schema`, `output_schema` — mọi chuỗi
+>   prompt giữ nguyên từng byte, nghiệm thu bằng `evals all --replay` hai công ty 0 FAIL.
+>   `context_writes_schema` ở lại từng công ty (company đòi `content` ADR-0012, studio không), nên
+>   `output_schema` NHẬN nó làm tham số.
+>   **d2 (chưa làm)**: `AgentRunner` — `difflib` 0.14 trên 411/202 dòng, `_tool_loop`+`_turns` 0.12,
+>   `write_context` 0.15, `generate` 0.49. Đây là phần lớn còn lại của cả kịch bản B.
 
 ### PR K3.7 `refactor(core): K3.7 — gates, gate_cli, supervisor hợp nhất hai chiều`
 

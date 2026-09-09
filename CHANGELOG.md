@@ -6,6 +6,31 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(core): **K3.6d1 — khung runner lên `xagents_core`; K3.6d tách đôi vì BẢN GHI EVAL** (#PR).
+  **Ràng buộc thật của K3.6d không phải độ lệch mã, mà là bản ghi eval.** Khoá bản ghi là
+  `hash(system_prompt, user_message)`, và `user_message` do `build_user_message` trong `runner.py` sinh ra.
+  Đo trực tiếp: thêm **một dấu cách** vào chuỗi cuối của `build_user_message` studio rồi chạy
+  `python -m studio.evals all --replay` → mọi ca chuyển thành *"bản ghi eval lệch prompt hiện tại"*. Nghĩa là
+  hợp nhất bất kỳ **chữ** nào trong prompt (`build_user_message` 0.74, `context_writes_schema` 0.69,
+  `tools_prompt`) đòi chạy lại `make eval-record` bằng **model thật** cho cả 20 agent theo 7 bước
+  `CONTRIBUTING.md` §3 — cần API key. Đó là việc của một PR khác, có người và có key.
+  Nên bước này giữ **mọi chuỗi prompt nguyên vẹn từng byte ở từng công ty** và chỉ đưa lên core thứ chứng minh
+  được là không đụng prompt: `RunnerError`, `RunResult`, `Generated` (ba lớp kết quả) + `payload_schema`,
+  `output_schema`. Nghiệm thu của chính ràng buộc ấy: `evals all --replay` **cả hai công ty, 0 FAIL**.
+  **`context_writes_schema` ở lại từng công ty** dù `difflib` 0.69 trông như gộp được: company bắt buộc trường
+  `content` (toàn văn artifact, ADR-0012), studio không. Cho studio bản company là đổi hợp đồng đầu ra của 14
+  agent, tức đổi prompt. `output_schema` vì thế **nhận** schema ấy làm tham số thay vì tự dựng — đo hai chiều:
+  bỏ tham số cho core tự dựng → core 2 ca đỏ **và** `test_context_writes_carry_full_content_and_flag_missing`
+  (ADR-0012) của company đỏ.
+  **Một cái bẫy đọc số, ghi lại để lần sau khỏi mắc**: `output_schema` `difflib` **0.21** nhưng hai bản
+  **giống hệt nhau về logic** — lệch chỉ vì company có docstring còn studio không. Đo theo symbol vẫn phải đọc
+  bằng mắt; K3.6c đã dạy "đừng tin difflib trên cả file", bước này thêm "đừng tin nó trên một symbol".
+  `Generated` lên core với **bảy trường chung**; năm trường của company (`output_tokens`, `cost_usd`, `priced`,
+  `duration_ms`, `phase`) ở lớp con — đưa `phase` (ADR-0037) lên core là bắt studio mang trường nó không bao
+  giờ ghi (bài học `AuditLog` K3.5a). Studio `Generated` không thêm trường nào: nó trùng đúng phần chung.
+  **Không sửa một dòng test nào** của hai công ty (1057 + 557 xanh). **K3.6d2 (`AgentRunner`) chưa làm**:
+  `difflib` 0.14 trên 411 dòng company / 202 studio, `_tool_loop`+`_turns` 0.12, `write_context` 0.15.
+
 - refactor(core): **K3.6c — `evals` lên `xagents_core`; cổng CI của mỗi công ty giữ nguyên** (#191). `difflib`
   trên cả file **0.556** — cao nhất trong bốn module của K3.6 — nhưng con số gộp ấy giấu mất chuyện đáng kể.
   Đo TỪNG symbol: `prompt_key`/`recording_path`/`load_recording`/`load_cases`/`_get` = **1.00**,
