@@ -9,7 +9,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from company.events import AuditLog as CompanyAudit
+from company.events import Envelope as CompanyEnvelope
+from company.events import Task
 from company.gates import HumanGate as CompanyHumanGate
+from company.sqlite_bus import SQLiteBus as CompanySQLiteBus
 from studio.events import AuditLog as StudioAudit
 from studio.events import Envelope as StudioEnvelope
 from studio.sqlite_bus import SQLiteBus as StudioSQLiteBus
@@ -354,3 +358,38 @@ def test_replay_ticket_cu_assignee_stack_khong_lam_chet_collect(company_db: Path
 
     assert s["sources"][COMPANY]["ok"], s["sources"][COMPANY]
     assert "TCK-999" in [t["id"] for t in s["tickets"]]
+
+
+def test_ticket_blocked_roi_merge_qua_already_integrated_khong_bao_bloc_gia(company_db: Path) -> None:
+    """Đo được 2026-09-10 (QLKH, TCK-CR-STAGE-001-02): ticket hết retry → `blocked`; người duyệt escalation approve,
+    orchestrator thấy code đã nằm trên nhánh tích hợp nên gọi `DeliveryLead.mark_done_already_integrated` — đưa
+    thẳng ticket về `merged` và ghi audit `ticket.already_integrated` (evidence mang `state` cuối). `status` của
+    orchestrator dựng lại đúng vì `orch/rehydrate.py` áp lại `ticket.blocked`/`ticket.already_integrated` từ
+    audit-log khi mở lại tiến trình (xem chú thích ở `DeliveryLead._retry`).
+
+    `DeliveryLead.replay()` (`console/collect.py::CompanyView._replay`) không có handler cho topic `audit-log`
+    (xem `DeliveryLead.handlers`), nên khi console tự dựng lại toàn bộ trạng thái từ đầu bus mỗi lần đọc, hai hành
+    động trên KHÔNG được áp lại: ticket coi như còn `blocked` mãi mãi, và mặt kính Trực ban tự sinh cảnh báo
+    "bế tắc im lặng" cho một ticket đã xong từ lâu. Tắt nhánh `audit-log` mới thêm ở `_replay()` thì test này đỏ:
+    `st` quay về `blocked` và ticket lọt vào `silent_deadlocks`."""
+    tid = "TCK-DA-XONG-1"
+    bus = CompanySQLiteBus(company_db)
+    task = Task(ticket_id=tid, project_id="P1", requirement_id="R1", assignee="builder",
+                title="việc bị chặn rồi được đánh dấu đã tích hợp", acceptance=["ok"],
+                estimate_tokens=1_000, budget_tokens=2_000)
+    bus.publish(CompanyEnvelope(topic="tasks", key=tid, actor="delivery-lead", payload=task.model_dump()))
+    bus.publish(CompanyEnvelope(topic="audit-log", key="delivery-lead", actor="delivery-lead",
+        payload=CompanyAudit(actor="delivery-lead", action="ticket.blocked", ticket_id=tid,
+                             evidence=json.dumps({"ticket_id": tid, "retry": 3, "max_retries": 3},
+                                                  ensure_ascii=False)).model_dump()))
+    bus.publish(CompanyEnvelope(topic="audit-log", key="delivery-lead", actor="delivery-lead",
+        payload=CompanyAudit(actor="delivery-lead", action="ticket.already_integrated", ticket_id=tid,
+                             evidence=json.dumps({"ticket_id": tid, "state": "merged"},
+                                                  ensure_ascii=False)).model_dump()))
+    bus.close()
+
+    s = state(company_db, None)
+
+    by_id = {t["id"]: t["st"] for t in s["tickets"]}
+    assert by_id[tid] == "merged", by_id
+    assert tid not in {d["id"] for d in s["silent_deadlocks"]}
