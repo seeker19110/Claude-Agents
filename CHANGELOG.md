@@ -20,6 +20,12 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   `uv sync --locked` **exit 1** "lockfile needs to be updated"; có lock → exit 0. Cả sáu package xanh:
   gateway 251, console 297, core 477, studio 587, keeper 532, company 1098 = **3 242 test**, phủ 100%
   (đo lại sau khi rebase lên `main` mang #243/#244 — console tăng 259 → 297 vì hai PR đó, không phải vì PR này).
+  Kèm **vá một cổng CI hỏng vì nguyên nhân bên ngoài**: `studio-unit` chết ở `sudo apt-get update` với exit 100
+  vì source Google Chrome của runner image phục vụ `Packages.gz` lệch hash so với chính `Release` của nó —
+  `apt-get update` đọc MỌI source nên một cái hỏng là cả lệnh hỏng, job chết trước khi chạy test nào. Hỏng **y
+  hệt qua hai lần chạy** (cùng SHA256), nên không phải dao động. Gỡ source đó trước khi `update`; CI không dùng
+  Chrome ở đâu cả. **Không** dùng `|| true`: ba test ghép video thật `skipif` trên `shutil.which("ffmpeg")`, nên
+  thiếu ffmpeg là chúng lặng lẽ bỏ qua và job vẫn xanh — đúng kiểu "xanh vì rỗng".
 
 - docs: **thêm bước "quét toàn repo trước khi tạo PR" vào `QUY-TRINH-GIT.md` §5** (#242). Rút từ chính sự cố PR
   #193 (đỏ cổng `metadata` vì thiếu dòng CHANGELOG khi cherry-pick sang nhánh khác). Bước 0 mới: `grep` dẫn
