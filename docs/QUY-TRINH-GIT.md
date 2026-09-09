@@ -85,6 +85,14 @@ song để đá vào cùng nền — nhánh không bao giờ diverge lâu, nên 
 đánh đổi: bước mở PR trở thành hàng đợi tuần tự giữa các phiên — phiên nào xong sau phải đợi phiên xong
 trước merge trước.
 
+**Cùng một phiên, làm việc kế tiếp trong lúc PR của chính mình còn mở**: được, và không cần đợi. Luật chỉ
+khoá bước `gh pr create` (và merge), không khoá code hay commit — cứ mở nhánh/worktree cho việc kế tiếp,
+viết code, chạy test, **commit tại chỗ** như bình thường. Chỉ giữ lại đúng hai việc cho tới khi PR trước
+merge: (1) đừng `gh pr create` một PR thứ hai, (2) đừng push nhánh đó lên remote nếu commit sẽ phải viết
+lại do rebase — an toàn nhất là commit cục bộ, `push` sau khi đã rebase. Ngay khi PR trước merge: `git fetch
+origin` + `git rebase origin/main` trên nhánh việc kế tiếp (giữ lại các commit đã có), chạy lại `make lint`
++ `make test`, rồi mới `push` + `gh pr create`.
+
 ## 3. Commit
 
 - Conventional Commits: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `style`, `perf`,

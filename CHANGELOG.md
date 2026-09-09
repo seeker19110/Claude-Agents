@@ -6,6 +6,10 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs: **làm rõ `QUY-TRINH-GIT.md` §2c — code + commit tại chỗ trong khi chờ PR khác merge** (#193). Luật
+  "chỉ một PR mở tại một thời điểm" chỉ khoá bước `gh pr create`/merge, không khoá code hay commit — ghi rõ
+  thành câu chữ tường minh thay vì để ngầm hiểu, kèm quy trình cụ thể (nhánh/worktree riêng, commit tại chỗ,
+  chỉ giữ lại push cho tới khi PR trước merge và đã rebase).
 - refactor(core): **K3.6c — `evals` lên `xagents_core`; cổng CI của mỗi công ty giữ nguyên** (#191). `difflib`
   trên cả file **0.556** — cao nhất trong bốn module của K3.6 — nhưng con số gộp ấy giấu mất chuyện đáng kể.
   Đo TỪNG symbol: `prompt_key`/`recording_path`/`load_recording`/`load_cases`/`_get` = **1.00**,
