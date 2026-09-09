@@ -69,7 +69,7 @@
         "family_safe": {
           "default": [],
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/FamilySafeEntry"
           },
           "title": "Family Safe",
           "type": "array"
@@ -95,6 +95,26 @@
   ],
   "additionalProperties": false,
   "$defs": {
+    "FamilySafeEntry": {
+      "description": "Một chỗ cùng cơ chế ĐÃ SOI và kết luận an toàn, mang theo LÝ DO (xem docstring model).",
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "reason"
+      ],
+      "title": "FamilySafeEntry",
+      "type": "object"
+    },
     "RunOutcome": {
       "description": "Output THẬT của một lần chạy lệnh CI — không phải lời khai của model.",
       "properties": {
