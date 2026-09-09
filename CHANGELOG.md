@@ -6,6 +6,9 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(keeper): **BT0 — đổi tên công ty bảo trì thành `keeper` + đặc tả triển khai** (#207). ADR-0006 đổi
+  tên file và nội dung (`Upkeep-crew` → `keeper`); thêm `keeper/README.md` và `keeper/docs/DAC-TA-KEEPER.md`
+  — 9 PR BT0–BT8, 7 bất biến, bản đồ 9 topic, mỗi mục có test đo hai chiều và cạm bẫy. Chưa có mã.
 - fix(core): **thế hệ gate là bộ đếm, không phải dấu thời gian tường** (#203). Phát hiện 4 của audit
   2026-09-09. `scheduler._the_he` phân biệt hai thế hệ gate của cùng `subject_id` bằng
   `created_at.isoformat(microseconds)`, và nó hỏng theo HAI đường: (1) `datetime.now(UTC)` trên Windows có bước
@@ -30,8 +33,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   sạch cả hai, không cần chú nào. Kèm phát hiện 7: `actions/checkout` v4 → v7 ở `protection-guard` và
   `pr-policy` (hai chỗ cuối còn v4, đang sinh cảnh báo Node 20 deprecated).
 
-- docs(adr): **ADR-0006 công ty con `Upkeep-crew` bảo trì toàn dự án** (#201). Chỉ là quyết định kiến
-  trúc, chưa có mã: 6 khối / 8 agent / gate `upkeep`, 10 tính năng nâng cao (bậc rủi ro, bằng chứng đo hai
+- docs(adr): **ADR-0006 công ty con `keeper` bảo trì toàn dự án** (#201). Chỉ là quyết định kiến
+  trúc, chưa có mã: 6 khối / 8 agent / gate `keeper`, 10 tính năng nâng cao (bậc rủi ro, bằng chứng đo hai
   chiều bắt buộc, ngân sách thay đổi, sổ nợ có đáo hạn), lộ trình 5 PR.
 - fix(company): **DB chạy thật không mở lại được sau khi `Assignee` thắt về `builder`** (#203). Audit toàn diện
 - fix(company): **DB chạy thật không mở lại được sau khi `Assignee` thắt về `builder`** (#202). Audit toàn diện
