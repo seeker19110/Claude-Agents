@@ -55,6 +55,15 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   "chỉ một PR mở tại một thời điểm" chỉ khoá bước `gh pr create`/merge, không khoá code hay commit — ghi rõ
   thành câu chữ tường minh thay vì để ngầm hiểu, kèm quy trình cụ thể (nhánh/worktree riêng, commit tại chỗ,
   chỉ giữ lại push cho tới khi PR trước merge và đã rebase).
+- feat(studio): **4L-7 — trace một video và hẹn hoãn sống sót restart** (#TBD). Studio không có gì tương đương
+  `company.trace`: muốn biết một video đã đi qua những gì, ai ký gate publish và vì lý do gì là phải mở SQLite
+  tra tay. Phần chung của hai công ty (cấu trúc dòng, đọc `audit-log`, tổng kết, cách in) lên
+  `xagents_core/trace.py`; `company/trace.py` rút gọn còn `resolve`/`_belongs`/`_domain` của mình;
+  `studio/trace.py` mới, mở DB `mode=ro`. Kèm theo: `defer.until` — bản ghi hẹn hoãn đã có trên audit-log từ
+  K3.3d nhưng chưa ai đọc lại — nay được `Orchestrator._nap_lai_hen` nạp lúc `_rehydrate`, nên mở lại tiến
+  trình không còn mất hẹn và gọi thẳng backend vừa nói "thử lại sau 1515s". Chỉ nạp hẹn của event CHƯA có
+  `orchestrated`, khoá theo `event_id` (TRAPS §1 khuôn 3), không đụng `last_sync`.
+
 - refactor(core): **K3.6c — `evals` lên `xagents_core`; cổng CI của mỗi công ty giữ nguyên** (#191). `difflib`
   trên cả file **0.556** — cao nhất trong bốn module của K3.6 — nhưng con số gộp ấy giấu mất chuyện đáng kể.
   Đo TỪNG symbol: `prompt_key`/`recording_path`/`load_recording`/`load_cases`/`_get` = **1.00**,
