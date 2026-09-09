@@ -7,7 +7,9 @@ import pytest
 from company.bus import InMemoryBus, PermissionDenied
 from company.events import AuditLog, Envelope
 from company.gate_cli import PersistentGate, trusted_decision
-from company.gates import GateRequest
+from company.gates import GateRequest, gate_approvers
+from company.llm import FakeClient
+from company.orchestrator import Orchestrator
 from company.orchestrator import main as orch_main
 
 
@@ -74,3 +76,54 @@ def test_subagent_actor_khong_dong_duoc_gate():
     assert "T1" in gate.pending and "T1" in PersistentGate(bus).pending
     gate.decide("T1", "approve", by="human:lead", reason="mock thiếu header X-Idempotency-Key")
     assert PersistentGate(bus).is_approved("T1")
+
+
+# ---------- K3.7: allowlist người duyệt của company (MẶC ĐỊNH TẮT) ----------
+
+def test_company_gate_approvers_mac_dinh_rong_khong_doi_hanh_vi(monkeypatch):
+    """Biến KHÔNG đặt = hành vi trước K3.7 y nguyên: chỉ four-eyes, ai (khác người tạo) cũng duyệt được.
+
+    Đây là ca chống hồi quy của chính việc thêm tính năng: allowlist là thứ MỚI với company, nên nếu nó bật
+    theo mặc định thì mọi gate đang chờ ở một dự án thật sẽ đột nhiên không ai ký được."""
+    monkeypatch.delenv("COMPANY_GATE_APPROVERS", raising=False)
+    assert gate_approvers() == frozenset()
+    bus = InMemoryBus(); gate = PersistentGate(bus, approvers=gate_approvers())
+    gate.request(GateRequest(kind="spec", subject_id="SPEC-1", created_by="delivery-lead", checklist=["c1"]))
+    assert gate.decide("SPEC-1", "approve", by="human:khong-co-trong-danh-sach").decision == "approve"
+    assert PersistentGate(bus).is_approved("SPEC-1")
+
+
+def test_company_gate_approvers_bat_thi_ep_four_eyes(monkeypatch):
+    """Đặt biến → chỉ người trong danh sách ký được; người ngoài bị từ chối bằng PermissionError, gate vẫn chờ."""
+    monkeypatch.setenv("COMPANY_GATE_APPROVERS", "human:pm, human:cto")
+    assert gate_approvers() == frozenset({"human:pm", "human:cto"})
+    bus = InMemoryBus(); gate = PersistentGate(bus, approvers=gate_approvers())
+    gate.request(GateRequest(kind="spec", subject_id="SPEC-2", created_by="delivery-lead", checklist=["c1"]))
+    with pytest.raises(PermissionError, match="COMPANY_GATE_APPROVERS"):
+        gate.decide("SPEC-2", "approve", by="human:nguoi-la")
+    assert "SPEC-2" in gate.pending
+    gate.decide("SPEC-2", "approve", by="human:pm")
+    assert PersistentGate(bus).is_approved("SPEC-2")   # replay không kiểm lại danh sách (có thể đã đổi)
+
+
+def test_company_gate_approvers_bat_khong_chan_nghiem_thu_khach(monkeypatch):
+    """`sc-security` (K3.7): bật `COMPANY_GATE_APPROVERS` không được làm gate `UAT-*` (nghiệm thu) hết đóng được
+    — chữ ký khách (`signed_by` trong `acceptance-results`) là chuỗi tự do, không phải id một người duyệt nội
+    bộ, nên `_close_acceptance_gate` phải gọi `enforce=False`. Trước bản vá: `enforce` mặc định `True` khiến
+    `PermissionError` bị `_close_acceptance_gate` nuốt thành `handler_error`, ticket đóng băng vĩnh viễn dù
+    `acceptance-results` đã "đã ký"."""
+    from test_orchestrator import _drive_to_plan, _pub, handler
+
+    monkeypatch.setenv("COMPANY_GATE_APPROVERS", "human:po,human:release-manager")
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    _drive_to_plan(bus, orch)
+    orch.run()
+    rid = orch.lead.releases[0]
+    orch.gate.decide(rid, "approve", by="human:release-manager")
+    orch.run()
+
+    _pub(bus, "acceptance-results", rid, "ops",
+         {"release_id": rid, "project_id": "P1", "verdict": "accepted", "signed_by": "customer:khong-trong-danh-sach"})
+    orch.run()
+    assert orch.lead.state["T1"] == "closed", "chữ ký khách không nằm trong allowlist người duyệt nội bộ vẫn phải đóng được nghiệm thu"
+    assert not any(a.get("action") == "handler_error" for a in (e.payload for e in bus.replay(topic="audit-log")))

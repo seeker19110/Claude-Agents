@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import copy
 import json
-import re
 import statistics
 from collections import defaultdict
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
+
+from xagents_core.supervisor import DEBT_HINT as DEBT_HINT
+from xagents_core.supervisor import DEBT_RE as DEBT_RE
+from xagents_core.supervisor import Budget as Budget
+from xagents_core.supervisor import SupervisorBase
+from xagents_core.supervisor import debt_ids as debt_ids
+from xagents_core.ticket_model import Budgeted
 
 from .bus import InMemoryBus
 from .events import NAMESPACE_OWNERS, AuditLog, Envelope, SupervisorAction, Task
@@ -18,60 +23,24 @@ from .roles import ROLE
 # ước lượng công của engineer, còn review là chi phí cố định của quy trình; cộng chung thì mọi ticket đều bị cắt.
 REVIEW_ACTORS = frozenset({ROLE.QA, ROLE.SECURITY})
 
-# ADR-0032: mã "nợ kiến trúc treo" trong finding của review (threat-model, schema, infra, code review): `DEF-01`, `SD-3`,
-# hoặc `debt: <mã>` viết tự do. Cùng một mã nhắc ≥ `debt_threshold` review LIÊN TIẾP của cùng nguồn trong cùng dự án
-# là quyết định đang bị né qua từng ticket — không đợi người tình cờ đọc finding thứ n.
-DEBT_RE = re.compile(r"\b((?:DEF|SD)-\d+)\b|\bdebt:\s*([A-Za-z0-9_.-]+)", re.IGNORECASE)
-DEBT_HINT = "cần ticket ADR + người ký: quyết định kiến trúc này đang bị né qua từng ticket"
+# `Budget`, `DEBT_RE`, `DEBT_HINT`, `debt_ids` và cơ chế đếm nợ (`_count_debt`/`debt_table`) ở
+# `xagents_core.supervisor` từ K3.7; re-export giữ nguyên chỗ nhập của mọi nơi gọi và của test.
 
 
-def debt_ids(review: dict) -> set[str]:
-    """Mã nợ nhắc trong một review-results: mọi `findings[].text` + `root_cause`."""
-    texts = [str(f.get("text") or "") for f in review.get("findings") or [] if isinstance(f, dict)]
-    if review.get("root_cause"): texts.append(str(review["root_cause"]))
-    out = set()
-    for m in DEBT_RE.finditer("\n".join(texts)):
-        out.add((m.group(1) or m.group(2)).upper())
-    return out
-
-
-@dataclass
-class Budget:
-    limit: int
-    used: int = 0            # TỔNG token của agent làm ticket (input + output) — cho báo cáo và chi phí
-    # Token ĐẦU RA, và đây mới là thứ so với `limit`. `used` phình theo số lượt tool (mỗi lượt gửi lại cả hội
-    # thoại) nên nó không đo được khối lượng công việc — thứ mà delivery-lead ước lượng khi đặt `budget_tokens`.
-    # Đo được khi chạy thật (2026-09-04): ticket QLKH-001 có output 18868 nhưng tổng 734862; ngân sách 90000 bị
-    # coi là cạn sạch, ticket bị cắt giữa chừng và công sức bị `workspace_reset` xoá, lặp nhiều lần.
-    output_used: int = 0
-    review_used: int = 0     # token của reviewer/QA/security cho ticket — theo dõi, không trừ vào `limit`
-    limit_usd: float | None = None  # trần tiền của ticket (Task.budget_usd), ngoài trần token
-    cost_usd: float = 0.0
-    @property
-    def ratio(self) -> float: return self.output_used / self.limit if self.limit else 0.0
-    @property
-    def ratio_usd(self) -> float: return self.cost_usd / self.limit_usd if self.limit_usd else 0.0
-
-class Supervisor:
+class Supervisor(SupervisorBase):
     """Watchdog + cost controller + knowledge base. Subscribe mọi topic.
 
     Ngân sách đo hai đơn vị (ADR-0012): token (như trước) và USD từ `audit-log.cost_usd` — token của model mạnh và model
     rẻ khác giá nhiều lần, chỉ đếm token thì không biết đang đốt bao nhiêu tiền. Trần theo ticket (`Task.budget_usd`)
     và theo dự án (`project_budget_usd`, từ llm.yaml `budget_usd`): chạm 80% → warn, chạm 100% → budget_cut ticket /
     pause dự án. Lời gọi không có giá (`unpriced`) được đếm riêng để không ai tưởng là miễn phí."""
-    WARN_AT, CUT_AT = 0.8, 1.0
-
     def __init__(self, bus: InMemoryBus, max_retries: int = 3, ticket_timeout: timedelta = timedelta(hours=4),
                  project_budget_usd: float | None = None, debt_threshold: int = 3):
+        super().__init__(debt_threshold=debt_threshold)
         self.bus, self.max_retries, self.ticket_timeout = bus, max_retries, ticket_timeout
         self.project_budget_usd = project_budget_usd
-        # ADR-0032: nợ kiến trúc treo. Mọi thứ dưới đây là hàm thuần của bus (đếm lại khi replay) — không có gì
-        # chỉ sống trong RAM (khuôn 2, TRAPS.md). project_id → debt_id → sổ: tổng lần nhắc, ticket, nguồn, chuỗi
-        # liên tiếp theo nguồn, và `fired` = số lần đã chạm ngưỡng (thế hệ của khoá once, khuôn 3).
-        self.debt_threshold = max(1, int(debt_threshold))
-        self.debt: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
-        self.debt_due: list[dict[str, Any]] = []  # mỗi lần một mã nợ chạm ngưỡng: orchestrator mở gate escalation dự án
-        self.ticket_project: dict[str, str] = {}  # review-results có thể thiếu project_id; học từ `tasks`
+        # ADR-0032 (`debt`, `debt_due`, `ticket_project`, `debt_threshold`) ở `SupervisorBase`: mọi thứ ấy là
+        # hàm thuần của bus (đếm lại khi replay) — không có gì chỉ sống trong RAM (khuôn 2, TRAPS.md).
         self.budgets: dict[str, Budget] = {}
         self.project_cost: dict[str, float] = defaultdict(float)
         self.project_warned: set[str] = set(); self.project_paused: set[str] = set()
@@ -82,10 +51,15 @@ class Supervisor:
         self.error_signatures: dict[str, list[str]] = defaultdict(list)
         self.actions: list[SupervisorAction] = []
         self.knowledge: list[dict] = []
-        self._escalated_once: set[str] = set()
         self._report_cache: tuple[tuple[int, int, int], dict] | None = None  # (len(bus), số action, số bài học) → báo cáo
         self.replaying = False  # dựng lại từ log: cộng dồn ngân sách/chữ ký lỗi nhưng không phát lại supervisor-actions
         bus.subscribe("*", self._on)
+
+    def _budget(self, item: Budgeted, limit_usd: float | None = None) -> Budget:
+        """Sổ ngân sách của một đơn vị công việc có trần token. `Budgeted` là Protocol CẤU TRÚC
+        (`xagents_core.ticket_model`): `Task` không kế thừa gì, nó chỉ có `budget_tokens` — cùng lý do
+        `VideoBrief` của studio đi vừa chữ ký này mà không phải mang `project_id` của company."""
+        return Budget(item.budget_tokens, limit_usd=limit_usd)
 
     def _act(self, target: str, action: str, reason: str, evidence: str | None = None) -> None:
         a = SupervisorAction(target=target, action=action, reason=reason, evidence=evidence)  # type: ignore[arg-type]
@@ -130,7 +104,7 @@ class Supervisor:
         elif env.topic == "tasks":
             t = Task.model_validate(env.payload)
             self.ticket_project[t.ticket_id] = t.project_id
-            self.budgets.setdefault(t.ticket_id, Budget(t.budget_tokens, limit_usd=t.budget_usd))
+            self.budgets.setdefault(t.ticket_id, self._budget(t, t.budget_usd))
             if t.retry >= self.max_retries:
                 self._act(t.ticket_id, "escalate", f"retry {t.retry} ≥ {self.max_retries}")
         elif env.topic == "audit-log":
@@ -158,40 +132,6 @@ class Supervisor:
             if env.actor not in NAMESPACE_OWNERS.get(env.payload["namespace"], set()):
                 self._act(env.actor, "pause", "ghi sai namespace")
 
-    def _count_debt(self, env: Envelope) -> None:
-        """ADR-0032: đếm mã nợ theo (dự án, nguồn review). Review của một nguồn KHÔNG nhắc mã nợ nó từng nhắc → chuỗi
-        của nguồn đó về 0 (nợ đã trả hoặc đã có ADR). Chạm bội số của ngưỡng → một mục `debt_due` mang `times`
-        (lần thứ mấy): lần sau nợ tăng tiếp vẫn mở gate mới, không bị khoá once của lần trước nuốt."""
-        p = env.payload
-        pid = p.get("project_id") or self.ticket_project.get(str(p.get("ticket_id") or env.key))
-        if not pid: return
-        src = str(p.get("source") or env.actor); tid = str(p.get("ticket_id") or env.key)
-        ids = debt_ids(p); book = self.debt[str(pid)]
-        for did, rec in book.items():
-            if did not in ids and src in rec["streak"]: rec["streak"][src] = 0
-        for did in sorted(ids):
-            rec = book.setdefault(did, {"mentions": 0, "tickets": [], "sources": [], "streak": {}, "fired": 0})
-            rec["mentions"] += 1
-            if tid not in rec["tickets"]: rec["tickets"].append(tid)
-            if src not in rec["sources"]: rec["sources"].append(src)
-            rec["streak"][src] = rec["streak"].get(src, 0) + 1
-            if rec["streak"][src] % self.debt_threshold == 0:
-                rec["fired"] += 1
-                self.debt_due.append({"project_id": str(pid), "debt_id": did, "times": rec["fired"],
-                                      "consecutive": rec["streak"][src], "source": src, "mentions": rec["mentions"],
-                                      "tickets": list(rec["tickets"]), "hint": DEBT_HINT})
-
-    def debt_table(self, project_id: str | None = None) -> list[dict[str, Any]]:
-        """Bảng nợ kiến trúc đã đếm sẵn (cho báo cáo sprint, `status`, và prompt supervisor): mỗi dòng một mã nợ."""
-        rows = []
-        for pid, book in sorted(self.debt.items()):
-            if project_id and pid != project_id: continue
-            for did, rec in sorted(book.items()):
-                rows.append({"project_id": pid, "debt_id": did, "mentions": rec["mentions"],
-                             "consecutive": max(rec["streak"].values(), default=0), "tickets": list(rec["tickets"]),
-                             "sources": list(rec["sources"]), "escalated": rec["fired"], "threshold": self.debt_threshold})
-        return rows
-
     def _check_ticket(self, tid: str, b: Budget) -> None:
         """Chạm 100% → budget_cut, 80% → warn; mỗi ngưỡng chỉ báo một lần cho tới khi `budget.extended` (như dự án):
         sau ngưỡng mọi audit của ticket (kể cả 0 token) đều lặp lại hành động thì gate escalation mở đi mở lại."""
@@ -214,13 +154,6 @@ class Supervisor:
         elif ratio >= self.WARN_AT and pid not in self.project_warned:
             self.project_warned.add(pid)
             self._act(pid, "warn", f"dự án đã dùng {ratio:.0%} ngân sách tiền ({cost:.2f} USD)")
-
-    def escalate_gate(self, subject_id: str, reason: str, once_key: str | None = None) -> None:
-        """Gate quá hạn: người duyệt im lặng cũng là một dạng bế tắc, phải hiện ra như mọi bế tắc khác."""
-        key = once_key or f"gate:{subject_id}"
-        if key in self._escalated_once: return
-        self._escalated_once.add(key)
-        self._act(subject_id, "escalate", reason)
 
     def check_timeouts(self, now: datetime | None = None, active: set[str] | None = None) -> list[str]:
         """Escalate key im lặng quá ticket_timeout. `active` (ticket đang chạy, từ delivery-lead) giới hạn phạm vi

@@ -31,7 +31,7 @@
 | Trạng thái ticket và chuyển đổi | `TicketState`, `TRANSITIONS` trong `events.py`; máy trạng thái `src/company/delivery.py` | `tests/test_delivery_and_gates.py` |
 | Review nào bắt buộc cho ticket | `DeliveryLead.required_reviews` (`delivery.py`); `RISK_TAGS` trong `events.py` | `tests/test_release_flow.py` |
 | Checklist human gate | `gates/checklists.md` → nguồn bằng chứng `src/company/gate_checklists.py` → `make subagents` | `tests/test_gate_brief.py`, `test_subagents.py` |
-| Gate: hạn, nhắc, four-eyes, allowlist | `src/company/gates.py`, bền qua restart: `gate_cli.PersistentGate` | `tests/test_gate_trust.py` |
+| Gate: hạn, nhắc, four-eyes, allowlist | Cơ chế chung ở `xagents-core/src/xagents_core/gates.py` + `gate_cli.py` (K3.7); `src/company/gates.py` chỉ còn `GateKind`/`Decision` + `COMPANY_GATE_APPROVERS` (mặc định KHÔNG đặt = chỉ four-eyes như trước), bền qua restart: `gate_cli.PersistentGate` | `tests/test_gate_trust.py`, `xagents-core/tests/test_gates.py`, `xagents-core/tests/test_gate_cli.py` |
 | Điều kiện cho phép GIAO ticket (kế hoạch không có gate, ADR-0037) | `_check_plan` trong `orch/ticket_fsm.py` (danh sách `problems`) → `lead.plans_ok` → guard trong `DeliveryLead.dispatch`; dựng lại khi mở bus: `orch/rehydrate.py` nhánh `plan.proposed` | `tests/test_check_plan_adr0037.py`, `tests/test_bo_gate_plan_adr0037.py` |
 
 ## Bằng chứng do code sinh
@@ -58,7 +58,7 @@
 | Adapter provider (anthropic / openai / claude-code / codex / fake), retry, bảng giá | `src/company/llm.py` |
 | Chọn backend theo tier, xoay khi hết quota, `prefer` | `xagents-core/src/xagents_core/routing.py` (K3.3d — `src/company/routing.py` chỉ còn là shim); cấu hình `llm.yaml` (`llm.example.yaml`, `llm.claude-gateway.yaml`) |
 | Tool của công ty vào `claude -p` qua MCP | `src/company/mcp_bridge.py` (ADR-0024); dò chế độ: `probe.py` |
-| Ngân sách ticket/dự án, watchdog, pause/escalate, bài học | `src/company/supervisor.py`; `BUDGET_FACTOR` trong `events.py` |
+| Ngân sách ticket/dự án, watchdog, pause/escalate, bài học | `src/company/supervisor.py` (kế thừa `xagents_core.supervisor.SupervisorBase` — `sprint_report()` Ở LẠI đây, nó nói về ticket); `BUDGET_FACTOR` trong `events.py` |
 | Nợ kiến trúc treo: mã nợ `DEBT_RE`, đếm liên tiếp theo nguồn, bảng `debt_table`; gate cấp dự án `_check_debt`; ngưỡng `debt_reviews` | `supervisor.py`, `orchestrator.py`, `llm.py` (`LLMConfig.debt_reviews`) — ADR-0032 |
 | Số liệu từ audit-log | `src/company/metrics.py` |
 | Dòng thời gian một ticket/release/dự án (`orchestrator trace <id> [--json]`) | `src/company/trace.py` giữ `resolve`/`_belongs`/`_domain` riêng company; cấu trúc dòng, đọc `audit-log`, tổng kết, cách in ở `xagents-core/src/xagents_core/trace.py` từ 4L-7; test `tests/test_trace.py`, `xagents-core/tests/test_trace.py` |

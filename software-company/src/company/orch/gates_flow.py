@@ -215,7 +215,11 @@ def _close_acceptance_gate(o: Orchestrator, env: Envelope, res: StepResult) -> N
     decision: Decision = {"accepted": "approve", "rejected": "reject"}.get(str(verdict), "request_changes")  # type: ignore[assignment]
     by = str(env.payload.get("signed_by") or env.actor)
     try:
-        o.gate.decide(sid, decision, by=by, reason=f"acceptance-results: {verdict}", actor=ACTOR)
+        # `enforce=False`: `by` là chữ ký khách (chuỗi tự do trong acceptance-results), không phải id một
+        # người duyệt nội bộ — allowlist `COMPANY_GATE_APPROVERS` (K3.7) nói về ai được duyệt spec/release/
+        # escalation, không nói về khách hàng. Four-eyes (`created_by=ROLE.OPS` ở `_open_acceptance_gate`) vẫn
+        # áp bình thường qua `super().decide` bất kể `enforce`.
+        o.gate.decide(sid, decision, by=by, reason=f"acceptance-results: {verdict}", actor=ACTOR, enforce=False)
         res.actions.append(f"gate:acceptance:{sid}:{decision}")
     except (KeyError, PermissionError) as e:
         o._audit("handler_error", {"agent": ROLE.OPS, "error": str(e)[:300]})

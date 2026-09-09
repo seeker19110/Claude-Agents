@@ -1,53 +1,44 @@
+"""Gate của company = cơ chế chung ở `xagents_core.gates` + vốn từ của miền (K3.7).
+
+Cơ chế (sổ `pending`, four-eyes, `due`/`overdue`, allowlist người duyệt) ở core; ở đây chỉ còn `GateKind`,
+`Decision` và tên biến môi trường. `COMPANY_GATE_APPROVERS` là thứ MỚI của K3.7: company trước đây không có
+allowlist người duyệt (studio đã có từ lâu). Mặc định KHÔNG ĐẶT = danh sách rỗng = hành vi cũ y nguyên
+(chỉ four-eyes) — bật lên bằng cách đặt biến, và chỉ khi đó mới có người bị từ chối vì không nằm trong danh sách.
+"""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
-from typing import Literal
+from dataclasses import dataclass
+from typing import Any, Literal
+
+from xagents_core.gates import GateRequest as CoreGateRequest
+from xagents_core.gates import HumanGate as CoreHumanGate
+from xagents_core.gates import approvers
 
 # ADR-0037: `plan` KHÔNG còn là gate. Kế hoạch được `_check_plan` (code) chặn rồi dispatch ngay — người ký hai
 # gate công đoạn (`spec`, `release`), cộng nghiệm thu của khách và gate bất thường.
 GateKind = Literal["spec", "release", "escalation", "acceptance"]
 Decision = Literal["approve", "request_changes", "reject", "hold", "rollback", "pending"]
 
+APPROVERS_ENV = "COMPANY_GATE_APPROVERS"  # "human:pm,human:cto" — KHÔNG đặt (mặc định) = ai cũng duyệt được
+
+
 @dataclass
-class GateRequest:
-    kind: GateKind
-    subject_id: str
-    checklist: list[str]
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    decision: Decision = "pending"
-    reason: str = ""
-    decided_by: str | None = None
-    created_by: str | None = None
+class GateRequest(CoreGateRequest):
+    """Trường y hệt core; lớp riêng để company nói về gate của mình bằng tên của mình."""
 
-class HumanGate:
+
+def gate_approvers(cfg: Any = None) -> frozenset[str]:
+    """Người được duyệt gate: env `COMPANY_GATE_APPROVERS` thắng, sau đó cấu hình `gate.approvers` (nếu có).
+
+    Không đặt biến → rỗng → `HumanGate` chỉ áp four-eyes như trước K3.7."""
+    return approvers(APPROVERS_ENV, cfg)
+
+
+class HumanGate(CoreHumanGate):
     """Không bao giờ tự đi tiếp. Separation of duties: decided_by != created_by."""
-    def __init__(self, timeout: timedelta = timedelta(hours=24), remind_at: timedelta = timedelta(hours=12)):
-        self.timeout, self.remind_at = timeout, remind_at
-        self.pending: dict[str, GateRequest] = {}
-        self.history: list[GateRequest] = []
 
-    def request(self, req: GateRequest) -> GateRequest:
-        self.pending[req.subject_id] = req; return req
+    APPROVERS_SOURCE = f"danh sách người duyệt ({APPROVERS_ENV} / gate.approvers)"
 
-    def decide(self, subject_id: str, decision: Decision, by: str, reason: str = "") -> GateRequest:
-        req = self.pending[subject_id]
-        if req.created_by and req.created_by == by:
-            raise PermissionError("người duyệt phải khác người tạo (four-eyes)")
-        req.decision, req.decided_by, req.reason = decision, by, reason
-        self.history.append(self.pending.pop(subject_id)); return req
-
-    def overdue(self, now: datetime | None = None) -> list[GateRequest]:
-        """Gate quá hạn, để orchestrator escalate — quá hạn không bao giờ tự đi tiếp, nhưng cũng không im lặng."""
-        return [r for r in self.pending.values() if (now or datetime.now(UTC)) - r.created_at > self.timeout]
-
-    def due(self, now: datetime | None = None) -> tuple[list[str], list[str]]:
-        now = now or datetime.now(UTC); remind, overdue = [], []
-        for sid, r in self.pending.items():
-            age = now - r.created_at
-            if age > self.timeout: overdue.append(sid)
-            elif age > self.remind_at: remind.append(sid)
-        return remind, overdue
-
-    def is_approved(self, subject_id: str) -> bool:
-        return any(r.subject_id == subject_id and r.decision == "approve" for r in self.history)
+    # Thu hẹp kiểu về `GateRequest` của company (core khai lớp cơ sở): nơi gọi vẫn nhận đúng lớp của mình.
+    pending: dict[str, GateRequest]  # type: ignore[assignment]
+    history: list[GateRequest]  # type: ignore[assignment]

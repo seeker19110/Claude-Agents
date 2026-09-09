@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from company.gate_cli import PersistentGate as CompanyGate
+from company.gates import APPROVERS_ENV as COMPANY_APPROVERS_ENV
 from company.sqlite_bus import SQLiteBus as CompanySQLiteBus
 from studio.gates import APPROVERS_ENV
 
@@ -48,6 +49,20 @@ def test_allowlist_nguoi_duyet_cua_xuong_video(company_db: Path, studio_db: Path
     assert "danh sách người duyệt" in str(e.value)
     out = decide(company_db, studio_db, subject_id="PUB-vid-042", xuong=STUDIO, decision="approve",
                  by="human:owner", reason="ok")
+    assert out["ok"] and out["event_id"]
+
+
+def test_allowlist_nguoi_duyet_cua_cong_ty_gia_cong(company_db: Path, studio_db: Path,
+                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """K3.7: `COMPANY_GATE_APPROVERS` phải áp trên đường console giống hệt CLI/orchestrator — trước bản vá này
+    console mở `PersistentGate(bus)` không truyền `approvers`, nên allowlist bị bỏ qua trên riêng đường này."""
+    monkeypatch.setenv(COMPANY_APPROVERS_ENV, "human:cto")
+    with pytest.raises(GateError) as e:
+        decide(company_db, studio_db, subject_id="REL-001", xuong=COMPANY, decision="approve",
+               by="human:intern", reason="")
+    assert "danh sách người duyệt" in str(e.value)
+    out = decide(company_db, studio_db, subject_id="REL-001", xuong=COMPANY, decision="approve",
+                 by="human:cto", reason="ok")
     assert out["ok"] and out["event_id"]
 
 
