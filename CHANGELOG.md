@@ -6,6 +6,10 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(studio): **`claude -p` không tool cần > 1 lượt** (#PENDING). `--max-turns 1` cắt đúng lượt CLI ép
+  `--json-schema` → `error_max_turns`: `make eval-record` bằng model thật chết 1/2 ca ở `seo-optimizer`. Company
+  đã đo và vá cùng lỗi này 2026-09-05 (`CLI_NO_TOOL_TURNS`), studio không được port — nay port sang. Đo hai
+  chiều bằng chính model thật: trước 1/2 pass, sau 2/2 pass; test cũ khẳng định `== "1"` sửa thành `> 1`.
 - fix(core): **`gate.request` tin `env.actor`, không tin `created_by` tự khai** (#212). Phát hiện NGHIÊM TRỌNG
   còn lại của `sc-security` ở K3.7, pre-existing từ trước khi hợp nhất: `PersistentGate.apply()` đọc thẳng
   `created_by` trong evidence của một topic MỞ, nên một envelope `gate.request` mang `created_by` bịa là đủ để
