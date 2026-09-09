@@ -324,3 +324,33 @@ def test_gateway_status_thanh_cong_tra_danh_sach_account(tmp_path: Path, company
     assert by_name["b@x.com"]["ok"] is False and "Nghỉ 30s" in by_name["b@x.com"]["st"]
     assert by_name["c@x.com"]["ok"] is False and by_name["c@x.com"]["st"] == "Hết hạn token"
     assert "Authorization" in captured_headers
+
+
+def test_replay_ticket_cu_assignee_stack_khong_lam_chet_collect(company_db: Path) -> None:
+    """Bus có ticket lập trước PR-5d (`assignee` là một stack) vẫn đọc lại được.
+
+    Bản ghi được ghi THẲNG vào bảng `events` chứ không qua `bus.publish`: publish hôm nay validate
+    theo schema mới nên không dựng nổi một bản ghi lịch sử: thứ phải mô phỏng là byte đã nằm trên
+    đĩa từ trước, không phải một lần ghi mới.
+
+    Chiều ngược đo được: đổi `Task.tu_log` ở `collect._replay()` về `Task.model_validate` thì
+    `ValidationError: assignee Input should be 'builder'` ném thẳng ra khỏi `collect()` (đo được:
+    FAILED ... src/console/collect.py:288: ValidationError) — đúng lỗi đã làm chết mặt kính trực ban
+    trên DB thật của QLKH, nơi /api/stream trả lỗi thay vì dữ liệu.
+    """
+    body = json.loads(json.dumps({
+        "event_id": "ev-cu-999", "topic": "tasks", "key": "TCK-999", "actor": "delivery-lead",
+        "ts": datetime.now(UTC).isoformat(),
+        "payload": {"ticket_id": "TCK-999", "project_id": "P1", "requirement_id": "R1",
+                    # bản ghi lịch sử: `assignee` mang một trong sáu stack cũ, chưa có trường `stack`
+                    "assignee": "platform", "title": "ticket cu", "acceptance": ["ok"],
+                    "estimate_tokens": 1000, "budget_tokens": 2000},
+    }))
+    with sqlite3.connect(company_db) as db:
+        db.execute("INSERT INTO events(event_id, topic, key, actor, ts, body) VALUES (?,?,?,?,?,?)",
+                   ("ev-cu-999", "tasks", "TCK-999", "delivery-lead", body["ts"], json.dumps(body)))
+
+    s = state(company_db, None)
+
+    assert s["sources"][COMPANY]["ok"], s["sources"][COMPANY]
+    assert "TCK-999" in [t["id"] for t in s["tickets"]]
