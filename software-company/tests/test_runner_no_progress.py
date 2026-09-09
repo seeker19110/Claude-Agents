@@ -15,7 +15,7 @@ from typing import Any
 
 from company.bus import InMemoryBus
 from company.llm import FakeClient
-from company.runner import NO_PROGRESS_STOP, NO_PROGRESS_WARN, AgentRunner, _stagnant
+from company.runner import NO_PROGRESS_STOP, NO_PROGRESS_WARN, AgentRunner, _prune, _stagnant
 from company.tools import WorkspaceTools
 from company.workspace import TicketWorkspace
 from test_tools_and_agentic import _init_repo, _pr, _task_env, _tc
@@ -36,6 +36,21 @@ def _run(tmp_path, th, **kw):
     client = FakeClient(handler=lambda s, u: _pr({"ticket_id": "T1"}), tool_handler=th)
     g = AgentRunner(bus, client).generate("builder", _task_env(), "pull-requests",
                                           tools=WorkspaceTools(_ws(tmp_path)).toolbox(), **kw)
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    return g, acts, bus, client
+
+
+def _run_voi_file_lon(tmp_path, th, n_files: int, chars: int = 6000, **kw):
+    """Như `_run`, nhưng thư mục làm việc đã có sẵn `n_files` file lớn (`chars` ký tự mỗi file) — dùng cho ca
+    đo kích thước `msgs`, vì `write_file` chỉ trả về một câu xác nhận ngắn (không phải nội dung đã ghi); phải
+    dùng `read_file` để tool THẬT SỰ trả 6k ký tự vào `msgs`."""
+    ws = _ws(tmp_path)
+    for i in range(n_files):
+        (ws.path / f"big{i}.py").write_text("X" * chars, encoding="utf-8", newline="\n")
+    bus = InMemoryBus()
+    client = FakeClient(handler=lambda s, u: _pr({"ticket_id": "T1"}), tool_handler=th)
+    g = AgentRunner(bus, client).generate("builder", _task_env(), "pull-requests",
+                                          tools=WorkspaceTools(ws).toolbox(), **kw)
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     return g, acts, bus, client
 
@@ -113,6 +128,74 @@ def test_ghi_file_xen_giua_khong_cat(tmp_path):
     g, acts, _, _ = _run(tmp_path, th, max_turns=25)
     assert g.tool_calls == {"read_file": 6, "write_file": 1}
     assert "no_progress" not in acts
+
+
+# ---------- ADR-0007: tỉa tool output cũ trong vòng (4L-4) ----------
+# `client.calls[i]["messages"]` đều trỏ CÙNG một list `msgs` mà `_turns` mutate tại chỗ (append) qua các lượt —
+# đọc lại sau khi vòng đã chạy xong thì mọi phần tử đều thấy TRẠNG THÁI CUỐI CÙNG, không phải trạng thái lúc gọi.
+# Đo đúng phải chụp kích thước NGAY LÚC gọi, bên trong `tool_handler` — nơi duy nhất thấy `msgs` đúng như nó
+# được gửi đi cho lượt đó.
+
+def _kich_thuoc(msgs: list[dict[str, Any]]) -> int:
+    return sum(len(str(m.get("content", ""))) for m in msgs)
+
+
+def _doc_6k_moi_luot(sizes: list[int], toi_da: int):
+    """`tool_handler` đọc một file 6k ký tự KHÁC mỗi lượt (path khác nhau → `args_hash` khác, không lặp nên 4L-3
+    không cắt giữa chừng), đồng thời ghi lại kích thước `msgs` LÚC gọi vào `sizes`. `read_file` (khác
+    `write_file`) trả THẬT nội dung 6k ký tự vào `msgs` — đúng thứ cần tỉa."""
+    def th(msgs: list[dict[str, Any]], tools: Any) -> list[Any]:
+        sizes.append(_kich_thuoc(msgs))
+        n = sum(1 for m in msgs if m.get("role") == "tool")
+        if n >= toi_da: return []
+        return [_tc("read_file", path=f"big{n}.py")]
+    return th
+
+
+def test_input_luot_10_khong_qua_3x(tmp_path):
+    """15 lượt, mỗi lượt đọc một file 6k ký tự MỚI: không tỉa thì `msgs` phình gần như tuyến tính theo số lượt
+    (lượt cuối ăn gần bằng TỔNG các lượt trước — đúng sự cố đo được 2026-09-04, 956.637 token một ticket). Tỉa
+    giữ nó PHẲNG quanh `keep_turns × 6k` kể từ khi cơ chế bắt đầu hoạt động (lượt `NO_PROGRESS_WARN + 1`) — so
+    kích thước lượt CUỐI với kích thước lượt đó (mốc "ổn định", không phải lượt 1 rỗng tool — lượt 1 chưa có
+    tool nào để so)."""
+    sizes: list[int] = []
+    g, acts, _bus, _client = _run_voi_file_lon(tmp_path, _doc_6k_moi_luot(sizes, 14), n_files=14, max_turns=15)
+    assert g.tool_calls.get("read_file") == 14, g.tool_calls
+    on_dinh, cuoi = sizes[NO_PROGRESS_WARN], sizes[-1]
+    assert cuoi < 3 * on_dinh, (on_dinh, cuoi, sizes)
+    assert "context_pruned" in acts
+
+
+def test_khong_tia_thi_vuot_3x(tmp_path, monkeypatch):
+    """Chiều ngược (đo hai chiều): tắt `_prune` (rỗng, không tỉa gì) → `msgs` tiếp tục phình tuyến tính, lượt
+    cuối VƯỢT 3 lần mốc ổn định."""
+    monkeypatch.setattr("company.runner._prune", lambda msgs, keep_turns=3: (msgs, 0))
+    sizes: list[int] = []
+    _, acts, _bus, _client = _run_voi_file_lon(tmp_path, _doc_6k_moi_luot(sizes, 14), n_files=14, max_turns=15)
+    on_dinh, cuoi = sizes[NO_PROGRESS_WARN], sizes[-1]
+    assert cuoi >= 3 * on_dinh, (on_dinh, cuoi, sizes)
+    assert "context_pruned" not in acts
+
+
+def test_goi_lai_sau_tia_khong_tinh_lap():
+    """4L-3 (`_stagnant`) đếm trên `ToolBox.calls` — danh sách RIÊNG, không phải `msgs`. `_prune` chỉ sửa `msgs`
+    gửi cho model; nó không đụng `ToolBox.calls`, nên gọi lại một tool đã bị tỉa nội dung trong `msgs` KHÔNG bị
+    `_stagnant` tính nhầm là ít lần hơn thực tế — hai cơ chế độc lập, phối hợp đúng bằng cách không chạm nhau."""
+    calls = [_c("read_file", ah="p1"), _c("read_file", ah="p1"), _c("read_file", ah="p1")]
+    n_truoc, _ = _stagnant(calls)
+    # mô phỏng: msgs của 3 call trên đã bị `_prune` (nội dung tool đổi thành placeholder) — `ToolBox.calls`
+    # không đổi theo, vì `_prune` chỉ nhận/trả `msgs`, không có tham chiếu tới `ToolBox`.
+    msgs = [{"role": "user", "content": "goc"}]
+    for i in range(3):
+        msgs.append({"role": "assistant", "content": "", "tool_calls": [{"id": f"c{i}", "name": "read_file", "args": {}}]})
+        msgs.append({"role": "tool", "tool_call_id": f"c{i}", "content": f"ket qua {i}: " + "n" * 200})
+    pruned_msgs, dropped = _prune(msgs, keep_turns=1)  # giữ lượt cuối, tỉa 2 lượt đầu
+    assert dropped > 0
+    tool_msgs = [m for m in pruned_msgs if m["role"] == "tool"]
+    assert tool_msgs[0]["content"].startswith("[đã cắt:") and tool_msgs[1]["content"].startswith("[đã cắt:")
+    assert tool_msgs[2]["content"] == "ket qua 2: " + "n" * 200, "lượt cuối (trong keep_turns) giữ nguyên"
+    n_sau, _ = _stagnant(calls)  # `ToolBox.calls` không đổi — vẫn đúng 3 như trước khi tỉa `msgs`
+    assert n_sau == n_truoc == 3
 
 
 def test_stop_99_thi_chay_du(tmp_path, monkeypatch):

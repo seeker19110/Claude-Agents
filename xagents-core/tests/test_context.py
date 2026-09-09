@@ -6,7 +6,47 @@ kịch bản B: dòng nào chuyển package thì test phủ dòng đó chuyển 
 """
 from __future__ import annotations
 
-from xagents_core.context import CHARS_PER_TOKEN, ContextBudget, cut_middle, fit, trim_payload
+from xagents_core.context import CHARS_PER_TOKEN, ContextBudget, _prune, cut_middle, fit, trim_payload
+
+
+def _turn(idx: int, tool_content: str = "ket qua") -> list[dict]:
+    """Một 'lượt' vòng tool: một assistant gọi một tool, kèm phản hồi role=tool tương ứng."""
+    return [{"role": "assistant", "content": "", "tool_calls": [{"id": f"c{idx}", "name": "read_file", "args": {"path": f"f{idx}.py"}}]},
+            {"role": "tool", "tool_call_id": f"c{idx}", "content": tool_content}]
+
+
+def _msgs(n_turns: int, tool_content: str = "ket qua") -> list[dict]:
+    msgs = [{"role": "user", "content": "yeu cau goc"}]
+    for i in range(1, n_turns + 1):
+        msgs += _turn(i, tool_content)
+    return msgs
+
+
+def test_prune_giu_k_luot():
+    """5 lượt, keep_turns=3: 2 lượt đầu (1, 2) bị tỉa, 3 lượt cuối (3, 4, 5) còn nguyên."""
+    msgs = _msgs(5, "x" * 100)
+    out, dropped = _prune(msgs, keep_turns=3)
+    assert dropped > 0
+    tool_msgs = [m for m in out if m["role"] == "tool"]
+    assert tool_msgs[0]["content"].startswith("[đã cắt:") and tool_msgs[1]["content"].startswith("[đã cắt:")
+    assert tool_msgs[2]["content"] == "x" * 100 and tool_msgs[3]["content"] == "x" * 100 and tool_msgs[4]["content"] == "x" * 100
+
+
+def test_khong_cat_duoi_k():
+    """Đúng hoặc ít hơn keep_turns lượt: không có gì để tỉa, msgs không đổi."""
+    msgs = _msgs(3, "x" * 100)
+    out, dropped = _prune(msgs, keep_turns=3)
+    assert dropped == 0 and out == msgs
+
+
+def test_giu_user_dau_va_tool_calls():
+    """msgs[0] (yêu cầu gốc) không bao giờ bị tỉa; `tool_calls` của assistant vẫn nguyên vẹn dù tool cũ bị tỉa."""
+    msgs = _msgs(6, "y" * 200)
+    out, _dropped = _prune(msgs, keep_turns=3)
+    assert out[0] == {"role": "user", "content": "yeu cau goc"}
+    assistants = [m for m in out if m["role"] == "assistant"]
+    assert all(m.get("tool_calls") for m in assistants), "tool_calls không bị đụng, kể cả ở lượt bị tỉa"
+    assert len(assistants) == 6
 
 
 def test_fit_cat_payload_truoc_roi_toi_context_va_gan_nhan():

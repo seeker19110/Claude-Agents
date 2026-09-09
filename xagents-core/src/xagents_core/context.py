@@ -13,6 +13,7 @@ vượt context hoặc đốt token vô ích. Giờ phân bổ theo ưu tiên, c
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from typing import Any
@@ -20,7 +21,7 @@ from typing import Any
 # `__all__` là HỢP ĐỒNG của shim `company.context`: `from xagents_core.context import *` chỉ mang sang
 # những tên liệt kê ở đây. Thêm tên public mới mà quên dòng này thì `company.context.<tên>` biến mất
 # lặng lẽ — người gọi nhận AttributeError ở chỗ khác hẳn nơi gây lỗi.
-__all__ = ["CHARS_PER_TOKEN", "MIN_KEEP", "ContextBudget", "cut_middle", "fit", "trim_payload"]
+__all__ = ["CHARS_PER_TOKEN", "MIN_KEEP", "ContextBudget", "_prune", "cut_middle", "fit", "trim_payload"]
 
 CHARS_PER_TOKEN = 3.2  # tiếng Việt có dấu + JSON: ~3 ký tự/token với tokenizer phổ biến
 MIN_KEEP = 400         # không cắt chuỗi xuống dưới mức này (mất nghĩa)
@@ -135,3 +136,45 @@ def fit(system: str, payload: dict[str, Any], context: dict[str, dict[str, Any]]
         out[ns] = item
     b.context_chars = len(json.dumps(out, ensure_ascii=False, indent=2))
     return payload, out, b
+
+
+def _prune(msgs: list[dict[str, Any]], keep_turns: int = 3) -> tuple[list[dict[str, Any]], int]:
+    """ADR-0007: tỉa `role=tool` cũ hơn `keep_turns` LƯỢT gần nhất của vòng tool — khác `fit()` (cắt một lần
+    TRƯỚC vòng); hàm này gọi mỗi lượt BÊN TRONG vòng, vì `msgs` chỉ có hình dạng đầy đủ sau khi vòng đã chạy.
+
+    Một "lượt" = một message `assistant` có `tool_calls`, cộng các `role: tool` phản hồi ngay sau nó. Thuần:
+    không đọc `self`, không side effect — nhận `msgs`, trả `msgs` MỚI (không sửa `msgs` gốc) + tổng ký tự đã bỏ.
+
+    Bất biến:
+    - `msgs[0]` (yêu cầu gốc, luôn `role=user`) không bao giờ bị tỉa — chống trôi mục tiêu qua nhiều lượt.
+    - `role=assistant` và `tool_calls` của nó giữ nguyên mọi lượt — chỉ nội dung tool được thay, không phải
+      quyết định model đã đưa ra; xoá `tool_calls` sẽ làm hội thoại sai hình dạng (provider từ chối).
+    - `keep_turns` lượt GẦN NHẤT giữ nguyên toàn văn; lượt cũ hơn → mỗi `role=tool` của nó thành
+      `[đã cắt: <tool> <chars> ký tự, hash <h>; gọi lại nếu cần]` (`<tool>` tra theo `tool_call_id`, `<h>` là
+      hash của nội dung ĐANG bị tỉa — không phải `out_hash` gốc của `ToolBox`, vì `_prune` chỉ thấy `msgs` đã
+      qua sanitize/`max_output`, không có `ToolBox`; hai giá trị trùng nhau khi tool không bị sanitize/cắt).
+    """
+    turn_starts = [i for i, m in enumerate(msgs) if m.get("role") == "assistant" and m.get("tool_calls")]
+    if len(turn_starts) <= keep_turns:
+        return list(msgs), 0
+    # index của lượt gần nhất thứ `keep_turns` — mọi thứ TRƯỚC nó có thể bị tỉa. `keep_turns == 0` là ca biên:
+    # `turn_starts[-0]` bằng `turn_starts[0]` trong Python (không có "trừ không"), nên phải xin tường minh
+    # "tỉa mọi lượt" (`len(msgs)`) thay vì để `-0` đọc nhầm thành "giữ mọi lượt".
+    cutoff = turn_starts[-keep_turns] if keep_turns > 0 else len(msgs)
+    tool_name_of: dict[str, str] = {}
+    for m in msgs:
+        if m.get("role") == "assistant":
+            for tc in m.get("tool_calls") or []:
+                tool_name_of[tc["id"]] = tc["name"]
+    out: list[dict[str, Any]] = []
+    dropped = 0
+    for i, m in enumerate(msgs):
+        if i == 0 or i >= cutoff or m.get("role") != "tool":
+            out.append(m); continue
+        content = str(m.get("content", ""))
+        name = tool_name_of.get(str(m.get("tool_call_id")), "?")
+        h = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
+        placeholder = f"[đã cắt: {name} {len(content)} ký tự, hash {h}; gọi lại nếu cần]"
+        dropped += max(0, len(content) - len(placeholder))
+        out.append({**m, "content": placeholder})
+    return out, dropped

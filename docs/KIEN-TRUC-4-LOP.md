@@ -48,7 +48,7 @@ Checklist 9 mục cuối đặc tả: company **6 ✅ 3 ◐**, studio **3 ✅ 6 
 | L3 trần cứng | ✅ | ✅ | `max_retries=3` `delivery.py:28`; `MAX_REPAIR_ROUNDS=3` `studio/events.py:41` | 3 | |
 | L3 phát hiện không tiến bộ | ✅ | ◐ | ngoài vòng: `supervisor.py`; trong vòng tool: `_stagnant()` cắt ở 5 lần lặp cùng hash (company). Studio chưa | 3 | **3** |
 | L3 giữ yêu cầu gốc qua vòng | ✅ | ✅ | rework phát lại nguyên `tasks` + `hint` | | |
-| L3 tỉa trạng thái qua vòng | ◐ | ◐ | `fit` cắt một lần trước vòng (`runner.py:325`) | | **4** |
+| L3 tỉa trạng thái qua vòng | ✅ | ✅ | `fit` cắt một lần trước vòng + `_prune` (core `context.py`) cắt `role=tool` cũ hơn 3 lượt MỖI lượt bên trong vòng (`company/runner.py:_turns`, `studio/runner.py:_tool_loop`), ADR-0007 | | **4** |
 | L3 đo vòng (p50/p90, chạm trần) | ✅ | ❌ | `metrics.collect()["loops"]` + 6 gauge + ô console (company); studio chưa | | **5** |
 | L4 nút không LLM | ✅ | ✅ | `_check_plan` `ticket_fsm.py:207-241`, smoke `verify.py:51`; `renderer.py`, `desk.py` | | |
 | L4 rẽ nhánh theo kiểu | ✅ | ✅ | `routes.py:322-324`; studio `_rework`/`_publish_video` validate model trước rẽ nhánh | 5 | **6** |
@@ -77,7 +77,7 @@ không nâng mức C1.
 | **1b** | security 2 → ≥ 10 ca, ghi lại model thật | L1 | `chore(company)` | C2 + người | ngưỡng có nghĩa | cần máy có key, 7 bước | xong #204 |
 | **2** | audit `tools_trace` từng lời gọi tool (hash, ms, args cắt) | L2 | `feat(core)` | C2 | nhìn thấy gọi lặp; tiền đề 3 | args có dữ liệu khách → hash/cắt, `content` không ghi | xong #183 |
 | **3** | cắt vòng tool khi không tiến bộ (nhắc ở 3, cắt ở 5) | L3 | `feat(company)` | **C3** | cắt sớm ticket kiểu 956k token | dương tính giả nếu không loại tool ghi xen giữa; mỗi cắt +1 retry | xong #184 |
-| **4** | tỉa tool output cũ trong vòng (ADR-0040) | L3 | `docs` + `feat(core)` | **C3** | lượt cuối không đắt gấp mười lượt đầu | **đổi hành vi agent**; lệch hash mọi bản ghi eval | chờ người: K3.6 đã merge (#187-#196), nhưng tỉa đổi `user_message` ở lượt >3 → lệch hash bản ghi eval → phải ghi lại bằng **model thật** (như 4L-1b). Phiên remote không có key/`llm.yaml` — cần máy có key + 7 bước CONTRIBUTING §3 |
+| **4** | tỉa tool output cũ trong vòng (ADR-0007) | L3 | `docs` + `feat(core)` | **C3** | lượt cuối không đắt gấp mười lượt đầu | **đổi hành vi agent** ở ca ≥ 4 lượt tool; không đổi khoá bản ghi eval (khoá = hash(system, USER MESSAGE ĐẦU), `_prune` chỉ sửa `msgs` bên trong vòng, không sửa `user` gốc — kiểm bằng `evals all --replay --strict` cả hai công ty: mọi bản ghi hiện có PASS không đổi) | ADR xong #PENDING-ADR (docs/adr/0007), `_prune` + ghép + test: xong #PENDING |
 | **5** | `metrics.loops` p50/p90/capped + ô console | L3 | `feat(company)` | C2 | rẻ nhất, số đã có | ô mới phải theo console ADR-0003 (rỗng = xám) | xong #185 |
 | **6** | studio validate trước rẽ nhánh (4 chỗ) | L4 | `refactor(studio)` | **C3** | đóng lỗ L4 còn lại của studio | chạm `events.py` lúc dời bus | xong #190 |
 | **7** | `xagents_core.trace` + `studio.trace` + `deferred` bền | L4 | `feat(studio)` | **C3** | studio ngang company | copy = thêm fork → phải lên core | xong #196 |
