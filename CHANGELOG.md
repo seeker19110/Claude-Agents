@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- refactor(core): **K3.6c — `evals` lên `xagents_core`; cổng CI của mỗi công ty giữ nguyên** (#PR). `difflib`
+- refactor(core): **K3.6c — `evals` lên `xagents_core`; cổng CI của mỗi công ty giữ nguyên** (#191). `difflib`
   trên cả file **0.556** — cao nhất trong bốn module của K3.6 — nhưng con số gộp ấy giấu mất chuyện đáng kể.
   Đo TỪNG symbol: `prompt_key`/`recording_path`/`load_recording`/`load_cases`/`_get` = **1.00**,
   `outdated_versions` 0.99, `_lines` 0.98, `required_agents` 0.97, `_Probe` 0.91, `check`/`run_eval` 0.84,

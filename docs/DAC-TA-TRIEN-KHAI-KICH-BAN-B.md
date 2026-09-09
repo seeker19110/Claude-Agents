@@ -490,7 +490,7 @@ package đang gọi `company.llm.load_config()` không đổi.
 >   Điểm thứ hai đặc tả không lường: `scope_of`/`context_key` của company **thôi là hàm module** (chúng đọc
 >   `global_namespaces`, nay ở `CoreConfig`), nên một ca test vá hàm module phải đổi sang vá phương thức —
 >   không đổi thì ca ấy vẫn xanh mà không còn đo gì.
-> - **K3.6c — `evals`: XONG (#PR).** Đặc tả viết "bản company (`RecordingClient` chốt version ở `__init__:69`,
+> - **K3.6c — `evals`: XONG (#191).** Đặc tả viết "bản company (`RecordingClient` chốt version ở `__init__:69`,
 >   `save` merge `:80-96`); giữ `if not c.tool_calls` của studio khi ghi" — **đúng cả ba vế**, đây là gạch đầu
 >   dòng chính xác nhất của cả K3. Nhưng nó bỏ sót một thứ lớn hơn: `main` và `CaseResult` không phải cơ chế
 >   mà là **CHÍNH SÁCH CỔNG**, và hai công ty quyết định "cái gì làm CI đỏ" khác nhau (company tách điểm chấm
