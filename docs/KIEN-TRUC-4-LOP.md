@@ -261,7 +261,7 @@ gói nào đổi schema topic; audit action mới chỉ là dòng thừa với c
    bảng K3 `DAC-TA-KICH-BAN-B.md:336-337` ghi "chưa" cho việc đã merge #173–#178.
 2. `ARCHITECTURE.md` §"Ranh giới tin cậy" đoạn 4 dòng "không chốt mức tool — có chủ đích" trỏ A1.4 · sơ đồ + "Năm
    package" có `xagents-core/` · bảng K3: c2–d xong (#173–#176), K3.4 xong (#177), K3.5a xong (#178), tách ba bước ·
-   `DAC-TA-NANG-CAP-2026-09.md:192` E3 nửa sau = 4L-1a/1b · test readme xanh.
+   `archive/DAC-TA-NANG-CAP-2026-09.md:192` E3 nửa sau = 4L-1a/1b · test readme xanh.
 3. Được: `ARCHITECTURE.md`, hai đặc tả. Không: `AGENTS.md`, `TRAPS.md`, mã, test.
 4. `CHANGELOG.md` K3.5a; `git log --oneline` #173–#178 (số PR từ log, không từ trí nhớ).
 5. Không thêm số chép tay; ADR-0040 chỉ ghi "dự kiến" (số ADR đặt trước là bẫy đã sập hai lần).

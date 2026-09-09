@@ -1,5 +1,8 @@
 # Đặc tả nâng cấp X-Agents — chương trình "hoàn thiện" tháng 9/2026
 
+> **Lưu trữ.** Đã bị `docs/DAC-TA-KICH-BAN-B.md` bọc (mã K0–K9 thay cho 40 mục ở đây); phần lớn đã thi hành xong,
+> xem bảng theo dõi ở đó. Giữ file này làm nguồn gốc lịch sử, không còn là đặc tả đang theo.
+
 Ngày lập: 2026-09-06 · Căn cứ: đánh giá toàn diện tại `main@113833f` (#90), báo cáo
 `software-company/docs/reports/2026-09-06-ban-giao-khong-chay-duoc.md`, đánh giá
 `Studio-creators/docs/DANH-GIA-NANG-CAP-XUONG-VIDEO.md`, ghi nhận vận hành console đêm 05–06/09.
