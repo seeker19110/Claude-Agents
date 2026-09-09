@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- refactor(core): **K3.6d1 — khung runner lên `xagents_core`; K3.6d tách đôi vì BẢN GHI EVAL** (#PR).
+- refactor(core): **K3.6d1 — khung runner lên `xagents_core`; K3.6d tách đôi vì BẢN GHI EVAL** (#194).
   **Ràng buộc thật của K3.6d không phải độ lệch mã, mà là bản ghi eval.** Khoá bản ghi là
   `hash(system_prompt, user_message)`, và `user_message` do `build_user_message` trong `runner.py` sinh ra.
   Đo trực tiếp: thêm **một dấu cách** vào chuỗi cuối của `build_user_message` studio rồi chạy
