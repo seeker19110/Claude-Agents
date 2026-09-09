@@ -61,6 +61,7 @@ from typing import Any, Generic, TypeVar
 from .bus import BusError
 from .events import Envelope
 from .llm import ModelClient
+from .observe import SpanSink
 from .registry import AgentSpec
 
 __all__ = ["AgentRunner", "Generated", "RunResult", "RunnerError", "output_schema", "payload_schema"]
@@ -144,6 +145,9 @@ class AgentRunner(Generic[E, S]):
         self.blackboard = blackboard
         self.max_input_chars = (max_input_chars or getattr(client, "max_input_chars", None)
                                 or default_max_input_chars)
+        #: ADR-0009: nơi phát span của runner. Thuộc tính instance chứ không phải tham số dựng, để bật/tắt quan
+        #: sát không đổi chữ ký mà hàng chục chỗ trong hai công ty đang gọi. `None` = tắt hoàn toàn (no-op thật).
+        self.sink: SpanSink | None = None
 
     # ---------- hook của từng công ty ----------
 

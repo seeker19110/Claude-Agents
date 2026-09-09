@@ -102,6 +102,18 @@ việc. Không có đường sửa trong phạm vi này: repo không quan sát �
 `tool_mode` đã ghi sẵn trong audit (`company/runner.py:379`) nên người đọc span biết vì sao thiếu cấp con, không
 phải đoán rằng đo hỏng.
 
+Giới hạn thứ hai, **khác hẳn** giới hạn trên: đường **cầu MCP** (ADR-0024 của software-company). Ở đó tool VẪN chạy
+thật trong `ToolBox` của tiến trình cha, nên span `tool.call` VẪN sinh ra với đủ `tool`/`ok`/`chars` — chỉ **liên kết
+cha là mất**, span nằm phẳng thay vì dưới `llm.complete` của lượt sinh ra nó. Cơ chế: `ToolBridge` phục vụ bằng
+`socketserver.ThreadingTCPServer` (`software-company/src/company/mcp_bridge.py:93-96`) và gọi `toolbox.call` trong
+**thread handler** (`mcp_bridge.py:120-123`); thread mới bắt đầu với một `contextvars` Context RỖNG, nên `_current`
+của `observe.py` là `None` và `parent` cũng vậy. Khắc phục được — truyền `contextvars.copy_context()` từ luồng mở cầu
+vào handler — nhưng **ngoài phạm vi `p3.1`**: nó đụng vào vòng đời của cầu, không vào ba ranh giới ADR này quyết. Hành
+vi hôm nay được **đo** chứ không để tự hiểu:
+`software-company/tests/test_span_runner.py::test_cau_mcp_mat_cha_cua_span_tool_call` khẳng định `parent is None` qua
+cầu và `parent is` span đang mở khi gọi cùng luồng — ai truyền context qua cầu sẽ thấy test đỏ và biết mình vừa đổi
+đúng cái gì.
+
 **Không thuộc phạm vi.** Streaming (chưa có trong repo), hiển thị span trên `console`, span cho `gateway` và
 `Studio-creators`, và mọi thay đổi tới `metrics.prometheus`. ADR này quyết cơ chế và ba ranh giới ở core +
 software-company; ghép nơi khác là quyết định riêng, ADR riêng nếu cần.
@@ -120,4 +132,6 @@ software-company; ghép nơi khác là quyết định riêng, ADR riêng nếu 
 - `xagents-core/src/xagents_core/llm.py` — Protocol `ModelClient.complete` (470), `Completion` (206).
 - `xagents-core/src/xagents_core/routing.py` — `RoutingClient.complete` (205), lớp bọc ngoài cùng của chuỗi lồng.
 - `software-company/docs/adr/0023-claude-code-cli-tools.md` — chế độ `cli`, nguồn của giới hạn đã biết ở trên.
+- `software-company/docs/adr/0024-cau-mcp-cho-claude-code.md` — cầu MCP, nguồn của giới hạn "mất cha" ở trên;
+  `software-company/src/company/mcp_bridge.py:93-96,120-123` là chỗ thread handler cắt `contextvars` Context.
 - `software-company/src/company/metrics.py` — `collect` (39), `prometheus` (154): nơi `duration_ms` hiện được cộng.

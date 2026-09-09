@@ -24,6 +24,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from .observe import SpanSink, span
+
 __all__ = ["MAX_OUTPUT", "OPAQUE_ARGS", "ToolBox", "ToolCall", "ToolError", "ToolSpec"]
 
 MAX_OUTPUT = 6_000  # ký tự trả về cho model mỗi lần gọi tool
@@ -68,6 +70,10 @@ class ToolBox:
     # lệnh gì, lặp chuỗi sandbox vào vết gọi của chúng làm người đọc audit tưởng chúng cũng đi qua sandbox.
     sandbox: str | None = None
     max_output: int | None = MAX_OUTPUT  # `None` = không cắt ở tầng bảng (xem docstring module)
+    # ADR-0009: nơi phát span `tool.call`. `None` (mặc định) = không đo gì — span KHÔNG thay `ms` trong
+    # `self.calls`: `ms` là bộ đệm phẳng cho audit `tools_trace` (4L-2), span thêm *liên kết cha* (lời gọi này
+    # thuộc lượt model nào) và *đường phát tại chỗ*, hai thứ bộ đệm không có vì chỉ đọc được sau khi vòng xong.
+    sink: SpanSink | None = None
 
     def add(self, spec: ToolSpec, fn: Callable[..., str]) -> None:
         self._tools[spec.name] = (spec, fn)
@@ -76,6 +82,14 @@ class ToolBox:
         return [s for s, _ in self._tools.values()]
 
     def call(self, tc: ToolCall) -> str:
+        with span("tool.call", self.sink, tool=tc.name) as sp:
+            out = self._call(tc)
+            if sp is not None:
+                sp.attrs["ok"] = self.calls[-1]["ok"]
+                sp.attrs["chars"] = self.calls[-1]["chars"]
+            return out
+
+    def _call(self, tc: ToolCall) -> str:
         t0 = time.monotonic()
         if tc.name not in self._tools:
             raise ToolError(f"tool không tồn tại: {tc.name}")
