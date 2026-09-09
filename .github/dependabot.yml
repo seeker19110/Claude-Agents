@@ -1,62 +1,16 @@
 version: 2
 updates:
+  # MỘT mục `uv` duy nhất, trỏ vào GỐC workspace — không phải sáu mục theo từng package.
+  #
+  # Repo là một uv workspace: sáu `pyproject.toml` con nhưng CHỈ MỘT `uv.lock` ở gốc. Cấu hình cũ đặt
+  # `directory` là từng package, mà `uv.lock` nằm NGOÀI mọi thư mục đó, nên dependabot không bao giờ chạm
+  # tới nó: mỗi PR nó mở chỉ đổi `pyproject.toml` con và để lock cũ nguyên. Toàn bộ CI chạy
+  # `uv sync --locked`, lệnh này ĐỎ khi lock không khớp pyproject — nên chín PR mở ngày 2026-09-09
+  # (#228-#236) hỏng do CẤU TRÚC, không phải do nội dung bản nâng.
+  #
+  # Trỏ vào gốc thì dependabot thấy cả workspace và cập nhật manifest thành viên CÙNG `uv.lock` trong một PR.
   - package-ecosystem: uv
-    directory: /software-company
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "build(deps)"
-    groups:
-      dev:
-        dependency-type: development
-
-  - package-ecosystem: uv
-    directory: /Studio-creators
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "build(deps)"
-    groups:
-      dev:
-        dependency-type: development
-
-  - package-ecosystem: uv
-    directory: /gateway
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "build(deps)"
-    groups:
-      dev:
-        dependency-type: development
-
-  - package-ecosystem: uv
-    directory: /console
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "build(deps)"
-    groups:
-      dev:
-        dependency-type: development
-
-  - package-ecosystem: uv
-    directory: /xagents-core
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "build(deps)"
-    groups:
-      dev:
-        dependency-type: development
-
-  - package-ecosystem: uv
-    directory: /keeper
+    directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
