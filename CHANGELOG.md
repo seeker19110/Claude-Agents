@@ -6,6 +6,14 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(console): **console đọc lại bus có ticket cũ bằng `Task.tu_log`, không `model_validate`** (#PR). Console
+  chết ngay ở `/api/stream` với `ValidationError: assignee Input should be 'builder'` và mặt kính trực ban chỉ
+  còn một dòng đỏ "Server đọc được stream nhưng không đọc được bus" — không xem được gì. `company.events.Task`
+  đã có sẵn `tu_log()` viết đúng cho việc đọc lại bản ghi trước ADR-0037/PR-5d (`assignee: "platform"` cũ chuyển
+  thành `stack`), nhưng `collect._replay()` gọi thẳng `Task.model_validate()` nên bỏ qua đường tương thích đó.
+  Một dòng; 236 test + coverage 100% giữ nguyên. Rà cả họ lỗi: đây là chỗ DUY NHẤT trong `console/src` dựng
+  `Task` từ payload thô.
+
 - fix(core): **`gate.request` tin `env.actor`, không tin `created_by` tự khai** (#212). Phát hiện NGHIÊM TRỌNG
   còn lại của `sc-security` ở K3.7, pre-existing từ trước khi hợp nhất: `PersistentGate.apply()` đọc thẳng
   `created_by` trong evidence của một topic MỞ, nên một envelope `gate.request` mang `created_by` bịa là đủ để

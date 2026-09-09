@@ -265,7 +265,7 @@ class CompanyView(_View):
             # Khi chạy thật, ticket được `DeliveryLead.dispatch()` đăng ký từ plan; replay chỉ có topic `tasks`, nên
             # ticket lần đầu xuất hiện được đăng ký ở đây đúng như `_publish_task` để handler PR/review chạy tiếp.
             if env.topic == "tasks":
-                t = Task.model_validate(env.payload)
+                t = Task.tu_log(env.payload)
                 if t.ticket_id not in self.lead.tickets:
                     self.lead.tickets[t.ticket_id] = t
                     self.lead.state[t.ticket_id] = "dispatched"
