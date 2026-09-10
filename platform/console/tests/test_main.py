@@ -176,3 +176,71 @@ def test_dunder_main_goi_main_va_sys_exit(monkeypatch: pytest.MonkeyPatch) -> No
     with pytest.raises(SystemExit) as e:
         runpy.run_module("console.__main__", run_name="__main__")
     assert e.value.code == 0
+
+
+# ---------- --with-gateway: một lệnh bật cả gateway (ADR-0011 §3) ----------
+
+def test_with_gateway_bat_gateway_truoc_khi_phuc_vu(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--with-gateway` phải chạy `gateway start` TRƯỚC khi console phục vụ. Không có nó thì người trực bật
+    console, giao việc, rồi ngồi chờ một công ty không có model — không lỗi, không dấu hiệu."""
+    goi: list[list[str]] = []
+    monkeypatch.setattr(cli, "start_gateway", lambda: (goi.append(["gateway", "start"]), 0)[1])
+    fake = _FakeServer(raise_on_serve=KeyboardInterrupt())
+    monkeypatch.setattr(cli, "make_server", lambda *a, **k: fake)
+    token_path = tmp_path / "tok-gw"; token_path.write_text("t", encoding="utf-8")
+    monkeypatch.setattr(cli, "write_token_file", lambda token: token_path)
+
+    code = cli.main(["--with-gateway"])
+
+    assert goi == [["gateway", "start"]], "phải gọi gateway start đúng một lần"
+    assert code == 0 and fake.serve_forever_called
+
+
+def test_with_gateway_that_bai_thi_dung_lai_khong_phuc_vu(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Gateway không lên được → dừng và báo, KHÔNG im lặng chạy tiếp với công ty không có model (ADR-0011 §3)."""
+    monkeypatch.setattr(cli, "start_gateway", lambda: 1)
+    fake = _FakeServer()
+    monkeypatch.setattr(cli, "make_server", lambda *a, **k: fake)
+    monkeypatch.setattr(cli, "write_token_file", lambda token: tmp_path / "khong-dung-toi")
+
+    code = cli.main(["--with-gateway"])
+
+    assert code == 1
+    assert not fake.serve_forever_called, "không được phục vụ khi gateway hỏng"
+    assert "gateway" in capsys.readouterr().out.lower()
+
+
+def test_khong_co_co_thi_khong_dung_toi_gateway(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Mặc định KHÔNG bật gateway: console vẫn là bảng điều hành chỉ đọc, không tự spawn tiến trình nền."""
+    def _khong_duoc_goi() -> int:  # pragma: no cover - thân hàm chạy là test đã sai
+        raise AssertionError("không có --with-gateway thì không được đụng tới gateway")
+    monkeypatch.setattr(cli, "start_gateway", _khong_duoc_goi)
+    fake = _FakeServer(raise_on_serve=KeyboardInterrupt())
+    monkeypatch.setattr(cli, "make_server", lambda *a, **k: fake)
+    token_path = tmp_path / "tok-no-gw"; token_path.write_text("t", encoding="utf-8")
+    monkeypatch.setattr(cli, "write_token_file", lambda token: token_path)
+
+    assert cli.main([]) == 0
+
+
+def test_start_gateway_goi_dung_lenh_va_tra_ma_thoat(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`start_gateway` chạy `python -m gateway start` như tiến trình con (không import gateway) và trả nguyên
+    mã thoát của nó — mọi phần chờ `/health` đã nằm trong `gateway start`, đây không dựng lại vòng chờ nào."""
+    da_chay: list[list[str]] = []
+
+    class _KetQua:
+        returncode = 7
+
+    def _fake_run(cmd: list[str], **kw: Any) -> Any:
+        da_chay.append(cmd)
+        assert kw == {"check": False}, "phải tự xử mã thoát, không để subprocess ném"
+        return _KetQua()
+
+    monkeypatch.setattr(cli.subprocess, "run", _fake_run)
+
+    assert cli.start_gateway() == 7
+    assert da_chay == [[sys.executable, "-m", "gateway", "start"]]
