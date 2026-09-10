@@ -170,6 +170,22 @@ def test_old_cli_falls_back_to_cli_tools_or_says_why(tmp_path):
     c = client.complete(system="s", user="u", schema={}, model_tier="strong", tools=tb.specs(), workdir=tb.root)
     assert modes == ["mcp", "cli"] and client.cfg.mcp_tools is False and c.json()["ticket_id"] == "T1"
 
+
+def test_loi_khac_trong_mcp_khong_phai_cli_cu_thi_nem_thang(tmp_path):
+    """LLMError ở lượt MCP KHÔNG phải "CLI không biết --mcp-config" (vd. hết hạn mức) phải ném thẳng lên, không
+    được hiểu nhầm là CLI cũ rồi lặng lẽ lùi sang chế độ CLI-tools."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+
+    def runner(args, stdin, cwd=None):
+        raise LLMError("You've hit your usage limit")
+
+    tb = WorkspaceTools(ws).toolbox()
+    client = _cc(runner, cli_tools=True)
+    client.bind_toolbox(tb)
+    with pytest.raises(LLMError, match="usage limit"):
+        client.complete(system="s", user="u", schema={}, model_tier="strong", tools=tb.specs(), workdir=tb.root)
+    assert client.cfg.mcp_tools is True, "không phải lỗi CLI cũ thì không được tắt mcp_tools"
+
     # không bật cli_tools thì không im lặng bỏ tool: lỗi nói đúng việc phải làm
     only_mcp = _cc(lambda a, s, cwd=None: (_ for _ in ()).throw(LLMError("unknown option '--mcp-config'")))
     only_mcp.bind_toolbox(tb)
