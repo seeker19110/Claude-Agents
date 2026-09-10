@@ -6,6 +6,9 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs: **khớp README gốc với thực tế — số test company, trạng thái keeper** (#257). Software-company nói 1097
+  test trong khi lần chạy thật gần nhất ra 1100; dòng keeper nói BT2–BT8 chưa có mã trong khi BT1–BT7 đã merge
+  (mã thật, 532 test, ba lệnh CLI chạy được) — chỉ BT8 (canary) chưa xong. Phát hiện qua một đợt audit toàn diện.
 - fix(company): **huỷ release "superseded" phải đóng sổ ticket, không để lửng lơ ở `approved`** (#255). Khi một RC cũ bị
   từ chối vì nội dung đã nằm trong bản giao sau (`_superseded_release`), `void_release` đưa ticket approved về
   `unreleased()` — đúng cho ca xung đột tích hợp (ticket thật sự cần RC kế tiếp) nhưng sai ở đây: ticket đã giao
