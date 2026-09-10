@@ -32,14 +32,14 @@ logger = logging.getLogger("console.server")
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 CONSOLE_DIR = PACKAGE_DIR.parents[1]          # .../console
-REPO_ROOT = CONSOLE_DIR.parent                # .../X-Agents
+REPO_ROOT = CONSOLE_DIR.parents[1]            # .../X-Agents (console nằm dưới platform/, ADR-0011)
 STATIC_DIR = PACKAGE_DIR / "static"
 TOKEN_FILE = CONSOLE_DIR / ".console-token"
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8200
-DEFAULT_COMPANY_DB = REPO_ROOT / "software-company" / "company.sqlite"
-DEFAULT_KEEPER_DB = REPO_ROOT / "keeper" / "keeper.sqlite"
+DEFAULT_COMPANY_DB = REPO_ROOT / "companies" / "software-company" / "company.sqlite"
+DEFAULT_KEEPER_DB = REPO_ROOT / "companies" / "keeper" / "keeper.sqlite"
 
 DEFAULT_ENGINE_INTERVAL = 30.0   # giây giữa hai nhịp `run --watch` khi trang không nói gì khác
 

@@ -1081,3 +1081,11 @@ def test_dong_server_thi_tat_moi_dong_co(static_dir: Path) -> None:
     server.engine = fake
     server.server_close()
     assert ("stop_all", {}) in fake.calls
+
+
+def test_duong_dan_bus_mac_dinh_tro_dung_cay_cong_ty() -> None:
+    """Mặc định `--company-db`/`--keeper-db` phải trỏ vào cây công ty thật. Trỏ sai thì console mở lên vẫn
+    xanh — nó chỉ hiện bảng RỖNG (bẫy "xanh vì rỗng", TRAPS.md), không lỗi, không dấu hiệu."""
+    from console import server as sv
+    for db in (sv.DEFAULT_COMPANY_DB, sv.DEFAULT_KEEPER_DB):
+        assert (db.parent / "pyproject.toml").is_file(), f"{db} không nằm trong cây package nào"
