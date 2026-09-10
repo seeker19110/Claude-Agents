@@ -10,7 +10,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   `docs/DIEU-PHOI-MODEL.md` §4 thứ tự `claude-code (sub) → codex (sub) → gateway (Antigravity) → model local →
   API trả phí` (đã đúng sẵn trong thứ tự khai báo mẫu, chỉ thiếu ghi thành tài liệu); thêm ví dụ backend
   `provider: anthropic` (API trả phí) còn thiếu ở cuối `companies/software-company/llm.example.yaml`. Không đổi
-  cơ chế `RoutingClient`/`routing.prefer` (#PR)
+  cơ chế `RoutingClient`/`routing.prefer` (#267)
 
 - feat(company): **bậc rủi ro gate + actor "code" tự động qua gate thấp — giai đoạn 3/5 của ADR-0011** —
   `gate_risk.py` mới (`RiskRule`/`RISK_RULES` tra cứu được, khởi tạo RỖNG có chủ đích: chưa có luật nào qua
