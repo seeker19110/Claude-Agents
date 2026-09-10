@@ -12,7 +12,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   ẩn/hiện mà chỉ cuộn tới đúng mục. `render()` đã vẽ mọi hàm không điều kiện theo view từ trước nên gộp
   không cần vẽ lại gì thêm; ba mục trước chỉ vẽ khi điều hướng tới (`renderSubmit`/`renderGuide`/`loadSettings`)
   nay vẽ thêm một lần lúc mở trang để không rỗng nếu người dùng không bấm nav. `Cài đặt`/`Hướng dẫn` không đổi
-  hành vi (#PR)
+  hành vi (#268)
 
 - docs: **thứ tự backend mặc định cho công ty hợp nhất — giai đoạn 4/5 của ADR-0011** — chốt tường minh vào
   `docs/DIEU-PHOI-MODEL.md` §4 thứ tự `claude-code (sub) → codex (sub) → gateway (Antigravity) → model local →
