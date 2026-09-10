@@ -99,6 +99,12 @@ claude-code (sub) → codex (sub) → gateway (sub Google Antigravity) → model
 
 Không đổi cơ chế (`routing.prefer` đã có), chỉ chốt thứ tự mặc định thành tài liệu.
 
+**Cài đặt (giai đoạn 4/5, đã xong):** thứ tự khai báo mẫu trong `companies/software-company/llm.example.yaml`
+đã đúng thứ tự trên từ trước (không cần đổi mã); phần thiếu là (1) chốt câu trên thành tài liệu tường minh ở
+`docs/DIEU-PHOI-MODEL.md` §4 (mục "Thứ tự mặc định cho công ty hợp nhất") thay vì chỉ ngụ ý qua bảng tình huống,
+và (2) ví dụ backend `provider: anthropic` (API trả phí) — trước đó không có ví dụ nào cho nhánh cuối cùng của
+chuỗi, dễ khiến người đọc tưởng hub không hỗ trợ. Không đổi `RoutingClient`/cơ chế xoay.
+
 ## Hệ quả
 
 - Mọi đường dẫn trong CI, `pyproject.toml` gốc, `Makefile`, `CODEMAP.md`, `ARCHITECTURE.md` và tài liệu đổi một

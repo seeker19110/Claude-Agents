@@ -79,6 +79,21 @@ pha `spec` không cứu được: nó khử mâu thuẫn chứ không đi nghiê
 
 ## 4. Chiến lược ưu tiên theo tier (gợi ý `routing.prefer`)
 
+### Thứ tự mặc định cho công ty hợp nhất (ADR-0011 §5, giai đoạn 4/5)
+
+`software-company` (công ty duy nhất trong phạm vi hợp nhất — ADR-0011 §1) không khai `routing.prefer` mặc định:
+thứ tự **khai báo** trong `companies/software-company/llm.example.yaml` LÀ thứ tự ưu tiên mặc định, và đó là:
+
+```
+claude-code (sub, ưu tiên claude-sub-mcp để giữ tool-use)  →  codex (sub, gpt qua ChatGPT Plus/Pro)  →
+gateway (sub Google Antigravity, ../../platform/gateway)  →  model local (Ollama, lưới đỡ cuối)  →  API trả phí
+```
+
+Không phải cơ chế mới — `routing.prefer` (§5 dưới) đã có từ ADR-0019, đây chỉ chốt **thứ tự mặc định** thành tài
+liệu cho công ty hợp nhất: gói subscription đứng trước, API trả phí đứng SAU CÙNG (chỉ dùng khi mọi gói
+subscription/local đều nghỉ). Muốn tối ưu theo tình huống máy cụ thể thì đặt `routing.prefer` đè lên thứ tự
+này — xem bảng bên dưới.
+
 | Tình huống | prefer |
 |---|---|
 | Có Claude Max + Antigravity | `strong: claude-sub`, `standard: antigravity`, `light: antigravity` — việc nặng dùng gói mạnh, việc nhẹ dùng gói miễn phí để giữ hạn mức Claude cho code |

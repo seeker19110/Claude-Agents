@@ -122,6 +122,10 @@ prices:
 #     provider: openai
 #     base_url: http://localhost:11434/v1
 #     models: {strong: qwen3:32b, standard: qwen3:8b}
+#   - name: paid-api                   # API trả phí — ADR-0011 §5: SAU CÙNG, chỉ dùng khi mọi gói sub/local đều nghỉ
+#     provider: anthropic              #   (hoặc `openai` với key thật); công ty hợp nhất không dùng làm mặc định
+#     api_key_env: COMPANY_LLM_API_KEY #   đặt qua biến môi trường, không ghi thẳng vào file
+#     models: {strong: claude-opus-5, standard: claude-sonnet-5, light: claude-haiku-4-5}
 # routing:
 #   cooldown_s: 3600
 #   transient_cooldown_s: 60
