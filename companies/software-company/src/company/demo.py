@@ -13,7 +13,8 @@ from .blackboard import Blackboard
 from .bus import InMemoryBus
 from .delivery import DeliveryLead
 from .events import AcceptanceResult, AuditLog, Envelope, PullRequest, ReviewResult, Task
-from .gates import GateRequest, HumanGate
+from .gate_cli import PersistentGate
+from .gates import GateRequest
 from .roles import ROLE, SOURCE, STACK
 from .supervisor import Supervisor
 
@@ -36,7 +37,7 @@ def _release_event(bus: InMemoryBus, rid: str, env: str, status: str) -> None:
 
 def run() -> None:
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8")  # Windows console cp1252
-    bus = InMemoryBus(); bb = Blackboard(bus); gate = HumanGate(); sup = Supervisor(bus)
+    bus = InMemoryBus(); bb = Blackboard(bus); gate = PersistentGate(bus); sup = Supervisor(bus)
     lead = DeliveryLead(bus, gate)
     bb.write(ROLE.PRODUCT, "architecture", "docs/c4.md", "C4 L1-L2")
     bb.write(ROLE.PRODUCT, "api-contract", "openapi.yaml", "v1")

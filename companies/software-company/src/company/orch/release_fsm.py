@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..delivery import DONE_STATES
 from ..events import Envelope
+from ..gate_risk import request_gate
 from ..gates import GateRequest
 from ..github_pr import PrRecord, open_pr
 from ..roles import ROLE
@@ -213,7 +214,7 @@ def _check_paused_releases(o: Orchestrator) -> None:
         o._audit("release.pending_human", {"release_id": rid, "env": last.payload.get("env"),
                                               "summary": str(last.payload.get("summary") or "")[:300]},
                     actor=ROLE.OPS, project_id=o.project_for(last))
-        o.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
+        request_gate(o.gate, GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
                                       checklist=["root_cause", "decision:redeploy|close", "hint"]))
 
 def _superseded_release(o: Orchestrator, rid: str) -> bool:

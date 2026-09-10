@@ -7,6 +7,7 @@ import time
 import pytest
 
 from company.bus import InMemoryBus
+from company.gate_cli import PersistentGate
 from company.llm import FakeClient
 from company.orchestrator import Orchestrator
 from company.workspace import Integration, MergeResult
@@ -121,8 +122,7 @@ def test_cli_model_env_khong_mang_khoa_cong_ty(monkeypatch):
 
 def _lead(batch=False):
     from company.delivery import DeliveryLead
-    from company.gates import HumanGate
-    bus = InMemoryBus(); gate = HumanGate(); lead = DeliveryLead(bus, gate, batch_releases=batch)
+    bus = InMemoryBus(); gate = PersistentGate(bus); lead = DeliveryLead(bus, gate, batch_releases=batch)
     lead.plans_ok.add("PLAN")   # ADR-0037: không còn gate plan
     return bus, lead
 

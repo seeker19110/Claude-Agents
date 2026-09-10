@@ -6,7 +6,9 @@ from datetime import UTC, datetime, timedelta
 
 from .bus import InMemoryBus
 from .events import BUDGET_FACTOR, AcceptanceResult, AuditLog, Envelope, ReviewResult, Task, can_transition
-from .gates import GateRequest, HumanGate
+from .gate_cli import PersistentGate
+from .gate_risk import request_gate
+from .gates import GateRequest
 from .roles import LEAD_ACTOR, SOURCE
 
 DONE_STATES = frozenset({"approved", "merged", "released", "closed"})
@@ -25,7 +27,7 @@ class DeliveryLead:
 
     IN_FLIGHT = frozenset({"waiting", "dispatched", "in_progress", "in_review", "changes_requested"})
 
-    def __init__(self, bus: InMemoryBus, gate: HumanGate, max_retries: int = 3,
+    def __init__(self, bus: InMemoryBus, gate: PersistentGate, max_retries: int = 3,
                  review_timeout: timedelta = timedelta(hours=2), batch_releases: bool = False):
         self.bus, self.gate, self.max_retries, self.review_timeout = bus, gate, max_retries, review_timeout
         # batch_releases: gom mọi ticket approved của dự án vào MỘT RC khi không còn ticket nào đang chạy (thay vì mỗi
@@ -340,7 +342,7 @@ class DeliveryLead:
         if need <= got and not self.replaying and rid not in self.gate.pending and not self._gate_kind_approved(rid, "release"):
             # `threat-model` và `architecture` dời từ gate plan cũ (ADR-0037): bỏ gate plan thì hai khoá đó phải
             # còn chỗ để người ký nhìn, và release là gate công đoạn cuối trước khi tiền thật đi ra.
-            self.gate.request(GateRequest(kind="release", subject_id=rid, created_by=LEAD_ACTOR,
+            request_gate(self.gate, GateRequest(kind="release", subject_id=rid, created_by=LEAD_ACTOR,
                                           checklist=["tests", "scan", "regression-staging", "perf", "a11y", "runbook",
                                                      "rollback", "threat-model", "architecture"]))
 
@@ -355,7 +357,7 @@ class DeliveryLead:
             # Bằng chứng (finding của reviewer/qa/security) đã nằm trong topic `review-results`, `gate_brief` đọc
             # trực tiếp từ đó — không cần chép lại vào GateRequest.
             if not self.replaying and rid not in self.gate.pending and not self._gate_kind_approved(rid, "escalation"):
-                self.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by=LEAD_ACTOR,
+                request_gate(self.gate, GateRequest(kind="escalation", subject_id=rid, created_by=LEAD_ACTOR,
                                               checklist=["root_cause", "decision:reopen|close", "hint"]))
             return
         self._maybe_open_release_gate(rid)

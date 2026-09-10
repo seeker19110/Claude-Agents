@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..events import BUDGET_FACTOR, MAX_TICKET_TOKENS, RISK_HINTS, Envelope, Task
+from ..gate_risk import request_gate
 from ..gates import GateRequest
 from ..llm import LLMError, TransientError
 from ..roles import PHASE, ROLE, SOURCE
@@ -67,7 +68,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
             if sid not in o.gate.pending and not decided:
                 if (gap := spec_runtime_gap(env.payload)) is not None:
                     return o._spec_runtime_missing(env, project, gap, res)
-                o.gate.request(GateRequest(kind="spec", subject_id=sid, created_by=env.actor,
+                request_gate(o.gate, GateRequest(kind="spec", subject_id=sid, created_by=env.actor,
                                               checklist=["prd", "acceptance-criteria", "ux-flow", "risks"]))
             if decided and sid not in o.gate.pending:
                 res.actions.append(f"gate:{sid}:{decided[-1].decision}"); o._mark(env, res); return res
@@ -119,7 +120,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
             o.unhandled[project] = {"agent": ROLE.PRODUCT, "topic": env.topic, "event_id": env.event_id,
                                        "subject": project, "error": f"plan_rejected: {'; '.join(problems)[:200]}"}
         if project not in o.gate.pending:
-            o.gate.request(GateRequest(kind="escalation", subject_id=project, created_by=ROLE.PRODUCT,
+            request_gate(o.gate, GateRequest(kind="escalation", subject_id=project, created_by=ROLE.PRODUCT,
                                           checklist=["plan_problems", "decision:retry|close"]))
     else:
         o.plans[plan_id] = plan
@@ -170,7 +171,7 @@ def _spec_runtime_missing(o: Orchestrator, env: Envelope, project: str, gap: str
             o.unhandled[project] = {"agent": ROLE.PRODUCT, "topic": cause.topic, "event_id": cause.event_id,
                                        "subject": project, "error": f"spec_runtime_missing: {gap[:200]}"}
     if project not in o.gate.pending:
-        o.gate.request(GateRequest(kind="escalation", subject_id=project, created_by=ROLE.PRODUCT,
+        request_gate(o.gate, GateRequest(kind="escalation", subject_id=project, created_by=ROLE.PRODUCT,
                                       checklist=["spec_runtime", "decision:retry|close"]))
     o._mark(env, res); return res
 

@@ -9,13 +9,13 @@ import pytest
 from company.bus import InMemoryBus
 from company.delivery import DeliveryLead
 from company.events import AcceptanceResult, AuditLog, Envelope, PullRequest, ReviewResult, Task
-from company.gates import HumanGate
+from company.gate_cli import PersistentGate
 from company.orch.routes import REVIEW_AGENT
 from company.supervisor import Supervisor
 
 
 def _setup():
-    bus = InMemoryBus(); gate = HumanGate(); lead = DeliveryLead(bus, gate)
+    bus = InMemoryBus(); gate = PersistentGate(bus); lead = DeliveryLead(bus, gate)
     lead.plans_ok.add("PLAN")   # ADR-0037: `_check_plan` thay gate plan làm nguồn sự thật cho `dispatch`
     return bus, gate, lead
 
@@ -282,7 +282,7 @@ def test_release_engineer_cannot_override_rc_version():
 
 def _replay_into(bus, tasks, **kw):
     """Như orchestrator mở lại bus: ticket dựng lại từ plan (dispatch ở chế độ replaying), rồi áp từng event trong log."""
-    lead2 = DeliveryLead(InMemoryBus(), HumanGate(), **kw)
+    b2 = InMemoryBus(); lead2 = DeliveryLead(b2, PersistentGate(b2), **kw)
     lead2.replaying = True
     try:
         for t in tasks: lead2.dispatch(t, "PLAN")

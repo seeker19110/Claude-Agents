@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..deploy import DeployError, project_name
 from ..events import Envelope
+from ..gate_risk import request_gate
 from ..gates import GateRequest
 from ..roles import ROLE
 from ..smoke import VERIFIED_BY, parse_runtime, run_smoke, unverified
@@ -76,7 +77,7 @@ def smoke(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[str, Any]
         o._audit("release.smoke_blocked", {"release_id": rid, "claimed_status": p.get("status"),
                                               "spec_kind": kind, "reason": smoke["reason"]}, project_id=pid)
         if rid not in o.gate.pending:   # cùng đường với smoke fail bên dưới: RC failed không có route nào tiếp
-            o.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
+            request_gate(o.gate, GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
                                           checklist=["root_cause", "decision:redeploy|close", "hint"]))
         return {**p, "status": "failed", "smoke": smoke}
     smoke = run_smoke(integ.path, rt, sandbox=o.sandbox)
@@ -88,7 +89,7 @@ def smoke(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[str, Any]
                                          "error": smoke.get("error")}, project_id=pid)
     # RC `failed` ở staging không có route nào tiếp: không mở gate thì nó nằm im như `pending_human` từng nằm.
     if rid not in o.gate.pending:
-        o.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
+        request_gate(o.gate, GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
                                       checklist=["root_cause", "decision:redeploy|close", "hint"]))
     return {**p, "status": "failed", "smoke": smoke}
 
@@ -97,7 +98,7 @@ def _escalate(o: Orchestrator, rid: str) -> None:
     """RC không đi tiếp được thì phải có người được hỏi — cùng đường với smoke fail ở trên: không mở gate thì RC
     nằm im đúng như `pending_human` từng nằm im (TRAPS §"RC `pending_human`/`failed` không có route tiếp")."""
     if rid not in o.gate.pending:
-        o.gate.request(GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
+        request_gate(o.gate, GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
                                       checklist=["root_cause", "decision:redeploy|close", "hint"]))
 
 

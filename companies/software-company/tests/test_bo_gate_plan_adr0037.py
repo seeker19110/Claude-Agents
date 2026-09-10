@@ -21,7 +21,8 @@ from company import gate_checklists as GC
 from company.bus import InMemoryBus
 from company.delivery import DeliveryLead
 from company.events import Envelope, Task
-from company.gates import GateKind, HumanGate
+from company.gate_cli import PersistentGate
+from company.gates import GateKind
 from company.llm import FakeClient
 from company.orchestrator import Orchestrator
 from company.registry import ROOT
@@ -95,7 +96,7 @@ def test_plan_khong_qua_check_thi_khong_dispatch():
 def test_dispatch_tu_choi_plan_chua_qua_check_plan():
     """Đo hai chiều ngay trong một ca: `plans_ok` rỗng → `PermissionError`; ghi plan_id vào → giao được.
     Gate `plan` đã duyệt (thứ trước đây mở khoá) KHÔNG còn tác dụng gì ở đây."""
-    bus = InMemoryBus(); gate = HumanGate(); lead = DeliveryLead(bus, gate)
+    bus = InMemoryBus(); gate = PersistentGate(bus); lead = DeliveryLead(bus, gate)
     task = Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="builder", title="x",
                 acceptance=["a"], estimate_tokens=4_000, budget_tokens=6_000)
     with pytest.raises(PermissionError, match="plan chưa qua _check_plan"):

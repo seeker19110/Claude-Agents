@@ -12,14 +12,14 @@ from __future__ import annotations
 from company.bus import InMemoryBus
 from company.delivery import DeliveryLead
 from company.events import Envelope, PullRequest, ReviewResult, Task
-from company.gates import HumanGate
+from company.gate_cli import PersistentGate
 from company.orch.routes import REVIEW_AGENT
 from company.workspace import TicketWorkspace, is_generated
 from test_tools_and_agentic import _init_repo
 
 
 def _lead():
-    bus = InMemoryBus(); gate = HumanGate(); lead = DeliveryLead(bus, gate)
+    bus = InMemoryBus(); gate = PersistentGate(bus); lead = DeliveryLead(bus, gate)
     lead.plans_ok.add("PLAN")   # ADR-0037: không còn gate plan
     return bus, lead
 
