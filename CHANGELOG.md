@@ -6,6 +6,9 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(sessions): nhật ký phiên 2026-09-10 (QLKH: PR #248/#251/#254/#255, tag+push thật REL-047/048) và
+  `TRAPS.md` (software-company) — ghi lại lỗ hổng còn lại của `_superseded_release` (không nhận ticket đã xong
+  qua `mark_done_already_integrated` khi RC không có bản giao "sau" nó), để phiên sau vá theo TDD (#256).
 - fix(company): **huỷ release "superseded" phải đóng sổ ticket, không để lửng lơ ở `approved`** (#255). Khi một RC cũ bị
   từ chối vì nội dung đã nằm trong bản giao sau (`_superseded_release`), `void_release` đưa ticket approved về
   `unreleased()` — đúng cho ca xung đột tích hợp (ticket thật sự cần RC kế tiếp) nhưng sai ở đây: ticket đã giao
