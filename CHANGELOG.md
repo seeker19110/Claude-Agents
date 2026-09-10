@@ -6,6 +6,13 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(company): **bậc rủi ro gate + actor "code" tự động qua gate thấp — giai đoạn 3/5 của ADR-0011** —
+  `gate_risk.py` mới (`RiskRule`/`RISK_RULES` tra cứu được, khởi tạo RỖNG có chủ đích: chưa có luật nào qua
+  review nên PR này không đổi hành vi runtime của gate nào); actor mới `"code"` tự `approve` gate khi cờ
+  `COMPANY_GATE_AUTOAPPROVE` bật (mặc định TẮT) và đúng một hàng khớp tier "low"; 12 điểm `gate.request` đổi
+  sang `request_gate()`. `sc-security` chấm riêng (2 lượt) tìm và vá 2 lỗ hổng thật trước khi mở PR: thiếu
+  `actor=` tường minh khiến gate nghiệm thu tự động qua bị nhầm actor "orchestrator"; tên hàng trong `reason`
+  không được đối chiếu với `RISK_RULES` thật (#266)
 - feat(console): **`--with-gateway` — giai đoạn 2/5 của ADR-0011, một lệnh bật cả gateway lẫn console** —
   console đã tự bật `orchestrator run --watch` sẵn từ ADR-0004 (`--allow-engine`), nên phần còn thiếu là
   gateway: cờ mới gọi `python -m gateway start` như tiến trình con trước khi phục vụ; `gateway start` đã
