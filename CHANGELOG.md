@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- fix(company): **huỷ release "superseded" phải đóng sổ ticket, không để lửng lơ ở `approved`**. Khi một RC cũ bị
+- fix(company): **huỷ release "superseded" phải đóng sổ ticket, không để lửng lơ ở `approved`** (#255). Khi một RC cũ bị
   từ chối vì nội dung đã nằm trong bản giao sau (`_superseded_release`), `void_release` đưa ticket approved về
   `unreleased()` — đúng cho ca xung đột tích hợp (ticket thật sự cần RC kế tiếp) nhưng sai ở đây: ticket đã giao
   rồi. Không đóng sổ thì `scheduler.tick()` (flush_releases mỗi nhịp, #251) tạo ngay một RC trùng cho ticket đó;
