@@ -1,6 +1,7 @@
 # ADR-0011: Hợp nhất thành một công ty phần mềm duy nhất; cải tổ cấu trúc thư mục thành `platform/` + `companies/`
 
-Trạng thái: Đề xuất · Ngày: 2026-09-10 · Giữ nguyên ADR-0001 (lõi chung), ADR-0006 (keeper) · Liên quan
+Trạng thái: Chấp nhận (cả 5 giai đoạn cài đặt đã xong: #262, #265, #266, #267, giai đoạn 5 ở PR này) · Ngày:
+2026-09-10 · Giữ nguyên ADR-0001 (lõi chung), ADR-0006 (keeper) · Liên quan
 `docs/KIEN-TRUC-4-LOP.md` §E
 
 > ADR này quyết định **ranh giới thư mục, một entrypoint hợp nhất, và hai chế độ duyệt gate**. Cài đặt đi theo
@@ -112,6 +113,15 @@ chuỗi, dễ khiến người đọc tưởng hub không hỗ trợ. Không đ�
 - `docs/adr/` gốc vẫn là nơi cho ADR cấp hub; ADR của từng package vẫn ở `<pkg>/docs/adr/`.
 - Bốn PR tiếp theo, mỗi PR một scope: entrypoint hợp nhất · agent hồ sơ gate + bậc rủi ro · `llm.example.yaml` ·
   console một view.
+
+**Cài đặt (giai đoạn 5/5, đã xong):** "console một view" là sáu màn "thông tin vận hành" (Trực ban, Phễu sản
+phẩm, Xưởng phần mềm, Công ty bảo trì, Chi phí, Nhật ký) gộp thành MỘT trang cuộn dài, luôn hiển thị cùng lúc
+— trước đó mỗi màn ẩn/hiện qua sidebar, chỉ một màn nhìn thấy tại một thời điểm. Sidebar không còn ẩn/hiện mà
+chỉ cuộn tới đúng mục (mục lục). `Cài đặt` (form sửa cấu hình, quyền `--allow-config`) và `Hướng dẫn` (tài
+liệu tĩnh) không phải "thông tin vận hành" — không đổi, vẫn hiển thị cùng trang (mọi section vốn đã dùng
+chung CSS `.view`) nhưng vẫn vẽ nội dung khi điều hướng tới như trước, cộng thêm vẽ một lần lúc mở trang để
+không rỗng nếu người dùng không bấm nav. Không đổi cơ chế thu thập dữ liệu (`render()` đã gọi mọi hàm vẽ
+không điều kiện theo view từ trước — đây là lý do gộp rẻ, không cần vẽ lại gì thêm).
 
 ## Cái ADR này KHÔNG quyết
 

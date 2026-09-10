@@ -47,11 +47,13 @@ export function writeHash(v,kind,id,replace){
   routing=false;
 }
 export function showView(v){
-  if(v===view&&$(".view.on")) return;
   view=v;
   $$(".nav").forEach(n=>n.setAttribute("aria-current",String(n.dataset.v===v)));
-  $$(".view").forEach(x=>x.classList.toggle("on",x.id==="v-"+v));
-  titles(); window.scrollTo({top:0});
+  // ADR-0011 giai đoạn 5/5: một trang cuộn dài, không còn ẩn/hiện — nav giờ là mục lục, bấm một mục CUỘN
+  // tới đúng section thay vì ẩn mọi section khác (`.view` không còn CSS `display:none`/`class="on"`).
+  const el=document.getElementById("v-"+v);
+  if(el) el.scrollIntoView({behavior:"smooth",block:"start"});
+  titles();
   if(v==="cai-dat") loadSettings();
   if(v==="phan-mem") renderSubmit(v);
   if(v==="huong-dan") renderGuide();
