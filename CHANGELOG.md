@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- feat(console): **nút "Tick tất cả" cho checklist gate** — gate nợ kiến trúc (SD-*, DEF-*) có thể mang
+- feat(console): **nút "Tick tất cả" cho checklist gate** (#254) — gate nợ kiến trúc (SD-*, DEF-*) có thể mang
   20-40 mục, tick từng ô một là việc vô nghĩa sau khi đã đọc hồ sơ bằng chứng. Chỉ hiện khi checklist có hơn
   một mục; không bỏ qua khoá lý do ≥20 ký tự hay logic mở khoá nút Duyệt — chỉ tự động hoá phần tick.
 - docs(sessions): ghi nhật ký phiên 2026-09-10 — so sánh quy trình với skill `superpowers`, áp TDD/gate
