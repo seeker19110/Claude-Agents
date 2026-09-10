@@ -39,6 +39,15 @@ hạn mức; self-hosted, resume được; trung lập provider.
 7. **Không "sửa" code cạnh bên.** Mỗi dòng đổi phải truy được về yêu cầu. Thấy dead code thì nói, đừng xoá.
 8. **Không tin lời khai.** Của model, của agent, của chính mình. "Tests pass" cần output lệnh vừa chạy; "đã
    deploy" cần bằng chứng máy sinh (`verified_by=workspace|orchestrator`). Chưa chạy thì chưa được nói.
+   Trước khi nói bất kỳ câu nào kiểu "xong/đã sửa/pass/đã deploy" — kể cả một câu cảm thán ("Ổn rồi!", "Ngon!") —
+   đi qua đúng năm bước, không bỏ bước nào:
+   1. Xác định lệnh nào **chứng minh** được câu này.
+   2. Chạy lệnh đó **đầy đủ**, ngay trong lượt hiện tại — không dùng kết quả của lượt trước.
+   3. Đọc **toàn bộ** output, không chỉ dòng cuối; đếm số lỗi/số fail thật.
+   4. Output có khớp đúng câu định nói không? Không khớp → nói đúng trạng thái thật kèm bằng chứng, không nói
+      câu ban đầu.
+   5. Chỉ sau bước 4 mới được nói câu đó — và nói kèm bằng chứng, không nói suông.
+   Bỏ một bước ở trên = nói dối, không phải "gần đúng".
 
 ## Luật bắt buộc
 
