@@ -8,11 +8,11 @@ import {filter} from "./tiles.js";
 import {$, $$, esc} from "./util.js";
 
 /* ---------- giao việc ----------
-   Ba form = ba topic mà NGƯỜI được nạp vào bus (`console.submit.FORMS`), đặt NGAY TRONG màn của xưởng
-   nhận việc (không gộp chung một màn): yêu cầu phần mềm + trả lời làm rõ ở Xưởng phần mềm, brief kênh ở
-   Xưởng video. Trang chỉ gom trường thành payload đúng hình của schema topic; kiểm tra thật do bus của
-   công ty làm khi publish, lỗi trả về nguyên văn. Danh sách (goals, pillars...): mỗi dòng một mục. */
-export const SC_X="software-company", ST_X="Studio-creators";
+   Hai form = hai topic mà NGƯỜI được nạp vào bus (`console.submit.FORMS`), đặt NGAY TRONG màn Xưởng phần mềm:
+   yêu cầu phần mềm mới và trả lời câu hỏi làm rõ. Trang chỉ gom trường thành payload đúng hình của schema topic;
+   kiểm tra thật do bus của công ty làm khi publish, lỗi trả về nguyên văn. Danh sách (attachments...): mỗi dòng
+   một mục. */
+export const SC_X="software-company";
 export const FORMS=[
  {id:"req",xuong:SC_X,topic:"research-requests",title:"Yêu cầu phần mềm",view:"phan-mem",sample:true,
   hint:"Một dự án mới cho xưởng phần mềm: researcher tìm hiểu → spec-writer viết đặc tả → gate <b>spec</b> chờ bạn duyệt.",
@@ -27,18 +27,7 @@ export const FORMS=[
   fields:[
    {k:"project_id",label:"Mã dự án",ph:"P1",req:true,mono:true},
    {k:"answers",label:"Trả lời — mỗi dòng: <code>question_id: nội dung trả lời</code>",qa:true,req:true,rows:5,
-    ph:"Q1: Thanh toán chỉ VNPay, chưa cần Momo\nQ2: Admin dùng chung tài khoản Google Workspace"}]},
- {id:"brief",xuong:ST_X,topic:"channel-briefs",title:"Brief kênh video",view:"video",
-  hint:"Định hướng một kênh cho xưởng video: trend-researcher → channel-strategist lập kế hoạch → gate <b>plan</b> chờ bạn duyệt.",
-  fields:[
-   {k:"channel_id",label:"Mã kênh",ph:"CH1",req:true,mono:true},
-   {k:"goals",label:"Mục tiêu (mỗi dòng một mục)",ph:"1000 subscriber trong 3 tháng",list:true,req:true,rows:2},
-   {k:"audience",label:"Khán giả",ph:"người mới làm YouTube",req:true},
-   {k:"pillars",label:"Trụ cột nội dung (mỗi dòng một mục)",ph:"hướng dẫn\nso sánh",list:true,req:true,rows:2},
-   {k:"cadence",label:"Nhịp đăng",ph:"2 video/tuần"},
-   {k:"boundaries",label:"Giới hạn (mỗi dòng một mục)",ph:"không hứa thu nhập\nkhông dùng nhạc chưa có license",list:true,rows:2},
-   {k:"language",label:"Ngôn ngữ",ph:"vi"},
-   {k:"tone",label:"Giọng điệu",ph:"gần gũi, thực tế"}]}];
+    ph:"Q1: Thanh toán chỉ VNPay, chưa cần Momo\nQ2: Admin dùng chung tài khoản Google Workspace"}]}];
 
 export function renderSubmit(v){
   const sect=$(`#v-${v} .submit`); if(!sect) return;

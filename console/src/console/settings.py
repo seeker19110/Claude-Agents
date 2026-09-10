@@ -24,7 +24,6 @@ TIERS = ("strong", "standard", "light")
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_LLM_YAML = {
     "software-company": REPO_ROOT / "software-company" / "llm.yaml",
-    "Studio-creators": REPO_ROOT / "Studio-creators" / "llm.yaml",
 }
 DEFAULT_GATEWAY_URL = "http://127.0.0.1:1123"
 

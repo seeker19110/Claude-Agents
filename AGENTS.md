@@ -8,16 +8,15 @@ sửa ở đâu) · `CHANGELOG.md` (đã đổi gì) · `docs/TASK-PACK.md` (gó
 
 ## Repo này là gì
 
-X-Agents: hub các "công ty AI" đa agent. Sáu package Python trong **một uv workspace** (một `pyproject.toml`,
+X-Agents: hub các "công ty AI" đa agent. Năm package Python trong **một uv workspace** (một `pyproject.toml`,
 một `uv.lock`, một `.venv` ở gốc):
 
 | Thư mục | Package | Là gì |
 |---|---|---|
 | `software-company/` | `company` | công ty gia công phần mềm: yêu cầu → PRD → ticket → code thật trên worktree → review → release → khách ký |
-| `Studio-creators/` | `studio` | phòng ban video YouTube: kế hoạch → kịch bản → render → review → đăng |
 | `gateway/` | `gateway` | proxy OpenAI-compatible xoay vòng tài khoản Google Antigravity |
-| `console/` | `console` | trực ban hợp nhất: một trang web cục bộ nhìn cả hai công ty, duyệt gate tại chỗ |
-| `xagents-core/` | `xagents_core` | lõi chung hai công ty dùng (bus, llm, runner, guard, gate) — đang xây theo bảy bước K3, xem `docs/adr/0001-loi-chung-xagents-core.md` |
+| `console/` | `console` | trực ban hợp nhất: một trang web cục bộ nhìn công ty, duyệt gate tại chỗ |
+| `xagents-core/` | `xagents_core` | lõi chung công ty dùng (bus, llm, runner, guard, gate) — đang xây theo bảy bước K3, xem `docs/adr/0001-loi-chung-xagents-core.md` |
 | `keeper/` | `keeper` | công ty bảo trì: tín hiệu → ticket bảo trì → patch có bằng chứng đo hai chiều → PR; khách hàng số 0 là chính repo này |
 
 Nguyên tắc chung (chi tiết ở `ARCHITECTURE.md`): model quyết định – code hành động; prompt là code; guardrail có

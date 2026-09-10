@@ -15,10 +15,9 @@ Nguyên tắc chung cho mọi công ty:
 | Thư mục | Vai trò | Quy mô |
 |---|---|---|
 | [`software-company/`](software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 6 agent (5 công đoạn + supervisor), 45 skill, 19 topic, 14 template, 3 human gate (+ gate `escalation`; kế hoạch do `_check_plan` chặn bằng code, ADR-0037) có trợ lý kiểm duyệt chỉ đọc (10 subagent + hồ sơ bằng chứng `gate_brief`, `/gate-brief`), giao hàng thật bằng tag + nhánh `company/release` (`--deliver`), ADR 0001–0039, 1100 test |
-| [`Studio-creators/`](Studio-creators/) | Phòng ban sáng tạo video (YouTube): kế hoạch → kịch bản → fact-check → render (TTS + ảnh + ghép) → sửa từng cảnh → review → đăng → số liệu thật nuôi chiến lược. Approval-first, media trung lập provider | 7 khối, 14 agent, 24 skill, 19 topic, 7 template, 4 human gate, ADR 0001–0009 (0007 tool web, 0008 adapter YouTube thật, 0009 render pipeline v2), 587 test |
 | [`gateway/`](gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code. **Nhiều tài khoản có rủi ro khoá tài khoản Google — đọc [§Rủi ro tài khoản](gateway/README.md#rủi-ro-tài-khoản--đọc-trước-khi-gõ-make-login-lần-thứ-hai) trước** | daemon `127.0.0.1:1123/v1`, CLI `python -m gateway start/stop/status/login/logout/reset/setup/models`, 251 test |
-| [`console/`](console/) | Trực ban hợp nhất: một trang web cục bộ nhìn cả hai công ty — hàng đợi human gate, ticket, dây chuyền video, token và chi phí, gói tài khoản đang xoay — duyệt gate ngay tại chỗ khi bật `--allow-decide`, đổi model/backend từng công ty khi bật `--allow-config`, giao việc mới ngay trong màn của từng xưởng (yêu cầu phần mềm kèm nơi lưu dự án, brief kênh video) khi bật `--allow-submit`. Cập nhật tức thì bằng SSE, địa chỉ deep-link tới từng gate/ticket, tìm và lọc mọi bảng, cài được thành app (PWA). Đọc bus SQLite ở chế độ chỉ đọc; quyết định đi qua đúng `HumanGate`, việc mới đi qua đúng bus + schema của từng công ty | `127.0.0.1:8200`, chỉ thư viện chuẩn (`http.server`), 6 màn hình, chỉ đọc mặc định + token mỗi lần chạy, ADR 0001–0003 |
-| [`xagents-core/`](xagents-core/) | Lõi chung của mọi công ty AI: bus, llm, runner, guard, gate — company và studio import từ đây thay vì mỗi bên một bản fork | mypy `strict` + phủ 100% dòng VÀ 100% nhánh từ ngày đầu, 477 test; ADR gốc 0001, 0003, 0004 (0002 đặt trước cho K4); bảy bước K3.1–K3.7 **đã xong hết** (K3.5c `sqlite_bus` #187, K3.6 `AgentRunner` #195, K3.7 `gates`/`gate_cli`/`supervisor` #198 — bước cuối kịch bản B); nay đi tiếp theo mạch p3 (span ADR-0009 #222, cổng điểm eval #224) |
+| [`console/`](console/) | Trực ban hợp nhất: một trang web cục bộ nhìn công ty — hàng đợi human gate, ticket, token và chi phí, gói tài khoản đang xoay — duyệt gate ngay tại chỗ khi bật `--allow-decide`, đổi model/backend khi bật `--allow-config`, giao việc mới (yêu cầu phần mềm kèm nơi lưu dự án) khi bật `--allow-submit`. Cập nhật tức thì bằng SSE, địa chỉ deep-link tới từng gate/ticket, tìm và lọc mọi bảng, cài được thành app (PWA). Đọc bus SQLite ở chế độ chỉ đọc; quyết định đi qua đúng `HumanGate`, việc mới đi qua đúng bus + schema của công ty | `127.0.0.1:8200`, chỉ thư viện chuẩn (`http.server`), 6 màn hình, chỉ đọc mặc định + token mỗi lần chạy, ADR 0001–0003 |
+| [`xagents-core/`](xagents-core/) | Lõi chung của mọi công ty AI: bus, llm, runner, guard, gate — company import từ đây thay vì tự fork | mypy `strict` + phủ 100% dòng VÀ 100% nhánh từ ngày đầu, 477 test; ADR gốc 0001, 0003, 0004 (0002 đặt trước cho K4); bảy bước K3.1–K3.7 **đã xong hết** (K3.5c `sqlite_bus` #187, K3.6 `AgentRunner` #195, K3.7 `gates`/`gate_cli`/`supervisor` #198 — bước cuối kịch bản B); nay đi tiếp theo mạch p3 (span ADR-0009 #222, cổng điểm eval #224) |
 | [`keeper/`](keeper/) | Công ty bảo trì: tín hiệu → ticket bảo trì → patch có bằng chứng đo hai chiều → PR; khách hàng số 0 là chính repo này | 6 khối / 8 agent theo ADR-0006; BT1–BT7 đã merge — package có mã thật, chạy được, chưa qua canary (BT8) — chi tiết ở [`keeper/README.md`](keeper/README.md), lộ trình ở [`keeper/docs/DAC-TA-KEEPER.md`](keeper/docs/DAC-TA-KEEPER.md) |
 | [`docs/HUONG-DAN-VAN-HANH.md`](docs/HUONG-DAN-VAN-HANH.md) | Hướng dẫn cài đặt và vận hành từng bước: cấu hình gói tài khoản, chạy thử, đưa yêu cầu, duyệt gate, theo dõi chi phí, bảo trì | |
 | [`docs/DIEU-PHOI-MODEL.md`](docs/DIEU-PHOI-MODEL.md) | Điều phối model theo gói tài khoản: backend, 3 tier, bảng agent → tier, cơ chế xoay khi hết quota | |
@@ -29,25 +28,24 @@ Nguyên tắc chung cho mọi công ty:
 | [`SECURITY.md`](SECURITY.md) | Cách báo lỗi bảo mật, phạm vi, mô hình bí mật, các lớp phòng thủ đang có | |
 
 Cả repo là **một project** ([uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/)): `pyproject.toml` + `uv.lock`
-ở gốc, sáu thư mục là sáu package thành viên dùng chung một `.venv`. Mỗi công ty tự chứa: `pyproject.toml`, `Makefile`, `agents/`,
+ở gốc, năm thư mục là năm package thành viên dùng chung một `.venv`. Mỗi công ty tự chứa: `pyproject.toml`, `Makefile`, `agents/`,
 `skills/`, `topics/`, `gates/`, `templates/`, `evals/`, `tests/`, `docs/` (kiến trúc + ADR), `llm.example.yaml`; software-company thêm
-`examples/` (mô phỏng cả công ty, relay client), Studio-creators thêm `media.example.yaml`. Không có `[project.scripts]`: mọi lệnh đều là
-`python -m <package>.<module>` (package `company` và `studio`). Đọc README trong từng thư mục để biết luồng và lệnh chi tiết. Repo khách
+`examples/` (mô phỏng cả công ty, relay client). Không có `[project.scripts]`: mọi lệnh đều là
+`python -m <package>.<module>` (package `company`). Đọc README trong từng thư mục để biết luồng và lệnh chi tiết. Repo khách
 nằm ngoài repo này, chỉ ra bằng `--repo <đường dẫn>` khi chạy orchestrator.
 
 ## Bắt đầu nhanh
 
 Hướng dẫn đầy đủ từng bước: [`docs/HUONG-DAN-VAN-HANH.md`](docs/HUONG-DAN-VAN-HANH.md).
 
-Yêu cầu: Python 3.11+, [`uv`](https://docs.astral.sh/uv/). `ffmpeg` nếu muốn render video thật ở `Studio-creators`.
+Yêu cầu: Python 3.11+, [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync            # một lần ở gốc repo: một .venv cho cả sáu package
-make test          # pytest cả sáu (hoặc make lint / make cov / make build)
+uv sync            # một lần ở gốc repo: một .venv cho cả năm package
+make test          # pytest cả năm (hoặc make lint / make cov / make build)
 
 # Chạy offline (client giả), không cần key
 cd software-company && make test && make demo
-cd ../Studio-creators && make test && make demo
 ```
 
 Không có `make` (Windows): mỗi target đều có dạng `uv run` tương đương trong `Makefile`, ví dụ `make test` = `uv run pytest -q`,
@@ -59,14 +57,13 @@ Chạy model thật, không API key: mỗi công ty có sẵn hồ sơ **gói Cl
 `make llm` **từ chối cài** khi máy chưa đăng nhập tài khoản Antigravity nào (`python -m gateway ready`): hồ sơ trỏ
 `base_url` vào daemon, cài lên máy trống là dựng sẵn một cấu hình chắc chắn hỏng ở lượt gọi model đầu tiên.
 Muốn tự khai từ đầu thì sao chép `llm.example.yaml` → `llm.yaml` (bị gitignore), hoặc đặt biến môi trường
-`COMPANY_LLM_*` / `STUDIO_LLM_*` (biến môi trường thắng file và bỏ qua `backends:`). Provider hỗ trợ: `anthropic`, `openai`
+`COMPANY_LLM_*` (biến môi trường thắng file và bỏ qua `backends:`). Provider hỗ trợ: `anthropic`, `openai`
 (mọi server OpenAI-compatible: OpenAI, OpenRouter, Ollama, Groq, vLLM, Gemini OpenAI-compat…), `claude-code` (CLI `claude -p`
 đã đăng nhập gói Claude trên máy, không cần key), `codex` (CLI `codex exec --json`, gói ChatGPT Plus/Pro), `fake`.
 `codex` không có tool-use nên khối kỹ thuật của software-company (cần sửa code) tự bỏ qua provider này. `claude-code` thì có, qua
 một trong hai chế độ khai trong `llm.yaml`: `mcp_tools: true` (ADR-0024 — tool của công ty vào CLI qua cầu MCP, vẫn chạy trong
 sandbox `tools.py`; khuyến nghị) hoặc `cli_tools: true` (ADR-0023 — CLI tự cầm tool riêng của nó, hàng rào yếu hơn một bậc).
 `make probe` gọi model thật một lượt để biết CLI `claude` trên máy này chạy được chế độ nào (`mcp` | `cli` | `none`).
-Nên chạy một mình gói Claude Pro/Max là đủ cả hai công ty.
 
 **Chạy bằng gói tài khoản, không mua token**: khai nhiều `backends:` trong `llm.yaml` (Claude Pro/Max qua `claude-code`,
 ChatGPT qua `codex`, Google Antigravity qua gateway, model local; nhiều tài khoản cùng gói bằng `config_dir` riêng). Mỗi agent có tier `strong` / `standard` / `light`; `routing.prefer` chọn gói
@@ -82,7 +79,7 @@ make start      # daemon tại 127.0.0.1:1123
 make setup      # ghi ../software-company/llm.yaml dạng một provider trỏ vào gateway (không dùng khi llm.yaml đã có `backends:`)
 ```
 
-Nhìn cả hai công ty trên một màn hình (và duyệt gate tại chỗ):
+Nhìn công ty trên một màn hình (và duyệt gate tại chỗ):
 
 ```bash
 cd console
@@ -108,10 +105,10 @@ topic (JSON Schema, có key) ──► registry: agent nào nhận topic nào
 
 ## Phát triển
 
-- CI (`.github/workflows/ci.yml`, Python 3.11 và 3.13): cả sáu package chạy ruff + mypy + pytest có ngưỡng coverage
-  (`fail_under` 100 / 100 / 100 / 100 / 100 / 100 cho software-company / Studio-creators / gateway / console / xagents-core / keeper: cả sáu đang phủ 100% dòng, ngưỡng bằng đúng mức đạt được nên mất một
-  dòng phủ là CI đỏ); hai công ty chạy thêm `evals all --replay --strict`. Job `golden-check` chạy `make golden` rồi so
-  `git diff --exit-code`; `asset-scan` quét tài sản prompt và ngân sách token của cả hai công ty (ADR-0022); `audit` chạy
+- CI (`.github/workflows/ci.yml`, Python 3.11 và 3.13): cả năm package chạy ruff + mypy + pytest có ngưỡng coverage
+  (`fail_under` 100 / 100 / 100 / 100 / 100 cho software-company / gateway / console / xagents-core / keeper: cả năm đang phủ 100% dòng, ngưỡng bằng đúng mức đạt được nên mất một
+  dòng phủ là CI đỏ); software-company chạy thêm `evals all --replay --strict`. Job `golden-check` chạy `make golden` rồi so
+  `git diff --exit-code`; `asset-scan` quét tài sản prompt và ngân sách token của công ty (ADR-0022); `audit` chạy
   `pip-audit --strict` + gitleaks trên cả lịch sử; `quality` gom kết quả — tên job này là bất biến (required status check
   của `main`), thêm job con mới thì phải nối vào `needs` của nó. `pr-policy.yml` kiểm tra quy ước PR.
 - Sửa `agents/` hoặc `skills/` → tăng `version`, `make golden`, `make eval-record AGENT=<id>` bằng model thật, commit bản ghi.

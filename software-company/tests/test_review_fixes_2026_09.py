@@ -421,9 +421,9 @@ def _count_cases() -> int:
     return sum(len(re.findall(r"^def test_", p.read_text(encoding="utf-8"), re.M)) for p in root.glob("*.py"))
 
 
-def test_readme_goc_khop_nguong_coverage_va_so_test_hai_cong_ty():
+def test_readme_goc_khop_nguong_coverage_va_so_test():
     """README gốc là bảng số liệu của cả hub, và nó cũng trôi dạt: đo ngày 2026-09-05 nó ghi `fail_under` của
-    công ty là 90 (pyproject đã nâng lên 98), gateway 206 test (thật 216), Studio 393 (thật 395).
+    công ty là 90 (pyproject đã nâng lên 98), gateway 206 test (thật 216).
 
     Ngưỡng coverage kiểm được CHÍNH XÁC vì nó nằm trong `pyproject.toml`; số test thì chặn khoảng như test trên
     (hàm test ≤ số ghi ≤ gấp đôi) vì test tham số hoá làm số ca lớn hơn số hàm.
@@ -445,7 +445,7 @@ def test_readme_goc_khop_nguong_coverage_va_so_test_hai_cong_ty():
         real = cfg["tool"]["coverage"]["report"]["fail_under"]
         assert want == real, f"README gốc ghi fail_under của {name} là {want}, pyproject.toml nói {real}"
 
-    for pkg, prefix in (("software-company", "| [`software-company/`]"), ("Studio-creators", "| [`Studio-creators/`]")):
+    for pkg, prefix in (("software-company", "| [`software-company/`]"),):
         row = next(ln for ln in readme.splitlines() if ln.startswith(prefix))
         m = re.search(r"(\d+) test \|$", row)
         assert m, f"dòng {pkg} trong README gốc phải kết thúc bằng '<N> test |'"

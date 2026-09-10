@@ -29,7 +29,7 @@ giờ vì đọc sai trạng thái. Mười chỗ dưới đây là chuyện th�
 ## Nguyên tắc rút ra cho mọi màn mới
 
 Chốt thành ADR: [`docs/adr/0003-moi-o-tra-loi-mot-cau-hoi-o-rong-la-o-xam.md`](docs/adr/0003-moi-o-tra-loi-mot-cau-hoi-o-rong-la-o-xam.md).
-Còn lại: **C9** (màn "Xưởng video": lưới cảnh, thumbnail A/B, SRT, deep-link gate `PUB-*`) — chờ đợt 4 của studio.
+`Studio-creators` đã tách thành repo riêng (`docs/sessions/`); console không còn màn "Xưởng video" nào để nợ (C9).
 
 
 Trước khi thêm một con số lên trang, trả lời ba câu: *nó đo cái gì đúng nghĩa đen?* · *nó xanh vì tốt hay vì rỗng?*

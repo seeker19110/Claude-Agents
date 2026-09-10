@@ -6,7 +6,7 @@
 *Security → Report a vulnerability*. Nếu không truy cập được, gửi email tới người bảo trì repo
 (xem `git log`) với tiêu đề bắt đầu bằng `[security]`.
 
-Hãy kèm: phiên bản/commit, thư mục liên quan (`software-company/`, `Studio-creators/`, `gateway/`), các bước tái
+Hãy kèm: phiên bản/commit, thư mục liên quan (`software-company/`, `gateway/`), các bước tái
 hiện, và tác động bạn đánh giá. Có bản vá đề xuất thì càng tốt — nhưng đừng mở PR công khai cho lỗ hổng chưa vá.
 
 Đây là dự án nguồn mở không có SLA và không có chương trình thưởng lỗi. Cam kết thực tế: phản hồi trong vòng 7
@@ -25,7 +25,7 @@ khóa của mình trên máy không tin cậy.
 ## Mô hình bí mật
 
 Không có bí mật nào nằm trong repo. Cấu hình thật (`llm.yaml`, `media.yaml`) bị `.gitignore`; chỉ bản
-`*.example.yaml` được commit. Khóa cũng có thể đặt bằng biến môi trường `COMPANY_LLM_*` / `STUDIO_LLM_*`, và biến
+`*.example.yaml` được commit. Khóa cũng có thể đặt bằng biến môi trường `COMPANY_LLM_*`, và biến
 môi trường thắng file.
 
 Token Google của gateway nằm ở `$XAGENTS_HOME/auth/antigravity_tokens.json` (mặc định `~/.x-agents/`), quyền 600,

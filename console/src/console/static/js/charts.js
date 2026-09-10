@@ -1,8 +1,8 @@
 /* charts.js — tách từ index.html ở K7.1 (kịch bản B). Không build step, không CDN.
     */
-import {SC, ST, emptyBox, srcOk, st} from "./state.js";
+import {SC, emptyBox, st} from "./state.js";
 import {filter} from "./tiles.js";
-import {$, esc, mmss, vnd} from "./util.js";
+import {$, esc, vnd} from "./util.js";
 
 /* ---------- biểu đồ ---------- */
 export const tip=$("#tip");
@@ -15,7 +15,7 @@ export const hideTip=()=>tip.classList.remove("on");
 export function costChart(){
   const cd=st().cost_days||{}, days=cd.series||[], labels=cd.days||[];
   const host=$("#chart-cost");
-  if(!days.length){host.innerHTML=emptyBox(srcOk(SC)?ST:SC,"Chưa có ngày nào có chi phí");return;}
+  if(!days.length){host.innerHTML=emptyBox(SC,"Chưa có ngày nào có chi phí");return;}
   const W=760,H=210,L=42,R=12,T=10,B=26, iw=W-L-R, ih=H-T-B;
   const tot=days.map(d=>d.reduce((a,b)=>a+b,0)), max=Math.max(.5,Math.ceil(Math.max(...tot)*2)/2);
   const bw=iw/days.length*.62, gap=iw/days.length;
@@ -44,39 +44,9 @@ export function costChart(){
     h.addEventListener("mouseleave",hideTip);});
 }
 
-export function retChart(){
-  const host=$("#chart-ret"), r=srcOk(ST)?st().retention:null;
-  const pts=(r&&r.points)||[];
-  $("#ret-title").textContent="Đường giữ chân"+(r&&r.video_id?" · "+r.video_id:"");
-  if(pts.length<2){host.innerHTML=emptyBox(ST,"Chưa có đường giữ chân");return;}
-  const W=760,H=200,L=40,R=14,T=12,B=26, iw=W-L-R, ih=H-T-B;
-  const maxT=pts[pts.length-1][0]||1;
-  const x=t=>L+t/maxT*iw, y=p=>T+ih-p/100*ih;
-  // hai đoạn rơi sâu nhất — tự tính, không đánh dấu cứng
-  const drops=pts.slice(1).map((d,i)=>({t:d[0],p:d[1],d:pts[i][1]-d[1]})).sort((a,b)=>b.d-a.d).slice(0,2).filter(d=>d.d>0);
-  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Đường giữ chân người xem">`;
-  [0,50,100].forEach(p=>{g+=`<line x1="${L}" x2="${W-R}" y1="${y(p)}" y2="${y(p)}" stroke="var(--grid)"/>
-    <text x="${L-8}" y="${y(p)+4}" text-anchor="end" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="var(--axis)">${p}%</text>`;});
-  const line=pts.map((d,i)=>`${i?"L":"M"}${x(d[0])} ${y(d[1])}`).join(" ");
-  g+=`<path d="${line} L${x(maxT)} ${y(0)} L${L} ${y(0)} Z" fill="var(--s1)" fill-opacity=".12"/>`;
-  g+=`<path d="${line}" fill="none" stroke="var(--s1)" stroke-width="2" stroke-linejoin="round"/>`;
-  drops.forEach((d,i)=>{g+=`<line x1="${x(d.t)}" x2="${x(d.t)}" y1="${T}" y2="${T+ih}" stroke="var(--serious)" stroke-width="1" stroke-dasharray="3 3"/>
-    <circle cx="${x(d.t)}" cy="${y(d.p)}" r="4.5" fill="var(--serious)" stroke="var(--chart-surface)" stroke-width="2"/>
-    <text x="${x(d.t)+(i?-6:6)}" y="${T+13}" ${i?'text-anchor="end"':""} font-size="11" fill="var(--ink-2)" font-family="Be Vietnam Pro, sans-serif">rơi ${Math.round(d.d)}% ở ${mmss(d.t)}</text>`;});
-  pts.forEach(d=>{g+=`<rect class="hit" x="${x(d[0])-14}" y="${T}" width="28" height="${ih}" fill="transparent" data-t="${d[0]}" data-p="${d[1]}" style="cursor:crosshair"/>`;});
-  const step=Math.max(30,Math.round(maxT/4/30)*30);
-  for(let t=0;t<=maxT;t+=step) g+=`<text x="${x(t)}" y="${H-8}" text-anchor="middle" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="var(--axis)">${mmss(t)}</text>`;
-  g+=`<line x1="${L}" x2="${W-R}" y1="${T+ih}" y2="${T+ih}" stroke="var(--axis)"/></svg>`;
-  host.innerHTML=g;
-  host.querySelectorAll(".hit").forEach(h=>{
-    h.addEventListener("mousemove",ev=>{
-      showTip(`<b>${mmss(+h.dataset.t)}</b><div class="row"><i style="background:var(--s1)"></i><em>còn xem</em><s>${h.dataset.p}%</s></div>`,ev.clientX,ev.clientY);});
-    h.addEventListener("mouseleave",hideTip);});
-}
-
 export function agentChart(){
   const rows=st().agents||[], host=$("#chart-agent");
-  if(!rows.length){host.innerHTML=emptyBox(srcOk(SC)?ST:SC,"Chưa có agent nào phát sinh chi phí");return;}
+  if(!rows.length){host.innerHTML=emptyBox(SC,"Chưa có agent nào phát sinh chi phí");return;}
   const rowH=26, W=760, L=136, R=56, H=rows.length*rowH+16;
   const max=rows[0][1]||1;
   let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Chi phí theo agent">`;

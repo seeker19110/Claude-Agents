@@ -243,19 +243,17 @@ def test_evidence_hong_khong_nem() -> None:
     assert tr.processed == set() and tr.delivered == {}
 
 
-def test_collect_mang_khoi_su_that_va_hieu_qua_gate(company_db: Path, studio_db: Path, tmp_path: Path) -> None:
-    s = collect(company_db, studio_db, gateway_url="http://127.0.0.1:9")
+def test_collect_mang_khoi_su_that_va_hieu_qua_gate(company_db: Path, tmp_path: Path) -> None:
+    s = collect(company_db, gateway_url="http://127.0.0.1:9")
     assert s["delivery"]["releases_total"] == 0 and s["delivery"]["production"] == 0
     # conftest ký SPEC-1 nhưng không có `orchestrated` cho quyết định đó → đúng là "người đã ký, máy chưa áp"
     assert [(d["id"], d["kind"]) for d in s["pending_decisions"]] == [("SPEC-1", "spec")] and s["running"]["queue"] >= 1
     assert isinstance(s["deadlocks"], list)
     rel = next(g for g in s["gates"] if g["id"] == "REL-001")
     assert "GIAO HÀNG" in rel["effect"]
-    pub = next(g for g in s["gates"] if g["id"] == "PUB-vid-042")
-    assert pub["effect"] == ""
     t = s["tickets"][0]
     assert t["integrated"] is False and t["human_hint"] == "" and t["gate"] is None
     assert s["reviews"][0]["trim"] == "" and len(s["reviews"][0]["at"]) == 5
-    dead = collect(tmp_path / "khong-co.sqlite", studio_db, gateway_url="http://127.0.0.1:9")
+    dead = collect(tmp_path / "khong-co.sqlite", gateway_url="http://127.0.0.1:9")
     assert dead["delivery"] is None and dead["running"] is None and dead["pending_decisions"] == [] and dead["deadlocks"] == []
     assert COMPANY in dead["sources"]

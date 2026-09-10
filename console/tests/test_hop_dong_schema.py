@@ -1,6 +1,6 @@
-"""K7.4 kịch bản B — hợp đồng giữa console và schema topic của hai công ty.
+"""K7.4 kịch bản B — hợp đồng giữa console và schema topic của software-company + keeper.
 
-Console đọc THẲNG các trường trong payload của software-company và Studio-creators (`collect.py`, `truth.py`).
+Console đọc THẲNG các trường trong payload của software-company (`collect.py`, `truth.py`).
 Không có gì canh mối nối đó: đổi tên một trường trong `topics/schemas/*.json` thì test của công ty đó vẫn xanh,
 còn console **vỡ âm thầm** — ô hiện rỗng hoặc sai chứ không báo lỗi. Đúng khuôn "số xanh vì rỗng" đã ghi trong
 `console/TRAPS.md`, và là loại hỏng tệ nhất vì người trực vẫn thấy một trang bình thường.
@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CONSOLE_SRC = [ROOT / "console" / "src" / "console" / f for f in ("collect.py", "truth.py")]
 # `keeper` có mặt vì `collect.py` đọc payload của công ty bảo trì (`maintenance-tickets`, `debt-ledger`,
 # `release-notes`) — thiếu nó thì trường console đọc riêng của keeper không schema nào chứa và test đỏ.
-PACKAGES = {"software-company": "company", "Studio-creators": "studio", "keeper": "keeper"}
+PACKAGES = {"software-company": "company", "keeper": "keeper"}
 
 # Đọc payload của envelope: `e.payload.get("x")`, `payload.get("x", …)`, `p.get("x")`, `p["x"]`.
 # Biến `p` là quy ước dùng khắp `collect.py`/`truth.py` cho `e.payload` — bắt nó là bắt đúng chỗ console chạm
@@ -35,11 +35,7 @@ DOC_PAYLOAD = re.compile(r'(?:(?:e|env|ev)\.payload|payload|p)\.get\("([a-z_]+)"
                          r'|(?:payload|p)\["([a-z_]+)"\]')
 
 # Tên KHÔNG phải trường payload, có lý do rõ — không phải chỗ giấu trường chưa kiểm:
-KHONG_PHAI_TRUONG_PAYLOAD = {
-    # phần tử BÊN TRONG mảng `performance-snapshots.retention_curve` (`[{t, pct}, …]`), không phải trường của
-    # payload. Chúng vẫn là hợp đồng, nhưng nằm sâu một tầng — canh ở `HOP_DONG_LONG` bên dưới.
-    "t", "pct",
-}
+KHONG_PHAI_TRUONG_PAYLOAD: set[str] = set()
 
 # Trường LỒNG một tầng: `<topic>.<trường>.<khoá con>`. Quét regex chỉ thấy tầng ngoài, mà đây đúng là chỗ vừa
 # thêm bằng chứng ở K2.5 (`sandbox`) — mất nó là console lại đọc ra `None` mà không ai biết.
@@ -63,7 +59,7 @@ def truong_console_doc() -> set[str]:
     for f in CONSOLE_SRC:
         for m in DOC_PAYLOAD.finditer(f.read_text(encoding="utf-8")):
             ten.add(m.group(1) or m.group(2))
-    assert len(ten) >= 25, f"quét ra {len(ten)} tên — mẫu regex hỏng, test sẽ xanh vì rỗng"
+    assert len(ten) >= 20, f"quét ra {len(ten)} tên — mẫu regex hỏng, test sẽ xanh vì rỗng"
     return ten
 
 

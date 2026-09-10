@@ -1,10 +1,10 @@
 # console — trực ban hợp nhất cho các công ty AI
 
-Một trang web cục bộ cho **người chủ dự án**: nhìn cả `software-company` và `Studio-creators` trên cùng
+Một trang web cục bộ cho **người chủ dự án**: nhìn `software-company` (và công ty bảo trì `keeper`) trên
 một màn hình, thấy ngay việc gì đang chờ mình duyệt, tiêu bao nhiêu token và tiền, và (khi bật) duyệt
 human gate ngay tại chỗ.
 
-Console **đọc bus SQLite của hai công ty ở chế độ chỉ đọc** và không bao giờ tự dựng event: mọi quyết
+Console **đọc bus SQLite của công ty ở chế độ chỉ đọc** và không bao giờ tự dựng event: mọi quyết
 định gate đi qua đúng lớp `HumanGate` của công ty tương ứng, nên four-eyes, allowlist người duyệt và
 `audit-log` vẫn đi đúng đường của repo.
 
@@ -13,15 +13,14 @@ Console **đọc bus SQLite của hai công ty ở chế độ chỉ đọc** v�
 một đề bài web app thật (cùng nội dung với `software-company/examples/yeu-cau-mau-web-app.json`) để sửa lại, thay vì
 nhìn ô trống rồi viết hai dòng mà `product` (pha spec) phải hỏi lại năm lần.
 
-**Giao việc ngay trên trang** (bật `--allow-submit`), tách theo từng xưởng chứ không gộp: đầu màn *Xưởng phần mềm*
-có form *Yêu cầu phần mềm* (`research-requests`, kèm **nơi lưu dự án** = repo git của khách cho riêng dự án đó,
-ADR-0025) và *Trả lời câu hỏi làm rõ* (`clarification-answers`); đầu màn *Xưởng video* có form *Brief kênh video*
-(`channel-briefs`). Form chỉ gom trường thành payload; event được publish qua đúng `SQLiteBus` của công ty nên vẫn
-bị kiểm theo JSON Schema của topic y như nạp bằng CLI `publish`. Không cần tạo file JSON tay nữa; agent nhận việc
-ở nhịp `run --watch` kế tiếp.
+**Giao việc ngay trên trang** (bật `--allow-submit`): đầu màn *Xưởng phần mềm* có form *Yêu cầu phần mềm*
+(`research-requests`, kèm **nơi lưu dự án** = repo git của khách cho riêng dự án đó, ADR-0025) và *Trả lời câu hỏi
+làm rõ* (`clarification-answers`). Form chỉ gom trường thành payload; event được publish qua đúng `SQLiteBus` của
+công ty nên vẫn bị kiểm theo JSON Schema của topic y như nạp bằng CLI `publish`. Không cần tạo file JSON tay nữa;
+agent nhận việc ở nhịp `run --watch` kế tiếp.
 
-Không framework web, không CDN, không phụ thuộc runtime nào ngoài hai công ty: server là `http.server`
-của thư viện chuẩn, trang là một file HTML tĩnh dùng `fetch`.
+Không framework web, không CDN, không phụ thuộc runtime nào ngoài software-company/keeper: server là
+`http.server` của thư viện chuẩn, trang là một file HTML tĩnh dùng `fetch`.
 
 **Cập nhật tức thì.** Trang nối `GET /api/stream` (SSE) nên gate mới hiện trong khoảng một giây thay vì
 chờ hết nhịp làm mới — nhãn *trực tiếp* ở thanh trên cùng. Stream đứt thì tự lùi về hỏi lại 10 giây một
@@ -44,10 +43,9 @@ phiên, mà token sinh mới mỗi lần chạy server — cache trang là lần
 Cài đặt chỉ hoạt động ở ngữ cảnh an toàn, tức `127.0.0.1`/`localhost`. Bind ra ngoài loopback bằng
 `--i-know` thì trình duyệt từ chối đăng ký service worker; trang vẫn chạy đủ, chỉ là không cài được.
 
-**Tìm và lọc.** Ô tìm chung (phím `/`) lọc gate, ticket, video, PR, review và audit-log cùng lúc, gấp dấu
-tiếng Việt nên gõ `ong kinh` cũng ra `Ống kính`. Bảng ticket và video có chip lọc theo trạng thái; các bảng
-sắp xếp được bằng cách bấm tiêu đề cột. Phím tắt: `/` tìm, `1`–`7` nhảy màn (theo thứ tự ở thanh bên), `g` về
-Trực ban, `Esc` đóng.
+**Tìm và lọc.** Ô tìm chung (phím `/`) lọc gate, ticket, PR, review và audit-log cùng lúc, gấp dấu
+tiếng Việt. Bảng ticket có chip lọc theo trạng thái; các bảng sắp xếp được bằng cách bấm tiêu đề cột.
+Phím tắt: `/` tìm, `1`–`7` nhảy màn (theo thứ tự ở thanh bên), `g` về Trực ban, `Esc` đóng.
 
 ## Chạy nhanh
 
@@ -85,7 +83,7 @@ uv run python -m console models --company software-company --set antigravity.sta
 uv run python -m console models --company software-company --prefer standard=antigravity --disable chatgpt-sub
 ```
 
-Đường dẫn DB không phải mặc định thì chỉ ra bằng `--company-db` / `--studio-db`; công ty nào chưa
+Đường dẫn DB không phải mặc định thì chỉ ra bằng `--company-db` / `--keeper-db`; công ty nào chưa
 chạy bao giờ (chưa có file DB) cũng không sao — trang báo phần đó đang trống và vì sao, không hiện số 0 giả.
 
 ## Bảo mật
@@ -109,10 +107,9 @@ chạy bao giờ (chưa có file DB) cũng không sao — trang báo phần đó
 
 | Màn hình | Nội dung |
 |---|---|
-| **Trực ban** | Hàng đợi human gate của cả hai xưởng, xếp theo mức quá hạn (`over` ≥ 24 giờ, `warn` ≥ 12 giờ — khớp `GATE_TIMEOUT_H`/`GATE_REMIND_H`); ô số event, lời gọi model, token, tỉ lệ làm lại, PR chưa kiểm; chi phí 14 ngày tách theo tier; bảng gói tài khoản đang xoay; 10 bản ghi audit gần nhất |
+| **Trực ban** | Hàng đợi human gate của xưởng phần mềm và keeper, xếp theo mức quá hạn (`over` ≥ 24 giờ, `warn` ≥ 12 giờ — khớp `GATE_TIMEOUT_H`/`GATE_REMIND_H`); ô số event, lời gọi model, token, tỉ lệ làm lại, PR chưa kiểm; chi phí 14 ngày tách theo tier; bảng gói tài khoản đang xoay; 10 bản ghi audit gần nhất |
 | **Phễu sản phẩm** | Một hàng cho MỖI sản phẩm: yêu cầu → đặc tả → ticket → RC → staging (smoke) → production (smoke) → nghiệm thu. Ô không có dữ liệu là **ô xám gạch đứt**, không bao giờ xanh; bậc staging/production chỉ tính khi có `smoke` (bằng chứng máy sinh, ADR-0029 của company) — `status: deployed` do agent tự khai thì bậc đó vẫn xám |
 | **Xưởng phần mềm** | Bảng ticket theo trạng thái kèm mức tiêu ngân sách, pull request chờ review (lint/test do code chạy thật) và cột **commit vượt integration** (`git rev-list --count company/integration..ticket/<id>` — `0` là đã gộp hết, `—` là không đo được), kết quả review theo nguồn `reviewer` · `qa` · `security` (hai nguồn đầu đều do agent `qa` chấm) kèm **nguồn ngữ cảnh bị cắt** ngay cạnh verdict |
-| **Xưởng video** | Dây chuyền video theo trạng thái, số liệu sau khi đăng kéo từ YouTube Analytics, đường giữ chân người xem |
 | **Chi phí & hạn mức** | Chi phí dự án so với trần, lời gọi chưa có giá (gói thuê bao), hiệu chỉnh ước lượng, ngân sách token từng ticket, chi phí theo agent, mọi lần supervisor can thiệp |
 | **Nhật ký** | Toàn bộ `audit-log` (tối đa 200 bản ghi mới nhất), lọc theo sản phẩm agent / gate / supervisor / người / lỗi |
 | **Hướng dẫn** | Cách dùng ngay trong trang: hệ thống làm gì, ba quyền và **trạng thái thật của phiên đang chạy** (cờ nào đang bật, cờ nào chưa), các bước giao việc, bốn điểm dừng chờ người, cách duyệt gate, lệnh dòng lệnh tương đương, ba lỗi hay gặp |
@@ -133,7 +130,7 @@ bao giờ thay dữ liệu thật bằng số rỗng.
 ## Cấu trúc
 
 ```
-src/console/collect.py   đọc SQLite bus của hai công ty + trạng thái gateway → dict thuần
+src/console/collect.py   đọc SQLite bus của software-company + keeper + trạng thái gateway → dict thuần
 src/console/truth.py     "sự thật giao hàng": phễu release, phễu sản phẩm, bế tắc im lặng, quyết định chưa áp
 src/console/git_truth.py commit vượt nhánh tích hợp (`git rev-list --count`, chỉ đọc; repo lấy từ bus)
 src/console/brief.py     hồ sơ gate_brief cho trang, gọi thẳng company.gate_brief (chỉ đọc)
@@ -143,7 +140,7 @@ src/console/static/      trang trực ban (HTML + CSS + JS thuần, không phụ
 API.md                   hợp đồng nội bộ giữa ba lớp — đọc trước khi sửa bất kỳ lớp nào
 ```
 
-Hai công ty vào bằng path dependency (`[tool.uv.sources]`), nên console luôn dùng đúng `HumanGate`,
+Các công ty vào bằng path dependency (`[tool.uv.sources]`), nên console luôn dùng đúng `HumanGate`,
 `Decision` và schema event của phiên bản đang có trong cây repo.
 
 ## Phát triển

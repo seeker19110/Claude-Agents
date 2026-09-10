@@ -21,7 +21,7 @@ Miễn trừ: `assetscan-waivers.txt` ở gốc cây quét, mỗi dòng `đườ
 không có lý do là miễn trừ không ai dám xoá). Waiver không còn khớp gì sẽ bị báo `waiver-unused` để dọn.
 
 Công cụ nằm trong package `company` vì nó dùng lại `guard.PATTERNS`; nhưng nó chỉ đọc file, không biết gì về
-`registry`, nên chạy được cho bất kỳ cây nào có cùng bố cục — CI chạy nó cho cả `Studio-creators`.
+`registry`, nên chạy được cho bất kỳ cây nào có cùng bố cục — CI chạy nó cho cả `keeper`.
 """
 from __future__ import annotations
 

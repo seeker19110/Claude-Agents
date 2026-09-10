@@ -11,7 +11,7 @@
   python -m console models --company software-company --set antigravity.standard=gemini-3.8-flash-medium
   python -m console models --company software-company --prefer standard=antigravity --disable chatgpt-sub
 
-Mặc định đọc SQLite của hai xưởng cạnh repo; thiếu file DB là bình thường (chưa chạy xưởng đó).
+Mặc định đọc SQLite của software-company + keeper cạnh repo; thiếu file DB là bình thường (chưa chạy xưởng đó).
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ from console.server import (
     DEFAULT_HOST,
     DEFAULT_KEEPER_DB,
     DEFAULT_PORT,
-    DEFAULT_STUDIO_DB,
     generate_token,
     is_loopback_host,
     make_server,
@@ -39,7 +38,6 @@ from console.server import (
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python -m console", description="Console điều hành hợp nhất (chạy cục bộ).")
     p.add_argument("--company-db", type=Path, default=DEFAULT_COMPANY_DB, help="SQLite bus của software-company")
-    p.add_argument("--studio-db", type=Path, default=DEFAULT_STUDIO_DB, help="SQLite bus của Studio-creators")
     p.add_argument("--keeper-db", type=Path, default=DEFAULT_KEEPER_DB, help="SQLite bus của keeper (công ty bảo trì)")
     p.add_argument("--host", default=DEFAULT_HOST, help="địa chỉ bind (chỉ loopback, trừ khi có --i-know)")
     p.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"cổng (mặc định {DEFAULT_PORT})")
@@ -137,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
         argv = sys.argv[1:]
     if argv and argv[0] == "models":
         mp = argparse.ArgumentParser(prog="python -m console models", description="Xem/sửa model của từng công ty")
-        mp.add_argument("--company", help="software-company | Studio-creators")
+        mp.add_argument("--company", help="software-company")
         mp.add_argument("--set", action="append", metavar="BACKEND.TIER=MODEL")
         mp.add_argument("--prefer", action="append", metavar="TIER=BACKEND")
         mp.add_argument("--enable", action="append", metavar="BACKEND")
@@ -170,7 +168,6 @@ def main(argv: list[str] | None = None) -> int:
             allow_submit=args.allow_submit,
             allow_engine=args.allow_engine,
             company_db=args.company_db,
-            studio_db=args.studio_db,
             keeper_db=args.keeper_db,
         )
     except OSError as e:
@@ -189,7 +186,6 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Động cơ:     {'BẬT/TẮT ĐƯỢC trên trang' if args.allow_engine else 'khoá (--allow-engine để bật orchestrator từ trang)'}")
     print(f"  Token file:  {token_path}  (quyền 0600, mới mỗi lần chạy)")
     print(f"  company.db:  {args.company_db}{'' if args.company_db.exists() else '  (chưa có — phần này sẽ trống)'}")
-    print(f"  studio.db:   {args.studio_db}{'' if args.studio_db.exists() else '  (chưa có — phần này sẽ trống)'}")
     print(f"  keeper.db:   {args.keeper_db}"
           f"{'' if args.keeper_db.exists() else '  (chưa có — tab bảo trì ghi “chưa chạy lần nào”)'}")
     print("-" * 68)

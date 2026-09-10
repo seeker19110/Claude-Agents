@@ -111,84 +111,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Studio-creators (phòng ban video): cùng cổng lint / unit / eval-replay, package `studio`.
-  studio-static:
-    name: studio-static
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          python-version: "3.13"
-      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
-      - run: uv run ruff check src tests
-        working-directory: Studio-creators
-      - run: uv run mypy src/studio --ignore-missing-imports
-        working-directory: Studio-creators
-
-  studio-unit:
-    name: studio-unit
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        # Studio cũng sinh tiến trình con (lệnh TTS, ffmpeg) và cũng ghi/đọc văn bản tiếng Việt qua stdio.
-        # Trước đây chỉ chạy trên ubuntu, nên lỗi bảng mã của tiến trình con trên Windows sống được lâu:
-        # nó không làm lệnh thất bại, chỉ làm giọng đọc sai. Một chân Windows đóng cả lớp lỗi đó.
-        os: [ubuntu-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          python-version: "3.13"
-      # Gỡ source Google Chrome của runner image TRƯỚC khi update: 2026-09-09 nó phục vụ `Packages.gz`
-      # lệch hash so với chính `Release` của nó, `apt-get update` đọc MỌI source nên một cái hỏng là cả
-      # lệnh exit 100 và job chết trước khi chạy test nào (#245, hỏng y hệt qua hai lần chạy — không phải
-      # dao động). CI không dùng Chrome ở đâu cả; gỡ source không gỡ Chrome đã cài sẵn trong image.
-      #
-      # KHÔNG dùng `|| true` cho bước này: ba test ghép video thật `skipif` trên `shutil.which("ffmpeg")`,
-      # nên thiếu ffmpeg là chúng lặng lẽ bỏ qua và job vẫn xanh — đúng kiểu "xanh vì rỗng".
-      - run: |
-          sudo rm -f /etc/apt/sources.list.d/google-chrome*   # .list hoặc .sources (deb822), tuỳ image
-          sudo apt-get update && sudo apt-get install -y ffmpeg   # test ghép video thật; thiếu thì test tự bỏ qua
-        if: runner.os != 'Windows'
-      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
-      # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
-      - run: uv run pytest -q --cov --cov-report=term-missing
-        if: runner.os != 'Windows'
-        working-directory: Studio-creators
-      # Windows: chạy test, không đo coverage — nhánh riêng của POSIX không chạy ở đây nên ngưỡng sẽ lệch.
-      # (Không cài ffmpeg: test ghép video thật tự bỏ qua khi thiếu, chân ubuntu vẫn chạy chúng.)
-      - run: uv run pytest -q
-        if: runner.os == 'Windows'
-        working-directory: Studio-creators
-
-  studio-eval-replay:
-    name: studio-eval-replay
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          python-version: "3.13"
-      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
-      # Eval từ bản ghi (không gọi model). `--strict` đỏ khi agent có tên trong
-      # evals/recordings/REQUIRED.txt mà thiếu bản ghi, hoặc bản ghi ghi ở phiên bản prompt cũ.
-      - run: uv run python -m studio.evals all --replay --strict
-        working-directory: Studio-creators
-
   keeper-eval-replay:
     name: keeper-eval-replay
     runs-on: ubuntu-latest
@@ -220,7 +142,6 @@ jobs:
       matrix:
         include:
           - dir: software-company
-          - dir: Studio-creators
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -277,7 +198,7 @@ jobs:
           # vừa dồn toàn bộ cơ chế chung của hai công ty vào `xagents-core` — package rủi ro cao nhất lại có
           # phạm vi nền tảng hẹp nhất. Đo được hậu quả: `test_overdue_khong_truyen_now_thi_lay_bay_gio` đỏ
           # tái hiện được trên Windows (đồng hồ bước ~15,6 ms) mà CI không hề thấy, xem #203.
-          # Khác `unit`/`studio-unit`: ba package này KHÔNG có nhánh chỉ-POSIX nào bỏ lại, nên chân Windows
+          # Khác `unit`: ba package này KHÔNG có nhánh chỉ-POSIX nào bỏ lại, nên chân Windows
           # đo `--cov` luôn — đã kiểm tại chỗ, cả ba đạt đúng 100% trên Windows.
           - os: windows-latest
             python: "3.13"
@@ -334,7 +255,7 @@ jobs:
           # vừa dồn toàn bộ cơ chế chung của hai công ty vào `xagents-core` — package rủi ro cao nhất lại có
           # phạm vi nền tảng hẹp nhất. Đo được hậu quả: `test_overdue_khong_truyen_now_thi_lay_bay_gio` đỏ
           # tái hiện được trên Windows (đồng hồ bước ~15,6 ms) mà CI không hề thấy, xem #203.
-          # Khác `unit`/`studio-unit`: ba package này KHÔNG có nhánh chỉ-POSIX nào bỏ lại, nên chân Windows
+          # Khác `unit`: ba package này KHÔNG có nhánh chỉ-POSIX nào bỏ lại, nên chân Windows
           # đo `--cov` luôn — đã kiểm tại chỗ, cả ba đạt đúng 100% trên Windows.
           - os: windows-latest
             python: "3.13"
@@ -401,7 +322,7 @@ jobs:
           # vừa dồn toàn bộ cơ chế chung của hai công ty vào `xagents-core` — package rủi ro cao nhất lại có
           # phạm vi nền tảng hẹp nhất. Đo được hậu quả: `test_overdue_khong_truyen_now_thi_lay_bay_gio` đỏ
           # tái hiện được trên Windows (đồng hồ bước ~15,6 ms) mà CI không hề thấy, xem #203.
-          # Khác `unit`/`studio-unit`: ba package này KHÔNG có nhánh chỉ-POSIX nào bỏ lại, nên chân Windows
+          # Khác `unit`: ba package này KHÔNG có nhánh chỉ-POSIX nào bỏ lại, nên chân Windows
           # đo `--cov` luôn — đã kiểm tại chỗ, cả ba đạt đúng 100% trên Windows.
           - os: windows-latest
             python: "3.13"
@@ -441,7 +362,7 @@ jobs:
       - run: uv sync --locked   # workspace: một .venv ở root cho cả sáu package
       - run: uv run ruff check src tests
         working-directory: keeper
-      # CÓ --ignore-missing-imports, KHÁC core-static: keeper theo khuôn Studio-creators, không bật `strict`
+      # CÓ --ignore-missing-imports, KHÁC core-static: keeper không bật `strict`
       # như xagents-core — đừng "sửa cho giống core" mà bỏ cờ này, mypy sẽ đỏ vì import thiếu chú kiểu.
       - run: uv run mypy src/keeper --ignore-missing-imports
         working-directory: keeper
@@ -508,10 +429,10 @@ jobs:
           enable-cache: true
           python-version: "3.13"
       - run: uv sync --locked   # workspace: một .venv ở root cho cả sáu package
-      - run: uv run python -m company.assetscan scan . ../Studio-creators ../keeper
+      - run: uv run python -m company.assetscan scan . ../keeper
         working-directory: software-company
       # Prompt tĩnh không được ăn quá nửa ngân sách token của chính agent đó, và skill khai phải tồn tại.
-      - run: uv run python -m company.assetscan budget . ../Studio-creators ../keeper
+      - run: uv run python -m company.assetscan budget . ../keeper
         working-directory: software-company
 
   # Canh gác bảo vệ nhánh — ĐỎ cho tới khi ruleset `.github/rulesets/main.json` thật sự có hiệu lực trên `main`.
@@ -589,7 +510,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    needs: [static, unit, eval-replay, audit, studio-static, studio-unit, studio-eval-replay, keeper-eval-replay, golden-check, gateway-static, gateway-unit, console-static, console-unit, core-static, core-unit, keeper-static, keeper-unit, drift-check, asset-scan, protection-guard]
+    needs: [static, unit, eval-replay, audit, keeper-eval-replay, golden-check, gateway-static, gateway-unit, console-static, console-unit, core-static, core-unit, keeper-static, keeper-unit, drift-check, asset-scan, protection-guard]
     if: always()
     steps:
       - name: Kiểm mọi job con đã success

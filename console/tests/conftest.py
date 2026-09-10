@@ -1,4 +1,4 @@
-"""Fixture dựng DB thật: publish event thật qua bus/Envelope/payload model của hai công ty, không viết SQL tay.
+"""Fixture dựng DB thật: publish event thật qua bus/Envelope/payload model của software-company, không viết SQL tay.
 
 Gate được tạo bằng bản ghi `audit-log` `gate.request` y như `PersistentGate.request` ghi — chỉ khác ở chỗ test đặt
 `ts` để thử ngưỡng tuổi gate (`created_at` khi replay chính là `ts` của event).
@@ -14,10 +14,6 @@ from company.events import AuditLog as CompanyAudit
 from company.events import Envelope as CompanyEnvelope
 from company.events import PullRequest, ReviewResult, Task
 from company.sqlite_bus import SQLiteBus as CompanySQLiteBus
-from studio.events import AuditLog as StudioAudit
-from studio.events import Envelope as StudioEnvelope
-from studio.events import PerformanceSnapshot, VideoBrief
-from studio.sqlite_bus import SQLiteBus as StudioSQLiteBus
 
 NOW = datetime.now(UTC)
 
@@ -72,37 +68,9 @@ def build_company_db(path: Path) -> Path:
     return path
 
 
-def build_studio_db(path: Path) -> Path:
-    """Một video đã briefed + số liệu hiệu suất, một gate `publish` 13 giờ (warn) và một gate `plan` 2 giờ (calm)."""
-    bus = StudioSQLiteBus(path)
-    brief = VideoBrief(video_id="vid-042", channel_id="ch1", working_title="Ống kính 50mm", pillar="review",
-                       angle="thực tế", audience="người mới", estimate_tokens=90_000, budget_tokens=150_000)
-    bus.publish(StudioEnvelope(topic="video-briefs", key="vid-042", actor="channel-strategist", payload=brief.model_dump()))
-    snap = PerformanceSnapshot(video_id="vid-042", channel_id="ch1", views=7_840, impressions=41_200, ctr=0.19,
-                               avg_view_duration_s=284.0, retention_curve=[{"t": 0, "pct": 100}, {"t": 15, "pct": 88}])
-    bus.publish(StudioEnvelope(topic="performance-snapshots", key="vid-042", actor="human",
-                               payload=json.loads(snap.model_dump_json())))
-    _produced(bus, StudioEnvelope, StudioAudit, actor="script-writer", topic_out="scripts", tokens=12_000,
-              video_id="vid-042")
-    gate_request(bus, StudioEnvelope, StudioAudit, kind="publish", subject_id="PUB-vid-042",
-                 # `desk` chứ không phải `publisher`: gate `publish` do desk mở (`studio/orchestrator.py`).
-                 # `publisher` chưa từng mở gate nào — ADR-0008 (allowlist vai tạo gate) làm lộ chỗ fixture bịa.
-                 checklist=["review:fact:pass", "thumbnail"], created_by="desk", age_hours=13,
-                 triggered_by="human:owner")
-    gate_request(bus, StudioEnvelope, StudioAudit, kind="plan", subject_id="PLAN-ch1", checklist=["pillar"],
-                 created_by="channel-strategist", age_hours=2)
-    bus.close()
-    return path
-
-
 @pytest.fixture
 def company_db(tmp_path: Path) -> Path:
     return build_company_db(tmp_path / "company.sqlite")
-
-
-@pytest.fixture
-def studio_db(tmp_path: Path) -> Path:
-    return build_studio_db(tmp_path / "studio.sqlite")
 
 
 @pytest.fixture

@@ -1,4 +1,4 @@
-"""collect(): hợp đồng API.md trên DB thật (event publish qua bus của hai công ty)."""
+"""collect(): hợp đồng API.md trên DB thật (event publish qua bus của software-company)."""
 from __future__ import annotations
 
 import json
@@ -14,127 +14,110 @@ from company.events import Envelope as CompanyEnvelope
 from company.events import Task
 from company.gates import HumanGate as CompanyHumanGate
 from company.sqlite_bus import SQLiteBus as CompanySQLiteBus
-from studio.events import AuditLog as StudioAudit
-from studio.events import Envelope as StudioEnvelope
-from studio.sqlite_bus import SQLiteBus as StudioSQLiteBus
 
 import console.collect as collect_mod
 from conftest import gate_decide
-from console.collect import COMPANY, STUDIO, collect
+from console.collect import COMPANY, collect
 
 DEAD_GATEWAY = "http://127.0.0.1:9"  # cổng 9 (discard) không có ai nghe → luôn từ chối ngay
 
 
-def state(company_db: Path | None, studio_db: Path | None) -> dict:
-    return collect(company_db, studio_db, gateway_url=DEAD_GATEWAY)
+def state(company_db: Path | None) -> dict:
+    return collect(company_db, gateway_url=DEAD_GATEWAY)
 
 
-def test_hai_xuong_deu_co_du_lieu(company_db: Path, studio_db: Path) -> None:
-    s = state(company_db, studio_db)
-    assert s["sources"][COMPANY]["ok"] and s["sources"][STUDIO]["ok"]
-    assert s["sources"][COMPANY]["events"] == 8 and s["sources"][STUDIO]["events"] == 5
-    assert s["tiles"]["events"] == 13
+def test_xuong_co_du_lieu(company_db: Path) -> None:
+    s = state(company_db)
+    assert s["sources"][COMPANY]["ok"]
+    assert s["sources"][COMPANY]["events"] == 8
+    assert s["tiles"]["events"] == 8
     assert [t["id"] for t in s["tickets"]] == ["TCK-112"]
     assert s["tickets"][0]["bud"] == 120_000 and s["tickets"][0]["used"] == 8_420
     assert s["prs"] == [{"id": "TCK-112", "br": "ticket/TCK-112", "s": "thêm login",
                          "lint": "pass", "tests": "pass", "v": "workspace"}]
     assert s["reviews"][0]["v"] == "block" and "thiếu authz" in s["reviews"][0]["f"]
-    assert [v["id"] for v in s["videos"]] == ["vid-042"]
-    assert s["perf"] == [{"id": "vid-042", "imp": 41_200, "views": 7_840, "ctr": 0.19, "avd": 284}]
-    assert s["retention"]["video_id"] == "vid-042" and s["retention"]["points"][0] == [0.0, 100.0]
     assert dict(s["agents"])["builder"] == 0.21
-    assert {g["xuong"] for g in s["gates"]} == {COMPANY, STUDIO}
+    assert {g["xuong"] for g in s["gates"]} == {COMPANY}
     assert [r["ac"] for r in s["log"]]  # audit `produced:*`, mới nhất trước
     assert len(s["cost_days"]["days"]) == len(s["cost_days"]["series"]) == 14
     assert s["cost_days"]["series"][-1][0] == 0.21  # backend = tier strong, hôm nay
 
 
-def test_moi_khoa_luon_co_mat_va_khong_nem_khi_thieu_db(tmp_path: Path, studio_db: Path) -> None:
-    s = state(tmp_path / "khong-co.sqlite", studio_db)
+def test_moi_khoa_luon_co_mat_va_khong_nem_khi_thieu_db(tmp_path: Path) -> None:
+    s = state(tmp_path / "khong-co.sqlite")
     assert s["sources"][COMPANY] == {"ok": False, "db": None, "events": 0, "error": "chưa có file DB",
                                      "sandbox_available": s["sources"][COMPANY]["sandbox_available"]}
     # K2.7: cờ là của MÁY, không của xưởng — có mặt kể cả khi nguồn hỏng (ô cảnh báo cần biết "máy có docker
     # không" trước cả khi biết "công ty chạy gì"), và luôn là bool chứ không phải None.
     assert isinstance(s["sources"][COMPANY]["sandbox_available"], bool)
-    assert s["sources"][STUDIO]["ok"]
     assert s["tickets"] == [] and s["prs"] == [] and s["reviews"] == []
-    assert [g["xuong"] for g in s["gates"]] == [STUDIO, STUDIO]  # phần của xưởng hỏng rỗng, xưởng kia vẫn đủ
-    assert s["videos"] and s["tiles"]["events"] == 5
-    for key in ("generated_at", "sources", "tiles", "gates", "tickets", "prs", "reviews", "videos", "perf",
-                "retention", "cost_days", "agents", "backends", "supervisor", "log", "loops"):
+    assert s["gates"] == []
+    assert s["tiles"]["events"] == 0
+    for key in ("generated_at", "sources", "tiles", "gates", "tickets", "prs", "reviews",
+                "cost_days", "agents", "backends", "supervisor", "log", "loops"):
         assert key in s
 
 
-def test_db_hong_bao_loi_chu_khong_nem(tmp_path: Path, studio_db: Path) -> None:
+def test_db_hong_bao_loi_chu_khong_nem(tmp_path: Path) -> None:
     bad = tmp_path / "hong.sqlite"; bad.write_bytes(b"day khong phai sqlite")
-    s = state(bad, studio_db)
+    s = state(bad)
     assert s["sources"][COMPANY]["ok"] is False
     assert "không đọc được DB" in s["sources"][COMPANY]["error"]
     assert s["tickets"] == []
 
 
 def test_khong_co_db_nao(tmp_path: Path) -> None:
-    s = state(None, None)
+    s = state(None)
     assert s["sources"][COMPANY]["error"] == "chưa cấu hình đường dẫn DB"
-    assert s["tiles"]["events"] == 0 and s["gates"] == [] and s["retention"] == {"video_id": None, "points": []}
+    assert s["tiles"]["events"] == 0 and s["gates"] == []
 
 
-def test_tuoi_gate_va_nguong_sev_theo_hang_so_cua_cong_ty(company_db: Path, studio_db: Path) -> None:
+def test_tuoi_gate_va_nguong_sev_theo_hang_so_cua_cong_ty(company_db: Path) -> None:
     g = CompanyHumanGate()
     over_h = g.timeout.total_seconds() / 3600
     warn_h = g.remind_at.total_seconds() / 3600
-    by_id = {x["id"]: x for x in state(company_db, studio_db)["gates"]}
+    by_id = {x["id"]: x for x in state(company_db)["gates"]}
     assert by_id["REL-001"]["hours"] == 30 and by_id["REL-001"]["sev"] == "over"
-    assert by_id["PUB-vid-042"]["hours"] == 13 and by_id["PUB-vid-042"]["sev"] == "warn"
-    assert by_id["PLAN-ch1"]["hours"] == 2 and by_id["PLAN-ch1"]["sev"] == "calm"
-    assert by_id["REL-001"]["hours"] >= over_h > by_id["PUB-vid-042"]["hours"] >= warn_h > by_id["PLAN-ch1"]["hours"]
+    assert by_id["REL-001"]["hours"] >= over_h > warn_h
     assert math.floor(over_h) == 24 and math.floor(warn_h) == 12  # khớp GATE_TIMEOUT/REMIND của repo
 
 
-def test_gate_da_quyet_khong_con_trong_danh_sach(company_db: Path, studio_db: Path) -> None:
-    s = state(company_db, studio_db)
+def test_gate_da_quyet_khong_con_trong_danh_sach(company_db: Path) -> None:
+    s = state(company_db)
     assert "SPEC-1" not in {g["id"] for g in s["gates"]}          # đã có gate.decide trong log
-    assert {"REL-001", "PUB-vid-042", "PLAN-ch1"} == {g["id"] for g in s["gates"]}
-    bus = StudioSQLiteBus(studio_db)
-    gate_decide(bus, StudioEnvelope, StudioAudit, subject_id="PLAN-ch1", decision="approve", by="human:owner")
+    assert {"REL-001"} == {g["id"] for g in s["gates"]}
+    bus = CompanySQLiteBus(company_db)
+    gate_decide(bus, CompanyEnvelope, CompanyAudit, subject_id="REL-001", decision="request_changes", by="human:owner")
     bus.close()
-    assert "PLAN-ch1" not in {g["id"] for g in state(company_db, studio_db)["gates"]}
-
-
-def test_gate_mang_du_kien_va_checklist(company_db: Path, studio_db: Path) -> None:
-    pub = next(g for g in state(company_db, studio_db)["gates"] if g["id"] == "PUB-vid-042")
-    assert pub["kind"] == "publish" and pub["by"] == "desk" and pub["trigger"] == "human:owner"
-    assert pub["title"] == "Ống kính 50mm"
-    assert ["video_id", "vid-042"] in pub["facts"]
-    assert [item for item, _ in pub["cl"]] == ["review:fact:pass", "thumbnail"]
+    assert "REL-001" not in {g["id"] for g in state(company_db)["gates"]}
 
 
 @pytest.fixture()
 def khong_co_llm_yaml(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Máy chạy test có thể có sẵn `llm.yaml` của một trong hai công ty; khi đó collect() lấy backend từ đó và
-    không bao giờ hỏi gateway. Ép nhánh gateway để test đúng thứ nó định test."""
+    """Máy chạy test có thể có sẵn `llm.yaml` của công ty; khi đó collect() lấy backend từ đó và không bao giờ
+    hỏi gateway. Ép nhánh gateway để test đúng thứ nó định test."""
     monkeypatch.setattr(collect_mod, "_routing_status", lambda: None)
 
 
-def test_gateway_chet_khong_lam_hong_trang(company_db: Path, studio_db: Path, khong_co_llm_yaml: None) -> None:
+def test_gateway_chet_khong_lam_hong_trang(company_db: Path, khong_co_llm_yaml: None) -> None:
     start = datetime.now(UTC)
-    s = collect(company_db, studio_db, gateway_url=DEAD_GATEWAY)
+    s = collect(company_db, gateway_url=DEAD_GATEWAY)
     assert s["backends"] == []
     assert s["sources"]["gateway"]["ok"] is False
     assert "gateway" in s["sources"]["gateway"]["error"]
     assert (datetime.now(UTC) - start).total_seconds() < 5  # timeout ngắn, không treo trang
-    assert s["tickets"] and s["videos"]  # phần còn lại vẫn đầy đủ
+    assert s["tickets"]  # phần còn lại vẫn đầy đủ
 
 
-def test_doc_khong_ghi_vao_db(company_db: Path, studio_db: Path) -> None:
-    before = (company_db.read_bytes(), studio_db.read_bytes())
-    state(company_db, studio_db)
-    assert (company_db.read_bytes(), studio_db.read_bytes()) == before
+def test_doc_khong_ghi_vao_db(company_db: Path) -> None:
+    before = company_db.read_bytes()
+    state(company_db)
+    assert company_db.read_bytes() == before
 
 
 @pytest.mark.parametrize("token", [None])
-def test_token_gateway_khong_bat_buoc(company_db: Path, studio_db: Path, token: Path | None, khong_co_llm_yaml: None) -> None:
-    s = collect(company_db, studio_db, gateway_token_file=token, gateway_url=DEAD_GATEWAY)
+def test_token_gateway_khong_bat_buoc(company_db: Path, token: Path | None, khong_co_llm_yaml: None) -> None:
+    s = collect(company_db, gateway_token_file=token, gateway_url=DEAD_GATEWAY)
     assert s["backends"] == []
 
 
@@ -149,7 +132,7 @@ def test_envelope_hong_bao_loi_ro_thay_vi_nem_nua_voi(tmp_path: Path) -> None:
     con.execute("INSERT INTO events (body) VALUES (?)", ("khong-phai-json-envelope-hop-le",))
     con.commit()
     con.close()
-    s = collect(db, None, gateway_url=DEAD_GATEWAY)
+    s = collect(db, gateway_url=DEAD_GATEWAY)
     assert s["sources"][COMPANY]["ok"] is False
     assert "log hỏng" in s["sources"][COMPANY]["error"]
 
@@ -198,36 +181,14 @@ def test_review_note_noi_finding_khi_khong_co_root_cause() -> None:
     assert v._review_note("ticket_id", "T1", "khac") == ""
 
 
-def test_company_tiers_loi_load_agents_tra_rong(company_db: Path, studio_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_company_tiers_loi_load_agents_tra_rong(company_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(collect_mod, "load_company_agents", lambda **k: (_ for _ in ()).throw(RuntimeError("hong")))
-    s = collect(company_db, studio_db, gateway_url=DEAD_GATEWAY)
+    s = collect(company_db, gateway_url=DEAD_GATEWAY)
     # tiers() rỗng -> cost_days vẫn chạy được (dùng tier mặc định "standard"), không nổ.
     assert len(s["cost_days"]["series"]) == 14
 
 
-def test_studio_tiers_loi_load_agents_tra_rong(company_db: Path, studio_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(collect_mod, "load_studio_agents", lambda **k: (_ for _ in ()).throw(RuntimeError("hong")))
-    s = collect(company_db, studio_db, gateway_url=DEAD_GATEWAY)
-    assert len(s["cost_days"]["series"]) == 14
-
-
-def test_retention_rong_khi_khong_co_snapshot_nao_co_curve(tmp_path: Path) -> None:
-    from studio.events import Envelope as SEnv
-    from studio.events import PerformanceSnapshot
-    from studio.sqlite_bus import SQLiteBus as SBus
-
-    db = tmp_path / "studio-no-curve.sqlite"
-    bus = SBus(db)
-    snap = PerformanceSnapshot(video_id="vid-1", channel_id="ch1", views=1, impressions=1, ctr=0.1,
-                               avg_view_duration_s=1.0, retention_curve=[])
-    bus.publish(SEnv(topic="performance-snapshots", key="vid-1", actor="human",
-                     payload=json.loads(snap.model_dump_json())))
-    bus.close()
-    s = collect(None, db, gateway_url=DEAD_GATEWAY)
-    assert s["retention"] == {"video_id": None, "points": []}
-
-
-def test_routing_status_config_loi_bo_qua_va_thu_gateway(company_db: Path, studio_db: Path,
+def test_routing_status_config_loi_bo_qua_va_thu_gateway(company_db: Path,
                                                           monkeypatch: pytest.MonkeyPatch) -> None:
     """`llm.yaml` có tồn tại (giả) nhưng load_config ném lỗi -> _routing_status() bỏ qua, coi như không có, đi hỏi gateway."""
     import console.collect as cmod
@@ -235,13 +196,12 @@ def test_routing_status_config_loi_bo_qua_va_thu_gateway(company_db: Path, studi
     monkeypatch.setattr(cmod.company_llm, "CONFIG_FILE", "gia-lap.yaml")
     monkeypatch.setattr(Path, "exists", lambda self: True)
     monkeypatch.setattr(cmod.company_llm, "load_config", lambda p: (_ for _ in ()).throw(RuntimeError("hong config")))
-    monkeypatch.setattr(cmod.studio_llm, "CONFIG_FILE", None)
-    s = collect(company_db, studio_db, gateway_url=DEAD_GATEWAY)
+    s = collect(company_db, gateway_url=DEAD_GATEWAY)
     assert s["backends"] == []
     assert s["sources"]["gateway"]["ok"] is False
 
 
-def test_routing_status_tu_llm_yaml_that_khong_hoi_gateway(tmp_path: Path, company_db: Path, studio_db: Path,
+def test_routing_status_tu_llm_yaml_that_khong_hoi_gateway(tmp_path: Path, company_db: Path,
                                                             monkeypatch: pytest.MonkeyPatch) -> None:
     """`llm.yaml` có `backends:` -> backends lấy từ routing.status() thật, gateway KHÔNG được hỏi (sources.gateway ok, error None).
 
@@ -271,9 +231,8 @@ def test_routing_status_tu_llm_yaml_that_khong_hoi_gateway(tmp_path: Path, compa
     monkeypatch.delenv("COMPANY_LLM_PROVIDER", raising=False)
     monkeypatch.delenv("COMPANY_LLM_BACKENDS", raising=False)
     monkeypatch.setattr(cmod.company_llm, "CONFIG_FILE", llm_yaml)
-    monkeypatch.setattr(cmod.studio_llm, "CONFIG_FILE", None)
 
-    s = collect(company_db, studio_db, gateway_url=DEAD_GATEWAY)
+    s = collect(company_db, gateway_url=DEAD_GATEWAY)
 
     assert [b["n"] for b in s["backends"]] == ["antigravity", "local"]
     assert all(b["ok"] and b["st"] == "Sẵn sàng" and b["tools"] == "có" for b in s["backends"])
@@ -281,16 +240,16 @@ def test_routing_status_tu_llm_yaml_that_khong_hoi_gateway(tmp_path: Path, compa
     assert s["sources"]["gateway"] == {"ok": True, "url": DEAD_GATEWAY, "error": None}  # không hỏi gateway (đã chết)
 
 
-def test_gateway_status_doc_token_that_bai_van_hoi_duoc(tmp_path: Path, company_db: Path, studio_db: Path,
+def test_gateway_status_doc_token_that_bai_van_hoi_duoc(tmp_path: Path, company_db: Path,
                                                          khong_co_llm_yaml: None) -> None:
     """token_file trỏ tới đường dẫn không đọc được (thư mục) -> OSError bị nuốt, request vẫn không kèm token."""
     bad_token = tmp_path  # là thư mục, đọc như file sẽ ném OSError
-    s = collect(company_db, studio_db, gateway_token_file=bad_token, gateway_url=DEAD_GATEWAY)
+    s = collect(company_db, gateway_token_file=bad_token, gateway_url=DEAD_GATEWAY)
     assert s["backends"] == []
     assert s["sources"]["gateway"]["ok"] is False
 
 
-def test_gateway_status_thanh_cong_tra_danh_sach_account(tmp_path: Path, company_db: Path, studio_db: Path,
+def test_gateway_status_thanh_cong_tra_danh_sach_account(tmp_path: Path, company_db: Path,
                                                           khong_co_llm_yaml: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """`GET /auth/status` thành công, kèm token file hợp lệ -> parse ra danh sách account đúng hình dạng."""
     import io
@@ -319,7 +278,7 @@ def test_gateway_status_thanh_cong_tra_danh_sach_account(tmp_path: Path, company
         return FakeResp(payload)
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-    s = collect(company_db, studio_db, gateway_token_file=token_file, gateway_url="http://gia-lap")
+    s = collect(company_db, gateway_token_file=token_file, gateway_url="http://gia-lap")
     assert s["sources"]["gateway"]["ok"] is True
     names = {b["n"] for b in s["backends"]}
     assert names == {"a@x.com", "b@x.com", "c@x.com"}
@@ -354,7 +313,7 @@ def test_replay_ticket_cu_assignee_stack_khong_lam_chet_collect(company_db: Path
         db.execute("INSERT INTO events(event_id, topic, key, actor, ts, body) VALUES (?,?,?,?,?,?)",
                    ("ev-cu-999", "tasks", "TCK-999", "delivery-lead", body["ts"], json.dumps(body)))
 
-    s = state(company_db, None)
+    s = state(company_db)
 
     assert s["sources"][COMPANY]["ok"], s["sources"][COMPANY]
     assert "TCK-999" in [t["id"] for t in s["tickets"]]
@@ -388,7 +347,7 @@ def test_ticket_blocked_roi_merge_qua_already_integrated_khong_bao_bloc_gia(comp
                                                   ensure_ascii=False)).model_dump()))
     bus.close()
 
-    s = state(company_db, None)
+    s = state(company_db)
 
     by_id = {t["id"]: t["st"] for t in s["tickets"]}
     assert by_id[tid] == "merged", by_id
