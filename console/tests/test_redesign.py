@@ -253,6 +253,21 @@ def test_c8_nut_ho_so_bang_chung_nam_ngay_trong_ngan_keo_gate(page: str) -> None
     assert "gate_brief" in gate
 
 
+def test_nut_tick_tat_ca_chi_hien_khi_nhieu_muc_va_khong_qua_mat_khoa_ly_do(page: str) -> None:
+    """Gate nợ kiến trúc (SD-*, DEF-*) có thể mang 20-40 mục checklist — tick từng ô là việc vô nghĩa sau khi đã
+    đọc hồ sơ bằng chứng. Nút "Tick tất cả" chỉ tự động hoá phần tick, KHÔNG được bỏ qua khoá lý do ≥20 ký tự
+    (`thin`) hay khoá còn ô chưa tick khi checklist rỗng/một mục — nếu không thì bỏ qua nút này cũng giống bỏ qua
+    chính checklist, chỉ khác chỗ bấm."""
+    gate = page[page.index("function openGate(id)"):page.index("function openTicket(id)")]
+    assert 'id="cl-all"' in gate and "Tick tất cả" in gate
+    assert "cl.length>1?" in gate, "chỉ hiện nút khi có HƠN MỘT mục — một mục thì tick tay còn nhanh hơn bấm nút"
+    assert 'const clAll=$("#cl-all")' in gate
+    assert "boxes.forEach(b=>{b.checked=true;});sync();" in gate, "bấm xong phải tick hết RỒI gọi lại sync() — không thì nút approve không tự mở khoá"
+    # `sync()` vẫn là nơi DUY NHẤT quyết khoá nút duyệt: nút "Tick tất cả" không có đường tắt riêng nào khác
+    # tới `disabled=false`, nên vẫn phải qua đúng điều kiện `left>0||thin` như tick tay.
+    assert gate.count("drawer.querySelector('[data-d=\"approve\"]').disabled=") == 1
+
+
 def test_k27_o_sandbox_chi_sang_khi_may_co_runtime_ma_van_chay_ngoai_container(page: str) -> None:
     """K2.7. Ô này phải im ở hai trường hợp, và im vì hai lý do KHÁC nhau:
 

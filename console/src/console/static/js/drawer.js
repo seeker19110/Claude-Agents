@@ -46,7 +46,9 @@ export function openGate(id){
       <div><div class="eyebrow" style="margin-bottom:8px">Hồ sơ</div>
         <dl class="dl">${facts.map(f=>`<dt>${esc(f[0])}</dt><dd>${esc(f[1])}</dd>`).join("")}
         <dt>xưởng</dt><dd>${esc(g.xuong)}</dd><dt>created_by</dt><dd>${esc(g.by)}</dd><dt>triggered_by</dt><dd>${esc(g.trigger)}</dd></dl></div>
-      <div><div class="eyebrow" style="margin-bottom:4px">Checklist — tick hết mới duyệt được</div>
+      <div><div class="eyebrow" style="margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <span>Checklist — tick hết mới duyệt được</span>
+          ${cl.length>1?'<button class="fbtn" id="cl-all" type="button">Tick tất cả</button>':""}</div>
         <div id="cl">${cl.length?cl.map((c,i)=>`<label class="check"><input type="checkbox" data-i="${i}"><span><span class="n">${esc(c[0])}</span><span class="d">${esc(c[1])}</span></span></label>`).join("")
           :'<div class="empty">Gate này không kèm checklist.</div>'}</div></div>
       ${(g.effect||g.reject)?`<div class="dead" style="border-color:var(--line);background:var(--surface-2)">
@@ -91,6 +93,11 @@ export function openGate(id){
   };
   boxes.forEach(b=>b.addEventListener("change",sync));
   $("#reason").addEventListener("input",sync);
+  // Gate nợ kiến trúc/debt có thể mang 20-40 mục (một dòng mỗi khoản nợ) — tick từng ô một là việc vô nghĩa khi
+  // đã đọc xong danh sách trong "Hồ sơ bằng chứng"; nút này chỉ đánh dấu đã đọc, không thay thế cho lý do ≥20
+  // ký tự vẫn bắt buộc ở trên (`sync` vẫn chặn nếu `reason` quá ngắn).
+  const clAll=$("#cl-all");
+  if(clAll) clAll.addEventListener("click",()=>{boxes.forEach(b=>{b.checked=true;});sync();});
   // C6: mẫu ba dòng — người ghi "ok" vì không biết phải ghi gì, không phải vì lười.
   $("#tmpl").addEventListener("click",()=>{
     const t=$("#reason"); if(!t.value.trim()) t.value=HINT_TMPL; t.focus(); sync();});
