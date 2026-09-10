@@ -6,6 +6,9 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs: **khớp README gốc với thực tế — số test company, trạng thái keeper** (#257). Software-company nói 1097
+  test trong khi lần chạy thật gần nhất ra 1100; dòng keeper nói BT2–BT8 chưa có mã trong khi BT1–BT7 đã merge
+  (mã thật, 532 test, ba lệnh CLI chạy được) — chỉ BT8 (canary) chưa xong. Phát hiện qua một đợt audit toàn diện.
 - docs(sessions): nhật ký phiên 2026-09-10 (QLKH: PR #248/#251/#254/#255, tag+push thật REL-047/048) và
   `TRAPS.md` (software-company) — ghi lại lỗ hổng còn lại của `_superseded_release` (không nhận ticket đã xong
   qua `mark_done_already_integrated` khi RC không có bản giao "sau" nó), để phiên sau vá theo TDD (#256).
