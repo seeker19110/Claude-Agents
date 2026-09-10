@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- test(company): **bù 24/86 nhánh chưa đi cho `software-company`, chuẩn bị bật `branch = true`** (#TODO). Audit
+- test(company): **bù 24/86 nhánh chưa đi cho `software-company`, chuẩn bị bật `branch = true`** (#258). Audit
   toàn diện 2026-09-10 đo được 86 nhánh (if/elif chỉ một vế từng chạy) chưa test trên `src/company`; PR này
   bù xong 8/24 file: `assetscan.py`, `delivery.py`, `evals.py`, `gate_brief.py`, `llm.py`, `mcp_bridge.py`,
   `metrics.py`, `orch/cli_cmds.py`. Hai nhánh của `llm.py`/`mcp_bridge.py` (raise/return thoát qua
