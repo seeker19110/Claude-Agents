@@ -66,6 +66,15 @@ def test_argv_keeper_dung_lenh_watch_cua_no_kem_repo() -> None:
     assert argv[3] == "watch" and "--repo" in argv and argv[-2:] == ["--interval", "300.0"]
 
 
+def test_cwd_cua_hai_dong_co_co_that_tren_dia() -> None:
+    """`spec.cwd.name` khớp là chưa đủ: `platform/software-company` cũng có `name` đúng mà không tồn tại.
+    Đây là cái ADR-0011 (dời sang `companies/`) làm hỏng mà test cũ không thấy — `start()` chỉ ném
+    `không thấy thư mục …` khi người trực bấm Bật, tức là lộ ra ở tay người dùng chứ không ở CI."""
+    for xuong, spec in en.SPECS.items():
+        assert spec.cwd.is_dir(), f"cwd của động cơ {xuong} không tồn tại: {spec.cwd}"
+        assert (spec.cwd / "pyproject.toml").is_file(), f"{spec.cwd} không phải cây package"
+
+
 # ---------- vòng đời ----------
 
 def test_bat_roi_hoi_lai_thi_thay_dang_chay_kem_pid_va_log(mgr: en.EngineManager) -> None:

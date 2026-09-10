@@ -70,8 +70,8 @@ class EngineSpec:
 
 
 SPECS: dict[str, EngineSpec] = {
-    COMPANY: EngineSpec("company.orchestrator", REPO_ROOT / "software-company", "xưởng phần mềm"),
-    KEEPER: EngineSpec("keeper.cli", REPO_ROOT / "keeper", "công ty bảo trì", needs_repo=True),
+    COMPANY: EngineSpec("company.orchestrator", REPO_ROOT / "companies" / "software-company", "xưởng phần mềm"),
+    KEEPER: EngineSpec("keeper.cli", REPO_ROOT / "companies" / "keeper", "công ty bảo trì", needs_repo=True),
 }
 
 
