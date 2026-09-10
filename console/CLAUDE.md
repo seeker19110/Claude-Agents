@@ -18,6 +18,12 @@ uv run python -m console models --company software-company --set antigravity.sta
 được nó: ô *Động cơ* ở màn Trực ban (`--allow-engine`). Động cơ do console bật **chết cùng console** — chạy dài
 ngày thì vẫn bật ở terminal như cũ, và ô Động cơ nói rõ nó chỉ thấy tiến trình do chính nó tạo.
 
+## TDD ở package này
+
+`../AGENTS.md` luật bắt buộc 4 áp nguyên vẹn: viết test đỏ trong `tests/` trước, chạy `uv run pytest -q --cov -k
+<tên test>` thấy đỏ đúng lý do, rồi mới viết code trong `src/console/` cho nó xanh. Đổi `static/js/*.js` cũng
+tính — có `tests/test_es_module.py` canh việc nhập module, viết test canh trước khi thêm màn mới.
+
 ## Ba điều không được phá
 
 1. **Console không tự dựng event.** Quyết định đi qua `HumanGate` của công ty (four-eyes, allowlist, audit-log giữ
