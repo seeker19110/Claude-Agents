@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 from ..delivery import DONE_STATES
 from ..events import Envelope
+from ..gate_risk import request_gate
 from ..gates import Decision, GateRequest
 from ..roles import LEAD_ACTOR, ROLE
 from .routes import ACTOR, PROD_ROUTE, RESEARCH_TOPICS, REVIEW_AGENT, Route, review_route
@@ -81,7 +82,7 @@ def _check_escalations(o: Orchestrator) -> None:
         if tid in o.gate.pending or key in o.once: continue
         if o.lead.state.get(tid) == "blocked" or n:
             o._remember(key)
-            o.gate.request(GateRequest(kind="escalation", subject_id=tid, created_by=ROLE.SUPERVISOR,
+            request_gate(o.gate, GateRequest(kind="escalation", subject_id=tid, created_by=ROLE.SUPERVISOR,
                                           checklist=["root_cause", "decision:reopen|close", "hint"]))
     o._check_debt()
 
@@ -105,7 +106,7 @@ def _check_debt(o: Orchestrator) -> None:
                      *[f"debt:{r['debt_id']}×{r['mentions']} ({','.join(r['tickets'])})" for r in rec["table"]
                        if r["debt_id"] != due["debt_id"]],
                      "decision:adr|waive", f"hint:{due['hint']}"]
-        o.gate.request(GateRequest(kind="escalation", subject_id=pid, created_by=ROLE.SUPERVISOR, checklist=checklist))
+        request_gate(o.gate, GateRequest(kind="escalation", subject_id=pid, created_by=ROLE.SUPERVISOR, checklist=checklist))
 
 def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, reason: str, res: StepResult) -> None:
     if tid in o.debt_gate:  # ADR-0032: nợ kiến trúc cấp dự án — người ghi nhận (ADR + người ký) hay chấp nhận treo
@@ -210,7 +211,7 @@ def _open_acceptance_gate(o: Orchestrator, rid: str, res: StepResult) -> None:
     sid = f"UAT-{rid}"
     if sid in o.gate.pending or o.gate.is_approved(sid) or f"uat:{rid}" in o.once: return
     o._remember(f"uat:{rid}")
-    o.gate.request(GateRequest(kind="acceptance", subject_id=sid, created_by=ROLE.OPS,
+    request_gate(o.gate, GateRequest(kind="acceptance", subject_id=sid, created_by=ROLE.OPS,
                                   checklist=["uat-script", "acceptance-criteria", "known-issues", "signed_by"]))
     res.actions.append(f"gate:acceptance:{sid}")
 
@@ -246,7 +247,7 @@ def _stall(o: Orchestrator, env: Envelope, agent: str, error: Exception, res: St
     o.supervisor.escalate_gate(pid, f"{agent} lỗi trên {env.topic} (lần {n}): {str(error)[:200]}",
                                   once_key=f"stall:{env.event_id}:{n}")
     if pid not in o.gate.pending:
-        o.gate.request(GateRequest(kind="escalation", subject_id=pid, created_by=ROLE.SUPERVISOR,
+        request_gate(o.gate, GateRequest(kind="escalation", subject_id=pid, created_by=ROLE.SUPERVISOR,
                                       checklist=["agent_error", "decision:retry|close"]))
     res.actions.append(f"stalled:{pid}:{agent}")
     return True

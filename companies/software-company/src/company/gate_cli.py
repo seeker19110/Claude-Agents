@@ -10,17 +10,20 @@ Trạng thái gate không lưu riêng: dựng lại từ replay `audit-log` (act
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
-from typing import get_args
+from typing import Any, get_args
 
 from xagents_core.gate_cli import SYSTEM_GATE_ACTOR as SYSTEM_GATE_ACTOR
 from xagents_core.gate_cli import PersistentGate as CorePersistentGate
 from xagents_core.gate_cli import trusted_decision as trusted_decision
 
+from . import gate_risk
 from .bus import InMemoryBus
 from .events import AuditLog, Envelope
-from .gates import GateKind, GateRequest, HumanGate, gate_approvers
+from .gate_risk import AUTOAPPROVE_ACTOR, AUTOAPPROVE_REASON_PREFIX
+from .gates import GateKind, GateRequest, HumanGate, gate_approvers, gate_autoapprove_enabled
 from .roles import LEAD_ACTOR, LEGACY_GATE_ACTORS, ROLE
 
 DECISIONS: tuple[str, ...] = ("approve", "request_changes", "reject", "hold", "rollback")
@@ -28,6 +31,39 @@ DECISIONS: tuple[str, ...] = ("approve", "request_changes", "reject", "hold", "r
 # `SYSTEM_GATE_ACTOR` và `trusted_decision` ở `xagents_core.gate_cli` từ K3.7: cùng một allowlist tồn tại hai
 # bản ở hai công ty đã phải vá cùng một lỗ hổng hai lần (2026-09-09). Re-export giữ nguyên chỗ nhập của mọi
 # nơi gọi (`orch/scheduler.py`, console, test).
+
+
+def trusted_autoapprove(env: Envelope) -> dict[str, Any] | None:
+    """Quyết định `gate.decide` do CODE tự động qua gate rủi ro thấp (ADR-0011 §4 giai đoạn 3,
+    `docs/thi-hanh/adr113.md` mục D) — nhánh tin cậy RIÊNG, tách khỏi `trusted_decision` (core, không đổi:
+    core không biết `AUTOAPPROVE_ACTOR`/`RISK_RULES` của company, ADR-0001 §2).
+
+    Chỉ tin khi CẢ BỐN: actor đúng `AUTOAPPROVE_ACTOR` ("code"); `reason` mang đúng tiền tố
+    `AUTOAPPROVE_REASON_PREFIX` (đánh dấu bản ghi đi qua `gate_risk.request_gate`, không phải actor giả mạo
+    tên "code" tự ghi thẳng lên bus); `by` trong evidence cũng là `AUTOAPPROVE_ACTOR` (khớp actor, như
+    `trusted_decision` đòi `env.actor == by` cho người); và cờ `COMPANY_GATE_AUTOAPPROVE` đang bật NGAY LÚC
+    hàm này chạy — đọc lại mỗi lần `apply()`, không cache: bật/tắt cờ giữa hai lần mở tiến trình không đổi
+    bản ghi CŨ trong lịch sử (nó đã `apply` rồi), nhưng bản ghi MỚI luôn theo cờ hiện tại của tiến trình đang
+    replay/subscribe."""
+    if env.topic != "audit-log" or env.payload.get("action") != "gate.decide": return None
+    if env.actor != AUTOAPPROVE_ACTOR or not gate_autoapprove_enabled(): return None
+    try: d = json.loads(env.payload.get("evidence") or "{}")
+    except (ValueError, TypeError): return None
+    if not isinstance(d, dict): return None
+    sid = d.get("subject_id")
+    if not isinstance(sid, str) or not sid: return None
+    if d.get("by") != AUTOAPPROVE_ACTOR: return None
+    if not isinstance(d.get("decision"), str): return None
+    reason = d.get("reason")
+    if not isinstance(reason, str) or not reason.startswith(AUTOAPPROVE_REASON_PREFIX): return None
+    # Tên hàng phải khớp một hàng THẬT ĐANG CÓ trong `RISK_RULES` lúc replay này chạy (đọc `gate_risk.RISK_RULES`
+    # qua module, không `from .gate_risk import RISK_RULES` — tên import trực tiếp đóng băng giá trị tại thời
+    # điểm nhập module, không thấy bảng đổi sau đó, kể cả khi test monkeypatch bảng). Thiếu bước này, một
+    # envelope `reason="auto-risk:<tên bịa>"` vẫn được tin nếu chỉ đúng tiền tố — tiền tố là hằng công khai
+    # trong mã nguồn, không phải bí mật (sc-security, adr113 2026-09-10).
+    rule_name = reason[len(AUTOAPPROVE_REASON_PREFIX):]
+    if not any(r.name == rule_name for r in gate_risk.RISK_RULES): return None
+    return d
 
 
 class PersistentGate(CorePersistentGate[Envelope, AuditLog], HumanGate):
@@ -42,6 +78,13 @@ class PersistentGate(CorePersistentGate[Envelope, AuditLog], HumanGate):
     #: Người (`human:*`) không cần có tên ở đây — gate CLI là đường của người.
     #: `LEGACY_GATE_ACTORS`: tên trước ADR-0037 còn trong bus cũ — đo trên `company.sqlite` thật, xem `roles.py`.
     REQUEST_ACTORS = frozenset({ROLE.PRODUCT, ROLE.SUPERVISOR, ROLE.OPS, LEAD_ACTOR}) | LEGACY_GATE_ACTORS
+
+    def _trusted(self, env: Envelope) -> dict[str, Any] | None:
+        """Điểm mở duy nhất của phép kiểm tin cậy (core): thử đường cũ (người / orchestrator+UAT) trước, rồi
+        thử nhánh MỚI của company (`trusted_autoapprove`) — thứ tự này cố ý, không được đảo: `AUTOAPPROVE_ACTOR`
+        không phải người và không phải `"orchestrator"` nên không bao giờ khớp đường cũ, nhưng giữ thứ tự rõ
+        ràng để đọc code không phải suy luận."""
+        return trusted_decision(env, uat_prefix=self.UAT_PREFIX) or trusted_autoapprove(env)
 
     def __init__(self, bus: InMemoryBus, **kw):
         super().__init__(bus, envelope_cls=Envelope, audit_cls=AuditLog, request_cls=GateRequest, **kw)

@@ -5,12 +5,13 @@ import pytest
 from company.bus import InMemoryBus
 from company.delivery import DeliveryLead
 from company.events import Envelope, PullRequest, ReviewResult, Task
+from company.gate_cli import PersistentGate
 from company.gates import GateRequest, HumanGate
 from company.orch.routes import REVIEW_AGENT
 
 
 def _setup():
-    bus = InMemoryBus(); gate = HumanGate(); lead = DeliveryLead(bus, gate)
+    bus = InMemoryBus(); gate = PersistentGate(bus); lead = DeliveryLead(bus, gate)
     return bus, gate, lead
 
 def _task(**kw): return Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="builder", title="x", acceptance=["a"], **kw)

@@ -7,6 +7,7 @@ allowlist người duyệt (studio đã có từ lâu). Mặc định KHÔNG Đ�
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -20,6 +21,17 @@ GateKind = Literal["spec", "release", "escalation", "acceptance"]
 Decision = Literal["approve", "request_changes", "reject", "hold", "rollback", "pending"]
 
 APPROVERS_ENV = "COMPANY_GATE_APPROVERS"  # "human:pm,human:cto" — KHÔNG đặt (mặc định) = ai cũng duyệt được
+
+#: ADR-0011 §4 giai đoạn 3: bật đường "code tự động qua gate rủi ro thấp" (`gate_risk.request_gate`). KHÔNG
+#: đặt (mặc định) = TẮT = mọi gate vẫn chờ người y hệt hôm nay, kể cả khi `RISK_RULES` có hàng rồi — bật là
+#: một quyết định có chủ ý, ghi ở `docs/HUONG-DAN-VAN-HANH.md`.
+AUTOAPPROVE_ENV = "COMPANY_GATE_AUTOAPPROVE"
+_AUTOAPPROVE_TRUE = frozenset({"1", "true", "yes"})
+
+
+def gate_autoapprove_enabled() -> bool:
+    """`"1"/"true"/"yes"` (không phân biệt hoa/thường) → bật. Không đặt hoặc bất kỳ giá trị nào khác → tắt."""
+    return os.environ.get(AUTOAPPROVE_ENV, "").strip().lower() in _AUTOAPPROVE_TRUE
 
 
 @dataclass

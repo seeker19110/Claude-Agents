@@ -32,6 +32,7 @@
 | Review nào bắt buộc cho ticket | `DeliveryLead.required_reviews` (`delivery.py`); `RISK_TAGS` trong `events.py` | `tests/test_release_flow.py` |
 | Checklist human gate | `gates/checklists.md` → nguồn bằng chứng `src/company/gate_checklists.py` → `make subagents` | `tests/test_gate_brief.py`, `test_subagents.py` |
 | Gate: hạn, nhắc, four-eyes, allowlist | Cơ chế chung ở `xagents-core/src/xagents_core/gates.py` + `gate_cli.py` (K3.7); `src/company/gates.py` chỉ còn `GateKind`/`Decision` + `COMPANY_GATE_APPROVERS` (mặc định KHÔNG đặt = chỉ four-eyes như trước), bền qua restart: `gate_cli.PersistentGate` | `tests/test_gate_trust.py`, `xagents-core/tests/test_gates.py`, `xagents-core/tests/test_gate_cli.py` |
+| Bậc rủi ro gate + tự động qua (ADR-0011 §4, mặc định TẮT) | `src/company/gate_risk.py` (`RISK_RULES` — RỖNG có chủ đích, `gate_risk_tier`, `request_gate` thay 12 điểm `gate.request`); cờ `COMPANY_GATE_AUTOAPPROVE` trong `gates.py`; nhánh tin cậy actor `"code"` trong `gate_cli.trusted_autoapprove`/`PersistentGate._trusted`; ACL bus riêng cho actor này ở `bus.py::_extra_publish_checks` | `tests/test_gate_risk.py`, `docs/thi-hanh/adr113.md` |
 | Điều kiện cho phép GIAO ticket (kế hoạch không có gate, ADR-0037) | `_check_plan` trong `orch/ticket_fsm.py` (danh sách `problems`) → `lead.plans_ok` → guard trong `DeliveryLead.dispatch`; dựng lại khi mở bus: `orch/rehydrate.py` nhánh `plan.proposed` | `tests/test_check_plan_adr0037.py`, `tests/test_bo_gate_plan_adr0037.py` |
 
 ## Bằng chứng do code sinh

@@ -656,6 +656,19 @@ uv run python -m company.orchestrator takeover T-12 --by human:lead      # đã 
 Sau khi `ops` (pha `deploy`) deploy staging và `qa` (pha `review`) hồi quy pass, gate `release` mở; approve xong mới
 lên production. Khách ký nghiệm thu bằng `acceptance-results` qua `ops` (pha `account`) — gate `acceptance`, ADR-0017.
 
+#### Tự động qua gate rủi ro thấp (ADR-0011 §4, mặc định TẮT)
+
+`COMPANY_GATE_AUTOAPPROVE=1` bật đường code tự đóng gate khi bậc rủi ro (do `company/gate_risk.py:RISK_RULES`
+xếp — một bảng tra cứu được, không phải model tự khai) là `"low"`. **Bảng `RISK_RULES` khởi tạo RỖNG**: bật cờ
+này ngay bây giờ KHÔNG đổi hành vi gì cả — chưa có luật cứng nào để tự động qua, mọi gate vẫn chờ người y hệt
+hôm nay. Bảng chỉ có tác dụng sau khi một PR riêng (đi qua `sc-security`) thêm hàng đầu tiên.
+
+Khi có hàng rồi: gate khớp đúng một hàng `tier="low"` được `code` (actor mới, không phải `"orchestrator"`) tự
+`approve`, ghi `verified_by`-tương-đương qua `reason` mang tiền tố `auto-risk:<tên hàng>` trong `audit-log` —
+`gate_cli list`/`gate_brief` vẫn thấy được quyết định này (`decided_by == "code"`), chỉ khác là không ai phải
+gõ `approve` tay. Bật cờ là một quyết định có chủ ý của người vận hành, không phải mặc định — không đặt biến
+môi trường thì hành vi y hệt trước ADR-0011 giai đoạn 3.
+
 ### 5.4 Nhìn vào bên trong
 
 ```bash

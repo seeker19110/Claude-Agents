@@ -54,7 +54,7 @@ def test_release_version_is_derived_not_hardcoded():
     """Phiên bản release suy ra từ nội dung: ticket chạm auth/payment/crypto thì tăng MINOR (ở 0.x đóng vai MAJOR)."""
     from company.delivery import DeliveryLead
 
-    bus = InMemoryBus(); lead = DeliveryLead(bus, HumanGate())
+    bus = InMemoryBus(); lead = DeliveryLead(bus, PersistentGate(bus))
     lead.tickets["T1"] = _task("T1")
     lead.tickets["T2"] = _task("T2").model_copy(update={"risk_tags": ["payment"]})
     assert lead.next_version("P1", ["T1"]) == "0.1.1"
