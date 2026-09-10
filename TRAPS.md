@@ -138,3 +138,24 @@ trên head CŨ. *Cách nhận ra*: mở log job `quality` và đọc mảng `RES
 
 Một bẫy đủ điều kiện vào đây khi: (a) đã xảy ra thật, (b) tốn ít nhất một giờ hoặc một PR, (c) có câu "lần sau"
 cụ thể mà người khác làm theo được. Ghi ngày + PR. Mục cũ tái phát thì thêm ngày, đừng tạo mục mới.
+
+## 6. Câu tự biện hộ thường gặp trước khi né luật
+
+Khác §1–4: đây không phải sự cố đã xảy ra, mà là **câu mình sẽ tự nói với mình** ngay trước khi phá một luật ở
+`AGENTS.md` — ghi trước để nhận ra lúc nó xuất hiện trong đầu. Bắt gặp một câu ở cột trái → dừng, làm theo cột
+phải trước khi tiếp tục. (Lấy cảm hứng từ bảng "Common Rationalizations" của skill `superpowers`.)
+
+| Câu tự biện hộ | Sự thật |
+|---|---|
+| "Chắc chạy được, khỏi chạy lại" | Luật cấm 8: chưa chạy trong chính lượt này thì chưa được nói đã xanh |
+| "Đơn giản quá, khỏi viết test trước" | Code đơn giản vẫn có bug đơn giản; test trước tốn 30 giây, không tốn hơn viết sau |
+| "Viết test sau cũng đạt mục đích như test trước" | Test viết sau xanh ngay từ đầu — chưa từng chứng minh nó BẮT được lỗi. Test trước bắt buộc phải thấy nó đỏ đúng lý do trước |
+| "Đã tự tay thử rồi, khỏi cần test" | Thử tay không để lại bằng chứng, không chạy lại được khi code đổi, dễ quên ca biên khi vội |
+| "Giữ code cũ làm tham khảo, viết test rồi khớp vào sau" | Đó vẫn là viết-sau, chỉ trá hình. Xoá hẳn, viết test trước, code lại từ đầu |
+| "Đã thử 3 lần, thử thêm lần 4 chắc trúng" | Luật bắt buộc 6: 3 lần vá liên tiếp lòi vấn đề mới ở chỗ khác = kiến trúc sai, không phải chưa đủ may. Dừng, hỏi người |
+| "Log/lỗi nói rõ nguyên nhân rồi, khỏi tái hiện" | Suy từ thông điệp lỗi đã sai 6/6 lần trong repo này (§2) — tái hiện với đối chứng trước khi tin |
+| "Việc nhỏ, khỏi cần tách nhánh/worktree" | Luật cấm 2: hai phiên chung một clone làm mất commit không cảnh báo gì (§3) — nhỏ hay lớn không miễn |
+| "Merge tay một lần cho nhanh, CI đang chạy chậm" | `docs/QUY-TRINH-GIT.md` §5: cấm duy nhất ở bước merge — chờ CI xanh, không đi tắt |
+| "Coverage thiếu đúng 1 dòng, hạ `fail_under` một xíu rồi trả lại sau" | Luật cấm 6: không có "trả lại sau" — hạ số bị phát hiện ngay khi ai đó grep `fail_under`; thêm test rẻ hơn debug niềm tin |
+| "PR này chắc chưa ai làm, cứ mở luôn" | Luật bắt buộc 11: kiểm cả PR/issue đã đóng bằng từ khoá trước — mở trùng tốn CI, tốn review, có thể lặp lại đúng lý do lần trước đã đóng |
+| "Dashboard xanh, chắc ổn" | Bẫy "Tin dashboard xanh" ở §2: số 0/rỗng có thể là chưa đo, không phải đã đo và sạch — hỏi "chạy cho tôi xem" trước khi tin |

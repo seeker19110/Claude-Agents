@@ -4,16 +4,24 @@
 
 Luật đầy đủ nằm ở `AGENTS.md` (nhập ở dòng đầu). Dưới đây chỉ là thứ khác biệt khi agent là Claude Code.
 
-## Sáu điều nếu chỉ đọc được sáu dòng
+## Bảy điều nếu chỉ đọc được bảy dòng
 
 1. Không commit lên `main`; nhánh → PR → auto-merge squash. Scope PR một từ chữ thường.
-2. Mỗi phiên một `git worktree` — có phiên khác đang mở cùng thư mục này (`git worktree list` để kiểm).
+2. Mỗi phiên một `git worktree` — có phiên khác đang mở cùng thư mục này (`git worktree list` để kiểm). Có tool
+   worktree riêng của harness (`EnterWorktree`/tương đương) thì dùng nó trước, đừng tự `git worktree add` —
+   tool native lo cả đặt chỗ, tạo nhánh, dọn dẹp mà `git` tay không biết tới.
 2b. Chỉ một PR mở tại một thời điểm: `gh pr list --state open` trước khi mở PR mới; PR khác đang mở thì
    chờ nó merge, rồi `git fetch` + `git rebase origin/main` trên nhánh mình trước khi `gh pr create` (`docs/QUY-TRINH-GIT.md` §2c).
+   Trước khi tạo PR: cũng kiểm PR/issue đã đóng cùng vấn đề (`AGENTS.md` luật bắt buộc 11) — trùng thì nói rõ
+   cái gì khác đi, đừng lặng lẽ mở PR thứ hai.
 3. Không commit `llm.yaml`, `*.sqlite*`, bí mật. Không hạ `fail_under = 100`.
 4. Sửa `agents/`/`skills/` → 7 bước `CONTRIBUTING.md` §3, không bỏ bước.
-5. "Xong" phải có output lệnh vừa chạy trong chính lượt này. Không có thì chưa xong.
-6. Trước khi sửa lỗi lạ: đọc `TRAPS.md` — 80% khả năng nó đã có tên ở đó.
+5. **TDD cho mọi code, không riêng bugfix**: viết test đỏ trước → code tối thiểu cho xanh → refactor. Không có
+   test đỏ đi trước thì chưa được viết code sản xuất (`AGENTS.md` luật bắt buộc 4). Vá 3 lần liên tiếp vẫn lòi
+   vấn đề mới chỗ khác → dừng, hỏi người, đừng vá lần 4 một mình (luật bắt buộc 6).
+6. "Xong" phải có output lệnh vừa chạy trong chính lượt này. Không có thì chưa xong.
+7. Trước khi sửa lỗi lạ: đọc `TRAPS.md` — 80% khả năng nó đã có tên ở đó, kể cả câu bạn đang định tự biện hộ
+   (`TRAPS.md` §6).
 
 ## Skill và trợ lý có sẵn trong repo
 
