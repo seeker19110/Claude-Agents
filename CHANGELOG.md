@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- docs(sessions): **ghi nốt hai mục nhật ký phiên còn thiếu cho #247 và #249**. Luật bắt buộc 9 đòi mỗi
+- docs(sessions): **ghi nốt hai mục nhật ký phiên còn thiếu cho #247 và #249** (#250). Luật bắt buộc 9 đòi mỗi
   phiên một mục; nhật ký 2026-09-09 dừng ở #245 trong khi hai PR sau đó đã merge — cả hai có dòng CHANGELOG
   và mục `TRAPS.md` nhưng thiếu phần kể lại. Mục mới ghi ba thứ đo được: `rerun_failed_jobs` phát lại payload
   sự kiện gốc nên nhãn mới không tới được cổng; vá `labeled` **không hồi tố** cho PR có head cũ hơn thay đổi;
