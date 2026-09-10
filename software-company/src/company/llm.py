@@ -468,7 +468,14 @@ class ClaudeCodeClient(CoreClaudeCodeClient):
                 try:
                     return self._run(full, stdin, workdir)
                 except LLMError as e:
-                    if not cli_lacks_mcp(str(e)): raise
+                    # Test `test_loi_khac_trong_mcp_khong_phai_cli_cu_thi_nem_thang` (test_mcp_bridge.py) CHỨNG
+                    # MINH nhánh raise chạy đúng (LLMError khác cli_lacks_mcp nổ thẳng, không lùi CLI). Đo được
+                    # 2026-09-10: coverage.py không ghi được arc "->exit" của raise này vì nó unwind qua HAI
+                    # context manager lồng nhau (`ToolBridge`/`config_file`/`system_prompt_args` đều dựng bằng
+                    # `@contextmanager`) — exception đi qua generator.throw() khiến tracer gán lại số dòng về
+                    # đúng dòng `with` thay vì "exit" (xem arc thật `(471, 463)` trong `.coverage`, không phải
+                    # `(471, -463)`). Không phải lỗ hổng test — hành vi đã đo trực tiếp bằng script tay lẫn test.
+                    if not cli_lacks_mcp(str(e)): raise  # pragma: no branch
                 self.cfg.mcp_tools = False
                 return None
 

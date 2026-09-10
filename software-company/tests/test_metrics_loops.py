@@ -93,6 +93,19 @@ def test_prometheus_co_sau_gauge_company_loop():
         assert f"{name} " in text or f"{name}{{" in text, f"thiếu gauge {name}\n{text}"
 
 
+def test_prometheus_bo_qua_retry_max_ratio_khi_khong_co_ticket_co_task():
+    """Có `tools_used` (không `empty`) nhưng KHÔNG có ticket nào từng dispatch task (`denom=0` →
+    `retry_max_ratio=None`) → gauge `company_loop_retry_max_ratio` không được ghi ra (khác NaN/0 bịa)."""
+    bus = InMemoryBus()
+    for turns, capped in ((3, False), (5, False)):
+        _audit(bus, "builder", "tools_used", _tools_used(turns, capped))
+    loops = M.collect(bus)["loops"]
+    assert loops["empty"] is False and loops["retry_max_ratio"] is None
+    text = M.prometheus(M.collect(bus))
+    assert "company_loop_retry_max_ratio" not in text
+    assert "company_loop_turns_p50 " in text, "các gauge khác vẫn ghi bình thường"
+
+
 def test_prometheus_khong_ghi_gauge_khi_empty():
     text = M.prometheus(M.collect(InMemoryBus()))
     assert "company_loop_turns_p50 " not in text, "empty=True: không bịa số 0/None ra Prometheus, bỏ qua các gauge"

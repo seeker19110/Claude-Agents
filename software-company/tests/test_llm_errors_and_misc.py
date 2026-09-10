@@ -122,6 +122,17 @@ def test_retrying_client_backs_off_between_attempts():
     assert inner.calls == 3 and len(waits) == 2 and waits[1] > waits[0], "backoff phải tăng dần"
 
 
+def test_retrying_client_retries_am_thi_vong_lap_rong_va_assert_no():
+    """`retries=-1` (cấu hình lỗi, không nên xảy ra bình thường) → `range(self.retries+1)` rỗng, vòng lặp không
+    chạy lần nào, rơi thẳng vào `assert last is not None` — bất biến nội bộ giữ nguyên: không âm thầm trả về
+    kết quả rỗng, phải sập rõ ràng ngay tại nơi giả định bị vi phạm."""
+    inner = _Raising(TransientError("429"))
+    with pytest.raises(AssertionError):
+        RetryingClient(inner, retries=-1, sleep=lambda _s: None).complete(
+            system="s", user="u", schema={}, model_tier="standard")
+    assert inner.calls == 0, "vòng lặp rỗng thì inner không được gọi lần nào"
+
+
 def test_completion_json_rejects_garbage():
     with pytest.raises(LLMError):
         Completion(text="không phải json", input_tokens=1, output_tokens=1, model="m").json()

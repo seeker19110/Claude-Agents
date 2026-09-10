@@ -7,6 +7,7 @@ import json
 import socket
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,16 @@ def test_bridge_serves_tool_list_and_calls_and_rejects_wrong_token():
         port, token = br.port, br.token
     # đóng rồi thì không ai gọi được nữa (socket chỉ sống trong lúc CLI chạy)
     assert not ProxyServer(port, token).ask({"op": "list"}).get("ok")
+
+
+def test_bridge_port_truoc_khi_mo_bao_loi_va_exit_hai_lan_khong_sap():
+    br = ToolBridge(_box())
+    with pytest.raises(RuntimeError, match="chưa mở"):
+        _ = br.port
+    br.__exit__()   # chưa từng __enter__: server/thread vẫn None, không được sập
+    with br:
+        pass
+    br.__exit__()   # exit lần hai sau khi đã đóng: cũng không được sập
 
 
 def test_bridge_config_names_tools_and_removes_secret_file_after_use():
@@ -170,6 +181,22 @@ def test_old_cli_falls_back_to_cli_tools_or_says_why(tmp_path):
     c = client.complete(system="s", user="u", schema={}, model_tier="strong", tools=tb.specs(), workdir=tb.root)
     assert modes == ["mcp", "cli"] and client.cfg.mcp_tools is False and c.json()["ticket_id"] == "T1"
 
+
+def test_loi_khac_trong_mcp_khong_phai_cli_cu_thi_nem_thang(tmp_path):
+    """LLMError ở lượt MCP KHÔNG phải "CLI không biết --mcp-config" (vd. hết hạn mức) phải ném thẳng lên, không
+    được hiểu nhầm là CLI cũ rồi lặng lẽ lùi sang chế độ CLI-tools."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+
+    def runner(args, stdin, cwd=None):
+        raise LLMError("You've hit your usage limit")
+
+    tb = WorkspaceTools(ws).toolbox()
+    client = _cc(runner, cli_tools=True)
+    client.bind_toolbox(tb)
+    with pytest.raises(LLMError, match="usage limit"):
+        client.complete(system="s", user="u", schema={}, model_tier="strong", tools=tb.specs(), workdir=tb.root)
+    assert client.cfg.mcp_tools is True, "không phải lỗi CLI cũ thì không được tắt mcp_tools"
+
     # không bật cli_tools thì không im lặng bỏ tool: lỗi nói đúng việc phải làm
     only_mcp = _cc(lambda a, s, cwd=None: (_ for _ in ()).throw(LLMError("unknown option '--mcp-config'")))
     only_mcp.bind_toolbox(tb)
@@ -234,6 +261,44 @@ def test_socket_dong_goi_lon_hon_line_max_bi_ngat():
             s.sendall(huge)
             s.shutdown(socket.SHUT_WR)
             assert s.recv(65536) == b""   # server đóng kết nối mà không trả lời
+
+
+def _one_shot_server(respond, *, close=True):
+    """Server TCP một lần, tự chọn cổng: nhận kết nối, gọi `respond(conn)` rồi (mặc định) đóng. Dùng để điều
+    khiển đúng thứ `ProxyServer.ask()` (phía CLIENT) đọc được — khác `ToolBridge` thật (phía server) ở test
+    trên. `close=False`: để client tự đóng khi đọc xong — đóng SỚM phía server dễ làm client thấy connection
+    reset (RST) thay vì đúng nội dung dở dang muốn test (đặc biệt với phản hồi lớn chưa kịp gửi hết)."""
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.bind(("127.0.0.1", 0)); srv.listen(1)
+    port = srv.getsockname()[1]
+    def run():
+        conn, _ = srv.accept()
+        try:
+            respond(conn)
+        finally:
+            if close: conn.close()
+            srv.close()
+    threading.Thread(target=run, daemon=True).start()
+    return port
+
+
+def test_ask_tra_loi_qua_line_max_thi_bao_loi_thay_vi_doc_het(monkeypatch):
+    """Phản hồi vượt `LINE_MAX` (server hỏng hoặc bị lừa) → `ask()` trả lỗi ngay khi vượt trần, không đọc tiếp
+    tới khi hết bộ nhớ. Hạ `LINE_MAX` xuống nhỏ hẳn để test không phải truyền thật hàng MB qua socket (dễ bị
+    RST giữa chừng trong sandbox mạng hạn chế, không liên quan tới điều đang test)."""
+    from company import mcp_bridge as mb
+    monkeypatch.setattr(mb, "LINE_MAX", 64)
+    port = _one_shot_server(lambda conn: conn.sendall(b"x" * 200))
+    r = ProxyServer(port, "tok", timeout=10).ask({"op": "list"})
+    assert r == {"ok": False, "error": "trả lời quá dài"}
+
+
+def test_ask_server_dong_ket_noi_giua_chung_khong_co_dong_moi():
+    """Server đóng kết nối giữa chừng (chưa gửi `\\n`) → `recv()` trả rỗng, vòng đọc dừng bằng `break`; buf dở
+    dang không parse được JSON → lỗi kết nối, không sập."""
+    port = _one_shot_server(lambda conn: conn.sendall(b'{"incomplete"'))   # không \n, rồi đóng
+    r = ProxyServer(port, "tok", timeout=10).ask({"op": "list"})
+    assert r["ok"] is False
 
 
 def test_socket_gui_json_hong_bi_ngat_khong_sap_server():
@@ -342,6 +407,19 @@ def test_run_bo_qua_dong_trong_va_json_hong_roi_tra_loi_dong_hop_le():
                        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"}) + "\n")
     ProxyServer(1, "token").run(stdin=src, stdout=out)
     assert json.loads(out.getvalue())["result"] == {}
+
+
+def test_run_bo_qua_notification_khong_id_roi_van_tra_loi_dong_sau():
+    """Notification JSON-RPC (không có `id`, vd. `notifications/initialized`) không được trả lời — `handle()`
+    trả None, `run()` không ghi gì và đọc tiếp dòng sau."""
+    import io as _io
+
+    out = _io.StringIO()
+    src = _io.StringIO(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n" +
+                       json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"}) + "\n")
+    ProxyServer(1, "token").run(stdin=src, stdout=out)
+    lines = [ln for ln in out.getvalue().splitlines() if ln]
+    assert len(lines) == 1 and json.loads(lines[0])["result"] == {}
 
 
 def test_khung_tra_loi_khong_co_byte_ngoai_ascii():
