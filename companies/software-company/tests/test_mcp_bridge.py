@@ -264,22 +264,31 @@ def test_socket_dong_goi_lon_hon_line_max_bi_ngat():
 
 
 def _one_shot_server(respond, *, close=True):
-    """Server TCP một lần, tự chọn cổng: nhận kết nối, gọi `respond(conn)` rồi (mặc định) đóng. Dùng để điều
-    khiển đúng thứ `ProxyServer.ask()` (phía CLIENT) đọc được — khác `ToolBridge` thật (phía server) ở test
-    trên. `close=False`: để client tự đóng khi đọc xong — đóng SỚM phía server dễ làm client thấy connection
-    reset (RST) thay vì đúng nội dung dở dang muốn test (đặc biệt với phản hồi lớn chưa kịp gửi hết)."""
+    """Server TCP một lần, tự chọn cổng: nhận kết nối, **đọc hết request của client**, gọi `respond(conn)` rồi
+    (mặc định) đóng. Trả `(port, da_doc)` — `da_doc` là list nhận đúng những byte request đã đọc.
+
+    Đọc request trước khi đóng KHÔNG phải trang trí, nó là điều kiện để ca test đo đúng thứ nó định đo:
+    đóng một socket khi buffer nhận còn dữ liệu chưa đọc thì TCP gửi **RST** thay vì FIN. Winsock khi nhận RST
+    thì vứt luôn dữ liệu đã đệm, nên `recv()` của client ném `ConnectionReset/Aborted` thay vì trả 200 byte —
+    ca test thấy lỗi kết nối chứ không thấy `trả lời quá dài`. Linux khoan dung hơn (vẫn trả dữ liệu đã đệm sau
+    RST) nên chỉ Windows đỏ, và đỏ theo kiểu lúc được lúc không. Server thật (`ToolBridge`) luôn đọc request
+    trước khi trả lời, nên đọc ở đây cũng là làm server giả giống server thật.
+
+    `close=False`: để client tự đóng khi đọc xong."""
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.bind(("127.0.0.1", 0)); srv.listen(1)
     port = srv.getsockname()[1]
+    da_doc: list[bytes] = []
     def run():
         conn, _ = srv.accept()
         try:
+            da_doc.append(conn.recv(65536))
             respond(conn)
         finally:
             if close: conn.close()
             srv.close()
     threading.Thread(target=run, daemon=True).start()
-    return port
+    return port, da_doc
 
 
 def test_ask_tra_loi_qua_line_max_thi_bao_loi_thay_vi_doc_het(monkeypatch):
@@ -288,15 +297,18 @@ def test_ask_tra_loi_qua_line_max_thi_bao_loi_thay_vi_doc_het(monkeypatch):
     RST giữa chừng trong sandbox mạng hạn chế, không liên quan tới điều đang test)."""
     from company import mcp_bridge as mb
     monkeypatch.setattr(mb, "LINE_MAX", 64)
-    port = _one_shot_server(lambda conn: conn.sendall(b"x" * 200))
+    port, da_doc = _one_shot_server(lambda conn: conn.sendall(b"x" * 200))
     r = ProxyServer(port, "tok", timeout=10).ask({"op": "list"})
     assert r == {"ok": False, "error": "trả lời quá dài"}
+    # Bất biến giữ ca test này khỏi RST trên Windows: server giả phải ĐỌC request trước khi đóng, nếu không
+    # `close()` với buffer nhận còn dữ liệu sẽ gửi RST và client thấy lỗi kết nối thay vì lỗi độ dài.
+    assert da_doc and da_doc[0].startswith(b'{"op": "list"'), "server giả phải đọc hết request trước khi đóng"
 
 
 def test_ask_server_dong_ket_noi_giua_chung_khong_co_dong_moi():
     """Server đóng kết nối giữa chừng (chưa gửi `\\n`) → `recv()` trả rỗng, vòng đọc dừng bằng `break`; buf dở
     dang không parse được JSON → lỗi kết nối, không sập."""
-    port = _one_shot_server(lambda conn: conn.sendall(b'{"incomplete"'))   # không \n, rồi đóng
+    port, _ = _one_shot_server(lambda conn: conn.sendall(b'{"incomplete"'))   # không \n, rồi đóng
     r = ProxyServer(port, "tok", timeout=10).ask({"op": "list"})
     assert r["ok"] is False
 
