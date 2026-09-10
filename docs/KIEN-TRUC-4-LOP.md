@@ -87,7 +87,7 @@ không nâng mức C1.
 file (đảo ADR-0037 không có lỗi mới); few-shot trước việc 1 (không đo được); đưa đặc tả vào `AGENTS.md`.
 
 **Rủi ro của chính file này**: thành bảng theo dõi nói sai (bài học #168). Sau mỗi PR merge: đổi cột "Khi nào"
-thành `xong #n` **và** ô A2 tương ứng (◐ → ✅), cùng PR. Đo lại A2 trong nghi thức tự kiểm (`docs/TASK-PACK.md`).
+thành `xong #n` **và** ô A2 tương ứng (◐ → ✅), cùng PR. Đo lại A2 trong gói việc audit toàn dự án (`docs/TASK-PACK.md`).
 
 ---
 
