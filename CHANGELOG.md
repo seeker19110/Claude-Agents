@@ -6,6 +6,9 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(core): **ADR-0010 khoanh phạm vi domain allowlist cho mạng của `ContainerSandbox`** — `RunSpec.network`
+  chỉ bật/tắt mạng toàn phần, không lọc theo domain; ghi lại vì sao chưa cài egress proxy (không có nơi gọi thật
+  cần, một field không enforce là an toàn giả) và khuôn thiết kế bắt buộc cho phiên sau khi có nhu cầu thật (#260)
 - refactor(company,console,core): **chuyển Studio-creators sang repo riêng (github.com/seeker19110/X-Studio,
   giữ lịch sử git), copy gateway/ sang đó kèm lịch sử, xoá mọi tàn dư studio khỏi Claude-Agents** — console mất
   màn "Xưởng video"/StudioView (test/coverage 100% giữ nguyên), CI mất ba job `studio-*`, workspace còn năm
