@@ -918,6 +918,22 @@ def test_cli_publish_and_status(tmp_path, capsys, monkeypatch):
     assert "error:product" in out and '"errors": 1' in out
 
 
+def test_cli_publish_thieu_key_bao_loi_ro(tmp_path, capsys):
+    """Payload không có `ticket_id`/`release_id`/`change_id`/`project_id` và không truyền `--key` → lỗi rõ, mã 2,
+    không suy đoán bừa hay publish với key rỗng."""
+    db = str(tmp_path / "c.sqlite"); f = tmp_path / "no_key.json"
+    f.write_text(json.dumps({"note": "không trường nào đủ làm key"}), encoding="utf-8")
+    assert orch_main(["--db", db, "publish", "audit-log", str(f), "--actor", "human:po"]) == 2
+    assert "cần --key" in capsys.readouterr().err
+
+
+def test_cli_decide_change_khong_co_change_request_bao_loi_ro(tmp_path, capsys):
+    """`decide-change` cho `change_id` chưa từng publish → lỗi rõ, mã 2, không sập KeyError."""
+    db = str(tmp_path / "c.sqlite")
+    assert orch_main(["--db", db, "decide-change", "CR-KHONG-CO", "accepted", "--by", "human:po"]) == 2
+    assert "không có change-request CR-KHONG-CO" in capsys.readouterr().err
+
+
 def test_cli_publish_change_request_keys_by_change_id(tmp_path, capsys, monkeypatch):
     """Change request có cả project_id và change_id; key phải là change_id (schema: key = change_id) — `decide-change`
     replay theo key, lấy project_id là quyết định của khách không tìm thấy CR. Đo được 2026-09-06: CR-RISK-001 vào bus
