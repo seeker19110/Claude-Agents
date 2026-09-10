@@ -13,7 +13,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   hàng, thu hẹp "đường lùi" của ADR-0039 quyết định 5.** Đã thử cài (`_deliver` chặn khi `evidence.deploy.skipped`)
   và revert: 10 test git/rollback/PR có sẵn (fixture chưa khai `runtime` từ trước ADR-0039) đỏ theo, ngoài phạm
   vi ba test staging đã lường trước — ADR ghi lại phát hiện này, chưa cài code, chờ quyết định phạm vi vá tiếp
-  theo (#TBD)
+  theo (#261)
 - refactor(company,console,core): **chuyển Studio-creators sang repo riêng (github.com/seeker19110/X-Studio,
   giữ lịch sử git), copy gateway/ sang đó kèm lịch sử, xoá mọi tàn dư studio khỏi Claude-Agents** — console mất
   màn "Xưởng video"/StudioView (test/coverage 100% giữ nguyên), CI mất ba job `studio-*`, workspace còn năm
