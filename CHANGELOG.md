@@ -6,6 +6,10 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(sessions): ghi nhật ký phiên 2026-09-10 — so sánh quy trình với skill `superpowers`, áp TDD/gate
+  function/kiểm PR trùng (#252), và phát hiện `main` cục bộ với `origin/main` không có tổ tiên chung trong môi
+  trường phiên này.
+
 - docs(agents): **TDD bắt buộc cho mọi code, gate function 5 bước xác minh, kiểm PR trùng trước khi mở PR,
   bảng tự-biện-hộ** (#252). So sánh quy trình với skill `superpowers` (obra/superpowers) theo yêu cầu người
   dùng, rút các quy tắc còn thiếu về áp cho `AGENTS.md`/`CLAUDE.md`/`TRAPS.md`/`docs/QUY-TRINH-GIT.md`: luật
