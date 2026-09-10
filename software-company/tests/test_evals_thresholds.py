@@ -100,6 +100,16 @@ def test_load_thresholds_khong_co_file_tra_rong(tmp_path: Path) -> None:
     assert evals.load_thresholds(tmp_path / "khong-ton-tai.yaml") == {}
 
 
+def test_main_khong_truyen_thresholds_va_file_mac_dinh_khong_ton_tai(monkeypatch, tmp_path, capsys) -> None:
+    """Không `--thresholds`, không `--no-thresholds`, và `DEFAULT_THRESHOLDS_PATH` không tồn tại (repo khách
+    chưa có `evals/thresholds.yaml`) → bỏ qua cổng ngưỡng êm, không đọc file, không lỗi."""
+    monkeypatch.setattr(evals, "DEFAULT_THRESHOLDS_PATH", tmp_path / "khong-ton-tai.yaml")
+    _stub(monkeypatch, ["a0"],
+          run_eval=lambda aid, *a: [evals.CaseResult(name="c", passed=True, failures=[], tokens=1)])
+    rc = evals.main(["all", "--replay"])
+    assert rc == 0
+
+
 def test_load_thresholds_sai_hinh_nem_llmerror(tmp_path: Path) -> None:
     p = tmp_path / "thresholds.yaml"
     p.write_text(yaml.safe_dump({"a0": {"min_pass_ratio": 0.9}}), encoding="utf-8")  # thiếu `cases`
