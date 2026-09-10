@@ -14,7 +14,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   lại ba lần tự bác bỏ trong phiên, để lần sau đọc được cả chỗ sai lẫn chỗ đúng.
 
 - fix(company): **`orch/scheduler.tick()` tự gọi `flush_releases` mỗi nhịp watch cho backlog ticket `approved`
-  chưa nằm trong RC nào**. Trước đây `flush_releases` chỉ được gọi ngay lúc một ticket vừa review pass hoặc lúc
+  chưa nằm trong RC nào** (#251). Trước đây `flush_releases` chỉ được gọi ngay lúc một ticket vừa review pass hoặc lúc
   đóng một ticket escalated — không nhịp nào gọi lại sau đó; ticket approved từ trước một lần restart (RC không
   được tạo lại khi replay, đúng chủ đích, tránh RC trùng) nằm `approved` vĩnh viễn dù `status` báo
   `queue: 0, blocked: []` xanh hết. Đo được 2026-09-10 (QLKH): 16 ticket approved đứng im nhiều ngày. Test đo
