@@ -132,7 +132,7 @@ SUBAGENT_GLOB = "sc-*.md"
 
 def subagent_files(root: Path) -> list[Path]:
     if not (root / "src" / "company").is_dir(): return []
-    d = root.parent / ".claude" / "agents"
+    d = root.resolve().parents[1] / ".claude" / "agents"   # companies/<pkg>/ → gốc repo (ADR-0011)
     return sorted(p for p in d.glob(SUBAGENT_GLOB) if p.is_file()) if d.is_dir() else []
 
 
@@ -148,7 +148,7 @@ def asset_files(root: Path) -> list[Path]:
 def rel_path(p: Path, root: Path) -> str:
     """Đường dẫn dùng trong finding và waiver: tương đối với cây công ty, hoặc với gốc hub cho subagent."""
     try: return p.relative_to(root).as_posix()
-    except ValueError: return p.relative_to(root.parent).as_posix()
+    except ValueError: return p.resolve().relative_to(root.resolve().parents[1]).as_posix()   # gốc repo (ADR-0011)
 
 
 @dataclass(frozen=True)

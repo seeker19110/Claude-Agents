@@ -96,7 +96,7 @@ của studio biến mất đúng hẹn.
 - `docs/DAC-TA-KICH-BAN-B.md` K3 (yêu cầu, nghiệm thu từng bước) và `docs/DAC-TA-TRIEN-KHAI-KICH-BAN-B.md` K3
   (PR theo PR, `file:dòng`).
 - `docs/adr/0002-bus-phien-ban-va-doc-luoi.md` (K4) — xây trên `xagents_core.sqlite_bus` sau bước 6.
-- `software-company/docs/adr/0035-sandbox-tien-trinh.md` (K2) — `Sandbox` là interface core nhận ở bước 3.
+- `companies/software-company/docs/adr/0035-sandbox-tien-trinh.md` (K2) — `Sandbox` là interface core nhận ở bước 3.
 - `Studio-creators/docs/adr/0010` "nhận lớp cứng hoá từ core" (viết ở bước 4).
 - `TRAPS.md` §1 khuôn 1 (lỗi im lặng) và khuôn 2 (state không sống sót restart) — hai khuôn mà bản company đã
   chữa và studio sẽ nhận theo.

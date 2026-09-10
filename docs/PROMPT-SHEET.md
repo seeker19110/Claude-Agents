@@ -26,7 +26,7 @@ báo cả chỗ an toàn và vì sao.
 
 ```
 Agent <id> thất bại <n> lần ở cùng một thao tác "<thao tác>". Trước khi chỉnh hint hay prompt: mở
-software-company/src/company/tools.py, liệt kê tool nó thực sự được cấp và allowlist của `run`, rồi trả lời
+companies/software-company/src/company/tools.py, liệt kê tool nó thực sự được cấp và allowlist của `run`, rồi trả lời
 "việc này có làm được về mặt vật lý không". Nếu không: đề xuất cấp tool kèm ranh giới an toàn, không viết lại hint.
 ```
 *Vì sao*: 4 vòng ép reviewer xoá file mà bộ tool không có `rm` (2026-09-04).
@@ -44,7 +44,7 @@ nói rõ — đừng commit prompt mà không có bản ghi.
 
 ```
 Dự án <project_id> không tiến. Đừng tin `status` xanh. Trả lời bốn câu bằng dữ liệu từ bus (chạy trong
-software-company/): (1) release cuối của mỗi RC đang ở env/status nào — vẽ phễu RC → staging → qa → gate release →
+companies/software-company/): (1) release cuối của mỗi RC đang ở env/status nào — vẽ phễu RC → staging → qa → gate release →
 production; (2) có gate nào đang chờ, kind gì, hậu quả duyệt là gì; (3) ticket nào `blocked` mà KHÔNG có gate;
 (4) `delivery` đã giao được gì (tag, sha). Rồi mới đề xuất một hành động.
 ```

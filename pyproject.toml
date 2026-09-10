@@ -1,5 +1,6 @@
-# Root của uv workspace: cả repo là MỘT project, sáu thư mục là sáu package thành viên.
-# `uv sync` ở đây tạo một `.venv` chung và cài cả sáu ở chế độ editable theo MỘT `uv.lock`.
+# Root của uv workspace: cả repo là MỘT project, năm package thành viên nằm dưới `platform/` (hạ tầng dùng
+# chung) và `companies/` (công ty) — ADR-0011.
+# `uv sync` ở đây tạo một `.venv` chung và cài cả năm ở chế độ editable theo MỘT `uv.lock`.
 # Root không có mã nguồn (package = false); chạy lệnh trong thư mục con vẫn dùng đúng .venv này.
 [project]
 name = "claude-agents"
@@ -32,7 +33,13 @@ dev = [
 package = false
 
 [tool.uv.workspace]
-members = ["console", "gateway", "keeper", "software-company", "xagents-core"]
+members = [
+    "platform/console",
+    "platform/gateway",
+    "platform/xagents-core",
+    "companies/keeper",
+    "companies/software-company",
+]
 
 [tool.uv.sources]
 console = { workspace = true }

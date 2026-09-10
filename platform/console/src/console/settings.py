@@ -21,9 +21,9 @@ from typing import Any
 import yaml
 
 TIERS = ("strong", "standard", "light")
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[4]   # platform/console/src/console/… → gốc repo (ADR-0011)
 DEFAULT_LLM_YAML = {
-    "software-company": REPO_ROOT / "software-company" / "llm.yaml",
+    "software-company": REPO_ROOT / "companies" / "software-company" / "llm.yaml",
 }
 DEFAULT_GATEWAY_URL = "http://127.0.0.1:1123"
 

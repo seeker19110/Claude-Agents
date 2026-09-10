@@ -17,7 +17,7 @@
 ### Mức 1 — dừng một ticket
 
 ```bash
-cd software-company
+cd companies/software-company
 cat > /tmp/pause.json <<'JSON'
 {"target": "TCK-1", "action": "pause", "reason": "ngắn gọn: vì sao dừng", "project_id": null}
 JSON
@@ -69,7 +69,7 @@ Muốn nó **chạy tiếp nhưng không mở PR nào nữa** thay vì tắt h�
 
 ```bash
 export KEEPER_MAX_PR_PER_WEEK=0        # cổng `budget` của `pr_blockers()` chặn mọi ticket
-cd keeper && uv run python -m keeper.cli watch --db keeper.sqlite --repo ..
+cd companies/keeper && uv run python -m keeper.cli watch --db keeper.sqlite --repo ..
 ```
 
 Nó vẫn triage và vẫn ghi `pr.blocked` kèm tên cổng chặn vào `audit-log`, nên hàng đợi không im lặng biến mất.

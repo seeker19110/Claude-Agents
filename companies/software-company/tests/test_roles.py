@@ -32,7 +32,7 @@ from company.roles import (
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "company"
-CONSOLE_TRUTH = ROOT.parent / "console" / "src" / "console" / "truth.py"
+CONSOLE_TRUTH = ROOT.parents[1] / "platform" / "console" / "src" / "console" / "truth.py"
 
 # 21 id trước ADR-0037. Giữ danh sách này CỐ ĐỊNH qua PR-5a..5e: khi một agent bị gộp, tên cũ của nó không được
 # quay lại src/ dưới dạng chuỗi — kể cả trong code "tương thích".

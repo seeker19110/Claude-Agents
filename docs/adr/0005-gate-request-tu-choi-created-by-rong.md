@@ -19,7 +19,7 @@ nơi tạo dữ liệu (`request()`), không phải nơi dùng dữ liệu (`dec
 `request()` chấp nhận gate không có chủ, và một bug ở call site tương lai (quên `created_by`) sẽ vô hiệu hoá
 four-eyes ngay lập tức mà không có lỗi nào báo.
 
-Rà `GateRequest(` trong `software-company/src`, `Studio-creators/src`, `xagents-core/src`: mọi call site thật
+Rà `GateRequest(` trong `companies/software-company/src`, `Studio-creators/src`, `platform/xagents-core/src`: mọi call site thật
 hiện có (`delivery.py`, `demo.py`, `gate_cli.py`, `orch/*.py` của company; `gate_cli.py`, `orchestrator.py` của
 studio) đều đã truyền `created_by` có giá trị. Lỗ hổng là pre-existing (có trước K3.7, xác nhận bằng `git show`
 ở commit trước #198) và chưa bị khai thác qua các call site đang có, nhưng không có gì chặn call site tương
@@ -51,5 +51,5 @@ sớm nhất (khi tạo gate sai) thay vì chờ tới lúc duyệt mới phát 
 ## Liên quan
 
 - ADR gốc `docs/adr/0001-loi-chung-xagents-core.md` — hợp nhất `gates.py` vào `xagents_core` (K3.7, PR #198).
-- `xagents-core/src/xagents_core/gates.py` — `HumanGate.request()`, `HumanGate.decide()`.
-- `xagents-core/tests/test_gates.py` — ca test four-eyes.
+- `platform/xagents-core/src/xagents_core/gates.py` — `HumanGate.request()`, `HumanGate.decide()`.
+- `platform/xagents-core/tests/test_gates.py` — ca test four-eyes.

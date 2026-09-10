@@ -24,7 +24,7 @@ biết "test phải đo hai chiều", không biết "không hạ `fail_under`".
 
 ## Quyết định
 
-Dựng package thứ sáu của workspace: **`keeper/`** (distribution `keeper`, package Python `keeper`),
+Dựng package thứ sáu của workspace: **`companies/keeper/`** (distribution `keeper`, package Python `keeper`),
 là công ty con **bảo trì** — khách hàng đầu tiên và mặc định của nó là chính repo X-Agents.
 
 Nó **không viết lại** Renovate/CodeQL/Scorecard. Nó *tiêu thụ* đầu ra của chúng làm tín hiệu, rồi làm phần mà
@@ -94,7 +94,7 @@ nguy cơ công ty bảo trì tự tạo nhiễu PR — chính vì thế mới c�
 **Rủi ro lớn nhất:** agent bảo trì "sửa" thứ không hỏng. Chặn bằng ba lớp: `risk_tier`, bằng chứng đo hai
 chiều, và luật cấm sửa code cạnh bên.
 
-**Lộ trình:** 9 PR (BT0–BT8, đặc tả chi tiết ở `keeper/docs/DAC-TA-KEEPER.md`) — (1) khung package + pyproject + CI, (2) `watch` + adapter GitHub chỉ-đọc, (3) `triage`
+**Lộ trình:** 9 PR (BT0–BT8, đặc tả chi tiết ở `companies/keeper/docs/DAC-TA-KEEPER.md`) — (1) khung package + pyproject + CI, (2) `watch` + adapter GitHub chỉ-đọc, (3) `triage`
 + sổ nợ + ngân sách thay đổi, (4) `engineering` + `quality` + bằng chứng hai chiều, (5) `release` + gate
 `keeper` + console. Mỗi PR tự đứng được và giữ coverage 100%.
 

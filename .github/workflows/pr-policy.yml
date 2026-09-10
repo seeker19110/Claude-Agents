@@ -56,8 +56,8 @@ jobs:
           case "$TITLE" in fix\(*|fix:*) ;; *) echo "không phải PR fix( — bỏ qua"; exit 0;; esac
           git fetch -q origin "$BASE"
           changed=$(git diff --name-only "origin/$BASE...HEAD" -- \
-            software-company/src/company/orchestrator.py \
-            software-company/src/company/orch/)
+            companies/software-company/src/company/orchestrator.py \
+            companies/software-company/src/company/orch/)
           if [ -z "$changed" ]; then echo "không chạm orchestrator.py/orch/ — bỏ qua"; exit 0; fi
           if printf '%s' "$BODY" | grep -q 'ADR-0034'; then
             echo "OK: thân PR có dẫn ADR-0034"; exit 0

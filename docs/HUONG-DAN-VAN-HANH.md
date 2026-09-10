@@ -41,7 +41,7 @@ Cả repo là **một** uv workspace: một lệnh cài cả bốn package vào 
 ### Bước 2 — xem cả công ty chạy một vòng (≈ 1 phút)
 
 ```bash
-cd software-company
+cd companies/software-company
 uv run python -m company.demo
 ```
 
@@ -60,7 +60,7 @@ thật, chỗ đó là bạn.
 ### Bước 3 — tự tay đưa một yêu cầu vào (≈ 3 phút)
 
 ```bash
-cd software-company
+cd companies/software-company
 ```
 
 Tạo `req.json` (dùng file tạm, đừng commit):
@@ -139,7 +139,7 @@ Xong. Bạn vừa đi hết vòng mà một người trực làm mỗi ngày.
 ### Bước 6 — nhìn cả hai công ty trên một màn hình (≈ 2 phút)
 
 ```bash
-cd ../console
+cd ../../platform/console
 uv run python -m console
 ```
 
@@ -149,7 +149,7 @@ chạy lại với `--allow-decide`. Đóng bằng Ctrl-C.
 ### Dọn
 
 ```bash
-cd ../software-company && rm thu.sqlite req.json     # PowerShell: Remove-Item thu.sqlite, req.json
+cd ../../companies/software-company && rm thu.sqlite req.json     # PowerShell: Remove-Item thu.sqlite, req.json
 ```
 
 Không commit `*.sqlite`, `llm.yaml`, `output/` — `.gitignore` đã chặn, nhưng biết vì sao thì hơn.
@@ -205,7 +205,7 @@ Cần SDK Anthropic (chỉ khi dùng provider `anthropic` có key): `uv sync --e
 Kiểm tra cài đặt bằng test offline (không gọi model, không cần key):
 
 ```bash
-make test        # cả bốn package; hoặc từng cái: cd software-company && uv run pytest -q
+make test        # cả bốn package; hoặc từng cái: cd companies/software-company && uv run pytest -q
 ```
 
 ## 3. Cấu hình model theo gói tài khoản
@@ -227,7 +227,7 @@ claude auth status                                # "loggedIn": true là đủ; 
 codex login status                                # "Logged in using ChatGPT"; chưa thì: codex login
 
 # Google Antigravity — thêm tài khoản vào pool của gateway rồi bật daemon
-cd gateway
+cd platform/gateway
 uv run python -m gateway login     # mở trình duyệt; chạy lại để thêm tài khoản 2, 3...
 uv run python -m gateway start     # daemon tại http://127.0.0.1:1123/v1
 uv run python -m gateway status    # từng tài khoản: sẵn sàng / cooldown / hạn token
@@ -237,7 +237,7 @@ Nhiều tài khoản cho cùng một gói: xem 3.5.
 
 ### 3.2 Viết `llm.yaml`
 
-Mẫu đầy đủ có chú thích: `software-company/llm.example.yaml`, `Studio-creators/llm.example.yaml`. Cấu hình khuyến nghị
+Mẫu đầy đủ có chú thích: `companies/software-company/llm.example.yaml`, `Studio-creators/llm.example.yaml`. Cấu hình khuyến nghị
 khi có cả Claude và Antigravity (giống nhau cho hai công ty, chỉ khác tiền tố biến môi trường):
 
 ```yaml
@@ -336,10 +336,10 @@ Không muốn tự viết `backends:` thì mỗi công ty có sẵn một hồ s
 
 ```bash
 claude login                                   # gói Claude Pro/Max trên máy
-cd gateway && make login && make start         # thêm tài khoản Google, bật daemon 127.0.0.1:1123
-cd ../software-company && make llm             # chép llm.claude-gateway.yaml → llm.yaml (không ghi đè file đang có)
+cd platform/gateway && make login && make start         # thêm tài khoản Google, bật daemon 127.0.0.1:1123
+cd ../../companies/software-company && make llm             # chép llm.claude-gateway.yaml → llm.yaml (không ghi đè file đang có)
 cd ../Studio-creators   && make llm
-cd ../gateway && make models                   # đối chiếu tên model của cả hai công ty, exit 1 nếu lệch
+cd ../../platform/gateway && make models                   # đối chiếu tên model của cả hai công ty, exit 1 nếu lệch
 ```
 
 Hồ sơ đó: tier `strong` đi gói Claude (`claude-opus-5`, bật `mcp_tools` nên khối kỹ thuật có tool), `standard`/`light` đi
@@ -351,7 +351,7 @@ gateway (Gemini Flash) cho rẻ, gói nào cạn thì tự rơi sang gói kia. T
 Khối kỹ thuật chạy bằng gói Claude cần CLI `claude` làm được một trong hai việc, mà chỉ gọi thật mới biết:
 
 ```bash
-cd software-company && make probe          # hoặc: make probe BACKEND=claude-1
+cd companies/software-company && make probe          # hoặc: make probe BACKEND=claude-1
 ```
 
 Kết luận in ra cho từng backend `claude-code` trong `llm.yaml`:
@@ -394,7 +394,7 @@ khoản kế; không cần can thiệp tay.
 |---|---|---|---|
 | Claude Pro/Max | thư mục cấu hình `CLAUDE_CONFIG_DIR` | `CLAUDE_CONFIG_DIR=~/.claude-acc2 claude login` | `provider: claude-code`, `config_dir: ~/.claude-acc2` |
 | ChatGPT Plus/Pro | thư mục `CODEX_HOME` | `CODEX_HOME=~/.codex-acc2 codex login` | `provider: codex`, `config_dir: ~/.codex-acc2` |
-| Google Antigravity | pool của gateway (một file token chung) | `cd gateway && uv run python -m gateway login` (lặp lại N lần) | một backend `antigravity` duy nhất; gateway tự xoay tài khoản bên trong |
+| Google Antigravity | pool của gateway (một file token chung) | `cd platform/gateway && uv run python -m gateway login` (lặp lại N lần) | một backend `antigravity` duy nhất; gateway tự xoay tài khoản bên trong |
 
 Tài khoản mặc định (đã đăng nhập sẵn, không đặt biến) vẫn dùng được: backend không có `config_dir`.
 
@@ -471,7 +471,7 @@ Lưu ý:
 ## 4. Chạy thử offline (không tốn hạn mức)
 
 ```bash
-cd software-company
+cd companies/software-company
 uv run python -m company.demo        # cả công ty với client giả, dừng ở human gate rồi tự duyệt
 
 cd ../Studio-creators
@@ -483,7 +483,7 @@ audit-log trước khi tiêu hạn mức thật.
 
 ## 5. Vận hành software-company
 
-Mọi lệnh chạy trong `software-company/` (không cần `PYTHONPATH`: cả repo là một uv workspace, `uv run` tự thấy
+Mọi lệnh chạy trong `companies/software-company/` (không cần `PYTHONPATH`: cả repo là một uv workspace, `uv run` tự thấy
 package). Trạng thái nằm trong `company.sqlite` (mặc định, đổi bằng
 `--db`). Nhiều tiến trình dùng chung file này được.
 
@@ -512,10 +512,10 @@ uv run python -m company.orchestrator publish research-requests req.json --actor
 ```
 
 Mẫu đầy đủ hơn (một web app quản lý trung tâm, có đủ tám phần mà `product` pha `intake` cần để đặt câu hỏi cho cả bốn mảng
-domain/ux/codebase/tech): `software-company/examples/yeu-cau-mau-web-app.json` — chép rồi sửa cho khách của bạn.
+domain/ux/codebase/tech): `companies/software-company/examples/yeu-cau-mau-web-app.json` — chép rồi sửa cho khách của bạn.
 Mô tả càng nêu rõ **ngoài phạm vi** và **yêu cầu phi chức năng có số đo** thì spec càng ít phải hỏi lại ở gate.
 
-Không muốn viết JSON tay: chạy console với `--allow-submit` (`cd console && uv run python -m console --allow-submit`),
+Không muốn viết JSON tay: chạy console với `--allow-submit` (`cd platform/console && uv run python -m console --allow-submit`),
 vào màn **Xưởng phần mềm** → khối *Giao việc* ở đầu màn → form *Yêu cầu phần mềm* (có ô *Nơi lưu dự án* = `repo`).
 Cùng một event, cùng schema — chỉ khác là điền vào ô. Câu hỏi làm rõ của `product` (pha `intake`) cũng trả lời được ở form
 *Trả lời câu hỏi làm rõ* ngay đó, thay cho `publish clarification-answers`.
@@ -579,7 +579,7 @@ compose file khách; lệnh dừng khẩn container và cảnh báo tranh cổng
 ```bash
 docker info | head -3                       # 1. có daemon thật (không chỉ có CLI); không có thì dừng ở đây
 export COMPANY_DEPLOY=compose               # 2. khai đích danh: thiếu binary phải LỖI, không im lặng bỏ qua
-cd software-company
+cd companies/software-company
 # 3. repo khách có compose file, và spec của dự án khai runtime.deploy trỏ đúng file đó
 uv run python -m company.orchestrator --repo ../khach --integration company/integration --deliver run --watch 5
 # 4. duyệt gate release khi tới:
@@ -753,15 +753,15 @@ Schema của từng topic ở `topics/schemas/*.json`; mẫu tài liệu ở `te
 
 ## 7. Vận hành keeper (công ty bảo trì)
 
-Mọi lệnh chạy trong `keeper/`. Trạng thái trong `keeper.sqlite`. Khách hàng số 0 của nó là **chính repo này**:
+Mọi lệnh chạy trong `companies/keeper/`. Trạng thái trong `keeper.sqlite`. Khách hàng số 0 của nó là **chính repo này**:
 nó đọc tín hiệu (dependabot, CI, trôi tài liệu), gom thành ticket bảo trì có bậc rủi ro, và chỉ được mở PR khi
 có bằng chứng đo hai chiều. Nó **không có quyền ghi** ngoài nhánh/commit/PR của chính nó (bất biến I1,
-`keeper/docs/DAC-TA-KEEPER.md` §0).
+`companies/keeper/docs/DAC-TA-KEEPER.md` §0).
 
 ### 7.1 Chạy một vòng
 
 ```bash
-cd keeper
+cd companies/keeper
 uv run python -m keeper.cli run --tickets tickets.json --root ../Claude-Agents-wt-keeper --dry-run
 uv run python -m keeper.cli watch --db keeper.sqlite --repo .. --interval 300 --max-ticks 1
 ```
@@ -770,7 +770,7 @@ uv run python -m keeper.cli watch --db keeper.sqlite --repo .. --interval 300 --
   là thi hành thật; `--root` **bắt buộc** và phải là một worktree PHỤ — `patcher` từ chối ghi vào checkout chung.
 - `watch` là vòng `watch → triage → patch → verify → gate? → release`. `--max-ticks 1` chạy đúng một nhịp rồi
   thoát (dùng khi muốn xem nó làm gì trước khi thả chạy dài). Bỏ `--max-ticks` là chạy mãi.
-- `--repo` là repo để hỏi `gh` (**chỉ đọc**; `keeper/src/keeper/github.py` chặn mọi argv ghi bằng mã).
+- `--repo` là repo để hỏi `gh` (**chỉ đọc**; `companies/keeper/src/keeper/github.py` chặn mọi argv ghi bằng mã).
 
 ### 7.2 Xem hàng đợi
 
@@ -814,14 +814,14 @@ export KEEPER_GATE_APPROVERS="human:truc-ban,human:cto"
 
 ### 7.5 Chưa có gì ở đây
 
-- `keeper/evals/` chưa dựng: `make eval-record` cần model thật, nên bước đó **chờ người**.
+- `companies/keeper/evals/` chưa dựng: `make eval-record` cần model thật, nên bước đó **chờ người**.
 - Canary (một chu kỳ thật trên chính X-Agents, tự mở đúng một PR bảo trì có bằng chứng) **chưa chạy**.
 - `keeper` chưa có `llm.yaml` nào, nên nó không xuất hiện ở màn *Cài đặt model* của console.
 
 ## 8. Vận hành gateway
 
 ```bash
-cd gateway
+cd platform/gateway
 uv run python -m gateway start            # daemon; --foreground/-f chạy tiền cảnh; --host/--port
 uv run python -m gateway stop
 uv run python -m gateway status           # exit 1 nếu server tắt hoặc không còn tài khoản sẵn sàng
@@ -847,7 +847,7 @@ Một trang web cục bộ nhìn cả ba công ty (software-company, Studio-crea
 việc mở bốn cửa sổ `status` / `report` / `gate_cli`.
 
 ```bash
-cd console
+cd platform/console
 uv sync
 uv run python -m console                 # 127.0.0.1:8200, CHỈ ĐỌC; terminal in địa chỉ kèm token phiên
 uv run python -m console --allow-decide  # mở khoá các nút quyết định gate ngay trên trang
@@ -864,7 +864,7 @@ Ba điều phải biết trước khi dựa vào nó:
 - Động cơ do console bật **chết khi tắt console** (Ctrl-C, đóng terminal). Chạy dài ngày, qua nhiều phiên console,
   thì vẫn bật ở terminal riêng như §5 — ô Động cơ chỉ thấy tiến trình do chính nó tạo, và nói rõ điều đó.
 - Ô này hiện trạng thái **đo được**, không phải "đã bấm Bật": động cơ chết vì thiếu `llm.yaml` hiện `đã dừng` kèm
-  mã thoát và đuôi log (`console/.engine/<xưởng>.log`), không hiện `đang chạy`.
+  mã thoát và đuôi log (`platform/console/.engine/<xưởng>.log`), không hiện `đang chạy`.
 - `--allow-engine` là cờ **riêng**, `--allow-decide` không mở nó: ký gate và đốt hạn mức model là hai quyền khác nhau.
 
 Mở đúng địa chỉ terminal in ra (có token phiên trong đó). Đường dẫn DB khác mặc định thì chỉ ra bằng
@@ -882,7 +882,7 @@ Cần biết khi vận hành:
 - **Chỉ đọc là mặc định.** Không có `--allow-decide` thì mọi nút quyết định bị khoá — console là cửa sổ, không phải
   nút bấm, cho tới khi bạn cố ý bật. Bốn quyền ghi tách riêng: `--allow-decide` (ký gate) · `--allow-submit`
   (giao việc) · `--allow-config` (đổi model) · `--allow-engine` (bật/tắt động cơ).
-- **Token sinh mỗi lần chạy**, ghi `console/.console-token` (quyền 600, đã gitignore). Tắt server là token hết hiệu
+- **Token sinh mỗi lần chạy**, ghi `platform/console/.console-token` (quyền 600, đã gitignore). Tắt server là token hết hiệu
   lực. Server chỉ bind loopback; `--host` khác bị từ chối khởi động.
 - **Quyết định đi qua đúng `HumanGate` của công ty**: four-eyes (người duyệt phải khác người tạo), allowlist
   (`COMPANY_GATE_APPROVERS` / `STUDIO_GATE_APPROVERS` / `KEEPER_GATE_APPROVERS`) và `audit-log` vẫn áp như khi
@@ -893,7 +893,7 @@ Cần biết khi vận hành:
   cùng và số liệu giữ nguyên lần đọc cuối.
 - Console **đọc** SQLite trong lúc orchestrator đang ghi, không khoá gì; số liệu trễ tối đa một nhịp làm mới.
 
-Chi tiết: [`../console/README.md`](../console/README.md), quyết định thiết kế ở `console/docs/adr/0001-console-hop-nhat.md`.
+Chi tiết: [`../../platform/console/README.md`](../../platform/console/README.md), quyết định thiết kế ở `platform/console/docs/adr/0001-console-hop-nhat.md`.
 
 ## 10. Theo dõi, chi phí, sự cố
 
@@ -941,7 +941,7 @@ token gateway.
 
 1. `gateway status`: còn tài khoản sẵn sàng không; `claude auth status` còn đăng nhập không.
 2. `orchestrator status` từng công ty: có gate nào chờ người, event nào hoãn lâu, ticket nào pause.
-   Hoặc mở console (`cd console && uv run python -m console`) để thấy cả hai xưởng trên một màn hình.
+   Hoặc mở console (`cd platform/console && uv run python -m console`) để thấy cả hai xưởng trên một màn hình.
 3. Duyệt gate; trả lời clarification / change request nếu có.
 4. `report`: chi phí và hành động supervisor bất thường; `llm_retry` cho biết gói nào đang gánh việc.
 5. Với Studio: chạy `studio.youtube sync-metrics` / `sync-comments` (hoặc đưa file `publish-events`, `performance-snapshots`,

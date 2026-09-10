@@ -9,8 +9,8 @@ Sáu package chạy song song, nhưng khi một ticket kẹt thì người vận
 Số đếm được từ mã (không phải latency ước lượng — **latency chưa đo được, đó chính là vấn đề**):
 
 - **Không có một dòng đo thời gian nào trong đường gọi model.** `grep -n "monotonic\|latency\|elapsed"` trên
-  `xagents-core/src/xagents_core/llm.py`, `software-company/src/company/llm.py`,
-  `xagents-core/src/xagents_core/runner.py`, `software-company/src/company/runner.py` trả **0 dòng**.
+  `platform/xagents-core/src/xagents_core/llm.py`, `companies/software-company/src/company/llm.py`,
+  `platform/xagents-core/src/xagents_core/runner.py`, `companies/software-company/src/company/runner.py` trả **0 dòng**.
   `Completion` (`xagents_core/llm.py:206`) có `input_tokens`, `output_tokens`, `cached_input_tokens`,
   `cache_write_tokens`, `tool_calls`, `tool_mode` — **không có trường thời gian**. Một lời gọi model tốn bao lâu
   là thông tin không tồn tại ở bất kỳ đâu trong repo.
@@ -28,7 +28,7 @@ Số đếm được từ mã (không phải latency ước lượng — **laten
 - **Core có đúng 3 dependency runtime** (`jsonschema`, `pydantic`, `pyyaml`) và `strict = true` trong
   `[tool.mypy]`, với **một** ngoại lệ hẹp `ignore_missing_imports` cho module `anthropic.*` — cố ý không dùng cờ
   toàn cục `--ignore-missing-imports` như bốn package kia.
-- **Có 12 hàm `def complete`** trong `xagents-core/src`, `software-company/src`, `Studio-creators/src`:
+- **Có 12 hàm `def complete`** trong `platform/xagents-core/src`, `companies/software-company/src`, `Studio-creators/src`:
   core `llm.py` ×5 (dòng 474 là **khai báo** `Protocol`, bốn cái còn lại 545/618/675/792 là hiện thực),
   core `evals.py` ×3, core `routing.py` ×1, `company/llm.py` ×2, `studio/llm.py` ×1. Chúng **lồng nhau**:
   `make_client` (`company/llm.py`) dựng `_single_client` → `RetryingClient` → gói trong `Backend` →
@@ -67,7 +67,7 @@ ba ranh giới ở phía gọi.
 4. **Core không thêm dependency bắt buộc: lớp span thuần stdlib + `SpanSink` Protocol; sink OpenTelemetry là tuỳ
    chọn, `import` bên trong hàm, thiếu gói thì lùi về no-op.** Vì `strict = true` ở core không đi kèm cờ toàn cục
    `--ignore-missing-imports`, một `import opentelemetry` ở đỉnh file làm mypy core đỏ trên mọi máy không cài gói
-   — đúng cái bẫy đã ghi trong `xagents-core/pyproject.toml` về `types-PyYAML`. Hai cách khác bị loại:
+   — đúng cái bẫy đã ghi trong `platform/xagents-core/pyproject.toml` về `types-PyYAML`. Hai cách khác bị loại:
    (a) **thêm OTel làm dep bắt buộc** — nâng core từ 3 lên ≥ 4 dep runtime cho một tính năng mặc định tắt, và
    phá nguyên tắc "chỉ phụ thuộc thứ mà CẢ HAI công ty đã dùng" (ADR-0001 §2); (b) **không có lớp trừu tượng, gọi
    thẳng OTel** — buộc test core phải cài OTel để đạt `fail_under = 100`, và trói core vào một vendor trong khi
@@ -105,12 +105,12 @@ phải đoán rằng đo hỏng.
 Giới hạn thứ hai, **khác hẳn** giới hạn trên: đường **cầu MCP** (ADR-0024 của software-company). Ở đó tool VẪN chạy
 thật trong `ToolBox` của tiến trình cha, nên span `tool.call` VẪN sinh ra với đủ `tool`/`ok`/`chars` — chỉ **liên kết
 cha là mất**, span nằm phẳng thay vì dưới `llm.complete` của lượt sinh ra nó. Cơ chế: `ToolBridge` phục vụ bằng
-`socketserver.ThreadingTCPServer` (`software-company/src/company/mcp_bridge.py:93-96`) và gọi `toolbox.call` trong
+`socketserver.ThreadingTCPServer` (`companies/software-company/src/company/mcp_bridge.py:93-96`) và gọi `toolbox.call` trong
 **thread handler** (`mcp_bridge.py:120-123`); thread mới bắt đầu với một `contextvars` Context RỖNG, nên `_current`
 của `observe.py` là `None` và `parent` cũng vậy. Khắc phục được — truyền `contextvars.copy_context()` từ luồng mở cầu
 vào handler — nhưng **ngoài phạm vi `p3.1`**: nó đụng vào vòng đời của cầu, không vào ba ranh giới ADR này quyết. Hành
 vi hôm nay được **đo** chứ không để tự hiểu:
-`software-company/tests/test_span_runner.py::test_cau_mcp_mat_cha_cua_span_tool_call` khẳng định `parent is None` qua
+`companies/software-company/tests/test_span_runner.py::test_cau_mcp_mat_cha_cua_span_tool_call` khẳng định `parent is None` qua
 cầu và `parent is` span đang mở khi gọi cùng luồng — ai truyền context qua cầu sẽ thấy test đỏ và biết mình vừa đổi
 đúng cái gì.
 
@@ -124,14 +124,14 @@ software-company; ghép nơi khác là quyết định riêng, ADR riêng nếu 
   không được lỏng hơn nơi gọi nó) là nguồn trực tiếp của quyết định 4.
 - `docs/adr/0007-tia-tool-output-cu-trong-vong-tool.md` — ví dụ đối chiếu: một thay đổi **có** đổi nội dung gửi
   model và **phải** ghi lại eval; quyết định 6 ở đây là cam kết ngược lại.
-- `xagents-core/src/xagents_core/tools.py` — `ToolBox.call` (đã có `ms`), `ToolBox.trace` (4L-2), bộ đệm `calls`.
-- `xagents-core/src/xagents_core/runner.py` — `AgentRunner.run`/`generate`/`publish`/`_audit`, `Generated`
+- `platform/xagents-core/src/xagents_core/tools.py` — `ToolBox.call` (đã có `ms`), `ToolBox.trace` (4L-2), bộ đệm `calls`.
+- `platform/xagents-core/src/xagents_core/runner.py` — `AgentRunner.run`/`generate`/`publish`/`_audit`, `Generated`
   (bảy trường chung, không có thời gian).
-- `software-company/src/company/runner.py` — `_complete` (248), `_tool_loop` (268), `_turns` (285),
+- `companies/software-company/src/company/runner.py` — `_complete` (248), `_tool_loop` (268), `_turns` (285),
   `generate(max_turns=25)` (406): bốn chỗ ghép span của `p3.1`.
-- `xagents-core/src/xagents_core/llm.py` — Protocol `ModelClient.complete` (470), `Completion` (206).
-- `xagents-core/src/xagents_core/routing.py` — `RoutingClient.complete` (205), lớp bọc ngoài cùng của chuỗi lồng.
-- `software-company/docs/adr/0023-claude-code-cli-tools.md` — chế độ `cli`, nguồn của giới hạn đã biết ở trên.
-- `software-company/docs/adr/0024-cau-mcp-cho-claude-code.md` — cầu MCP, nguồn của giới hạn "mất cha" ở trên;
-  `software-company/src/company/mcp_bridge.py:93-96,120-123` là chỗ thread handler cắt `contextvars` Context.
-- `software-company/src/company/metrics.py` — `collect` (39), `prometheus` (154): nơi `duration_ms` hiện được cộng.
+- `platform/xagents-core/src/xagents_core/llm.py` — Protocol `ModelClient.complete` (470), `Completion` (206).
+- `platform/xagents-core/src/xagents_core/routing.py` — `RoutingClient.complete` (205), lớp bọc ngoài cùng của chuỗi lồng.
+- `companies/software-company/docs/adr/0023-claude-code-cli-tools.md` — chế độ `cli`, nguồn của giới hạn đã biết ở trên.
+- `companies/software-company/docs/adr/0024-cau-mcp-cho-claude-code.md` — cầu MCP, nguồn của giới hạn "mất cha" ở trên;
+  `companies/software-company/src/company/mcp_bridge.py:93-96,120-123` là chỗ thread handler cắt `contextvars` Context.
+- `companies/software-company/src/company/metrics.py` — `collect` (39), `prometheus` (154): nơi `duration_ms` hiện được cộng.

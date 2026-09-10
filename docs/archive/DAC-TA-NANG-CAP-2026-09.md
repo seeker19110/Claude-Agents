@@ -4,7 +4,7 @@
 > xem bảng theo dõi ở đó. Giữ file này làm nguồn gốc lịch sử, không còn là đặc tả đang theo.
 
 Ngày lập: 2026-09-06 · Căn cứ: đánh giá toàn diện tại `main@113833f` (#90), báo cáo
-`software-company/docs/reports/2026-09-06-ban-giao-khong-chay-duoc.md`, đánh giá
+`companies/software-company/docs/reports/2026-09-06-ban-giao-khong-chay-duoc.md`, đánh giá
 `Studio-creators/docs/DANH-GIA-NANG-CAP-XUONG-VIDEO.md`, ghi nhận vận hành console đêm 05–06/09.
 
 Tài liệu này là **kế hoạch + đặc tả mức epic**. Mỗi mục là một hoặc vài PR; chi tiết mức ticket nằm ở ADR của
@@ -73,7 +73,7 @@ Quy ước cột: **Mục tiêu** (một câu) · **Phạm vi** (file/agent ch�
 
 | Mã | Mục tiêu | Phạm vi | Nghiệm thu |
 |---|---|---|---|
-| V1 | PR #94 hết CONFLICTING, CI chạy, merge | rebase lên main (xung đột 1 dòng `software-company/README.md`) | `gh pr view 94 --json mergeable` = MERGEABLE, auto-merge xong |
+| V1 | PR #94 hết CONFLICTING, CI chạy, merge | rebase lên main (xung đột 1 dòng `companies/software-company/README.md`) | `gh pr view 94 --json mergeable` = MERGEABLE, auto-merge xong |
 | V2 | CHANGELOG đủ #91 #92 #93 và mọi PR sau | `CHANGELOG.md` | `for n in 91 92 93; grep "#$n" CHANGELOG.md` đều khớp; thêm check CI: PR merge phải có dòng CHANGELOG (mở rộng workflow `PR policy`) |
 | V3 | Xoá 18 nhánh local đã merge squash, gỡ worktree `wt-gitdoc` `wt-khung` `wt-smoke` | git local | `git branch --no-merged main` chỉ còn nhánh có PR mở hoặc wip có chủ |
 | V4 | `.gitignore` chặn `llm.yaml.bak*`, `media.yaml.bak*`, `*.sqlite*.bak*` | `.gitignore` | `git status --short` không hiện 3 file `.bak` |
@@ -139,10 +139,10 @@ ADR-0003 (console) mô tả mô hình "sự thật giao hàng" mở rộng; C1�
 
 | Mã | Mục tiêu | Phạm vi | Nghiệm thu | ADR |
 |---|---|---|---|---|
-| E1 | Tách máy trạng thái khỏi `orchestrator.py`: ba module `state/ticket.py`, `state/release.py`, `state/gate.py`, mỗi module một bảng chuyển trạng thái tường minh (from, event, guard, to) và một test bảng; orchestrator chỉ nối bus với bảng | `software-company/src/company/` | `orchestrator.py` < 900 dòng; test bảng liệt kê mọi cặp (state, event) kể cả cặp cấm; 4 khuôn lỗi TRAPS §1 có test tương ứng | ADR-0037 |
+| E1 | Tách máy trạng thái khỏi `orchestrator.py`: ba module `state/ticket.py`, `state/release.py`, `state/gate.py`, mỗi module một bảng chuyển trạng thái tường minh (from, event, guard, to) và một test bảng; orchestrator chỉ nối bus với bảng | `companies/software-company/src/company/` | `orchestrator.py` < 900 dòng; test bảng liệt kê mọi cặp (state, event) kể cả cặp cấm; 4 khuôn lỗi TRAPS §1 có test tương ứng | ADR-0037 |
 | E2 | Bus adapter Redis Streams giữ nguyên interface (kể cả `poll`), SQLite vẫn mặc định; `--workers` thành nhiều tiến trình | `bus.py` | test với fakeredis; chạy 2 tiến trình không giao trùng | ADR-0038 |
 | E3 | Eval có răng: ghi lại 21 agent với model thật; CI so điểm với ngưỡng dao động đo được (memory: một lần đỏ chưa phải hồi quy → chạy 3 lần, lấy trung vị) | `evals/`, workflow CI | 21 recordings mới; CI đỏ khi trung vị tụt > ngưỡng | — |
-| E4 | Gateway: 3 ADR (xoay vòng tài khoản, giữ cổng, ranh giới bảo mật), `TRAPS.md`/`CODEMAP.md` riêng như ba package kia | `gateway/docs/adr/` | `ls gateway/docs/adr` ≥ 3; bộ khung 4 file có đủ | ADR gateway 0001–0003 |
+| E4 | Gateway: 3 ADR (xoay vòng tài khoản, giữ cổng, ranh giới bảo mật), `TRAPS.md`/`CODEMAP.md` riêng như ba package kia | `platform/gateway/docs/adr/` | `ls platform/gateway/docs/adr` ≥ 3; bộ khung 4 file có đủ | ADR gateway 0001–0003 |
 | E5 | Bảo vệ CHANGELOG và session log bằng CI: PR không có dòng CHANGELOG → `PR policy` đỏ; ngày có PR merge mà không có `docs/sessions/<ngày>.md` → cảnh báo | `.github/workflows` | test workflow bằng `act` hoặc PR thử | — |
 
 ## 5. Ước lượng và ưu tiên

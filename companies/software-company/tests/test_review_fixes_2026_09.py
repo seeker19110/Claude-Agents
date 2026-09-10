@@ -431,21 +431,22 @@ def test_readme_goc_khop_nguong_coverage_va_so_test():
     import re
     import tomllib
     from pathlib import Path
-    hub = Path(__file__).resolve().parents[2]
+    hub = Path(__file__).resolve().parents[3]
     readme = (hub / "README.md").read_text(encoding="utf-8")
 
     row = next(ln for ln in readme.splitlines() if "`fail_under`" in ln)
     m = re.search(r"`fail_under` ([\d /]+) cho ([\w\- /]+)", row)
     assert m, "README gốc phải ghi '`fail_under` a / b / ... cho <package> / <package>...'"
     claimed = [int(x) for x in m.group(1).split("/")]
-    packages = [p.strip() for p in m.group(2).split("/")]
+    # tên package là đường dẫn có `/` từ ADR-0011 → tách theo " / ", không theo "/"
+    packages = [p.strip() for p in m.group(2).split(" / ")]
     assert len(claimed) == len(packages), f"{len(claimed)} ngưỡng nhưng {len(packages)} package"
     for want, name in zip(claimed, packages, strict=True):
         cfg = tomllib.loads((hub / name / "pyproject.toml").read_text(encoding="utf-8"))
         real = cfg["tool"]["coverage"]["report"]["fail_under"]
         assert want == real, f"README gốc ghi fail_under của {name} là {want}, pyproject.toml nói {real}"
 
-    for pkg, prefix in (("software-company", "| [`software-company/`]"),):
+    for pkg, prefix in (("companies/software-company", "| [`companies/software-company/`]"),):
         row = next(ln for ln in readme.splitlines() if ln.startswith(prefix))
         m = re.search(r"(\d+) test \|$", row)
         assert m, f"dòng {pkg} trong README gốc phải kết thúc bằng '<N> test |'"

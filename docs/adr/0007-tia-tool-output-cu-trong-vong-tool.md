@@ -69,9 +69,9 @@ nói rõ điều này thay vì để CI đỏ trông như một lỗi ai đó g�
 
 - `docs/KIEN-TRUC-4-LOP.md` mục C "4L-4 · Tỉa tool output cũ" — khối 7 mục nguồn của quyết định này (đặt tên
   làm việc "ADR-0040"; số thật đặt ở đây theo đúng bài học #168 "số ADR đặt trước là bẫy").
-- `xagents-core/src/xagents_core/context.py` — `fit`, `trim_payload`, nơi `_prune` được thêm vào.
-- `software-company/src/company/runner.py:_turns` (4L-3, `_stagnant`, `NO_PROGRESS_WARN=3`) —
+- `platform/xagents-core/src/xagents_core/context.py` — `fit`, `trim_payload`, nơi `_prune` được thêm vào.
+- `companies/software-company/src/company/runner.py:_turns` (4L-3, `_stagnant`, `NO_PROGRESS_WARN=3`) —
   `docs/adr` không có ADR riêng cho 4L-3; xem `docs/KIEN-TRUC-4-LOP.md` mục C "4L-3".
-- `xagents-core/src/xagents_core/tools.py` — `ToolBox.trace()`, `out_hash` (4L-2), tiền đề của placeholder ở đây.
+- `platform/xagents-core/src/xagents_core/tools.py` — `ToolBox.trace()`, `out_hash` (4L-2), tiền đề của placeholder ở đây.
 - `docs/adr/0001-loi-chung-xagents-core.md` — công ty là gốc lên core; ADR này theo đúng khuôn "core giữ cơ chế,
   package giữ nghĩa" (mục "Cái gì Ở LẠI package" của ADR-0001, áp dụng ngược: `_prune` là cơ chế, thuộc core).

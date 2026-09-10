@@ -458,13 +458,13 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "console", editable = "console" },
-    { name = "gateway", editable = "gateway" },
-    { name = "keeper", editable = "keeper" },
-    { name = "software-company", editable = "software-company" },
-    { name = "software-company", extras = ["anthropic"], marker = "extra == 'anthropic'", editable = "software-company" },
-    { name = "software-company", extras = ["graph"], marker = "extra == 'graph'", editable = "software-company" },
-    { name = "xagents-core", editable = "xagents-core" },
+    { name = "console", editable = "platform/console" },
+    { name = "gateway", editable = "platform/gateway" },
+    { name = "keeper", editable = "companies/keeper" },
+    { name = "software-company", editable = "companies/software-company" },
+    { name = "software-company", extras = ["anthropic"], marker = "extra == 'anthropic'", editable = "companies/software-company" },
+    { name = "software-company", extras = ["graph"], marker = "extra == 'graph'", editable = "companies/software-company" },
+    { name = "xagents-core", editable = "platform/xagents-core" },
 ]
 provides-extras = ["anthropic", "graph"]
 
@@ -490,7 +490,7 @@ wheels = [
 [[package]]
 name = "console"
 version = "0.1.0"
-source = { editable = "console" }
+source = { editable = "platform/console" }
 dependencies = [
     { name = "keeper" },
     { name = "software-company" },
@@ -506,8 +506,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "keeper", editable = "keeper" },
-    { name = "software-company", editable = "software-company" },
+    { name = "keeper", editable = "companies/keeper" },
+    { name = "software-company", editable = "companies/software-company" },
 ]
 
 [package.metadata.requires-dev]
@@ -772,7 +772,7 @@ wheels = [
 [[package]]
 name = "gateway"
 version = "0.1.0"
-source = { editable = "gateway" }
+source = { editable = "platform/gateway" }
 dependencies = [
     { name = "aiohttp" },
     { name = "httpx" },
@@ -831,8 +831,8 @@ name = "httpcore2"
 version = "2.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11" },
-    { name = "truststore" },
+    { name = "h11", marker = "python_full_version < '3.12' or python_full_version >= '3.15' or sys_platform != 'emscripten'" },
+    { name = "truststore", marker = "python_full_version < '3.12' or python_full_version >= '3.15' or sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/be/ad/f4f0e57345f1870f3e8cb624e058d7eca6e5a27d33bcc3311d9b618734cd/httpcore2-2.12.0.tar.gz", hash = "sha256:9293522bba0aa7c4c8e9e3f040c16575bd8868e155a77fa30c7a9085a5eae648", size = 67548, upload-time = "2026-08-18T13:22:08.211Z" }
 wheels = [
@@ -1035,7 +1035,7 @@ wheels = [
 [[package]]
 name = "keeper"
 version = "0.1.0"
-source = { editable = "keeper" }
+source = { editable = "companies/keeper" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -1054,7 +1054,7 @@ dev = [
 requires-dist = [
     { name = "pydantic", specifier = ">=2.13.5" },
     { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "xagents-core", editable = "xagents-core" },
+    { name = "xagents-core", editable = "platform/xagents-core" },
 ]
 
 [package.metadata.requires-dev]
@@ -2171,7 +2171,7 @@ wheels = [
 [[package]]
 name = "software-company"
 version = "0.5.0"
-source = { editable = "software-company" }
+source = { editable = "companies/software-company" }
 dependencies = [
     { name = "jsonschema" },
     { name = "pydantic" },
@@ -2202,7 +2202,7 @@ requires-dist = [
     { name = "langgraph", marker = "extra == 'graph'", specifier = ">=0.2" },
     { name = "pydantic", specifier = ">=2.6" },
     { name = "pyyaml", specifier = ">=6" },
-    { name = "xagents-core", editable = "xagents-core" },
+    { name = "xagents-core", editable = "platform/xagents-core" },
 ]
 provides-extras = ["anthropic", "graph"]
 
@@ -2527,7 +2527,7 @@ wheels = [
 [[package]]
 name = "xagents-core"
 version = "0.1.0"
-source = { editable = "xagents-core" }
+source = { editable = "platform/xagents-core" }
 dependencies = [
     { name = "jsonschema" },
     { name = "pydantic" },

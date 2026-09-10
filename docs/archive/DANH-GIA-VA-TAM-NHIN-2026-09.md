@@ -4,7 +4,7 @@
 > này làm nguồn gốc lịch sử (đánh giá + ba mốc "Chân trời" vẫn được `docs/NGON-NGU.md` tham chiếu).
 
 Ngày lập: 2026-09-06 · Căn cứ: `main@d7c8271` (#108), khảo sát mã nguồn và tài liệu cả bốn package, ba báo cáo
-trước (`software-company/docs/reports/2026-09-06-ban-giao-khong-chay-duoc.md`,
+trước (`companies/software-company/docs/reports/2026-09-06-ban-giao-khong-chay-duoc.md`,
 `Studio-creators/docs/DANH-GIA-NANG-CAP-XUONG-VIDEO.md`, `docs/DAC-TA-NANG-CAP-2026-09.md`).
 
 Tài liệu này **không lặp lại** đặc tả nâng cấp tháng 9 (40 mục, sáu đợt). Nó trả lời ba câu đặc tả đó chưa hỏi:
@@ -129,9 +129,9 @@ duyệt từ token cấp theo người (đơn giản: `--user <tên>` khi khởi
 ### 4.7 Gateway: tài liệu né rủi ro tài khoản, `.env.example` còn cổng 8100
 
 Ba ADR phân tích ACL Windows, đồng hồ thô, keyring — nhưng không một dòng "Google có thể khoá tài khoản". Câu duy
-nhất ở `docs/HUONG-DAN-VAN-HANH.md:314`. `gateway/.env.example` ghi 8100 ở 4 chỗ trong khi mọi nơi khác là 1123 —
+nhất ở `docs/HUONG-DAN-VAN-HANH.md:314`. `platform/gateway/.env.example` ghi 8100 ở 4 chỗ trong khi mọi nơi khác là 1123 —
 tài liệu lạc hậu đang dạy người dùng vào đúng cái bẫy ADR-0002 dựng ra để tránh. `stop` chỉ kiểm cmdline trên
-Linux. Không có supervisor cho daemon. Việc cần thêm: §"Rủi ro tài khoản" trong `gateway/README.md` + ADR-0004
+Linux. Không có supervisor cho daemon. Việc cần thêm: §"Rủi ro tài khoản" trong `platform/gateway/README.md` + ADR-0004
 ranh giới ToS; sửa `.env.example`; console dựng lại daemon khi chết (hoặc ghi rõ là không).
 
 ## 5. Tầm nhìn — dự án này muốn thành gì

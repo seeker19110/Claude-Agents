@@ -91,7 +91,7 @@ nhớ** vì nó nghe đúng. Kiểm ngược cho thấy hai lớp ta đã có d�
 
 - `docs/adr/0001-loi-chung-xagents-core.md` §5 — thứ tự bước; K3.6 là nơi thực thi quyết định 2.
 - `docs/adr/0003-doi-chieu-ruflo.md` — cùng phương pháp; `docs/NGON-NGU.md` nằm trong phạm vi tự kiểm.
-- `software-company/src/company/blackboard.py::_latest`, `supervisor.py::lessons/calibration`,
+- `companies/software-company/src/company/blackboard.py::_latest`, `supervisor.py::lessons/calibration`,
   `orch/gates_flow.py::_record_lessons`, `orch/ticket_fsm.py:83` — bằng chứng cho §"Kiểm ngược".
 - `docs/sessions/2026-09-07.md:12,201` — hai lần nhầm làm ra `docs/NGON-NGU.md`.
 - Nguồn ngoài: `neo4j-labs/agent-memory` @`0186a93` — `CONTEXT.md`, `src/neo4j_agent_memory/memory/reasoning.py`,

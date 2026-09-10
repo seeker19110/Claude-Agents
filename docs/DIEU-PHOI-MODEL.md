@@ -3,7 +3,7 @@
 Các công ty trong X-Agents **không mua token qua API**. Chúng dùng những gói đăng ký đang có trên máy và tự chia việc
 cho đúng model theo mức độ khó của từng agent, ưu tiên gói nào đang còn hạn mức. Tài liệu này là nguồn sự thật cho
 ba câu hỏi: gói nào dùng được, agent nào cần model mức nào, và code điều phối ra sao.
-Quyết định kiến trúc: `software-company/docs/adr/0019-subscription-routing.md`, `Studio-creators/docs/adr/0006-subscription-routing.md`.
+Quyết định kiến trúc: `companies/software-company/docs/adr/0019-subscription-routing.md`, `Studio-creators/docs/adr/0006-subscription-routing.md`.
 
 ## 1. Các gói tài khoản (backend)
 
@@ -11,7 +11,7 @@ Quyết định kiến trúc: `software-company/docs/adr/0019-subscription-routi
 |---|---|---|---|
 | **Claude Pro/Max** | provider `claude-code`: CLI `claude -p` đã `claude login` trên máy | Opus / Sonnet / Haiku theo gói | Suy luận và code tốt nhất; hạn mức theo cửa sổ 5 giờ + tuần; `effort` → `--effort` (ADR-0026); tool-use bật bằng `mcp_tools: true` (ADR-0024, tool của công ty qua cầu MCP — giữ nguyên sandbox `tools.py`) hoặc `cli_tools: true` (ADR-0023, CLI tự cầm tool của nó); không bật thì backend này không nhận việc có tool. Nhiều tài khoản Claude trên một máy: mỗi tài khoản một backend với `config_dir` riêng (`CLAUDE_CONFIG_DIR`) |
 | **ChatGPT Plus/Pro** | provider `codex`: Codex CLI `codex exec --json` đã `codex login` (app Codex trên Windows đi kèm CLI, tự tìm trong `%LOCALAPPDATA%/OpenAI/Codex/bin`) | GPT theo gói (vd. `gpt-5.6-terra`); `effort` → `model_reasoning_effort` | Structured output qua `--output-schema`; sandbox read-only trong thư mục rỗng; **không tool-use** của công ty. Nhiều tài khoản ChatGPT: mỗi tài khoản một backend với `config_dir` riêng (`CODEX_HOME`) |
-| **Google Antigravity** | provider `openai` → `../gateway` (`http://127.0.0.1:1123/v1`), xoay vòng nhiều tài khoản Google | `gemini-3.7-flash` (+`-medium`/`-low`), `gemini-3.6-flash`, `gemini-3.1-pro`, `claude-sonnet-4-6` (alias khác map về 4 model upstream này, xem `gateway/README.md`) | Miễn phí theo quota từng tài khoản; gateway tự đổi tài khoản, hết cả pool thì trả 429 kèm "thử lại sau khoảng Ns"; có tool-use |
+| **Google Antigravity** | provider `openai` → `../../platform/gateway` (`http://127.0.0.1:1123/v1`), xoay vòng nhiều tài khoản Google | `gemini-3.7-flash` (+`-medium`/`-low`), `gemini-3.6-flash`, `gemini-3.1-pro`, `claude-sonnet-4-6` (alias khác map về 4 model upstream này, xem `platform/gateway/README.md`) | Miễn phí theo quota từng tài khoản; gateway tự đổi tài khoản, hết cả pool thì trả 429 kèm "thử lại sau khoảng Ns"; có tool-use |
 | **Model local** | provider `openai` → Ollama / vLLM / LM Studio | qwen3, llama, gemma... | Không bao giờ hết quota; chất lượng thấp hơn — lưới đỡ cuối cho việc nhẹ |
 | (API trả phí) | provider `anthropic` / `openai` với key | tuỳ | Vẫn hỗ trợ, nhưng không phải mặc định của hub |
 
@@ -105,7 +105,7 @@ model khác thì cho `claude-sonnet-4-6` qua Antigravity hoặc dùng provider `
 - `Completion.model` vẫn là tên model thật để bảng giá `prices` khớp; gói subscription thì giá 0 nhưng vẫn phải có
   dòng giá để không bị đếm là `unpriced`.
 
-Kiểm nhanh trạng thái gateway: `cd gateway && make status`. Trạng thái backend trong tiến trình orchestrator: ghi chú
+Kiểm nhanh trạng thái gateway: `cd platform/gateway && make status`. Trạng thái backend trong tiến trình orchestrator: ghi chú
 `llm_retry` trong audit-log.
 
 ## 6. Prompt cache (chỉ backend `anthropic`)

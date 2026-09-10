@@ -215,9 +215,9 @@ gói nào đổi schema topic; audit action mới chỉ là dòng thừa với c
 2. `tools_used` thêm `capped`, `max_turns` · `metrics.collect()["loops"]` = {turns_p50, p90, max, capped_ratio,
    no_progress_ratio, retry_max_ratio, n, empty} · 6 gauge `company_loop_*` · console ô "vòng tool" rỗng → xám,
    module `static/js/loops.js`, ba câu hỏi ADR console-0003 trả lời trong PR.
-3. Được: `runner.py:274-280`, `metrics.py`, `console/src/console/{collect,truth}.py`, `console/static/js/loops.js`,
+3. Được: `runner.py:274-280`, `metrics.py`, `platform/console/src/console/{collect,truth}.py`, `platform/console/static/js/loops.js`,
    `index.html` một thẻ, `API.md`, tests. Không: schema; `tools_trace`; studio (dùng chung `company.metrics`).
-4. `metrics.py:1-60,103`; console ADR-0003; `console/CLAUDE.md` (thêm màn = HTML + một module); `test_hop_dong_schema.py`.
+4. `metrics.py:1-60,103`; console ADR-0003; `platform/console/CLAUDE.md` (thêm màn = HTML + một module); `test_hop_dong_schema.py`.
 5. Percentile code thuần; `retry_max_ratio` = ticket `ticket.blocked` / ticket có `tasks`; `empty=True` khi n=0.
 6. "Số xanh vì rỗng": capped_ratio=0 trên 0 lượt là rỗng, không phải tốt.
 7. Test: 4 `tools_used` turns 3/5/25c/25c → p50=15, capped 0.5; bus rỗng → empty; console ô không bao giờ
@@ -260,13 +260,13 @@ gói nào đổi schema topic; audit action mới chỉ là dòng thừa với c
 1. Người đọc đặc tả hỏi "chốt duyệt tool đâu?"; `ARCHITECTURE.md` gốc ghi "Bốn package", không nhắc `xagents-core`;
    bảng K3 `DAC-TA-KICH-BAN-B.md:336-337` ghi "chưa" cho việc đã merge #173–#178.
 2. `ARCHITECTURE.md` §"Ranh giới tin cậy" đoạn 4 dòng "không chốt mức tool — có chủ đích" trỏ A1.4 · sơ đồ + "Năm
-   package" có `xagents-core/` · bảng K3: c2–d xong (#173–#176), K3.4 xong (#177), K3.5a xong (#178), tách ba bước ·
+   package" có `platform/xagents-core/` · bảng K3: c2–d xong (#173–#176), K3.4 xong (#177), K3.5a xong (#178), tách ba bước ·
    `archive/DAC-TA-NANG-CAP-2026-09.md:192` E3 nửa sau = 4L-1a/1b · test readme xanh.
 3. Được: `ARCHITECTURE.md`, hai đặc tả. Không: `AGENTS.md`, `TRAPS.md`, mã, test.
 4. `CHANGELOG.md` K3.5a; `git log --oneline` #173–#178 (số PR từ log, không từ trí nhớ).
 5. Không thêm số chép tay; ADR-0040 chỉ ghi "dự kiến" (số ADR đặt trước là bẫy đã sập hai lần).
 6. Bài học #168: sửa bảng K3 thì soát ô tương ứng ở NANG-CAP §8.
-7. `pytest console/tests/test_readme_goc.py software-company/tests/test_review_fixes_2026_09.py -k readme`. PR
+7. `pytest platform/console/tests/test_readme_goc.py companies/software-company/tests/test_review_fixes_2026_09.py -k readme`. PR
    `docs: 4L-8 — ranh giới tin cậy nói rõ vì sao không chốt mức tool; bảng K3 cập nhật`.
 
 ---

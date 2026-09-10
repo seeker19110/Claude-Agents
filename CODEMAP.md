@@ -16,9 +16,9 @@ từng package ở `<pkg>/CODEMAP.md`.
 | Ghi việc đã đổi | `CHANGELOG.md` | — |
 | Cấu hình dev server cho browser pane | `.claude/launch.json` | — |
 | Thêm slash command cho Claude Code | `.claude/commands/<tên>.md` | — |
-| Trợ lý kiểm duyệt `sc-*` | **không sửa tay** — `software-company/agents/`, `skills/`, `gates/checklists.md` → `make subagents` | commit `.claude/agents/` |
+| Trợ lý kiểm duyệt `sc-*` | **không sửa tay** — `companies/software-company/agents/`, `skills/`, `gates/checklists.md` → `make subagents` | commit `.claude/agents/` |
 
-## software-company (`company`) — tóm tắt; đầy đủ ở `software-company/CODEMAP.md`
+## software-company (`company`) — tóm tắt; đầy đủ ở `companies/software-company/CODEMAP.md`
 
 | Muốn | Sửa | Rồi chạy |
 |---|---|---|
@@ -32,11 +32,11 @@ từng package ở `<pkg>/CODEMAP.md`.
 | Lệnh lint/test theo stack khách | `src/company/stacks.py` | — |
 | Smoke sau deploy staging | `src/company/smoke.py`, hook `_smoke` trong orchestrator | `tests/test_smoke_evidence.py` |
 | Giao hàng (tag, nhánh release) | `Integration.deliver` trong `src/company/workspace.py`, `_deliver` orchestrator | `tests/test_delivery_real.py` |
-| Ngân sách, watchdog, escalate | `src/company/supervisor.py`; cơ chế chung ở `xagents-core/src/xagents_core/supervisor.py` (K3.7) | `tests/test_supervisor*.py`, `xagents-core/tests/test_supervisor.py` |
+| Ngân sách, watchdog, escalate | `src/company/supervisor.py`; cơ chế chung ở `platform/xagents-core/src/xagents_core/supervisor.py` (K3.7) | `tests/test_supervisor*.py`, `platform/xagents-core/tests/test_supervisor.py` |
 | Adapter provider mới | `src/company/llm.py`; chọn theo tier: `routing.py` | `tests/test_llm_errors_and_misc.py` |
 | Ca eval | `evals/<agent>.yaml` → `make eval-record AGENT=<id>` | commit `evals/recordings/` |
 
-## gateway — đầy đủ ở `gateway/CODEMAP.md`
+## gateway — đầy đủ ở `platform/gateway/CODEMAP.md`
 
 | Muốn | Sửa |
 |---|---|
@@ -46,7 +46,7 @@ từng package ở `<pkg>/CODEMAP.md`.
 | Hàng rào `Host`/`Origin` (chống DNS rebinding + CSRF) | `guard_middleware` trong `src/gateway/server.py`; `tests/test_guard_host_origin.py` |
 | CLI `start/stop/status/login/setup/models` | `src/gateway/manage.py`, `__main__.py` |
 
-## console — đầy đủ ở `console/CODEMAP.md`
+## console — đầy đủ ở `platform/console/CODEMAP.md`
 
 | Muốn | Sửa |
 |---|---|
@@ -57,12 +57,12 @@ từng package ở `<pkg>/CODEMAP.md`.
 | Đổi model/backend từ trang | `src/console/settings.py` |
 | Route HTTP, SSE, token phiên | `src/console/server.py` |
 | Giao diện | `src/console/static/index.html` (một file, không framework) |
-| Hợp đồng nội bộ giữa các lớp | `console/API.md` |
+| Hợp đồng nội bộ giữa các lớp | `platform/console/API.md` |
 
-## keeper — đầy đủ ở `keeper/docs/DAC-TA-KEEPER.md`
+## keeper — đầy đủ ở `companies/keeper/docs/DAC-TA-KEEPER.md`
 
 | Muốn | Sửa |
 |---|---|
-| Tên công ty, gốc, tên bus | `keeper/src/keeper/core.py` |
-| Topic, model payload, chủ namespace | `keeper/src/keeper/events.py` + `keeper/topics/schemas/` |
-| Việc còn phải làm (BT2–BT8) | `keeper/docs/DAC-TA-KEEPER.md`; trạng thái ở `docs/thi-hanh/keeper.md` §B |
+| Tên công ty, gốc, tên bus | `companies/keeper/src/keeper/core.py` |
+| Topic, model payload, chủ namespace | `companies/keeper/src/keeper/events.py` + `companies/keeper/topics/schemas/` |
+| Việc còn phải làm (BT2–BT8) | `companies/keeper/docs/DAC-TA-KEEPER.md`; trạng thái ở `docs/thi-hanh/keeper.md` §B |

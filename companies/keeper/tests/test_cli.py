@@ -244,10 +244,23 @@ def _repo_sach(tmp_path: Path) -> Path:
     """Repo tối thiểu mà cả ba phép của `drift.scan` đều không có gì để nói."""
     repo = tmp_path / "repo"
     (repo / ".claude" / "agents").mkdir(parents=True)
-    (repo / "software-company" / "tests" / "golden" / "agents").mkdir(parents=True)
-    (repo / "software-company" / "agents").mkdir(parents=True)
+    (repo / "companies" / "software-company" / "tests" / "golden" / "agents").mkdir(parents=True)
+    (repo / "companies" / "software-company" / "agents").mkdir(parents=True)
     (repo / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
     return repo
+
+
+def test_drift_doc_cong_ty_o_companies_software_company(tmp_path: Path, capsys):
+    """ADR-0011 dời công ty xuống `companies/software-company/`. `drift` phải theo đường dẫn mới, nếu không nó
+    không thấy file nguồn nào và báo mọi bản dẫn xuất là lệch — báo động giả làm CI đỏ mãi."""
+    repo = _repo_sach(tmp_path)
+    (repo / "companies" / "software-company" / "agents" / "engineering").mkdir(parents=True)
+    (repo / "companies" / "software-company" / "agents" / "engineering" / "builder.md").write_text(
+        "---\nid: builder\nversion: 3\n---\n", encoding="utf-8")
+    (repo / ".claude" / "agents" / "sc-builder.md").write_text(
+        "<!-- SINH TỰ ĐỘNG từ agents/engineering/builder.md version=3 -->\n", encoding="utf-8")
+    assert main(["drift", "--repo", str(repo)]) == 0
+    assert "sạch" in capsys.readouterr().out
 
 
 def test_drift_sach_thi_thoat_0(tmp_path: Path, capsys):

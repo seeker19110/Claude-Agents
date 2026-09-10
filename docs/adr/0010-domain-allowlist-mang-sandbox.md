@@ -5,7 +5,7 @@ Lớp: 1
 
 ## Bối cảnh
 
-`RunSpec.network` (`xagents-core/src/xagents_core/sandbox.py:65`) là một `bool`. `ContainerSandbox._argv`
+`RunSpec.network` (`platform/xagents-core/src/xagents_core/sandbox.py:65`) là một `bool`. `ContainerSandbox._argv`
 (`sandbox.py:180-181`) dịch nó thành đúng hai trạng thái:
 
 ```python
@@ -20,8 +20,8 @@ cần loopback tới cổng đã mount. Không có nơi gọi nào hôm nay cầ
 
 Khoảng trống lộ ra khi so X-Agents với mô hình phân quyền hành động dạng Allow/Ask/Deny (không phải Allow/Deny
 nhị phân theo tool, mà theo **loại đích** của hành động): repo đã có "đọc credential = Deny" (`SECRET_FILES`,
-`SECRET_ENV`), "lệnh ngoài whitelist = Deny" (`COMMANDS` đóng — `software-company/src/company/tools.py:194-196`,
-không có lệnh cài dependency nào trong bất kỳ stack, xem `software-company/src/company/stacks.py:26-47`), nhưng
+`SECRET_ENV`), "lệnh ngoài whitelist = Deny" (`COMMANDS` đóng — `companies/software-company/src/company/tools.py:194-196`,
+không có lệnh cài dependency nào trong bất kỳ stack, xem `companies/software-company/src/company/stacks.py:26-47`), nhưng
 **không có tầng "domain nào được ra, domain nào không"**
 cho trường hợp một ticket tương lai thật sự cần gọi ra ngoài (vd tải một package registry, gọi một webhook khách
 khai trong spec). Ghi lại đã kiểm chứng: không có allowlist domain nào trong repo, `grep` không ra kết quả.
@@ -90,11 +90,11 @@ module `sandbox.py` dòng 21-25 — studio mặc định `subprocess`).
 
 ## Liên quan
 
-- `xagents-core/src/xagents_core/sandbox.py` — `RunSpec.network` (65), `ContainerSandbox._argv` (169-182),
+- `platform/xagents-core/src/xagents_core/sandbox.py` — `RunSpec.network` (65), `ContainerSandbox._argv` (169-182),
   `SandboxError` (54) là mẫu fail-closed sẽ tái dùng cho `SubprocessSandbox` + `allowed_domains`.
-- `software-company/docs/adr/0035-sandbox-tien-trinh.md` — quyết định gốc "container mạng tắt mặc định,
+- `companies/software-company/docs/adr/0035-sandbox-tien-trinh.md` — quyết định gốc "container mạng tắt mặc định,
   fail-closed khi khai đích danh mà thiếu binary"; ADR này là phần mở rộng chưa làm của cùng nguyên tắc.
-- `software-company/src/company/tools.py:31,194-196` — hai cơ chế Deny theo loại hành động đã có (đọc
+- `companies/software-company/src/company/tools.py:31,194-196` — hai cơ chế Deny theo loại hành động đã có (đọc
   credential, lệnh ngoài whitelist), đối chiếu để thấy domain allowlist là mảnh còn thiếu duy nhất trong mô hình.
 - `docs/adr/0001-loi-chung-xagents-core.md` — "core giữ cơ chế, package giữ nghĩa": `EgressProxy` là cơ chế ở
   core, ACL/domain cụ thể theo ticket là nghĩa của nơi gọi (`company`/`studio`), không hard-code trong core.

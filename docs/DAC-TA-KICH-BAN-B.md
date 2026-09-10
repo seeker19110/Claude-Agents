@@ -17,7 +17,7 @@ Kịch bản B "xong" khi cả bốn câu sau trả lời **có, kèm bằng ch�
 
 | # | Câu hỏi | Bằng chứng chấp nhận | Epic |
 |---|---|---|---|
-| T1 | Công ty thứ ba dựng bằng cấu hình, không fork code? | `software-company/src/company/` và `Studio-creators/src/studio/` không còn `bus.py sqlite_bus.py llm.py routing.py runner.py guard.py context.py evals.py` (chỉ còn shim ≤ 3 dòng); `grep -c "from xagents_core" Studio-creators/src` > 0 | K3 |
+| T1 | Công ty thứ ba dựng bằng cấu hình, không fork code? | `companies/software-company/src/company/` và `Studio-creators/src/studio/` không còn `bus.py sqlite_bus.py llm.py routing.py runner.py guard.py context.py evals.py` (chỉ còn shim ≤ 3 dòng); `grep -c "from xagents_core" Studio-creators/src` > 0 | K3 |
 | T2 | Có lời khai nào của model thành sự thật mà không qua code? | test bảng liệt kê mọi trường `verified_by` trong `topics/schemas/`; `smoke.unverified` chặn dự án mới | K1, K2 |
 | T3 | Người thứ hai vận hành được trong 30 phút? | báo cáo `docs/reports/` do người chưa từng mở repo viết: request → 4 gate → sản phẩm chạy | K9 |
 | T4 | Repo có tự khoá khi người 1 vắng không? | workflow `eval-record` chạy được từ GitHub Actions với secret; `make eval-record` không còn là đường duy nhất | K5 |
@@ -86,8 +86,8 @@ Quy ước cột: **Mục tiêu** · **Phạm vi** (file/module chạm) · **Yê
 | # | Yêu cầu | Nghiệm thu |
 |---|---|---|
 | K0.1 | Bảng theo dõi đặc tả tháng 9 phản ánh đúng: V1–V5 phần lớn đã xong ở #98, ghi số PR | `grep -n "V1–V5" docs/DAC-TA-NANG-CAP-2026-09.md` không còn "chưa" |
-| K0.2 | Root `README.md` khớp số thật: ADR company 0001–0032, 21 agent; `software-company/pyproject.toml` description "21 agent" | test mới `tests/test_readme_goc.py` đếm `ls docs/adr` và `agents/*/*.md` so với README gốc |
-| K0.3 | `gateway/.env.example` không còn `8100` | `grep -c 8100 gateway/.env.example` = 0 |
+| K0.2 | Root `README.md` khớp số thật: ADR company 0001–0032, 21 agent; `companies/software-company/pyproject.toml` description "21 agent" | test mới `tests/test_readme_goc.py` đếm `ls docs/adr` và `agents/*/*.md` so với README gốc |
+| K0.3 | `platform/gateway/.env.example` không còn `8100` | `grep -c 8100 platform/gateway/.env.example` = 0 |
 | K0.4 | Tạo `docs/adr/README.md` (quy ước ADR cấp repo) | file tồn tại |
 | K0.5 | Sửa dẫn chiếu trong ADR-0030/0031 thành đường dẫn từ gốc repo (`../../docs/DAC-TA-NANG-CAP-2026-09.md`) | link mở được từ vị trí file |
 
@@ -96,7 +96,7 @@ Quy ước cột: **Mục tiêu** · **Phạm vi** (file/module chạm) · **Yê
 **Mục tiêu.** `orchestrator.py` từ 2.269 dòng / 110 hàm còn ≤ 300 dòng; bốn FSM và scheduler mỗi cái một module
 với bảng chuyển trạng thái tường minh và test bảng; năm khuôn lỗi TRAPS §1 có test tương ứng.
 
-**Phạm vi.** `software-company/src/company/orchestrator.py` → gói `software-company/src/company/orch/` gồm
+**Phạm vi.** `companies/software-company/src/company/orchestrator.py` → gói `companies/software-company/src/company/orch/` gồm
 `routes.py`, `state.py`, `rehydrate.py`, `scheduler.py`, `ticket_fsm.py`, `release_fsm.py`, `gates_flow.py`,
 `worktree_flow.py`, `verify.py`, `cli.py`. `orchestrator.py` còn lại là lớp `Orchestrator` mỏng + re-export.
 
@@ -115,7 +115,7 @@ với bảng chuyển trạng thái tường minh và test bảng; năm khuôn l
 
 **Không thuộc phạm vi.** Đổi hành vi nghiệp vụ (trừ K1.4, K1.5 là sửa lỗi có chủ ý); đổi schema topic; đổi prompt.
 
-**ADR.** `software-company/docs/adr/0037-tach-may-trang-thai.md`. Luật PR: sau khi ADR-0037 merge, PR tiêu đề
+**ADR.** `companies/software-company/docs/adr/0037-tach-may-trang-thai.md`. Luật PR: sau khi ADR-0037 merge, PR tiêu đề
 `fix(company)` chạm `orchestrator.py` hoặc `orch/` phải dẫn `ADR-0037` trong thân — bước CI ở K8.
 
 ### K2 — Sandbox tiến trình cho mọi lệnh do model hoặc khách sinh (T2, an toàn)
@@ -124,7 +124,7 @@ với bảng chuyển trạng thái tường minh và test bảng; năm khuôn l
 vận hành khi máy có container runtime; khi không có, chạy như cũ nhưng **audit ghi `sandbox=none`** và console
 hiện cảnh báo.
 
-**Phạm vi.** Mới: `software-company/src/company/sandbox.py`. Sửa: `tools.py:245-257` (`run`), `workspace.py:125`
+**Phạm vi.** Mới: `companies/software-company/src/company/sandbox.py`. Sửa: `tools.py:245-257` (`run`), `workspace.py:125`
 (lint/test), `smoke.py:107` (Popen), `llm.py` (đọc cấu hình), `runner.py`/`orchestrator.py` (truyền xuống).
 Studio: `media.py:622` (`CommandTTS`), `media.py:787` (ffmpeg) và `qc.py:52` dùng cùng interface (sau K3 thì
 import từ core; trước đó copy có ghi chú).
@@ -146,16 +146,16 @@ import từ core; trước đó copy có ghi chú).
 để ADR sau); mạng allowlist trong container (D2 gốc nói "không mạng trừ allowlist" — bước này là **không mạng**,
 allowlist để sau).
 
-**ADR.** `software-company/docs/adr/0035-sandbox-tien-trinh.md` (mã giữ theo đặc tả tháng 9; nội dung mở rộng
+**ADR.** `companies/software-company/docs/adr/0035-sandbox-tien-trinh.md` (mã giữ theo đặc tả tháng 9; nội dung mở rộng
 phạm vi sang smoke/stacks/studio).
 
 ### K3 — Package lõi chung `xagents-core` (T1)
 
-**Mục tiêu.** Một package thứ năm `xagents-core/` (module `xagents_core`) chứa mọi thứ hai công ty đang fork;
+**Mục tiêu.** Một package thứ năm `platform/xagents-core/` (module `xagents_core`) chứa mọi thứ hai công ty đang fork;
 `company` và `studio` import từ đó; studio nhận toàn bộ lớp cứng hoá của company (TransientError, hoãn event,
 RetryingClient, Pricing, MCP, `CLI_NO_TOOL_TURNS`, guard, context, Lease, chốt version recording).
 
-**Phạm vi.** Mới: `xagents-core/{pyproject.toml,src/xagents_core/,tests/}`; root `pyproject.toml` (members,
+**Phạm vi.** Mới: `platform/xagents-core/{pyproject.toml,src/xagents_core/,tests/}`; root `pyproject.toml` (members,
 sources); `ci.yml` (+`core-static`, `core-unit`, nối `quality.needs`); `.github/rulesets/main.json` (+2 context);
 `Makefile` gốc. Sửa: 16 module lõi ở cả hai package thành shim; `console` **0 dòng**.
 
@@ -183,7 +183,7 @@ Yêu cầu chung cho mọi bước:
 | # | Yêu cầu | Nghiệm thu |
 |---|---|---|
 | K3.a | Sau mỗi bước, module cũ ở hai package là shim ≤ 3 dòng (`from xagents_core.X import *` + `__all__`), có ghi chú "xoá khi console đổi import" | `wc -l` shim |
-| K3.b | Test của module chuyển sang `xagents-core/tests/` cùng PR; test riêng package (assert chuỗi `COMPANY_MODEL_...`) giữ ở package | coverage 100% ở cả ba nơi |
+| K3.b | Test của module chuyển sang `platform/xagents-core/tests/` cùng PR; test riêng package (assert chuỗi `COMPANY_MODEL_...`) giữ ở package | coverage 100% ở cả ba nơi |
 | K3.c | Hai công ty chạy demo offline xanh sau mỗi bước: `make demo` ở cả hai | output demo |
 | K3.d | Kết thúc K3.7: `make test` gốc chạy năm package; `ARCHITECTURE.md` gốc vẽ lại sơ đồ có `xagents-core`; `CODEMAP.md` "muốn đổi bus/llm/runner → sửa ở core" | tài liệu |
 | K3.e | Sau K3.5 giữ ổn định **≥ 5 ngày lịch** (một lần chạy thật của company) trước khi K3.6 | ngày merge trong CHANGELOG |
@@ -220,7 +220,7 @@ im lặng sai; mở bus không nạp toàn log vào RAM.
 Secrets, kết quả về dưới dạng PR; máy cá nhân không còn là đường duy nhất.
 
 **Phạm vi.** `.github/workflows/eval-record.yml` (mới), `evals.py` (cờ `--jobs`), `CONTRIBUTING.md` §3,
-`software-company/TRAPS.md`.
+`companies/software-company/TRAPS.md`.
 
 | # | Yêu cầu | Nghiệm thu |
 |---|---|---|
@@ -236,13 +236,13 @@ Secrets, kết quả về dưới dạng PR; máy cá nhân không còn là đư
 
 | # | Yêu cầu | Nghiệm thu |
 |---|---|---|
-| K6.1 | `xagents-core/pyproject.toml` `[tool.mypy] strict = true` từ ngày đầu (K3.0) | CI `core-static` |
+| K6.1 | `platform/xagents-core/pyproject.toml` `[tool.mypy] strict = true` từ ngày đầu (K3.0) | CI `core-static` |
 | K6.2 | company/studio: `[[tool.mypy.overrides]]` bật `disallow_untyped_defs` cho `orch/*` (sau K1) và mọi module mới | CI |
 | K6.3 | Ranh giới orchestrator ↔ runner: `StepResult`, `Generated`, `RunResult` là dataclass/pydantic có kiểu, không `dict[str, Any]` | grep `dict[str, Any]` trong `orch/` giảm ≥ 50% so với `orchestrator.py` hiện tại (đếm trước/sau ghi trong PR) |
 
 ### K7 — Console: ES module, danh tính người duyệt, contract test (Q3)
 
-**Phạm vi.** `console/src/console/static/index.html` → `static/js/{util,api,stream,router,drawer,render,charts,main}.js`;
+**Phạm vi.** `platform/console/src/console/static/index.html` → `static/js/{util,api,stream,router,drawer,render,charts,main}.js`;
 `server.py:455` (`_api_decide`), `__main__.py` (cờ `--approver`), `collect.py`, `tests/`.
 
 | # | Yêu cầu | Nghiệm thu |
@@ -258,9 +258,9 @@ Secrets, kết quả về dưới dạng PR; máy cá nhân không còn là đư
 
 | # | Yêu cầu | Nghiệm thu |
 |---|---|---|
-| K8.1 | `gateway/README.md` thêm §"Rủi ro tài khoản" ngay dưới `make login`: điều khoản Google/Anthropic/OpenAI về nhiều tài khoản, hậu quả là khoá tài khoản, trách nhiệm người vận hành; `gateway/docs/adr/0004-ranh-gioi-dieu-khoan.md` | file; link từ root README dòng gateway |
-| K8.2 | `make llm` mặc định trỏ **một** tài khoản; hồ sơ nhiều tài khoản là lựa chọn có tên riêng | `make llm` không chép `llm.claude-gateway.yaml` nếu chưa có `gateway/auth/*.json` |
-| K8.3 | `pr-policy.yml` bước 3: PR đổi `software-company/src/company/orchestrator.py` hoặc `orch/` mà tiêu đề `fix(` → thân phải chứa `ADR-0037` | PR thử |
+| K8.1 | `platform/gateway/README.md` thêm §"Rủi ro tài khoản" ngay dưới `make login`: điều khoản Google/Anthropic/OpenAI về nhiều tài khoản, hậu quả là khoá tài khoản, trách nhiệm người vận hành; `platform/gateway/docs/adr/0004-ranh-gioi-dieu-khoan.md` | file; link từ root README dòng gateway |
+| K8.2 | `make llm` mặc định trỏ **một** tài khoản; hồ sơ nhiều tài khoản là lựa chọn có tên riêng | `make llm` không chép `llm.claude-gateway.yaml` nếu chưa có `platform/gateway/auth/*.json` |
+| K8.3 | `pr-policy.yml` bước 3: PR đổi `companies/software-company/src/company/orchestrator.py` hoặc `orch/` mà tiêu đề `fix(` → thân phải chứa `ADR-0037` | PR thử |
 | K8.4 | `pr-policy.yml` bước 4: ngày có PR merge phải có `docs/sessions/<ngày>.md` — **cảnh báo** (`::warning`), không đỏ | PR thử |
 | K8.5 | `docs/HUONG-DAN-VAN-HANH.md` mục "Ngày đầu của người thứ hai": 30 phút, từng lệnh, kết thúc bằng một gate tự duyệt trên demo | tài liệu; là kịch bản của K9.3 |
 | K8.6 | Gateway `stop` kiểm cmdline trên Windows/macOS (`psutil` optional hoặc `tasklist`/`ps -o command`) | test mock |
@@ -324,10 +324,10 @@ Nếu chỉ làm được một nửa: **K0, K1, K2, K3.0–K3.5, K8.3, K9.1**. 
 | K2.5 | xong | #119, #129 | studio `render.*` ở #119; company ở #129 — `pull-requests.local_checks.sandbox` và `release-events.smoke.sandbox`, cả hai schema đã khai trường |
 | K2.6 | xong | #119 | `CommandTTS` qua `clean_env()`; `FFmpegAssembler._run` có `render.timeout_s` (mặc định 600s) |
 | K2.7 | xong | #133 | `truth.sandbox()` đếm lượt chạy mã khách trong 24h theo tên sandbox, từ ba chỗ CODE điền bằng chứng (`local_checks.sandbox`, `smoke.sandbox`, audit `tools_used`) — không đọc cấu hình. Ô chỉ sáng khi `unsandboxed > 0` **và** `sources.<công ty>.sandbox_available` (máy có docker/podman): cảnh báo một việc người không làm được ngay là nhiễu |
-| K2.8 | xong | #129, #133 | `SECURITY.md` mục **Sandbox tiến trình** ở #129; `software-company/README.md` mục "Chưa có" + "Bước tiếp theo" cập nhật ở #133 (dòng cũ nói sandbox chỉ là allowlist + env — đã sai từ #129) |
+| K2.8 | xong | #129, #133 | `SECURITY.md` mục **Sandbox tiến trình** ở #129; `companies/software-company/README.md` mục "Chưa có" + "Bước tiếp theo" cập nhật ở #133 (dòng cũ nói sandbox chỉ là allowlist + env — đã sai từ #129) |
 | ADR gốc 0001 | xong | #143 | đo lại thực trạng thay vì chép số đặc tả: **1.707 dòng trùng** trên 14 module (không phải ~1.200), 0 import chéo, và chỗ nguy hơn phần trùng là `context.py`/`guard.py` company **có** mà studio **không** |
-| K3.0 | xong | | khung `xagents-core/` + `CoreConfig`/`TopicACL` + hai job CI `core-static`/`core-unit` nối vào `quality.needs`; `Makefile` và workspace lên **năm** member; `xagents-core` đã là phụ thuộc khai báo của cả hai công ty (chưa import) để K3.1 là một bước chuyển mã thuần. **Ruleset KHÔNG phải sửa**: required check chỉ có `quality` + `metadata`, nối vào `needs` là đủ (đặc tả để ngỏ điều này). Gồm luôn **K6.1** — `strict = true` ngay từ đầu, và `types` của core cố ý KHÔNG có `--ignore-missing-imports` |
-| K3.1 | xong (phần chuyển mã) | | `context.py` (126 dòng, trung lập tuyệt đối) sang core + shim `company.context` 2 dòng; test đơn vị của `fit`/`trim_payload`/`cut_middle` chuyển theo sang `xagents-core/tests/test_context.py` (phần TÍCH HỢP ở `test_adr0012.py` ở lại company). Hai thứ đặc tả không lường: (1) **`py.typed` (PEP 561)** — thiếu nó thì mypy coi cả core là untyped, shim `import *` mang sang **0 tên** và `company/runner.py` gọi `fit` báo `has no attribute`; tức `strict` của core chỉ bảo vệ chính core. Có test canh. (2) mypy `strict` của core bắt **3 lỗi `tuple` trần** mà mypy lỏng của company bỏ qua — đã sửa bằng kiểu bí danh `Path` |
+| K3.0 | xong | | khung `platform/xagents-core/` + `CoreConfig`/`TopicACL` + hai job CI `core-static`/`core-unit` nối vào `quality.needs`; `Makefile` và workspace lên **năm** member; `xagents-core` đã là phụ thuộc khai báo của cả hai công ty (chưa import) để K3.1 là một bước chuyển mã thuần. **Ruleset KHÔNG phải sửa**: required check chỉ có `quality` + `metadata`, nối vào `needs` là đủ (đặc tả để ngỏ điều này). Gồm luôn **K6.1** — `strict = true` ngay từ đầu, và `types` của core cố ý KHÔNG có `--ignore-missing-imports` |
+| K3.1 | xong (phần chuyển mã) | | `context.py` (126 dòng, trung lập tuyệt đối) sang core + shim `company.context` 2 dòng; test đơn vị của `fit`/`trim_payload`/`cut_middle` chuyển theo sang `platform/xagents-core/tests/test_context.py` (phần TÍCH HỢP ở `test_adr0012.py` ở lại company). Hai thứ đặc tả không lường: (1) **`py.typed` (PEP 561)** — thiếu nó thì mypy coi cả core là untyped, shim `import *` mang sang **0 tên** và `company/runner.py` gọi `fit` báo `has no attribute`; tức `strict` của core chỉ bảo vệ chính core. Có test canh. (2) mypy `strict` của core bắt **3 lỗi `tuple` trần** mà mypy lỏng của company bỏ qua — đã sửa bằng kiểu bí danh `Path` |
 | K3.1b | **xong** | | studio dùng `fit`: `max_input_chars` (config + env + client) và `AgentRunner` cắt payload/enrich chung một hạn mức trước khi dựng prompt, audit `context_trimmed`. Blackboard mới chỉ được **đo**, chưa cắt — `studio.events.SharedContext` chưa có `content` (đổi mô hình dữ liệu, để bước sau) |
 | K3.2 | **xong** | | `sandbox.py` + khung `ToolBox` sang core; bản sao tạm của studio bị xoá. `sandbox_from_config` ở lại hai bên (biến/nguồn/mặc định khác nhau thật), core chỉ có `sandbox_from_settings`. `max_output` thành tham số: company 6.000, studio `None` |
 | K3.3a | **xong** | | nền `llm.py` (lỗi, hằng CLI, helper trung lập) sang core. **K3.3 đã tách theo mức rủi ro** — đo `difflib` cho thấy chỉ 6/22 symbol trùng, `ClaudeCodeClient` 0.32 / `OpenAICompatClient` 0.28 / `Completion` 0.23, nên gộp một PR là đổi 4 adapter + cấu hình + cách bóc JSON cùng lúc |
@@ -346,15 +346,15 @@ Nếu chỉ làm được một nửa: **K0, K1, K2, K3.0–K3.5, K8.3, K9.1**. 
 | K3.7 | chưa | | `gates`, `gate_cli`, `supervisor` hợp nhất hai chiều. K3.e (≥ 5 ngày lịch sau K3.5) là điều kiện của NGƯỜI, test xanh không đóng được |
 | K4.1–K4.5 | chưa | | ADR gốc 0002 |
 | K5.1–K5.5 | xong | #134 | `.github/workflows/eval-record.yml` (`workflow_dispatch`: package/agents/provider/jobs, timeout 45', key từ Secrets, tên model từ Variables) → PR `chore(<package>): ghi lại eval <agents>` nhãn `no-changelog` qua `peter-evans/create-pull-request`, KHÔNG push thẳng `main`; `--jobs N` ở CẢ HAI package (`ThreadPoolExecutor`, thứ tự in vẫn theo id); bảng điểm vào `$GITHUB_STEP_SUMMARY`, cổng vẫn là `gate_ok`; `CONTRIBUTING.md` §3 bước 3 ghi hai đường. Bảng theo dõi ghi "sau K3.3" là sai — K5 không phụ thuộc K3 |
-| K6.1 | xong | | `xagents-core/pyproject.toml` `[tool.mypy] strict = true` từ commit đầu tiên của package, cùng PR K3.0 đúng như đặc tả xếp. Core chưa có dòng mã nào nên đây là lần duy nhất bật `strict` mà không phải trả nợ chú kiểu |
+| K6.1 | xong | | `platform/xagents-core/pyproject.toml` `[tool.mypy] strict = true` từ commit đầu tiên của package, cùng PR K3.0 đúng như đặc tả xếp. Core chưa có dòng mã nào nên đây là lần duy nhất bật `strict` mà không phải trả nợ chú kiểu |
 | K6.2 | xong | #141 | `[[tool.mypy.overrides]] module = "company.orch.*"` bật `disallow_untyped_defs` + `disallow_incomplete_defs`; 46 hàm trong `gates_flow/release_fsm/scheduler/ticket_fsm` nhận `o` nay có `o: Orchestrator` (chú kiểu là CHUỖI nhờ `from __future__ import annotations`, nên không tạo vòng import). Khoá theo TIỀN TỐ nên module mới trong `orch/` tự nằm trong phạm vi. ``warn_unused_ignores`` cố ý KHÔNG bật — nó báo `ctypes.windll` thừa trên Windows mà cần trên Linux, tức một cổng đúng-sai theo máy chạy |
 | K6.3 | xong (**tiêu chí đã sửa**) | #141 | Vế 1 (`StepResult`/`Generated`/`RunResult` là dataclass có kiểu) đã đạt từ trước — nay có test chốt. Vế 2 (`dict[str, Any]` trong `orch/` ≤ 14) **bỏ, có lý do**: đo lại thì 25/25 chỗ còn lại phần lớn là `payload` của bus, tức JSON mà hợp đồng đã ở `topics/schemas/*.json`; dựng TypedDict cho chúng là chép 19 schema sang hệ kiểu và tạo nguồn sự thật thứ hai. Thay bằng **chốt bánh cóc** (trần 25, chỉ được giảm) giữ được ý định mà không ép sai thiết kế — cùng khuôn với K1.8, xem TRAPS §2 |
 | K7.1, K7.2, K7.5 | xong | #142 | `index.html` 1850 → 759 dòng (HTML+CSS + một thẻ module); JS thành 14 module trong `static/js/`, dài nhất 173 dòng. K7.2 chọn **nonce + CSP** (một trong hai phương án đặc tả) thay vì `GET /api/boot`: phương án kia đưa token phiên vào query string, mà token là thứ duy nhất chặn trang khác trên cùng máy gọi vào console. K7.5: `API.md` tự khai phần nào đã vào test và "chỗ nào lệch thì TEST đúng" |
-| K7.6 | **không áp dụng** | | "C9 (màn xưởng video) làm sau K7.1, trong `video.js` riêng" — C9 chưa được làm bao giờ, nên không có gì để tách. Khi nào làm C9 thì `console/CLAUDE.md` đã ghi luật: thêm màn = HTML + một module + nhập nó trong `main.js` |
+| K7.6 | **không áp dụng** | | "C9 (màn xưởng video) làm sau K7.1, trong `video.js` riêng" — C9 chưa được làm bao giờ, nên không có gì để tách. Khi nào làm C9 thì `platform/console/CLAUDE.md` đã ghi luật: thêm màn = HTML + một module + nhập nó trong `main.js` |
 | K7.3 | **hoãn có chủ ý** (2026-09-07) | | Chủ repo quyết: hiện **một người duy nhất duyệt gate**, nên token danh tính chỉ thêm bước gõ mà không thêm bảo vệ thật — four-eyes không có ai để "bốn mắt". **Điều kiện kích hoạt lại: có người thứ hai chạm vào console** (kể cả chỉ để xem) — K7.3 phải xong TRƯỚC lần duyệt đầu tiên của họ, vì tới lúc đó `by` lấy từ body request là ai cũng ký được dưới tên bất kỳ và audit-log ghi lại như thật. Đừng đề xuất lại trước điều kiện đó, và đừng quên sau nó |
-| K7.4 | xong | #136 | `console/tests/test_hop_dong_schema.py` — QUÉT mã nguồn `collect.py`/`truth.py` lấy tên trường console đọc (không chép tay: danh sách chép tay xanh vì rỗng, đúng bệnh nó chữa), rồi so với `topics/schemas/` của cả hai công ty. Trường lồng một tầng (`local_checks.sandbox`, `smoke.sandbox` của K2.5) canh riêng vì regex chỉ thấy tầng ngoài |
-| K8.1 | xong | #137 | `gateway/README.md` §Rủi ro tài khoản (ngay dưới `make login`, không phải cuối file) + ADR-0004 `ranh-gioi-dieu-khoan`; dòng gateway ở README gốc dẫn tới đó. Cố ý KHÔNG cảnh báo lúc chạy: biến quyết định pháp lý thành thao tác bấm qua, và người gõ `login` lần hai thì đã quyết rồi |
-| K8.2 | xong | #139 | `python -m gateway ready` (exit 2 nếu chưa đăng nhập tài khoản nào) gác `make llm` của cả hai công ty. **Lệch đặc tả**: nghiệm thu viết "chưa có `gateway/auth/*.json`" — token KHÔNG nằm trong repo (ADR-0003), nó ở `$XAGENTS_HOME/auth/`, nên kiểm qua `AntigravityAuthManager` thay vì đường dẫn. `ready` cố ý KHÔNG đòi daemon đang chạy: `make llm` là bước CÀI, `make start` là bước CHẠY |
+| K7.4 | xong | #136 | `platform/console/tests/test_hop_dong_schema.py` — QUÉT mã nguồn `collect.py`/`truth.py` lấy tên trường console đọc (không chép tay: danh sách chép tay xanh vì rỗng, đúng bệnh nó chữa), rồi so với `topics/schemas/` của cả hai công ty. Trường lồng một tầng (`local_checks.sandbox`, `smoke.sandbox` của K2.5) canh riêng vì regex chỉ thấy tầng ngoài |
+| K8.1 | xong | #137 | `platform/gateway/README.md` §Rủi ro tài khoản (ngay dưới `make login`, không phải cuối file) + ADR-0004 `ranh-gioi-dieu-khoan`; dòng gateway ở README gốc dẫn tới đó. Cố ý KHÔNG cảnh báo lúc chạy: biến quyết định pháp lý thành thao tác bấm qua, và người gõ `login` lần hai thì đã quyết rồi |
+| K8.2 | xong | #139 | `python -m gateway ready` (exit 2 nếu chưa đăng nhập tài khoản nào) gác `make llm` của cả hai công ty. **Lệch đặc tả**: nghiệm thu viết "chưa có `platform/gateway/auth/*.json`" — token KHÔNG nằm trong repo (ADR-0003), nó ở `$XAGENTS_HOME/auth/`, nên kiểm qua `AntigravityAuthManager` thay vì đường dẫn. `ready` cố ý KHÔNG đòi daemon đang chạy: `make llm` là bước CÀI, `make start` là bước CHẠY |
 | K8.5 | xong | #140 | `docs/HUONG-DAN-VAN-HANH.md` §0 "Ngày đầu của người thứ hai" — 6 bước, ~30 phút, provider giả nên không tốn hạn mức, kết thúc bằng chính người đó **ký một gate** bằng `gate_cli`. **Mọi lệnh trong mục đã được chạy thật trước khi viết**, kèm output thật. Điểm dạy chọn có chủ ý: bước 4 CỐ Ý để `FakeClient` hết câu trả lời, vì phản ứng của hệ (pause dự án + mở gate `escalation`) dạy triết lý vận hành tốt hơn một đường chạy trơn. Có mục "Bạn vấp ở đâu?" — nghiệm thu K9.3 |
 | K8.6 | xong | #138 | `_cmdline()` ba nền: `/proc` (Linux), `ps -o command=` (macOS/BSD), `tasklist` (Windows). Trước đó mọi hệ không phải Linux trả `True` — `stop` giết BẤT KỲ PID nào trong PID file. Trả **ba** giá trị phân biệt (`None` không đọc được → giữ hành vi cũ; `""` không tồn tại → không giết; có dòng lệnh → so tên). Windows chỉ cho tên ảnh nên phép kiểm là "có phải python đang chạy không" — nói rõ giới hạn thay vì giả vờ chặt hơn thực tế. Không thêm `psutil` |
 | K8.3 | xong | #130 | `pr-policy.yml` bước 3: PR `fix(` chạm `orchestrator.py`/`orch/` mà thân không dẫn `ADR-0034` thì đỏ. **Dùng ADR-0034 chứ không phải "ADR-0037" như đặc tả viết** — repo này không có file 0037; chính ADR-0034 §Hệ quả đã ghi lại chỗ lệch số. `refactor(` không bị soi (tách module là làm đúng theo ADR; `fix(` mới là sửa hành vi máy trạng thái) |

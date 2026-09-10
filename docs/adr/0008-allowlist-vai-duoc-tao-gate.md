@@ -67,7 +67,7 @@ kiểm anh em của nó.
 - `HumanGate` (không bền vững) **không** đổi: nó không có bus, không có khái niệm actor của envelope. Luật này
   thuộc về lớp có bus.
 
-**Một fixture bịa bị lộ.** `console/tests/conftest.py` dựng gate `publish` với `created_by="publisher"`, nhưng
+**Một fixture bịa bị lộ.** `platform/console/tests/conftest.py` dựng gate `publish` với `created_by="publisher"`, nhưng
 `publisher` chưa từng mở gate nào: gate `publish` do `desk` mở (`studio/orchestrator.py`), và tên `publisher`
 chỉ xuất hiện đúng một lần trong lịch sử — chính commit tạo fixture ấy (#91). Đã sửa fixture về `desk` thay vì
 nới allowlist để chiều nó: nới allowlist cho một cái tên không có thật là cấp quyền cho một vai không dùng.
@@ -76,5 +76,5 @@ nới allowlist để chiều nó: nới allowlist cho một cái tên không c�
 
 - `docs/adr/0002-gate-request-tin-actor-cua-bus.md` — nửa thứ nhất (PR #212), nơi ghi việc hoãn gói này.
 - `docs/adr/0005-gate-request-tu-choi-created-by-rong.md` — `created_by` rỗng (PR #199).
-- `xagents-core/src/xagents_core/gate_cli.py` — `REQUEST_ACTORS`, `_request_actor_allowed()`.
-- `software-company/src/company/gate_cli.py`, `Studio-creators/src/studio/gate_cli.py` — danh sách của mỗi bên.
+- `platform/xagents-core/src/xagents_core/gate_cli.py` — `REQUEST_ACTORS`, `_request_actor_allowed()`.
+- `companies/software-company/src/company/gate_cli.py`, `Studio-creators/src/studio/gate_cli.py` — danh sách của mỗi bên.

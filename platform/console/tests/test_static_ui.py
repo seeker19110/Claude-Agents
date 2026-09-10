@@ -101,7 +101,7 @@ def test_nut_dien_yeu_cau_mau_do_du_truong_bat_buoc(page: str) -> None:
 def test_mau_trong_giao_dien_va_mau_tren_dia_cung_mot_bo_khung(page: str) -> None:
     """`examples/yeu-cau-mau-web-app.json` (dùng cho CLI) và REQ_SAMPLE (dùng cho form) là hai bản của cùng một
     mẫu — lệch nhau thì người đọc tài liệu và người bấm nút nhận hai đề bài khác nhau."""
-    disk = PAGE.parents[4] / "software-company" / "examples" / "yeu-cau-mau-web-app.json"
+    disk = PAGE.parents[5] / "companies" / "software-company" / "examples" / "yeu-cau-mau-web-app.json"
     if not disk.exists(): pytest.skip("không có software-company trong workspace này")
     on_disk = json.loads(disk.read_text(encoding="utf-8"))
     in_ui = json.loads(re.search(r"const REQ_SAMPLE=(\{.*?\});\n", page, re.S).group(1))

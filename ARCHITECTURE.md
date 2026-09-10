@@ -6,25 +6,29 @@ thể: `CODEMAP.md`.
 ## Bức tranh lớn
 
 ```
-                       ┌──────────────── console/ (127.0.0.1:8200) ────────────────┐
+                       ┌──────────────── platform/console/ (127.0.0.1:8200) ────────────────┐
                        │  đọc bus SQLite chỉ-đọc của công ty; duyệt gate qua       │
                        │  đúng HumanGate; giao việc qua đúng bus + schema           │
                        └────────────────────────────┬───────────────────────────────┘
                                                      │
                        ┌─────────────────────────────▼─────────────────────────┐
-                       │ software-company/  (package company)                  │
+                       │ companies/software-company/  (package company)                  │
                        │ 6 agent · 45 skill · 19 topic                        │
                        │ 3 human gate + escalation                             │
                        │ code thật trên git worktree của khách                 │
                        └────────────────────────────┬───────────────────────────┘
                                                      ▼
-                    xagents-core/  (package xagents_core)
+                    platform/xagents-core/  (package xagents_core)
                     lõi chung: bus, llm, runner, guard, gate, trace, metrics, context, sandbox
                                    ▲
                     ┌──────────────┴───────────┐
                     │  llm.yaml: backends      │
-        claude-code CLI · codex CLI · gateway/ (127.0.0.1:1123, xoay tài khoản Google) · model local · API
+        claude-code CLI · codex CLI · platform/gateway/ (127.0.0.1:1123, xoay tài khoản Google) · model local · API
 ```
+
+Bố cục thư mục (ADR-0011) tách theo vai trò: `platform/` (`xagents-core`, `gateway`, `console`) là hạ tầng dùng
+chung không thuộc công ty nào; `companies/` (`software-company`, `keeper`) là các công ty có agent, topic, gate và
+khách riêng. `gateway` và `console` KHÔNG nằm trong một công ty vì cả hai phục vụ nhiều hơn một công ty.
 
 Năm package là năm thành viên của một **uv workspace** — một `.venv`, một `uv.lock`. Không có `[project.scripts]`:
 mọi entry point là `python -m <package>.<module>`. Repo khách nằm **ngoài** repo này (`--repo <đường dẫn>`).
@@ -102,4 +106,4 @@ software-company AI agent framework")**; `d4abda1` cùng ngày gỡ MEP-Agents. 
 | Thi hành một đề bài lớn từ đặc tả tới PR merge, một lệnh | `docs/KHUON-THI-HANH.md`, `/thi-hanh` |
 | Bốn lớp Prompt/Agent/Loop/Graph: hiện trạng, tám việc, gói việc, điều phối subagent, khuôn công ty mới | `docs/KIEN-TRUC-4-LOP.md` |
 | Bảo mật: bí mật, phòng thủ, báo lỗi | `SECURITY.md` |
-| Vì sao quyết định thế này | `software-company/docs/adr/` (0001–0038), `console/docs/adr/` |
+| Vì sao quyết định thế này | `companies/software-company/docs/adr/` (0001–0038), `platform/console/docs/adr/` |
