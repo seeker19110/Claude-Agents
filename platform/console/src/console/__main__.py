@@ -5,6 +5,7 @@
   python -m console --allow-decide        cho phép duyệt gate từ trang
   python -m console --allow-config        cho phép sửa model/backend của từng công ty từ trang
   python -m console --allow-engine        cho phép bật/tắt orchestrator của từng xưởng từ trang
+  python -m console --with-gateway        bật gateway (pool tài khoản) trước khi phục vụ — ADR-0011 §3
   python -m console --open                mở trình duyệt sau khi khởi động
 
   python -m console models                        xem cấu hình model của cả hai công ty
@@ -19,6 +20,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import logging
+import subprocess
 import sys
 import webbrowser
 from pathlib import Path
@@ -52,6 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="cho phép POST /api/engine (bật/tắt `orchestrator run --watch` của từng xưởng ngay trên "
                         "trang); quyền riêng và nặng nhất — tiến trình con gọi model và ghi vào bus")
     p.add_argument("--i-know", action="store_true", help="chấp nhận rủi ro khi bind ra ngoài loopback")
+    p.add_argument("--with-gateway", action="store_true",
+                   help="bật gateway (pool tài khoản subscription) trước khi phục vụ; đã chạy sẵn thì bỏ qua")
     p.add_argument("--open", dest="open_browser", action="store_true", help="mở trình duyệt (cố gắng, không bắt buộc)")
     return p
 
@@ -124,6 +128,17 @@ def cmd_models(args: argparse.Namespace) -> int:
     return 0
 
 
+def start_gateway() -> int:
+    """Bật gateway (idempotent) và trả mã thoát của nó. `gateway start` tự lo phần khó: thấy daemon đang chạy
+    thì trả 0 ngay, không thì spawn daemon tách session rồi CHỜ `/health` xanh trước khi trả 0 — nên ở đây
+    không dựng lại vòng chờ nào, chỉ gọi đúng lệnh đã có và tin mã thoát của nó (ADR-0011 §3).
+
+    Chạy như TIẾN TRÌNH CON chứ không `import gateway`: console không phụ thuộc mã của gateway, đúng ranh giới
+    "vào gateway chỉ bằng HTTP" ở `platform/gateway/ARCHITECTURE.md`, và cùng khuôn với cách `engine.py` bật
+    orchestrator."""
+    return subprocess.run([sys.executable, "-m", "gateway", "start"], check=False).returncode
+
+
 def main(argv: list[str] | None = None) -> int:
     # Console Windows mặc định cp1252 không in được tiếng Việt.
     for stream in (sys.stdout, sys.stderr):
@@ -155,6 +170,12 @@ def main(argv: list[str] | None = None) -> int:
         print("    Ai chạm được cổng này và lấy được token là duyệt gate thay bạn được.")
         print("    Chỉ làm vậy sau firewall/reverse proxy, và tắt ngay khi xong.")
         print("=" * 68)
+
+    if args.with_gateway and start_gateway() != 0:
+        print("[-] Không bật được gateway — dừng lại.")
+        print("    Công ty không có model thì việc giao xong nằm im, không lỗi, không dấu hiệu (ADR-0011 §3).")
+        print("    Xem log gateway, hoặc bỏ --with-gateway nếu backend của bạn không đi qua gateway.")
+        return 1
 
     token = generate_token()
     token_path = write_token_file(token)

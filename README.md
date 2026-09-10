@@ -94,6 +94,7 @@ cd platform/console
 uv run python -m console                 # 127.0.0.1:8200, chỉ đọc; terminal in địa chỉ kèm token phiên
 uv run python -m console --allow-decide  # mở khoá các nút quyết định gate
 uv run python -m console --allow-config  # mở khoá màn "Cài đặt model" (ghi llm.yaml, giữ bản .bak)
+uv run python -m console --with-gateway --allow-decide  # một lệnh: bật gateway rồi console (ADR-0011 §3)
 uv run python -m console models          # xem/đổi model từng tier, từng backend bằng CLI
 ```
 

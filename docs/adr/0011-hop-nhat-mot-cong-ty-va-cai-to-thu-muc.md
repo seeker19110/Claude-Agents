@@ -64,6 +64,12 @@ Entrypoint chỉ **điều phối khởi động**, không đổi hành vi bên 
 (`platform/gateway` daemon, `python -m company.orchestrator`, `python -m console`). `keeper` không nằm trong
 chuỗi này. Gateway không lên được thì dừng lại và báo, không im lặng chạy tiếp với công ty không có model.
 
+**Cài đặt (giai đoạn 2/5, đã xong):** console đã tự bật `orchestrator run --watch` từ trước qua `--allow-engine`
+(ADR-0004 của console) — phần entrypoint hợp nhất còn thiếu duy nhất là gateway. Cờ mới `--with-gateway` gọi
+`python -m gateway start` như tiến trình con TRƯỚC khi console phục vụ; `gateway start` đã idempotent và tự
+chờ `/health` xanh, nên `start_gateway()` không dựng lại vòng chờ nào, chỉ tin mã thoát của nó — khác 0 thì
+console dừng lại và báo, không phục vụ. Một lệnh: `python -m console --with-gateway --allow-decide --allow-engine`.
+
 ### 4. Duyệt gate: hai chế độ, cấu hình được, mặc định là người ký
 
 Agent hồ sơ gate **luôn** soạn hồ sơ quyết định (`root_cause` + `decision` + `hint`, ≥ 20 ký tự — đúng chuẩn đã
