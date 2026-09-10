@@ -172,9 +172,15 @@ class ProxyServer:
                 buf = b""
                 while not buf.endswith(b"\n"):
                     chunk = s.recv(65536)
-                    if not chunk: break
+                    # Test `test_ask_server_dong_ket_noi_giua_chung_khong_co_dong_moi` và
+                    # `test_ask_tra_loi_qua_line_max_thi_bao_loi_thay_vi_doc_het` (test_mcp_bridge.py) CHỨNG
+                    # MINH cả hai nhánh chạy đúng. coverage.py không ghi được arc "->178"/"->exit" của chúng vì
+                    # `break`/`return` ở đây thoát qua `with socket.create_connection(...) as s:` — cùng loại
+                    # bounce-về-dòng-`with` đã thấy ở `llm.py::_complete_mcp` (đo được: arc thật là
+                    # `(175, 170)`/`(177, 170)`, không phải `(175, 178)`/`(177, -170)`).
+                    if not chunk: break  # pragma: no branch
                     buf += chunk
-                    if len(buf) > LINE_MAX: return {"ok": False, "error": "trả lời quá dài"}
+                    if len(buf) > LINE_MAX: return {"ok": False, "error": "trả lời quá dài"}  # pragma: no branch
             return dict(json.loads(buf.decode("utf-8"))) if buf.strip() else {"ok": False, "error": "cha không trả lời"}
         except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
             return {"ok": False, "error": f"không nối được tiến trình cha: {e}"}
@@ -251,5 +257,5 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
