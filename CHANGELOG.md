@@ -9,6 +9,11 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 - docs(core): **ADR-0010 khoanh phạm vi domain allowlist cho mạng của `ContainerSandbox`** — `RunSpec.network`
   chỉ bật/tắt mạng toàn phần, không lọc theo domain; ghi lại vì sao chưa cài egress proxy (không có nơi gọi thật
   cần, một field không enforce là an toàn giả) và khuôn thiết kế bắt buộc cho phiên sau khi có nhu cầu thật (#260)
+- docs(company): **ADR-0040 — production `deploy` skipped (thiếu `runtime`/compose/worktree) không được giao
+  hàng, thu hẹp "đường lùi" của ADR-0039 quyết định 5.** Đã thử cài (`_deliver` chặn khi `evidence.deploy.skipped`)
+  và revert: 10 test git/rollback/PR có sẵn (fixture chưa khai `runtime` từ trước ADR-0039) đỏ theo, ngoài phạm
+  vi ba test staging đã lường trước — ADR ghi lại phát hiện này, chưa cài code, chờ quyết định phạm vi vá tiếp
+  theo (#TBD)
 - refactor(company,console,core): **chuyển Studio-creators sang repo riêng (github.com/seeker19110/X-Studio,
   giữ lịch sử git), copy gateway/ sang đó kèm lịch sử, xoá mọi tàn dư studio khỏi Claude-Agents** — console mất
   màn "Xưởng video"/StudioView (test/coverage 100% giữ nguyên), CI mất ba job `studio-*`, workspace còn năm
