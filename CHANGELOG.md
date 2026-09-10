@@ -10,7 +10,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 - fix(console): **console trỏ sai cây công ty sau ADR-0011** — `REPO_ROOT = CONSOLE_DIR.parent` nay chỉ tới
   `platform/`, nên `--company-db`/`--keeper-db` mặc định và `cwd` của hai động cơ (`engine.SPECS`) trỏ vào
   `platform/software-company` không tồn tại: console mở lên hiện bảng RỖNG không báo lỗi, và bấm Bật động cơ
-  thì hỏng. Test cũ chỉ so `spec.cwd.name` nên không thấy; test mới đòi thư mục **có thật** trên đĩa (#PR)
+  thì hỏng. Test cũ chỉ so `spec.cwd.name` nên không thấy; test mới đòi thư mục **có thật** trên đĩa (#263)
 
 - refactor(repo): **cải tổ cấu trúc thư mục thành `platform/` + `companies/` (ADR-0011)** — hạ tầng dùng chung
   (`xagents-core`, `gateway`, `console`) tách khỏi công ty (`software-company`, `keeper`); PR thuần di chuyển,
