@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from company.bus import InMemoryBus
-from company.events import Envelope, ReviewResult, SupervisorAction
+from company.events import Envelope, ReviewResult, SupervisorAction, Task
 from company.llm import FakeClient, LLMError
 from company.orch import routes as routes_mod
 from company.orchestrator import (
@@ -1252,3 +1252,29 @@ def test_hen_cho_backend_song_sot_qua_restart(tmp_path):
     orch3.queue = [env]
     orch3._nap_lai_hen({env.event_id: ("khong-phai-ngay-thang", "transient:backend")})
     assert [e.event_id for e in orch3.queue] == [env.event_id]
+
+
+def test_tick_tu_gom_ticket_approved_con_sot_thanh_release():
+    """`flush_releases` trước đây chỉ được gọi ngay lúc MỘT ticket vừa review pass (`_on_review`) hoặc lúc đóng
+    một ticket escalated (`_on_escalation_decided`, reject/rollback) — không nhịp nào gọi lại sau đó. Ticket
+    approved mà không đi qua một trong hai đường đó (ví dụ: approved từ TRƯỚC một lần restart — RC không được
+    tạo lại khi replay theo đúng chủ đích, "F19" ở `DeliveryLead.flush_releases`, để tránh RC trùng — và sau đó
+    không có review/escalation nào khác của dự án để tự kích lại) nằm `approved` vĩnh viễn dù `status` báo
+    `queue: 0, blocked: []` xanh hết.
+
+    Đo được 2026-09-10 (QLKH, company.sqlite thật): 16 ticket approved đứng im nhiều ngày sau một lần restart
+    orchestrator, dù hàng đợi rỗng và không gate nào chờ. Test này không dựng lại đúng nguyên nhân restart (cần
+    toàn bộ máy plan/dispatch) mà dựng thẳng HẬU QUẢ của nó — một ticket `approved` chưa nằm trong RC nào — rồi
+    xác nhận một nhịp `tick()` tự chữa được, đúng phần vá thêm ở `scheduler.tick`."""
+    bus = InMemoryBus()
+    orch = Orchestrator(bus, FakeClient())
+    orch.lead.tickets[T1["ticket_id"]] = Task.model_validate(T1)
+    orch.lead.state[T1["ticket_id"]] = "approved"
+    assert orch.lead.unreleased("P1") == [T1["ticket_id"]], "tiền đề: ticket approved chưa nằm trong RC nào"
+
+    orch.tick()
+
+    assert orch.lead.unreleased("P1") == [], "một nhịp watch phải tự gom backlog approved thành release"
+    assert orch.lead.releases, "phải có release-candidate mới được tạo"
+    rid = orch.lead.releases[-1]
+    assert T1["ticket_id"] in orch.lead.release_tickets[rid]

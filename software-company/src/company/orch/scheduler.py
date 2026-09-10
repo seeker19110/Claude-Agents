@@ -153,6 +153,15 @@ def tick(o: Orchestrator, now: datetime | None = None) -> list[StepResult]:
                 o.supervisor.escalate_gate(tid, f"review {src} giao lại vẫn lỗi: {failed[0][:200]}", once_key=f"review.escalate:{key}")
     active = {tid for tid, st in o.lead.state.items() if st in ACTIVE_STATES}
     o.supervisor.check_timeouts(now, active=active)
+    # `flush_releases` (chế độ gom release) trước đây chỉ được gọi ngay lúc MỘT ticket vừa review pass
+    # (`_on_review`) hoặc lúc đóng một ticket escalated (`_on_escalation_decided`, reject/rollback) — không có
+    # nhịp nào gọi lại sau đó. Ticket approved từ TRƯỚC một lần orchestrator restart (RC không được tạo lại khi
+    # replay — đúng chủ đích, xem "F19" ở `DeliveryLead.flush_releases`) hay approved đúng lúc dự án đang có
+    # ticket khác in-flight (flush bị chặn, không ai gọi lại khi ticket đó xong) nằm `approved` vĩnh viễn: không
+    # ticket nào, không gate nào — `status` báo `queue: 0, blocked: []` xanh hết trong khi việc đã xong không bao
+    # giờ được giao. Đo được 2026-09-10 (QLKH): 16 ticket approved đứng im nhiều ngày sau một lần restart.
+    for pid in {t.project_id for t in o.lead.tickets.values()}:
+        o.lead.flush_releases(pid)
     results += o.run()
     return results
 

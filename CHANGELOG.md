@@ -13,6 +13,12 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   và `port + 1` là một giả định vô căn cứ khiến một ca test xanh lâu nay vì môi trường tình cờ thuận. Kèm ghi
   lại ba lần tự bác bỏ trong phiên, để lần sau đọc được cả chỗ sai lẫn chỗ đúng.
 
+- fix(company): **`orch/scheduler.tick()` tự gọi `flush_releases` mỗi nhịp watch cho backlog ticket `approved`
+  chưa nằm trong RC nào** (#251). Trước đây `flush_releases` chỉ được gọi ngay lúc một ticket vừa review pass hoặc lúc
+  đóng một ticket escalated — không nhịp nào gọi lại sau đó; ticket approved từ trước một lần restart (RC không
+  được tạo lại khi replay, đúng chủ đích, tránh RC trùng) nằm `approved` vĩnh viễn dù `status` báo
+  `queue: 0, blocked: []` xanh hết. Đo được 2026-09-10 (QLKH): 16 ticket approved đứng im nhiều ngày. Test đo
+  hai chiều: tắt bản vá thì `test_tick_tu_gom_ticket_approved_con_sot_thanh_release` đỏ.
 - test(company): **cổng chết trong `test_adr0012` lấy bằng socket giữ chỗ, không phải `port + 1`** (#249). Ca
   `test_resolve_host_va_default_fetcher_tren_server_that` giả định cổng kế bên cổng server là cổng trống —
   **vô căn cứ**: `port` do OS cấp từ dải ephemeral nên `port + 1` cũng ephemeral và có thể đang bị tiến trình
