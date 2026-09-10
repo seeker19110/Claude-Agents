@@ -221,6 +221,18 @@ def test_make_client_wraps_retry_and_attaches_pricing():
     assert make_client(LLMConfig(provider="openai", models={"strong": "m"}, retries=0)).__class__ is OpenAICompatClient
 
 
+def test_make_client_provider_anthropic_di_dung_nhanh(monkeypatch):
+    """`_single_client` rẽ đúng nhánh `provider == "anthropic"` (không rơi qua openai/codex/claude-code) rồi vẫn
+    bọc retry như mọi provider khác — giả `AnthropicClient` vì SDK `anthropic` không cài trong CI (extra)."""
+    import company.llm as llm_mod
+
+    class _FakeAnthropic:
+        def __init__(self, cfg): self.cfg = cfg
+    monkeypatch.setattr(llm_mod, "AnthropicClient", _FakeAnthropic)
+    a = make_client(LLMConfig(provider="anthropic", models={"strong": "m", "standard": "m"}, retries=1))
+    assert isinstance(a, RetryingClient) and isinstance(a.inner, _FakeAnthropic)
+
+
 # ---------- ngân sách tiền ----------
 
 def test_pricing_counts_cache_discount():

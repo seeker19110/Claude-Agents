@@ -91,6 +91,17 @@ def test_human_hint_bao_loi_khi_trang_thai_khong_can_thiep_duoc():
     with pytest.raises(ValueError, match="không can thiệp được"):
         lead.human_hint("T2-khong-ton-tai", "x")
 
+def test_human_hint_o_in_review_di_qua_nhanh_if_khong_phai_elif():
+    """Ticket đang `in_review` (PR nộp rồi, chờ review khác) → người can thiệp giữa vòng đi qua nhánh
+    `if st == "in_review"` (không phải `elif` của dispatched/in_progress); `_publish_task` sau đó luôn đặt lại
+    `dispatched` để phát task mới, nên đó mới là trạng thái cuối — khác với việc RẼ NHÁNH nào đã chạy."""
+    bus, _g, lead = _setup(); lead.plans_ok.add("PLAN")
+    lead.dispatch(_task(risk_tags=["payment"]), "PLAN"); _pr(bus)
+    _rev(bus, "reviewer", "pass"); _rev(bus, "qa", "pass")
+    assert lead.state["T1"] == "in_review"
+    nt = lead.human_hint("T1", "chờ security xong hẵng merge")
+    assert lead.state["T1"] == "dispatched" and nt.hint == "chờ security xong hẵng merge"
+
 def test_rework_bao_loi_ngoai_dispatched_hoac_in_progress():
     bus, _gate, lead = _setup(); lead.plans_ok.add("PLAN")
     lead.dispatch(_task(), "PLAN"); _pr(bus)

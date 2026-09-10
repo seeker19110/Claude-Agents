@@ -248,3 +248,16 @@ def test_subagent_kiem_duyet_la_tai_san_prompt(tmp_path):
     company = _tree(tmp_path / "hub" / "company", {"agents/y.md": "# y\n", "src/company/__init__.py": ""})
     assert [p.name for p in A.subagent_files(company)] == ["sc-x.md"]
     assert {f.rule for f in A.scan_root(company)[0]} == {"injection"}, "subagent độc phải bị bắt như mọi tài sản khác"
+
+
+def test_cli_budget_khong_json_agent_khoe_khong_in_flag(tmp_path: Path, capsys):
+    root = _tree(tmp_path, {"agents/a.md": "---\nid: a\nbudget_tokens_per_task: 100000\n---\nngan"})
+    assert A.main(["budget", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "VƯỢT NGƯỠNG" not in out and "THIẾU SKILL" not in out
+
+
+def test_cli_budget_khong_json_in_thieu_skill(tmp_path: Path, capsys):
+    root = _tree(tmp_path, {"agents/a.md": "---\nid: a\nskills: [khong-co]\n---\nngan"})
+    assert A.main(["budget", str(root)]) == 1
+    assert "THIẾU SKILL: khong-co" in capsys.readouterr().out

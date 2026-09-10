@@ -336,3 +336,66 @@ def test_plain_ticket_needs_only_reviewer_but_risky_ticket_needs_security():
     assert lead.state["T2"] == "in_review"
     _rev(bus, "T2", "security")
     assert lead.state["T2"] == "approved"
+
+
+# ---------- Phủ nhánh còn thiếu (audit 2026-09-10, bật branch coverage) ----------
+
+def test_flush_releases_dang_replay_tra_ve_none():
+    """Guard trong chính `flush_releases`, không chỉ ở nơi gọi (`_set`) — gọi trực tiếp khi `replaying=True`
+    phải trả None ngay, không dựng RC (F19: RC thật dựng lại qua `_on_release_candidate`)."""
+    bus, _gate, lead = _setup()
+    lead.dispatch(_task(), "PLAN"); _approve_ticket(bus)
+    lead.replaying = True
+    try:
+        assert lead.flush_releases("P") is None
+    finally:
+        lead.replaying = False
+
+
+def test_release_event_rid_khong_ton_tai_bi_bo_qua():
+    """`_on_release_event` cho một `release_id` chưa từng có RC (vd. thứ tự log lệch) phải bỏ qua êm, không
+    KeyError."""
+    bus, _gate, lead = _setup()
+    _release_event(bus, "REL-KHONG-CO", "staging", "deployed")
+    assert lead.release_tickets == {}
+
+
+def test_qa_fail_sau_khi_gate_da_mo_khong_xin_lai():
+    """Sau khi escalation của release đã được duyệt và gate release (Gate 3) đã mở, một review fail khác đến
+    (nguồn khác, ví dụ security) không được mở lại gate escalation — `rid in gate.pending` đã true (gate
+    release), nên điều kiện xin escalation phải rơi thẳng xuống `return`."""
+    bus, gate, lead = _setup()
+    lead.dispatch(_task(), "PLAN"); _approve_ticket(bus); rid = lead.releases[0]
+    _release_event(bus, rid, "staging", "deployed")
+    _rev(bus, rid, "qa", "fail", findings=[{"level": "block", "text": "DPIA chưa xong"}])
+    gate.decide(rid, "approve", by="human:owner")
+    lead.waive_release_findings(rid)
+    assert gate.pending[rid].kind == "release"
+    _rev(bus, rid, "security", "fail", findings=[{"level": "block", "text": "XSS"}])
+    assert gate.pending[rid].kind == "release", "không bị ghi đè thành escalation lần hai"
+
+
+def test_acceptance_bo_qua_ticket_chua_toi_released():
+    """`_on_acceptance` chạy qua từng ticket của release: ticket chưa tới `released` (vd. còn `merged`) thì
+    `continue`, không đụng tới; chỉ ticket `released` mới đóng."""
+    bus, _gate, lead = _setup()
+    lead.tickets["T1"] = _task("T1"); lead.tickets["T2"] = _task("T2")
+    lead.state["T1"] = "released"; lead.state["T2"] = "merged"
+    lead.release_tickets["REL-001"] = ["T2", "T1"]
+    bus.publish(Envelope(topic="acceptance-results", key="REL-001", actor="ops", payload=AcceptanceResult(
+        release_id="REL-001", project_id="P", verdict="accepted", signed_by="customer:ceo").model_dump()))
+    assert lead.state["T1"] == "closed" and lead.state["T2"] == "merged", "T2 chưa released thì không đụng"
+
+
+def test_change_request_bo_qua_khi_nghiem_thu_khong_phai_conditional():
+    """`_on_change_request` chỉ xử lý khi nghiệm thu trước đó là `conditional`; verdict khác (đã `accepted`
+    thẳng, không qua CR) thì bỏ qua, không đóng ticket qua đường này."""
+    bus, _gate, lead = _setup()
+    lead.tickets["T1"] = _task("T1"); lead.state["T1"] = "released"
+    lead.release_tickets["REL-1"] = ["T1"]
+    lead.acceptance["REL-1"] = AcceptanceResult(release_id="REL-1", project_id="P", verdict="accepted",
+                                                 signed_by="customer:ceo")
+    bus.publish(Envelope(topic="change-requests", key="CR-1", actor="human:po", payload={
+        "change_id": "CR-1", "project_id": "P", "requested_by": "customer:po", "description": "x",
+        "impact": {"estimate_days": 1, "estimate_tokens": 1000}, "release_id": "REL-1", "decision": "accepted"}))
+    assert lead.state["T1"] == "released", "verdict không phải conditional nên _on_change_request không đụng"
