@@ -124,6 +124,9 @@ Không commit secret, `llm.yaml`, khóa API, hay dữ liệu thật. Không gọ
    - `git status` sạch (không sót file định thêm mà quên `git add`, không sót file tạm không định commit).
    - `git diff --check` sạch trên **toàn diff** so với `main`, không chỉ file vừa sửa gần nhất.
    - `gh pr list --state open` — còn PR khác mở thì làm theo §2c, không tạo PR mới.
+   - `gh pr list --state all --search "<từ khoá>"` + `gh issue list --state all --search "<từ khoá>"` — có PR/issue
+     cũ (kể cả đã đóng) giải quyết cùng vấn đề thì đọc lý do đóng, nói rõ trong PR mới cái gì khác đi khiến lần
+     này nên qua. Không mở PR thứ hai cho cùng một việc mà không nhắc tới cái trước.
 1. **Kiểm tiêu đề trước khi tạo PR.** Cổng `metadata` chặn tiêu đề sai:
    ```
    ^(feat|fix|refactor|docs|test|chore|style|perf|build|ci|revert)(\([a-z0-9._/-]+\))?!?: .+

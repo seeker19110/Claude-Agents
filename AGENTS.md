@@ -39,6 +39,15 @@ hạn mức; self-hosted, resume được; trung lập provider.
 7. **Không "sửa" code cạnh bên.** Mỗi dòng đổi phải truy được về yêu cầu. Thấy dead code thì nói, đừng xoá.
 8. **Không tin lời khai.** Của model, của agent, của chính mình. "Tests pass" cần output lệnh vừa chạy; "đã
    deploy" cần bằng chứng máy sinh (`verified_by=workspace|orchestrator`). Chưa chạy thì chưa được nói.
+   Trước khi nói bất kỳ câu nào kiểu "xong/đã sửa/pass/đã deploy" — kể cả một câu cảm thán ("Ổn rồi!", "Ngon!") —
+   đi qua đúng năm bước, không bỏ bước nào:
+   1. Xác định lệnh nào **chứng minh** được câu này.
+   2. Chạy lệnh đó **đầy đủ**, ngay trong lượt hiện tại — không dùng kết quả của lượt trước.
+   3. Đọc **toàn bộ** output, không chỉ dòng cuối; đếm số lỗi/số fail thật.
+   4. Output có khớp đúng câu định nói không? Không khớp → nói đúng trạng thái thật kèm bằng chứng, không nói
+      câu ban đầu.
+   5. Chỉ sau bước 4 mới được nói câu đó — và nói kèm bằng chứng, không nói suông.
+   Bỏ một bước ở trên = nói dối, không phải "gần đúng".
 
 ## Luật bắt buộc
 
@@ -49,11 +58,30 @@ hạn mức; self-hosted, resume được; trung lập provider.
    liệu thì không cần.
 3. **Chạy đúng lệnh CI trước khi push**: `uv run ruff check src tests` + `uv run mypy src/<pkg> --ignore-missing-imports`
    + `uv run pytest -q` (software-company: `-n auto --cov`). Windows thiếu 2 dòng POSIX trong coverage là bình thường.
-4. **Test phải đo hai chiều**: tắt bản sửa → test đỏ; bật lại → xanh. Ghi kết quả vào commit message.
+4. **TDD là quy trình mặc định cho MỌI code, không chỉ khi sửa lỗi: viết test trước, thấy nó đỏ, rồi mới viết code
+   để nó xanh.** Luật cứng:
+   ```
+   KHÔNG CODE SẢN XUẤT NÀO ĐƯỢC VIẾT TRƯỚC KHI CÓ TEST ĐỎ CHO NÓ
+   ```
+   - **ĐỎ** — viết một test tối thiểu tả đúng hành vi còn thiếu (một hành vi, tên rõ, code thật — không mock
+     trừ khi không tránh được). Chạy nó, đọc kỹ lý do đỏ: đỏ vì tính năng chưa có, không phải vì gõ sai tên.
+     Test xanh ngay từ đầu ⇒ đang test hành vi đã tồn tại, sửa lại test.
+   - **XANH** — viết code **tối thiểu vừa đủ** để qua đúng test đó. Không thêm tham số/nhánh mà test chưa đòi,
+     không "tiện tay" refactor chỗ khác. Chạy lại, xác nhận xanh và các test khác không đỏ theo.
+   - **REFACTOR** — chỉ sau khi xanh: gọn tên, gỡ trùng lặp, tách hàm. Giữ nguyên tập test xanh, không thêm
+     hành vi mới ở bước này.
+   - Việc "quá đơn giản nên khỏi test", "test sau cũng như nhau", "đã tự tay thử rồi" đều là chỗ né luật —
+     test viết sau khi code đã chạy chỉ chứng minh nó xanh ngay từ lần đầu, không chứng minh nó **từng bắt
+     được lỗi**. Xem bảng biện hộ ở `TRAPS.md` §4 trước khi tự thuyết phục mình là ngoại lệ.
+   - Ngoại lệ cần hỏi người trước: prototype vứt đi, code sinh tự động (`.claude/agents/sc-*`, `tests/golden/`
+     — luật cấm 5 đã cấm sửa tay), file cấu hình thuần.
+   - Bẫy: đây vẫn là **luật 4 cũ** (đo hai chiều) mở rộng ra toàn bộ code, không chỉ bugfix — tắt bản sửa/tính
+     năng → test phải đỏ; bật lại → xanh; ghi kết quả cả hai chiều vào commit message.
 5. **Sửa một lỗi thì rà cả họ lỗi đó**: viết câu hỏi kiểm tra rút từ lỗi vừa sửa, grep mọi chỗ dùng cùng cơ chế,
    ghi lại cả chỗ an toàn và vì sao (`TRAPS.md` §1).
 6. **Đo trước khi sửa**: gặp lỗi không rõ → tái hiện với đối chứng, tách từng biến. Suy từ thông điệp lỗi đã sai 6/6
-   lần (`TRAPS.md` §2).
+   lần (`TRAPS.md` §2). **Thử vá 3 lần liên tiếp mà mỗi lần lại lòi ra vấn đề mới ở chỗ khác ⇒ dừng, đây không còn
+   là bug, đây là kiến trúc sai.** Không thử vá lần 4 một mình — mang giả thiết ra hỏi người trước khi vá tiếp.
 7. **Tiêu đề PR**: `^(feat|fix|refactor|docs|test|chore|style|perf|build|ci|revert)(\([a-z0-9._/-]+\))?!?: .+` —
    scope **một từ, chữ thường** (`fix(company,console)` bị chặn). Bật auto-merge squash ngay sau khi tạo; thất bại
    thì theo dõi `gh pr checks <n> --watch --interval 150` tới khi kết luận.
@@ -65,6 +93,9 @@ hạn mức; self-hosted, resume được; trung lập provider.
    tạo PR, nên ngay sau `gh pr create`: điền `(#<n>)` vào dòng CHANGELOG (và nhật ký phiên) rồi **commit tiếp
    vào chính PR đó** trước khi nó merge — không phải mở PR khác để vá số. Đẩy xong thì kiểm commit đã vào PR
    (luật 8). Dòng CHANGELOG xếp mới nhất trên cùng theo **thời điểm merge**, không theo thứ tự tạo PR.
+11. **Trước khi mở PR, tìm PR/issue trùng — đóng hay mở đều tính.** `gh pr list --state all --search "<từ khoá>"`
+   và `gh issue list --state all --search "<từ khoá>"`. Có PR cũ từng đóng vì cùng vấn đề → đọc lý do đóng, nói
+   rõ trong PR mới cái gì khác đi khiến lần này nên qua; không lặng lẽ mở PR thứ hai cho cùng một việc.
 
 ## Chạy cái gì ở đâu
 

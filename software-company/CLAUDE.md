@@ -15,6 +15,12 @@ uv run python -m company.orchestrator --repo <repo khách> run --watch     # t�
 uv run python -m company.gate_cli list | approve <subject> --by human:<tên> --reason "<root_cause — decision — hint>"
 ```
 
+## TDD ở package này
+
+`../AGENTS.md` luật bắt buộc 4 áp nguyên vẹn: viết test đỏ trong `tests/` trước, chạy
+`uv run pytest -q -n auto --cov -k <tên test>` thấy đỏ đúng lý do, rồi mới viết code trong `src/company/` cho nó
+xanh. `fail_under = 100` (luật cấm 6) nghĩa là code mới không có test đi trước sẽ tự lộ ngay ở bước coverage.
+
 ## Ba ranh giới không được phá
 
 1. **Model chỉ khai, code mới chứng.** `local_checks.verified_by=workspace` (PR), `smoke.verified_by=orchestrator`

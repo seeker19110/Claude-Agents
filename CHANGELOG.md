@@ -6,6 +6,17 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(agents): **TDD bắt buộc cho mọi code, gate function 5 bước xác minh, kiểm PR trùng trước khi mở PR,
+  bảng tự-biện-hộ** (#252). So sánh quy trình với skill `superpowers` (obra/superpowers) theo yêu cầu người
+  dùng, rút các quy tắc còn thiếu về áp cho `AGENTS.md`/`CLAUDE.md`/`TRAPS.md`/`docs/QUY-TRINH-GIT.md`: luật
+  bắt buộc 4 đổi từ "test đo hai chiều khi sửa lỗi" thành TDD đầy đủ (đỏ → xanh → refactor) cho **mọi** code;
+  luật bắt buộc 6 thêm ngưỡng "3 lần vá liên tiếp lòi vấn đề mới = kiến trúc sai, dừng hỏi người"; luật cấm 8
+  cụ thể hoá thành gate function 5 bước trước khi nói bất kỳ câu hoàn thành nào; luật bắt buộc 11 (mới) đòi
+  kiểm PR/issue đã đóng trùng vấn đề trước khi mở PR mới. Nối luật TDD vào `CLAUDE.md` của bốn package con đã có
+  file này (`software-company`, `Studio-creators`, `gateway`, `console`) — mỗi package trỏ đúng lệnh test của
+  mình, không chép lại luật. `xagents-core` và `keeper` chưa có `CLAUDE.md` từ trước — để ngoài phạm vi PR này.
+  Không đổi hành vi code — thuần tài liệu quy trình.
+
 - docs(sessions): **ghi nốt hai mục nhật ký phiên còn thiếu cho #247 và #249** (#250). Luật bắt buộc 9 đòi mỗi
   phiên một mục; nhật ký 2026-09-09 dừng ở #245 trong khi hai PR sau đó đã merge — cả hai có dòng CHANGELOG
   và mục `TRAPS.md` nhưng thiếu phần kể lại. Mục mới ghi ba thứ đo được: `rerun_failed_jobs` phát lại payload
