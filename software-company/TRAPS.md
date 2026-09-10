@@ -53,6 +53,7 @@ Bốn khuôn lỗi chung và bẫy thao tác ở `../TRAPS.md`. Ở đây là ch
 | `--db` sau `publish`; thiếu `--key` | Lỗi lúc diễn tập dừng khẩn | `--db` trước subcommand; `supervisor-actions` cần `--key` |
 | Agent không có tool xoá file | 4 vòng rework vô ích | Đọc `tools.py` trước khi ép |
 | Quyết định kiến trúc bị né qua từng ticket | Framework/DB thật không ai chọn, 25 release không có server | ADR-0032: cùng mã nợ ≥ N review liên tiếp → gate escalation dự án (`tests/test_no_kien_truc_adr0032.py`); chưa *ngăn* từ plan — đề xuất 2 (`open_decisions`) |
+| `_superseded_release` không nhận ticket đã xong qua đường khác | Đo 2026-09-10 (QLKH): `reject` một gate escalation cấp-release cho RC TRÙNG ở cuối danh sách (không có RC nào "sau" nó) mà ticket đã `merged` qua `mark_done_already_integrated` — điều kiện chỉ xét "có RC sau đã delivered", không xét ticket đã ở DONE_STATE; rơi vào `rework_release_tickets`, đá ticket đã xong về `changes_requested` lần nữa | Chưa vá — cần thêm nhánh: mọi ticket của RC đã ở DONE_STATE tại thời điểm quyết định thì không rework, bất kể có RC "sau" hay không. Viết test tái hiện đúng ca "RC cuối danh sách + ticket merged qua đường khác" trước khi sửa |
 
 ## Bổ sung 2026-09-06 (ADR-0030)
 
