@@ -47,12 +47,12 @@ from gateway.server import (
     is_server_running,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_SETUP_TARGET = REPO_ROOT / "software-company" / "llm.yaml"
+REPO_ROOT = Path(__file__).resolve().parents[4]   # platform/gateway/src/gateway/… → gốc repo (ADR-0011)
+DEFAULT_SETUP_TARGET = REPO_ROOT / "companies" / "software-company" / "llm.yaml"
 DEFAULT_STRONG_MODEL = "claude-sonnet-4-6"
 DEFAULT_STANDARD_MODEL = "gemini-3.6-flash-medium"
 DEFAULT_CHECK_TARGETS = [
-    REPO_ROOT / "software-company" / "llm.yaml",
+    REPO_ROOT / "companies" / "software-company" / "llm.yaml",
 ]
 
 

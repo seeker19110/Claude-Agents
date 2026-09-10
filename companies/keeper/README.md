@@ -5,10 +5,10 @@ Package thứ sáu của workspace X-Agents. Khách hàng số 0 và mặc đị
 **Trạng thái: chạy được, chưa qua canary.** BT1–BT7 đã merge — package có mã thật, test riêng và ba lệnh CLI
 chạy được. Cái CHƯA có nằm ở cuối README này, đọc trước khi tin bất kỳ con số nào.
 
-- Quyết định: [`docs/adr/0006-cong-ty-bao-tri-keeper.md`](../docs/adr/0006-cong-ty-bao-tri-keeper.md)
+- Quyết định: [`docs/adr/0006-cong-ty-bao-tri-keeper.md`](../../docs/adr/0006-cong-ty-bao-tri-keeper.md)
 - Đặc tả triển khai, PR theo PR: [`docs/DAC-TA-KEEPER.md`](docs/DAC-TA-KEEPER.md) (BT0–BT8)
-- Trạng thái từng gói BT (một chỗ duy nhất): [`../docs/thi-hanh/keeper.md`](../docs/thi-hanh/keeper.md) §B
-- Vận hành: [`../docs/HUONG-DAN-VAN-HANH.md`](../docs/HUONG-DAN-VAN-HANH.md) §7
+- Trạng thái từng gói BT (một chỗ duy nhất): [`../../docs/thi-hanh/keeper.md`](../../docs/thi-hanh/keeper.md) §B
+- Vận hành: [`../../docs/HUONG-DAN-VAN-HANH.md`](../../docs/HUONG-DAN-VAN-HANH.md) §7
 
 ## Nó làm gì
 

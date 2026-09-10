@@ -57,7 +57,7 @@ templates/prd.md, gates/checklists.md, docs/adr/0029.
 Không: prompt release-engineer (bằng chứng do code sinh, ADR-0010 — không cần eval lại).
 
 ## 4. Bối cảnh
-AGENTS.md; TRAPS.md §2 "bốn gate xanh"; software-company/CODEMAP.md "smoke"; ADR-0010, 0013, 0027;
+AGENTS.md; TRAPS.md §2 "bốn gate xanh"; companies/software-company/CODEMAP.md "smoke"; ADR-0010, 0013, 0027;
 tests/test_staging_khong_doi_gate3.py (harness FakeClient).
 
 ## 5. Ràng buộc
@@ -94,7 +94,7 @@ trên gói đã cài (`uv sync` xong) chứ không trên ấn tượng đọc m�
 Không: mã nguồn, test, prompt agent, `.claude/agents/` — đây là phiên đo, không phải phiên sửa.
 
 ## 4. Bối cảnh
-`docs/adr/0003-doi-chieu-ruflo.md`; báo cáo tự kiểm gần nhất; `console/tests/test_readme_goc.py` và
+`docs/adr/0003-doi-chieu-ruflo.md`; báo cáo tự kiểm gần nhất; `platform/console/tests/test_readme_goc.py` và
 `*/tests/test_readme*.py` (những gì CI đã canh — không cần đo tay lại, nhưng ghi "đã có test canh" vào bảng).
 
 ## 5. Ràng buộc
@@ -106,7 +106,7 @@ Một dòng README có hai chỗ nói cùng một số (test package đã mắc:
 CI đỏ. Con số lệch một chiều "nói ít hơn thật" vẫn là lệch; đừng bỏ qua vì "ít nhất không nói quá".
 
 ## 7. Kiểm và báo
-`uv run pytest -q console/tests/test_readme_goc.py Studio-creators/tests/test_readme_so_lieu.py` sau khi sửa README.
+`uv run pytest -q platform/console/tests/test_readme_goc.py Studio-creators/tests/test_readme_so_lieu.py` sau khi sửa README.
 Báo: PR #, dòng CHANGELOG `docs: tự kiểm <ngày>`, session log.
 ```
 

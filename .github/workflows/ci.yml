@@ -24,9 +24,9 @@ jobs:
           python-version: "3.13"
       - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       - run: uv run ruff check src tests
-        working-directory: software-company
+        working-directory: companies/software-company
       - run: uv run mypy src/company --ignore-missing-imports
-        working-directory: software-company
+        working-directory: companies/software-company
 
   unit:
     name: unit
@@ -59,11 +59,11 @@ jobs:
       # 4 worker còn 97 s, 730/730 xanh (2026-09-06). Runner GitHub 4 nhân nên auto = 4.
       - run: uv run pytest -q -n auto --cov --cov-report=term-missing --durations=10
         if: runner.os != 'Windows'
-        working-directory: software-company
+        working-directory: companies/software-company
       # Windows: chạy test, không đo coverage (nhánh riêng của POSIX không chạy ở đây nên ngưỡng sẽ lệch).
       - run: uv run pytest -q -n auto --durations=10
         if: runner.os == 'Windows'
-        working-directory: software-company
+        working-directory: companies/software-company
 
   eval-replay:
     name: eval-replay
@@ -81,7 +81,7 @@ jobs:
       # Eval từ bản ghi (ADR-0010): không gọi model. `--strict` đỏ khi agent có tên trong
       # evals/recordings/REQUIRED.txt mà thiếu bản ghi, hoặc bản ghi ghi ở phiên bản prompt cũ.
       - run: uv run python -m company.evals all --replay --strict
-        working-directory: software-company
+        working-directory: companies/software-company
 
   audit:
     name: audit
@@ -128,7 +128,7 @@ jobs:
       # evals/recordings/REQUIRED.txt mà thiếu bản ghi, hoặc bản ghi ghi ở phiên bản prompt cũ;
       # evals/thresholds.yaml đỏ thêm khi điểm chấm tụt dưới sàn đã đo.
       - run: uv run python -m keeper.evals all --replay --strict
-        working-directory: keeper
+        working-directory: companies/keeper
 
   # Golden trong repo phải khớp bản `make golden` sinh ra: chặn "sửa agent rồi quên commit lại golden".
   golden-check:
@@ -141,7 +141,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - dir: software-company
+          - dir: companies/software-company
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -160,7 +160,7 @@ jobs:
       # Subagent kiểm duyệt là bản dẫn xuất MỘT CHIỀU từ agents/. Lệch nguồn nghĩa là người duyệt gate đang
       # chấm theo tiêu chuẩn khác tiêu chuẩn công ty thực sự dùng — chặn ở cùng chỗ với golden.
       - name: Subagent dẫn xuất có khớp nguồn không
-        if: matrix.dir == 'software-company'
+        if: matrix.dir == 'companies/software-company'
         run: uv run python -m company.subagents check
         working-directory: ${{ matrix.dir }}
 
@@ -178,9 +178,9 @@ jobs:
           python-version: "3.13"
       - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       - run: uv run ruff check src tests
-        working-directory: gateway
+        working-directory: platform/gateway
       - run: uv run mypy src/gateway --ignore-missing-imports
-        working-directory: gateway
+        working-directory: platform/gateway
 
   gateway-unit:
     name: gateway-unit
@@ -218,7 +218,7 @@ jobs:
       # chúng cùng một vỏ là bỏ hẳn một lớp ngữ nghĩa chỉ-Windows khỏi cổng chất lượng.
       - run: uv run pytest -q --cov --cov-report=term-missing
         shell: bash
-        working-directory: gateway
+        working-directory: platform/gateway
 
   # console (trực ban hợp nhất): chỉ stdlib, phụ thuộc hai công ty qua path dependency.
   console-static:
@@ -235,9 +235,9 @@ jobs:
           python-version: "3.13"
       - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
       - run: uv run ruff check src tests
-        working-directory: console
+        working-directory: platform/console
       - run: uv run mypy src/console --ignore-missing-imports
-        working-directory: console
+        working-directory: platform/console
 
   console-unit:
     name: console-unit
@@ -275,7 +275,7 @@ jobs:
       # chúng cùng một vỏ là bỏ hẳn một lớp ngữ nghĩa chỉ-Windows khỏi cổng chất lượng.
       - run: uv run pytest -q --cov --cov-report=term-missing
         shell: bash
-        working-directory: console
+        working-directory: platform/console
 
   # Lõi chung của mọi công ty (ADR gốc 0001). `strict = true` từ ngày đầu (K6.1): core là chỗ hai công ty
   # tin cậy, nó không được lỏng hơn nơi gọi nó.
@@ -300,11 +300,11 @@ jobs:
           python-version: "3.13"
       - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
       - run: uv run ruff check src tests
-        working-directory: xagents-core
+        working-directory: platform/xagents-core
       # KHÔNG có --ignore-missing-imports như bốn package kia: `strict` mà bỏ qua import thiếu thì mất đúng
       # phần bảo đảm vừa bật.
       - run: uv run mypy src/xagents_core
-        working-directory: xagents-core
+        working-directory: platform/xagents-core
 
   core-unit:
     name: core-unit
@@ -341,7 +341,7 @@ jobs:
       # chúng cùng một vỏ là bỏ hẳn một lớp ngữ nghĩa chỉ-Windows khỏi cổng chất lượng.
       - run: uv run pytest -q --cov --cov-report=term-missing
         shell: bash
-        working-directory: xagents-core
+        working-directory: platform/xagents-core
 
   keeper-static:
     name: keeper-static
@@ -361,11 +361,11 @@ jobs:
           python-version: "3.13"
       - run: uv sync --locked   # workspace: một .venv ở root cho cả sáu package
       - run: uv run ruff check src tests
-        working-directory: keeper
+        working-directory: companies/keeper
       # CÓ --ignore-missing-imports, KHÁC core-static: keeper không bật `strict`
       # như xagents-core — đừng "sửa cho giống core" mà bỏ cờ này, mypy sẽ đỏ vì import thiếu chú kiểu.
       - run: uv run mypy src/keeper --ignore-missing-imports
-        working-directory: keeper
+        working-directory: companies/keeper
 
   drift-check:
     name: drift-check
@@ -412,7 +412,7 @@ jobs:
       # `shell: bash`: lý do y hệt core-unit ở trên (lớp bọc pwsh của runner Windows nuốt mã thoát).
       - run: uv run pytest -q --cov --cov-report=term-missing
         shell: bash
-        working-directory: keeper
+        working-directory: companies/keeper
 
   # Tài sản prompt của repo là chuỗi cung ứng (ADR-0022): injection, ký tự ẩn, lệnh nguy hiểm, khóa lộ
   # trong `agents/ skills/ templates/ gates/ topics/` của CẢ BA công ty. Miễn trừ: assetscan-waivers.txt.
@@ -429,11 +429,11 @@ jobs:
           enable-cache: true
           python-version: "3.13"
       - run: uv sync --locked   # workspace: một .venv ở root cho cả sáu package
-      - run: uv run python -m company.assetscan scan . ../keeper
-        working-directory: software-company
+      - run: uv run python -m company.assetscan scan . ../../companies/keeper
+        working-directory: companies/software-company
       # Prompt tĩnh không được ăn quá nửa ngân sách token của chính agent đó, và skill khai phải tồn tại.
-      - run: uv run python -m company.assetscan budget . ../keeper
-        working-directory: software-company
+      - run: uv run python -m company.assetscan budget . ../../companies/keeper
+        working-directory: companies/software-company
 
   # Canh gác bảo vệ nhánh — ĐỎ cho tới khi ruleset `.github/rulesets/main.json` thật sự có hiệu lực trên `main`.
   # Lý do: cấu hình repo không nằm trong git, nên "đã bật" chỉ là lời hứa nếu không có gì kiểm. Bằng chứng: PR #29

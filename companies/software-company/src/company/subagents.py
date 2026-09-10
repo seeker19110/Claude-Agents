@@ -30,7 +30,7 @@ from .gate_checklists import EXPERTS, GATE_MODEL, GateSection
 from .gate_checklists import load as load_gates
 from .registry import ROOT, AgentSpec, load_agents, load_skill
 
-OUT_DIR = ROOT.parent / ".claude" / "agents"
+OUT_DIR = ROOT.parents[1] / ".claude" / "agents"   # companies/<pkg>/ → gốc repo (ADR-0011)
 PREFIX = "sc-"
 GATE_PREFIX = "sc-gate-"
 GATE_CAP = 50_000  # trần kích thước file sc-gate-* (không có agent gốc để lấy max_input_chars)

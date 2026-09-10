@@ -166,8 +166,8 @@ def _drift(args: argparse.Namespace) -> int:
     repo = Path(args.repo)
     signals = scan(
         claude_agents_dir=repo / ".claude" / "agents",
-        golden_agents_dir=repo / "software-company" / "tests" / "golden" / "agents",
-        company_root=repo / "software-company",
+        golden_agents_dir=repo / "companies" / "software-company" / "tests" / "golden" / "agents",
+        company_root=repo / "companies" / "software-company",   # ADR-0011
         repo=repo,
         changelog=repo / "CHANGELOG.md",
     )

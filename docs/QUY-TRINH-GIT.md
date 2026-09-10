@@ -1,7 +1,7 @@
 # Quy trình làm việc với Git — X-Agents
 
 Áp từ quy trình của dự án `donghanh` (`CONTRIBUTING.md`, `docs/DEVELOPMENT_WORKFLOW.md`,
-`CLAUDE.md` mục 11), rút gọn cho repo này: repo tài liệu + Python (`software-company/`),
+`CLAUDE.md` mục 11), rút gọn cho repo này: repo tài liệu + Python (`companies/software-company/`),
 làm việc chủ yếu một mình cùng AI, cổng chất lượng là `make lint` + `make test`.
 
 Luồng chuẩn: **Ý tưởng → Đặc tả → Nhánh → PR → CI/Review → Merge (squash) → Quan sát**.
@@ -9,7 +9,7 @@ Luồng chuẩn: **Ý tưởng → Đặc tả → Nhánh → PR → CI/Review �
 ## 1. Cổng đặc tả (chỉ với thay đổi lớn)
 
 Thay đổi kiến trúc, thêm/bỏ agent, đổi schema topic, đổi hợp đồng event → viết ADR trong
-`<công ty>/docs/adr/` (ví dụ `software-company/docs/adr/`) **trước** khi code, và link ADR trong PR. Sửa lỗi nhỏ, chỉnh
+`<công ty>/docs/adr/` (ví dụ `companies/software-company/docs/adr/`) **trước** khi code, và link ADR trong PR. Sửa lỗi nhỏ, chỉnh
 prompt/skill, sửa tài liệu thì đi thẳng bước 2.
 
 Không dùng "AI đề xuất" làm bằng chứng. Mọi khẳng định quan trọng phải truy được về code,
@@ -64,7 +64,7 @@ Cách nhận ra mình đang giẫm chân người khác: `git status` hay `git l
 tạo, hoặc `git reflog` có `checkout` mình không gọi. Gặp thì dừng, **đừng commit**, mở worktree riêng trước.
 
 Điều này áp cho **phiên người lái**. Orchestrator đã cô lập sẵn: mỗi ticket một worktree dưới `.worktrees/`
-(`software-company/src/company/workspace.py`), và nó chạy trên repo của khách (`--repo`), không phải repo này.
+(`companies/software-company/src/company/workspace.py`), và nó chạy trên repo của khách (`--repo`), không phải repo này.
 
 ## 2c. Nhiều phiên cùng lúc: chỉ một PR mở tại một thời điểm (áp toàn cục)
 
@@ -135,7 +135,7 @@ Không commit secret, `llm.yaml`, khóa API, hay dữ liệu thật. Không gọ
 
    Cổng `metadata` còn ba bước nữa, đọc trước khi viết thân PR:
    - **Dòng CHANGELOG** ở mục "Chưa phát hành" (nhãn `no-changelog` để miễn) — đỏ nếu thiếu.
-   - **PR `fix(` chạm `software-company/src/company/orchestrator.py` hoặc `orch/` phải dẫn `ADR-0034`**
+   - **PR `fix(` chạm `companies/software-company/src/company/orchestrator.py` hoặc `orch/` phải dẫn `ADR-0034`**
      trong thân, nói rõ đụng bảng chuyển nào (K8.3). `refactor(` không bị soi: tách module là làm ĐÚNG
      theo ADR, còn `fix(` là sửa hành vi máy trạng thái — chỗ dễ lặng lẽ phá bảng chuyển nhất. Đặc tả
      gốc viết "ADR-0037"; repo này không có file đó, ADR tách máy trạng thái là **0034**.
@@ -180,7 +180,7 @@ Merge sạch (không xung đột) thì **không** chạy lại toàn bộ cổng
 
 - Mặc định **squash merge**; xoá nhánh sau khi merge.
 - Sau merge, kiểm `main` còn xanh; hỏng thì ưu tiên revert rồi điều tra trong PR mới.
-- Tag `vX.Y.Z` khi phát hành mốc (`version` trong `software-company/pyproject.toml`).
+- Tag `vX.Y.Z` khi phát hành mốc (`version` trong `companies/software-company/pyproject.toml`).
 
 ## 8. Việc cần bật trên GitHub (một lần) — và cách biết nó CÓ THẬT
 

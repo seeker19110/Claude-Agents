@@ -22,14 +22,14 @@ Quy ước scope PR (một từ chữ thường): `company`, `studio`, `core`, `
 |---|---|
 | `docs/DAC-TA-NANG-CAP-2026-09.md` bảng §8 | V1–V5: ghi "xong #98" cho V2, V4, V5; V1 "xong (#94 đã merge)"; V3 "thủ công, không kiểm được từ repo" |
 | `README.md:17` | "ADR 0001–0028" → "ADR 0001–0032"; "743 test" → bỏ số (package README đã có test đếm) |
-| `software-company/pyproject.toml:4` | "20 agent" → "21 agent" |
-| `software-company/README.md:148` | "20 system prompt" → 21 |
-| `gateway/.env.example:11-21` | 8100 → 1123 ở 4 chỗ; câu chú thích về Hermes giữ nhưng nói rõ 1123 là mặc định |
-| `software-company/docs/adr/0030-*.md`, `0031-*.md:8,38` | `docs/DAC-TA-NANG-CAP-2026-09.md` → `../../../docs/DAC-TA-NANG-CAP-2026-09.md` |
+| `companies/software-company/pyproject.toml:4` | "20 agent" → "21 agent" |
+| `companies/software-company/README.md:148` | "20 system prompt" → 21 |
+| `platform/gateway/.env.example:11-21` | 8100 → 1123 ở 4 chỗ; câu chú thích về Hermes giữ nhưng nói rõ 1123 là mặc định |
+| `companies/software-company/docs/adr/0030-*.md`, `0031-*.md:8,38` | `docs/DAC-TA-NANG-CAP-2026-09.md` → `../../../docs/DAC-TA-NANG-CAP-2026-09.md` |
 | `docs/adr/README.md` (mới) | 10 dòng: ADR cấp repo cho quyết định chạm ≥ 2 package; mẫu bốn mục Bối cảnh/Quyết định/Hệ quả/Liên quan như ADR-0032 |
-| `tests/test_readme_goc.py` (mới, chạy trong job nào? → thêm vào `console-unit` vì console đã path-depend cả hai; hoặc job `docs` mới) | đếm `software-company/docs/adr/*.md` và `agents/*/*.md`, so với regex trong README gốc |
+| `tests/test_readme_goc.py` (mới, chạy trong job nào? → thêm vào `console-unit` vì console đã path-depend cả hai; hoặc job `docs` mới) | đếm `companies/software-company/docs/adr/*.md` và `agents/*/*.md`, so với regex trong README gốc |
 
-Cạm bẫy: `test_readme_khop_so_lieu_that` (`software-company/tests/test_review_fixes_2026_09.py:391`) đã canh
+Cạm bẫy: `test_readme_khop_so_lieu_that` (`companies/software-company/tests/test_review_fixes_2026_09.py:391`) đã canh
 README package — đừng làm trùng, chỉ canh README gốc.
 
 ---
@@ -248,7 +248,7 @@ def sandbox_from_config(cfg: LLMConfig, which=shutil.which) -> Sandbox:
 - Schema: `topics/schemas/pull-requests.json` `local_checks` thêm `sandbox: {type: string}` optional;
   `release-events.json` `smoke` thêm `sandbox`. Schema đổi nhưng **không đổi prompt** (agent không điền trường
   này) → không cần eval-record; kiểm bằng `make golden` không diff.
-- `SECURITY.md`, `software-company/README.md:270-278` cập nhật.
+- `SECURITY.md`, `companies/software-company/README.md:270-278` cập nhật.
 - Test hai chiều: `test_smoke_evidence.py` thêm ca sandbox giả ghi `sandbox` vào evidence; ca `container` thiếu
   binary → `SandboxError` nổi lên thành `smoke.failed` với `reason` rõ (khuôn 1).
 
@@ -277,7 +277,7 @@ Hệ quả: một chỗ sửa bug; studio đổi hành vi (hoãn thay vì dừng
 ### Cấu trúc package
 
 ```
-xagents-core/
+platform/xagents-core/
   pyproject.toml        # name = "xagents-core", packages = ["src/xagents_core"], deps: jsonschema, pydantic, pyyaml
                         # [tool.mypy] strict = true ; [tool.coverage.report] fail_under = 100 ; ruff như bốn package
   src/xagents_core/
@@ -316,7 +316,7 @@ Shim mẫu:
 
 ```python
 # src/company/routing.py  (sau K3.3)
-"""Shim: giữ tên `company.routing` cho console/test. Xoá ở chân trời 3 (xem docs/DAC-TA-KICH-BAN-B.md K3.a)."""
+"""Shim: giữ tên `company.routing` cho platform/console/test. Xoá ở chân trời 3 (xem docs/DAC-TA-KICH-BAN-B.md K3.a)."""
 from xagents_core.routing import *  # noqa: F401,F403
 from xagents_core.routing import __all__  # noqa: F401
 ```
@@ -329,13 +329,13 @@ package đang gọi `company.llm.load_config()` không đổi.
 
 - Root `pyproject.toml`: `members += ["xagents-core"]`, `[tool.uv.sources] xagents-core = {workspace = true}`;
   `uv lock`.
-- `software-company/pyproject.toml`, `Studio-creators/pyproject.toml`: `dependencies += ["xagents-core"]` +
+- `companies/software-company/pyproject.toml`, `Studio-creators/pyproject.toml`: `dependencies += ["xagents-core"]` +
   sources. **Bẫy**: tên phân phối studio là `video-creators`.
 - `ci.yml`: hai job theo khuôn `console-static`/`console-unit` (dòng ~300), `working-directory: xagents-core`;
   `quality.needs += [core-static, core-unit]`; `.github/rulesets/main.json` thêm 2 context (nếu required check
   là `quality` tổng thì chỉ cần `needs`; đọc `protection-guard:325-376` để chắc).
 - `Makefile` gốc: fan-out thêm `xagents-core`.
-- `xagents-core/tests/test_smoke.py`: import package, `__version__`.
+- `platform/xagents-core/tests/test_smoke.py`: import package, `__version__`.
 - Nghiệm thu: `quality` xanh, `protection-guard` xanh.
 
 ### PR K3.1 `refactor(core): K3.1 — context.py`
@@ -365,13 +365,13 @@ package đang gọi `company.llm.load_config()` không đổi.
 - `studio/llm.py`, `studio/routing.py` → shim; **xoá** `TRANSIENT_PATTERNS/is_transient_error`
   (`studio/routing.py:30,57`); studio `orchestrator` bắt `TransientError` → hoãn (copy đoạn tương ứng của
   company `_call:919` nhánh `except TransientError`), sửa `Studio-creators/TRAPS.md` mục "LLMError dừng orchestrator".
-- Test: `xagents-core/tests/test_llm.py`, `test_routing.py` nhận phần trung lập; test hai package giữ phần assert
+- Test: `platform/xagents-core/tests/test_llm.py`, `test_routing.py` nhận phần trung lập; test hai package giữ phần assert
   chuỗi/prefix; thêm test studio `test_transient_hoan_khong_dung`.
 - **K5 mở khoá sau PR này.**
 
 > **Trạng thái: K3.3 XONG** (a #150 · c1 #152 · c2 #173 · c3 bước 1 #174 · c3 bước 2 #175 · **d #176**). K3.3 không đi
 > một PR như đặc tả viết mà tách năm bước theo *mức rủi ro* — lý do và số đo `difflib` từng bước ghi ở
-> `xagents-core/src/xagents_core/llm.py` (docstring) và `docs/sessions/2026-09-08.md`.
+> `platform/xagents-core/src/xagents_core/llm.py` (docstring) và `docs/sessions/2026-09-08.md`.
 >
 > Hai chỗ đặc tả trên **đã lỗi thời, giữ nguyên làm biên bản**: (a) "một PR, có chu trình import" — thực tế
 > năm PR, không gặp chu trình nào vì `routing` chỉ nhập từ `llm`/`tools` chứ không ngược lại; (b) bốn adapter
@@ -388,7 +388,7 @@ package đang gọi `company.llm.load_config()` không đổi.
 > CHIỀU**. Studio không có `guard.py` — nó có một bộ mẫu *khác* nằm lẫn trong `runner.py`, và đo chéo 23 câu thử
 > cho thấy **mỗi bên đều có lỗ**: company trượt 4 mẫu studio bắt được, studio trượt 8 mẫu company bắt được. Nên
 > "lấy bản company" là làm mất bốn thứ ở cả hai bên. Ba quyết định hợp nhất, mỗi cái kèm số đo, ghi ở docstring
-> `xagents-core/src/xagents_core/guard.py`; đáng nhớ nhất là mẫu tiếng Việt được **viết lại tốt hơn cả hai bản
+> `platform/xagents-core/src/xagents_core/guard.py`; đáng nhớ nhất là mẫu tiếng Việt được **viết lại tốt hơn cả hai bản
 > cũ** (bản company trượt "bỏ qua mọi hướng dẫn", bản studio báo nhầm "tôi quên hướng dẫn cài đặt rồi").
 >
 > Hai điểm khác lời đặc tả: (a) `CoreConfig` cần **hai trường mới** ngoài hai trường đã đặt trước —
@@ -666,7 +666,7 @@ jobs:
 ### PR K7.3 `feat(console): K7.3 — danh tính người duyệt gắn token`
 
 - `__main__.py`: `--approver human:<tên>` (action append). Với mỗi approver sinh một token
-  (`generate_token`:93), ghi `console/.console-token-<tên>` 0600, in URL riêng từng người.
+  (`generate_token`:93), ghi `platform/console/.console-token-<tên>` 0600, in URL riêng từng người.
 - `server.py`: `_authorized:258` trả **tên** thay vì bool (`None` nếu sai); `_api_decide:455-464` điền
   `by = self.identity` và **bỏ** `by` từ body; không `--approver` → token duy nhất → `identity=None` → dùng body
   như cũ và `collect()` gắn cờ `anonymous_decide=True` → banner.
@@ -677,7 +677,7 @@ jobs:
 
 ### PR K7.4 `test(console): K7.4 — contract test với schema hai công ty`
 
-- `tests/test_hop_dong_schema.py`: nạp `software-company/topics/schemas/*.json` và `Studio-creators/...`;
+- `tests/test_hop_dong_schema.py`: nạp `companies/software-company/topics/schemas/*.json` và `Studio-creators/...`;
   bảng `FIELDS_READ = {("pull-requests", "local_checks.verified_by"), ...}` liệt kê mọi đường trường mà
   `collect.py`, `truth.py`, `brief.py` đọc (rút từ code, ~40 mục); khẳng định mỗi đường tồn tại trong schema
   (`properties` lồng). Hai chiều: monkeypatch xoá một `properties` → test đỏ.
@@ -690,9 +690,9 @@ jobs:
 
 ### PR K8.a `docs(gateway): K8.1–K8.2 — rủi ro tài khoản, ADR-0004, make llm một tài khoản`
 
-- `gateway/README.md`: §"Rủi ro tài khoản" ngay sau lệnh `make login` (3 đoạn: điều khoản, hậu quả, trách
-  nhiệm); `gateway/docs/adr/0004-ranh-gioi-dieu-khoan.md`.
-- `software-company/Makefile`, `Studio-creators/Makefile` target `llm`: nếu `PROFILE` không đặt → chép
+- `platform/gateway/README.md`: §"Rủi ro tài khoản" ngay sau lệnh `make login` (3 đoạn: điều khoản, hậu quả, trách
+  nhiệm); `platform/gateway/docs/adr/0004-ranh-gioi-dieu-khoan.md`.
+- `companies/software-company/Makefile`, `Studio-creators/Makefile` target `llm`: nếu `PROFILE` không đặt → chép
   `llm.example.yaml`; `PROFILE=claude-gateway` mới chép hồ sơ gateway; README gốc dòng 55-57 sửa.
 - K8.6 gateway `stop` (`manage.py:60-71`): Windows `tasklist /FI "PID eq <pid>" /FO CSV`, macOS `ps -o command= -p`;
   test mock ba nền tảng.
@@ -706,7 +706,7 @@ jobs:
   env: {TITLE: "${{ github.event.pull_request.title }}", BODY: "${{ github.event.pull_request.body }}", BASE: "${{ github.event.pull_request.base.ref }}"}
   run: |
     printf '%s' "$TITLE" | grep -Eq '^fix\(' || exit 0
-    git diff --name-only "origin/$BASE...HEAD" | grep -Eq '^software-company/src/company/(orchestrator\.py|orch/)' || exit 0
+    git diff --name-only "origin/$BASE...HEAD" | grep -Eq '^companies/software-company/src/company/(orchestrator\.py|orch/)' || exit 0
     printf '%s' "$BODY" | grep -q 'ADR-0037' || { echo "PR fix sửa máy trạng thái: thân PR phải dẫn ADR-0037 (và nói fix này thuộc bảng chuyển nào)." >&2; exit 1; }
 - name: Ngày merge nên có docs/sessions/<ngày>.md (cảnh báo)
   run: |
@@ -734,21 +734,21 @@ jobs:
 
 ```bash
 # K1
-wc -l software-company/src/company/orchestrator.py                       # ≤ 300
+wc -l companies/software-company/src/company/orchestrator.py                       # ≤ 300
 cd software-company && uv run pytest -q -n auto --cov tests/test_orch_bang_chuyen.py tests/test_orch_khuon_loi.py
 # K2
-grep -rn "subprocess\." software-company/src/company/{tools,workspace,smoke}.py   # chỉ hàm git
+grep -rn "subprocess\." companies/software-company/src/company/{tools,workspace,smoke}.py   # chỉ hàm git
 COMPANY_SANDBOX=container uv run python -m company.orchestrator status              # lỗi rõ nếu thiếu docker
 # K3
 grep -c "from xagents_core" Studio-creators/src/studio/*.py                          # > 0
-wc -l software-company/src/company/{bus,sqlite_bus,llm,routing,runner,guard,context,evals}.py  # mỗi ≤ 3 (+docstring)
+wc -l companies/software-company/src/company/{bus,sqlite_bus,llm,routing,runner,guard,context,evals}.py  # mỗi ≤ 3 (+docstring)
 make test                                                                             # 5 package
 # K4
 cd software-company && uv run python -m company.orchestrator status | grep bus_schema_version
 # K5
 gh workflow run eval-record -f package=software-company -f agents=clarifier
 # K7
-wc -l console/src/console/static/js/*.js                                             # mỗi ≤ 400
+wc -l platform/console/src/console/static/js/*.js                                             # mỗi ≤ 400
 ```
 
 ## Phụ lục B — Phân phiên song song

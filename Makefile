@@ -1,6 +1,6 @@
-# Root của uv workspace — một lệnh cho cả sáu package. Target riêng của từng package (demo, run, login...)
-# vẫn nằm trong Makefile của thư mục đó; `make -C gateway login` hoặc `cd gateway && make login`.
-MEMBERS := console gateway keeper software-company xagents-core
+# Root của uv workspace — một lệnh cho cả năm package. Target riêng của từng package (demo, run, login...)
+# vẫn nằm trong Makefile của thư mục đó; `make -C platform/gateway login` hoặc `cd platform/gateway && make login`.
+MEMBERS := platform/console platform/gateway platform/xagents-core companies/keeper companies/software-company
 
 .PHONY: sync test cov lint types fix build clean $(MEMBERS)
 
@@ -28,6 +28,6 @@ build:         # wheel + sdist của cả năm vào dist/
 clean:
 	rm -rf dist build */build */src/*.egg-info
 
-# `make console` = `make -C console` (chạy target mặc định của package đó)
+# `make platform/console` = `make -C platform/console` (chạy target mặc định của package đó)
 $(MEMBERS):
 	$(MAKE) -C $@

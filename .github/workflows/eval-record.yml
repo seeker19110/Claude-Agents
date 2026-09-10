@@ -49,7 +49,7 @@ jobs:
       contents: write        # tạo nhánh cho PR
       pull-requests: write   # mở PR
     env:
-      DIR: software-company
+      DIR: companies/software-company
       PREFIX: COMPANY
     steps:
       - uses: actions/checkout@v7

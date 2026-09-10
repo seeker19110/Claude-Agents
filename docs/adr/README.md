@@ -4,7 +4,7 @@ ADR ở đây là cho quyết định kiến trúc chạm **≥ 2 package** (`so
 `console`, và về sau `xagents-core`). Quyết định chỉ trong một package thì ADR nằm ở
 `<package>/docs/adr/` của package đó.
 
-Mẫu bốn mục, theo khuôn của ADR-0032 (`software-company/docs/adr/0032-*.md`):
+Mẫu bốn mục, theo khuôn của ADR-0032 (`companies/software-company/docs/adr/0032-*.md`):
 
 ```markdown
 # ADR-000N: <tên quyết định>

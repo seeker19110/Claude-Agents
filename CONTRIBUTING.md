@@ -18,11 +18,11 @@ uv sync
 
 | Thư mục | Package | Ghi chú |
 | --- | --- | --- |
-| `software-company/` | `company` | công ty gia công phần mềm |
-| `gateway/` | `gateway` | proxy xoay vòng tài khoản Google Antigravity |
-| `console/` | `console` | trực ban hợp nhất, phụ thuộc software-company qua workspace |
-| `keeper/` | `keeper` | công ty bảo trì |
-| `xagents-core/` | `xagents_core` | lõi chung |
+| `companies/software-company/` | `company` | công ty gia công phần mềm |
+| `platform/gateway/` | `gateway` | proxy xoay vòng tài khoản Google Antigravity |
+| `platform/console/` | `console` | trực ban hợp nhất, phụ thuộc software-company qua workspace |
+| `companies/keeper/` | `keeper` | công ty bảo trì |
+| `platform/xagents-core/` | `xagents_core` | lõi chung |
 
 Mỗi thư mục vẫn có `Makefile` riêng cho các lệnh của package đó; `uv run` trong thư mục con dùng `.venv` ở gốc.
 Thêm/đổi phụ thuộc: sửa `pyproject.toml` của package liên quan rồi `uv lock` ở gốc (một lock cho cả năm).
@@ -82,7 +82,7 @@ Prompt là code: đổi prompt mà không chạy lại các bước dưới đâ
    là `hash(system, user)` và giá trị là `text` đã ghi, nên chạy lại trăm lần ra đúng một số. Dao động sinh ra
    lúc **ghi**. `make eval-record AGENT=<id> RUNS=3` chạy mỗi ca 3 lần và ghi thêm `score` (tỉ lệ đạt) cùng
    `runs` vào bản ghi — thời gian chạy nhân lên đúng N lần (~2,5 phút/agent/lần), và giết ngang là mất **toàn
-   bộ** ca đã chấm vì `save()` chạy sau vòng lặp (`software-company/TRAPS.md`). `--runs > 1` mà không `--record`
+   bộ** ca đã chấm vì `save()` chạy sau vòng lặp (`companies/software-company/TRAPS.md`). `--runs > 1` mà không `--record`
    bị từ chối ngay: nó chỉ tốn thời gian mà không đổi kết quả.
 
    `score` là số đo **độ ổn định lúc ghi**, không phải nhãn pass/fail của câu trả lời được lưu — `text` giữ lần
@@ -104,12 +104,12 @@ Prompt là code: đổi prompt mà không chạy lại các bước dưới đâ
    eval-thresholds` để xem điểm và dòng "dưới ngưỡng").
 4. Commit bản ghi đầu tiên của một agent mới thì thêm id của nó vào `REQUIRED.txt` — từ lúc đó agent ấy được
    bảo vệ như trên.
-5. **`make assetscan`** (trong `software-company/`, quét công ty). Prompt là tài sản chuỗi cung ứng: mẫu
+5. **`make assetscan`** (trong `companies/software-company/`, quét công ty). Prompt là tài sản chuỗi cung ứng: mẫu
    injection, ký tự vô hình, lệnh `curl … | sh`, khóa lộ trong file prompt đều làm CI đỏ (ADR-0022). Cần giữ một
    mẫu để làm ví dụ dạy học thì thêm dòng có lý do vào `assetscan-waivers.txt`, đừng nới regex.
 6. Nhồi thêm skill vào một agent thì chạy **`make assetbudget`**: prompt tĩnh vượt 50% `budget_tokens_per_task`
    của chính agent đó là đỏ — nâng ngân sách có chủ đích, hoặc bớt skill.
-7. **`make subagents`** (trong `software-company/`) rồi commit `.claude/agents/`: trợ lý kiểm duyệt `sc-*` là bản dẫn xuất
+7. **`make subagents`** (trong `companies/software-company/`) rồi commit `.claude/agents/`: trợ lý kiểm duyệt `sc-*` là bản dẫn xuất
    một chiều từ `agents/`, `skills/` và `gates/checklists.md`; CI `subagents-check` và pre-commit đỏ khi bản trên đĩa lệch
    nguồn. Sửa mục "Người tự kiểm thêm" trong `gates/checklists.md` thì khai nguồn bằng chứng cho nó ở
    `src/company/gate_checklists.py` trước, nếu không parser gãy.

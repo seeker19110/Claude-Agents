@@ -13,19 +13,19 @@ coverage.xml
 htmlcov/
 
 # software-company: dữ liệu chạy và cấu hình model cá nhân
-software-company/company.sqlite*
-software-company/company.artifacts/
-software-company/.worktrees/
-software-company/llm.yaml
-software-company/llm.yaml.bak
-software-company/llm.yaml.bak*
+companies/software-company/company.sqlite*
+companies/software-company/company.artifacts/
+companies/software-company/.worktrees/
+companies/software-company/llm.yaml
+companies/software-company/llm.yaml.bak
+companies/software-company/llm.yaml.bak*
 
 # đầu ra mô phỏng examples/donghanhcungban_demo.py — `--out` đặt tên gì cũng được, nên bắt cả các tên hay dùng.
 # Thiếu mấy dòng này thì PRD/threat model do model sinh nằm dạng untracked và rất dễ bị `git add` diện rộng
 # quét nhầm vào commit (kèm cả repo khách lồng bên trong).
-software-company/sim-out/
-software-company/real-demo/
-software-company/demo-out/
+companies/software-company/sim-out/
+companies/software-company/real-demo/
+companies/software-company/demo-out/
 
 # SQLite tạm do test sinh
 *.sqlite
@@ -34,7 +34,7 @@ software-company/demo-out/
 *.sqlite*.bak*
 
 # gateway: token OAuth nằm ngoài cây repo (~/.x-agents/auth/); trong repo chỉ có venv
-gateway/.venv/
+platform/gateway/.venv/
 
 # editable install của workspace member + đầu ra `uv build`
 *.egg-info/
@@ -42,9 +42,9 @@ dist/
 build/
 
 # console: token phiên sinh mỗi lần chạy server trực ban (quyền 0600) — không bao giờ commit
-console/.console-token
+platform/console/.console-token
 # console: log của động cơ do console bật (ADR-0004) — nhật ký chạy, không phải mã nguồn
-console/.engine/
+platform/console/.engine/
 
 # Claude Code: quyền và cấu hình riêng của từng máy (settings.json dùng chung thì vẫn commit)
 .claude/settings.local.json
@@ -54,13 +54,13 @@ console/.engine/
 .claude/worktrees/
 
 # log tiến trình orchestrator (sinh lúc chạy)
-software-company/var/
-keeper/var/
+companies/software-company/var/
+companies/keeper/var/
 
 # keeper: dữ liệu chạy (state quan sát/triage) — không commit
-keeper/keeper.sqlite*
+companies/keeper/keeper.sqlite*
 
 # keeper: cấu hình model thật (khoá API / thư mục đăng nhập CLI). Chỉ commit keeper/llm.example.yaml.
-keeper/llm.yaml
-keeper/llm.yaml.bak
-keeper/llm.yaml.bak*
+companies/keeper/llm.yaml
+companies/keeper/llm.yaml.bak
+companies/keeper/llm.yaml.bak*

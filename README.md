@@ -12,13 +12,21 @@ Nguyên tắc chung cho mọi công ty:
 
 ## Các thành phần
 
+Hai nhóm thư mục, ranh giới theo vai trò (ADR-0011): `platform/` là hạ tầng dùng chung — không thuộc công ty nào;
+`companies/` là các công ty, mỗi cái có agent, topic, human gate và khách riêng.
+
+```
+platform/     xagents-core/  gateway/  console/
+companies/    software-company/  keeper/
+```
+
 | Thư mục | Vai trò | Quy mô |
 |---|---|---|
-| [`software-company/`](software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 6 agent (5 công đoạn + supervisor), 45 skill, 19 topic, 14 template, 3 human gate (+ gate `escalation`; kế hoạch do `_check_plan` chặn bằng code, ADR-0037) có trợ lý kiểm duyệt chỉ đọc (10 subagent + hồ sơ bằng chứng `gate_brief`, `/gate-brief`), giao hàng thật bằng tag + nhánh `company/release` (`--deliver`), ADR 0001–0039, 1100 test |
-| [`gateway/`](gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code. **Nhiều tài khoản có rủi ro khoá tài khoản Google — đọc [§Rủi ro tài khoản](gateway/README.md#rủi-ro-tài-khoản--đọc-trước-khi-gõ-make-login-lần-thứ-hai) trước** | daemon `127.0.0.1:1123/v1`, CLI `python -m gateway start/stop/status/login/logout/reset/setup/models`, 251 test |
-| [`console/`](console/) | Trực ban hợp nhất: một trang web cục bộ nhìn công ty — hàng đợi human gate, ticket, token và chi phí, gói tài khoản đang xoay — duyệt gate ngay tại chỗ khi bật `--allow-decide`, đổi model/backend khi bật `--allow-config`, giao việc mới (yêu cầu phần mềm kèm nơi lưu dự án) khi bật `--allow-submit`. Cập nhật tức thì bằng SSE, địa chỉ deep-link tới từng gate/ticket, tìm và lọc mọi bảng, cài được thành app (PWA). Đọc bus SQLite ở chế độ chỉ đọc; quyết định đi qua đúng `HumanGate`, việc mới đi qua đúng bus + schema của công ty | `127.0.0.1:8200`, chỉ thư viện chuẩn (`http.server`), 6 màn hình, chỉ đọc mặc định + token mỗi lần chạy, ADR 0001–0003 |
-| [`xagents-core/`](xagents-core/) | Lõi chung của mọi công ty AI: bus, llm, runner, guard, gate — company import từ đây thay vì tự fork | mypy `strict` + phủ 100% dòng VÀ 100% nhánh từ ngày đầu, 477 test; ADR gốc 0001, 0003, 0004 (0002 đặt trước cho K4); bảy bước K3.1–K3.7 **đã xong hết** (K3.5c `sqlite_bus` #187, K3.6 `AgentRunner` #195, K3.7 `gates`/`gate_cli`/`supervisor` #198 — bước cuối kịch bản B); nay đi tiếp theo mạch p3 (span ADR-0009 #222, cổng điểm eval #224) |
-| [`keeper/`](keeper/) | Công ty bảo trì: tín hiệu → ticket bảo trì → patch có bằng chứng đo hai chiều → PR; khách hàng số 0 là chính repo này | 6 khối / 8 agent theo ADR-0006; BT1–BT7 đã merge — package có mã thật, chạy được, chưa qua canary (BT8) — chi tiết ở [`keeper/README.md`](keeper/README.md), lộ trình ở [`keeper/docs/DAC-TA-KEEPER.md`](keeper/docs/DAC-TA-KEEPER.md) |
+| [`companies/software-company/`](companies/software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 6 agent (5 công đoạn + supervisor), 45 skill, 19 topic, 14 template, 3 human gate (+ gate `escalation`; kế hoạch do `_check_plan` chặn bằng code, ADR-0037) có trợ lý kiểm duyệt chỉ đọc (10 subagent + hồ sơ bằng chứng `gate_brief`, `/gate-brief`), giao hàng thật bằng tag + nhánh `company/release` (`--deliver`), ADR 0001–0039, 1100 test |
+| [`platform/gateway/`](platform/gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code. **Nhiều tài khoản có rủi ro khoá tài khoản Google — đọc [§Rủi ro tài khoản](platform/gateway/README.md#rủi-ro-tài-khoản--đọc-trước-khi-gõ-make-login-lần-thứ-hai) trước** | daemon `127.0.0.1:1123/v1`, CLI `python -m gateway start/stop/status/login/logout/reset/setup/models`, 251 test |
+| [`platform/console/`](platform/console/) | Trực ban hợp nhất: một trang web cục bộ nhìn công ty — hàng đợi human gate, ticket, token và chi phí, gói tài khoản đang xoay — duyệt gate ngay tại chỗ khi bật `--allow-decide`, đổi model/backend khi bật `--allow-config`, giao việc mới (yêu cầu phần mềm kèm nơi lưu dự án) khi bật `--allow-submit`. Cập nhật tức thì bằng SSE, địa chỉ deep-link tới từng gate/ticket, tìm và lọc mọi bảng, cài được thành app (PWA). Đọc bus SQLite ở chế độ chỉ đọc; quyết định đi qua đúng `HumanGate`, việc mới đi qua đúng bus + schema của công ty | `127.0.0.1:8200`, chỉ thư viện chuẩn (`http.server`), 6 màn hình, chỉ đọc mặc định + token mỗi lần chạy, ADR 0001–0003 |
+| [`platform/xagents-core/`](platform/xagents-core/) | Lõi chung của mọi công ty AI: bus, llm, runner, guard, gate — company import từ đây thay vì tự fork | mypy `strict` + phủ 100% dòng VÀ 100% nhánh từ ngày đầu, 477 test; ADR gốc 0001, 0003, 0004 (0002 đặt trước cho K4); bảy bước K3.1–K3.7 **đã xong hết** (K3.5c `sqlite_bus` #187, K3.6 `AgentRunner` #195, K3.7 `gates`/`gate_cli`/`supervisor` #198 — bước cuối kịch bản B); nay đi tiếp theo mạch p3 (span ADR-0009 #222, cổng điểm eval #224) |
+| [`companies/keeper/`](companies/keeper/) | Công ty bảo trì: tín hiệu → ticket bảo trì → patch có bằng chứng đo hai chiều → PR; khách hàng số 0 là chính repo này | 6 khối / 8 agent theo ADR-0006; BT1–BT7 đã merge — package có mã thật, chạy được, chưa qua canary (BT8) — chi tiết ở [`companies/keeper/README.md`](companies/keeper/README.md), lộ trình ở [`companies/keeper/docs/DAC-TA-KEEPER.md`](companies/keeper/docs/DAC-TA-KEEPER.md) |
 | [`docs/HUONG-DAN-VAN-HANH.md`](docs/HUONG-DAN-VAN-HANH.md) | Hướng dẫn cài đặt và vận hành từng bước: cấu hình gói tài khoản, chạy thử, đưa yêu cầu, duyệt gate, theo dõi chi phí, bảo trì | |
 | [`docs/DIEU-PHOI-MODEL.md`](docs/DIEU-PHOI-MODEL.md) | Điều phối model theo gói tài khoản: backend, 3 tier, bảng agent → tier, cơ chế xoay khi hết quota | |
 | [`docs/TRUC-VA-DUNG-KHAN.md`](docs/TRUC-VA-DUNG-KHAN.md) | Trực ban và **dừng khẩn**: ba mức dừng (ticket / dự án / toàn hệ thống) kèm lệnh đã chạy thật, lịch trực luân phiên, cổng phát hành gộp lô, và danh sách thứ CHƯA có để không ai tưởng đã có | |
@@ -45,7 +53,7 @@ uv sync            # một lần ở gốc repo: một .venv cho cả năm packa
 make test          # pytest cả năm (hoặc make lint / make cov / make build)
 
 # Chạy offline (client giả), không cần key
-cd software-company && make test && make demo
+cd companies/software-company && make test && make demo
 ```
 
 Không có `make` (Windows): mỗi target đều có dạng `uv run` tương đương trong `Makefile`, ví dụ `make test` = `uv run pytest -q`,
@@ -53,7 +61,7 @@ Không có `make` (Windows): mỗi target đều có dạng `uv run` tương đ�
 `uv run` trong bất kỳ thư mục con nào cũng dùng `.venv` chung ở gốc.
 
 Chạy model thật, không API key: mỗi công ty có sẵn hồ sơ **gói Claude + gateway Antigravity** — `make llm` chép
-`llm.claude-gateway.yaml` thành `llm.yaml` là chạy được (cần `claude login` và `cd gateway && make login && make start`).
+`llm.claude-gateway.yaml` thành `llm.yaml` là chạy được (cần `claude login` và `cd platform/gateway && make login && make start`).
 `make llm` **từ chối cài** khi máy chưa đăng nhập tài khoản Antigravity nào (`python -m gateway ready`): hồ sơ trỏ
 `base_url` vào daemon, cài lên máy trống là dựng sẵn một cấu hình chắc chắn hỏng ở lượt gọi model đầu tiên.
 Muốn tự khai từ đầu thì sao chép `llm.example.yaml` → `llm.yaml` (bị gitignore), hoặc đặt biến môi trường
@@ -73,16 +81,16 @@ Bảng agent → tier, lý do và chiến lược ưu tiên: [`docs/DIEU-PHOI-MO
 Bật gateway xoay vòng tài khoản Google (miễn phí theo quota Antigravity):
 
 ```bash
-cd gateway
+cd platform/gateway
 make login      # đăng nhập Google; chạy lại để thêm tài khoản   (= uv run python -m gateway login)
 make start      # daemon tại 127.0.0.1:1123
-make setup      # ghi ../software-company/llm.yaml dạng một provider trỏ vào gateway (không dùng khi llm.yaml đã có `backends:`)
+make setup      # ghi ../../companies/software-company/llm.yaml dạng một provider trỏ vào gateway (không dùng khi llm.yaml đã có `backends:`)
 ```
 
 Nhìn công ty trên một màn hình (và duyệt gate tại chỗ):
 
 ```bash
-cd console
+cd platform/console
 uv run python -m console                 # 127.0.0.1:8200, chỉ đọc; terminal in địa chỉ kèm token phiên
 uv run python -m console --allow-decide  # mở khoá các nút quyết định gate
 uv run python -m console --allow-config  # mở khoá màn "Cài đặt model" (ghi llm.yaml, giữ bản .bak)
@@ -106,7 +114,7 @@ topic (JSON Schema, có key) ──► registry: agent nào nhận topic nào
 ## Phát triển
 
 - CI (`.github/workflows/ci.yml`, Python 3.11 và 3.13): cả năm package chạy ruff + mypy + pytest có ngưỡng coverage
-  (`fail_under` 100 / 100 / 100 / 100 / 100 cho software-company / gateway / console / xagents-core / keeper: cả năm đang phủ 100% dòng, ngưỡng bằng đúng mức đạt được nên mất một
+  (`fail_under` 100 / 100 / 100 / 100 / 100 cho companies/software-company / platform/gateway / platform/console / platform/xagents-core / companies/keeper: cả năm đang phủ 100% dòng, ngưỡng bằng đúng mức đạt được nên mất một
   dòng phủ là CI đỏ); software-company chạy thêm `evals all --replay --strict`. Job `golden-check` chạy `make golden` rồi so
   `git diff --exit-code`; `asset-scan` quét tài sản prompt và ngân sách token của công ty (ADR-0022); `audit` chạy
   `pip-audit --strict` + gitleaks trên cả lịch sử; `quality` gom kết quả — tên job này là bất biến (required status check

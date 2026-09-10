@@ -43,7 +43,7 @@ giá trị bus kiểm, giá trị tự khai không bao giờ được dùng.
 
 - Four-eyes trở lại đúng nghĩa trên đường replay: người publish gate không tự duyệt được gate ấy, kể cả khi
   họ nằm trong `COMPANY_GATE_APPROVERS`. Ca chốt:
-  `xagents-core/tests/test_gate_cli.py::test_created_by_lay_tu_actor_that_khong_phai_evidence_tu_khai`
+  `platform/xagents-core/tests/test_gate_cli.py::test_created_by_lay_tu_actor_that_khong_phai_evidence_tu_khai`
   (đo hai chiều: bỏ bản sửa → đỏ ở `assert g.pending["G9"].created_by == "human:evil"`).
 - Gate ma vẫn **dựng được** (topic `audit-log` mở, không thể chặn ở tầng này) nhưng nay mang tên actor đã tạo
   ra nó, nên nhìn thấy được trong `gate_cli list` và console. Chặn hẳn cần ACL producer cho `gate.request`
@@ -58,5 +58,5 @@ giá trị bus kiểm, giá trị tự khai không bao giờ được dùng.
 
 - `docs/adr/0001-loi-chung-xagents-core.md` §K3.7 — hợp nhất `gates`/`gate_cli` (PR #198).
 - `docs/adr/0005-gate-request-tu-choi-created-by-rong.md` — nửa còn lại của cùng bất biến (PR #199).
-- `xagents-core/src/xagents_core/gate_cli.py` — `trusted_decision()`, `PersistentGate.apply()`.
+- `platform/xagents-core/src/xagents_core/gate_cli.py` — `trusted_decision()`, `PersistentGate.apply()`.
 - `docs/thi-hanh/k3.7.md` mục "Cố ý không vá trong gói này" — nơi phát hiện được ghi lại và hoãn.

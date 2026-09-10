@@ -89,7 +89,7 @@ và đúng những dòng **không có test CI canh**. Đã sửa README. ADR nà
 ## Liên quan
 
 - `AGENTS.md` luật cấm 8 (không tin lời khai) — cơ sở của việc lấy.
-- `software-company/docs/adr/0012-content-context-cost-parallel.md` (toàn văn vào prompt) và `docs/adr/0001-loi-chung-xagents-core.md` — cơ sở
+- `companies/software-company/docs/adr/0012-content-context-cost-parallel.md` (toàn văn vào prompt) và `docs/adr/0001-loi-chung-xagents-core.md` — cơ sở
   của hai dòng "đã kiểm và loại" đầu bảng.
 - `Studio-creators/docs/adr/0002-approval-first-gates.md` — cơ sở của lời từ chối consensus.
 - `TRAPS.md` §1 khuôn 1 (lỗi im lặng) và §2 (đo trước khi sửa).

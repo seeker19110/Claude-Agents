@@ -6,7 +6,7 @@
 *Security → Report a vulnerability*. Nếu không truy cập được, gửi email tới người bảo trì repo
 (xem `git log`) với tiêu đề bắt đầu bằng `[security]`.
 
-Hãy kèm: phiên bản/commit, thư mục liên quan (`software-company/`, `gateway/`), các bước tái
+Hãy kèm: phiên bản/commit, thư mục liên quan (`companies/software-company/`, `platform/gateway/`), các bước tái
 hiện, và tác động bạn đánh giá. Có bản vá đề xuất thì càng tốt — nhưng đừng mở PR công khai cho lỗ hổng chưa vá.
 
 Đây là dự án nguồn mở không có SLA và không có chương trình thưởng lỗi. Cam kết thực tế: phản hồi trong vòng 7
@@ -83,7 +83,7 @@ Gateway lắng nghe `127.0.0.1:1123` và **không có xác thực người dùng
 dùng từ máy khác thì đi qua SSH tunnel.
 
 Vì không có xác thực, hai header là toàn bộ hàng rào giữa pool tài khoản Google và một trang web bất kỳ người dùng
-đang mở (`guard_middleware` trong `gateway/server.py`, đối xứng với `console/server.py::_guard`):
+đang mở (`guard_middleware` trong `platform/gateway/server.py`, đối xứng với `platform/console/server.py::_guard`):
 
 - `Host` không phải loopback → **404** (không xác nhận có server ở đây). Chặn DNS rebinding: trình duyệt gửi tên
   miền kẻ tấn công điều khiển dù bản ghi A của nó trỏ về 127.0.0.1.

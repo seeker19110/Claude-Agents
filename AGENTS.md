@@ -13,11 +13,11 @@ một `uv.lock`, một `.venv` ở gốc):
 
 | Thư mục | Package | Là gì |
 |---|---|---|
-| `software-company/` | `company` | công ty gia công phần mềm: yêu cầu → PRD → ticket → code thật trên worktree → review → release → khách ký |
-| `gateway/` | `gateway` | proxy OpenAI-compatible xoay vòng tài khoản Google Antigravity |
-| `console/` | `console` | trực ban hợp nhất: một trang web cục bộ nhìn công ty, duyệt gate tại chỗ |
-| `xagents-core/` | `xagents_core` | lõi chung công ty dùng (bus, llm, runner, guard, gate) — đang xây theo bảy bước K3, xem `docs/adr/0001-loi-chung-xagents-core.md` |
-| `keeper/` | `keeper` | công ty bảo trì: tín hiệu → ticket bảo trì → patch có bằng chứng đo hai chiều → PR; khách hàng số 0 là chính repo này |
+| `companies/software-company/` | `company` | công ty gia công phần mềm: yêu cầu → PRD → ticket → code thật trên worktree → review → release → khách ký |
+| `platform/gateway/` | `gateway` | proxy OpenAI-compatible xoay vòng tài khoản Google Antigravity |
+| `platform/console/` | `console` | trực ban hợp nhất: một trang web cục bộ nhìn công ty, duyệt gate tại chỗ |
+| `platform/xagents-core/` | `xagents_core` | lõi chung công ty dùng (bus, llm, runner, guard, gate) — đang xây theo bảy bước K3, xem `docs/adr/0001-loi-chung-xagents-core.md` |
+| `companies/keeper/` | `keeper` | công ty bảo trì: tín hiệu → ticket bảo trì → patch có bằng chứng đo hai chiều → PR; khách hàng số 0 là chính repo này |
 
 Nguyên tắc chung (chi tiết ở `ARCHITECTURE.md`): model quyết định – code hành động; prompt là code; guardrail có
 hạn mức; self-hosted, resume được; trung lập provider.
@@ -31,7 +31,7 @@ hạn mức; self-hosted, resume được; trung lập provider.
 3. **Không commit** `llm.yaml`, `media.yaml`, `*.sqlite*`, `company.artifacts/`, khoá/token, dữ liệu khách thật.
    Chỉ commit `*.example.yaml`. gitleaks quét cả lịch sử — lỡ commit rồi xoá vẫn đỏ (`SECURITY.md`).
 4. **Không gọi provider trả phí trong test.** Provider `fake` + bản ghi eval đủ chạy offline toàn bộ.
-5. **Không sửa tay bản dẫn xuất**: `.claude/agents/sc-*.md` sinh từ `software-company/agents/`, `skills/`,
+5. **Không sửa tay bản dẫn xuất**: `.claude/agents/sc-*.md` sinh từ `companies/software-company/agents/`, `skills/`,
    `gates/checklists.md` bằng `make subagents`; `tests/golden/` sinh bằng `make golden`. Sửa nguồn rồi sinh lại.
 6. **Không hạ ngưỡng coverage để PR qua cổng.** `fail_under = 100` ở cả sáu package; mất một dòng phủ là CI đỏ
    — thêm test, không hạ số.
@@ -101,8 +101,8 @@ hạn mức; self-hosted, resume được; trung lập provider.
 ```bash
 uv sync                          # một lần ở gốc
 make test                        # cả sáu package; hoặc cd <pkg> && uv run pytest -q
-cd software-company && uv run python -m company.orchestrator status      # PHẢI ở trong software-company/ (gốc có company.sqlite rỗng)
-cd console && uv run python -m console --allow-decide                    # trực ban; bật console thì bật luôn orchestrator run --watch
+cd companies/software-company && uv run python -m company.orchestrator status      # PHẢI ở trong companies/software-company/ (gốc có company.sqlite rỗng)
+cd platform/console && uv run python -m console --allow-decide                    # trực ban; bật console thì bật luôn orchestrator run --watch
 ```
 
 Lệnh dừng khẩn, lịch trực, giới hạn đã biết: `docs/TRUC-VA-DUNG-KHAN.md`. Cấu hình model theo gói tài khoản:

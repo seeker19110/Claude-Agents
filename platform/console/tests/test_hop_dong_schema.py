@@ -22,11 +22,11 @@ from typing import Any
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[2]
-CONSOLE_SRC = [ROOT / "console" / "src" / "console" / f for f in ("collect.py", "truth.py")]
+ROOT = Path(__file__).resolve().parents[3]
+CONSOLE_SRC = [ROOT / "platform" / "console" / "src" / "console" / f for f in ("collect.py", "truth.py")]
 # `keeper` có mặt vì `collect.py` đọc payload của công ty bảo trì (`maintenance-tickets`, `debt-ledger`,
 # `release-notes`) — thiếu nó thì trường console đọc riêng của keeper không schema nào chứa và test đỏ.
-PACKAGES = {"software-company": "company", "keeper": "keeper"}
+PACKAGES = {"companies/software-company": "company", "companies/keeper": "keeper"}
 
 # Đọc payload của envelope: `e.payload.get("x")`, `payload.get("x", …)`, `p.get("x")`, `p["x"]`.
 # Biến `p` là quy ước dùng khắp `collect.py`/`truth.py` cho `e.payload` — bắt nó là bắt đúng chỗ console chạm
@@ -102,7 +102,7 @@ def test_truong_long_mot_tang_van_con_trong_schema(topic: str) -> None:
     """`local_checks.sandbox` / `smoke.sandbox` (K2.5) là bằng chứng ô cảnh báo K2.7 đọc. Regex chỉ thấy tầng
     ngoài, nên tầng trong phải canh riêng — bỏ một khoá ở đây thì ô sandbox im lặng đọc ra `None` và người trực
     kết luận "không có lượt nào ngoài container", đúng chiều nguy hiểm."""
-    props = _payload_props(_schema("software-company", topic))
+    props = _payload_props(_schema("companies/software-company", topic))
     for cha, con in HOP_DONG_LONG[topic].items():
         assert cha in props, f"{topic}.{cha} biến mất khỏi schema"
         co = set(props[cha].get("properties") or {})
