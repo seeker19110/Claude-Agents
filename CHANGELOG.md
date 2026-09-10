@@ -6,6 +6,13 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(sessions): **ghi nốt hai mục nhật ký phiên còn thiếu cho #247 và #249**. Luật bắt buộc 9 đòi mỗi
+  phiên một mục; nhật ký 2026-09-09 dừng ở #245 trong khi hai PR sau đó đã merge — cả hai có dòng CHANGELOG
+  và mục `TRAPS.md` nhưng thiếu phần kể lại. Mục mới ghi ba thứ đo được: `rerun_failed_jobs` phát lại payload
+  sự kiện gốc nên nhãn mới không tới được cổng; vá `labeled` **không hồi tố** cho PR có head cũ hơn thay đổi;
+  và `port + 1` là một giả định vô căn cứ khiến một ca test xanh lâu nay vì môi trường tình cờ thuận. Kèm ghi
+  lại ba lần tự bác bỏ trong phiên, để lần sau đọc được cả chỗ sai lẫn chỗ đúng.
+
 - test(company): **cổng chết trong `test_adr0012` lấy bằng socket giữ chỗ, không phải `port + 1`** (#249). Ca
   `test_resolve_host_va_default_fetcher_tren_server_that` giả định cổng kế bên cổng server là cổng trống —
   **vô căn cứ**: `port` do OS cấp từ dải ephemeral nên `port + 1` cũng ephemeral và có thể đang bị tiến trình
