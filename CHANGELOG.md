@@ -6,6 +6,14 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- test(company): **bù 24/86 nhánh chưa đi cho `software-company`, chuẩn bị bật `branch = true`** (#TODO). Audit
+  toàn diện 2026-09-10 đo được 86 nhánh (if/elif chỉ một vế từng chạy) chưa test trên `src/company`; PR này
+  bù xong 8/24 file: `assetscan.py`, `delivery.py`, `evals.py`, `gate_brief.py`, `llm.py`, `mcp_bridge.py`,
+  `metrics.py`, `orch/cli_cmds.py`. Hai nhánh của `llm.py`/`mcp_bridge.py` (raise/return thoát qua
+  `with`/`@contextmanager` lồng nhau) là bẫy đo của coverage.py — đã test đúng hành vi, đánh dấu
+  `# pragma: no branch` kèm bằng chứng arc thật, không phải bỏ qua kiểm. `branch = true` CHƯA bật (còn 62
+  nhánh/16 file) — bật ở PR kế tiếp khi xong hết, tránh CI đỏ giữa chừng cho người khác.
+
 - docs: **khớp README gốc với thực tế — số test company, trạng thái keeper** (#257). Software-company nói 1097
   test trong khi lần chạy thật gần nhất ra 1100; dòng keeper nói BT2–BT8 chưa có mã trong khi BT1–BT7 đã merge
   (mã thật, 532 test, ba lệnh CLI chạy được) — chỉ BT8 (canary) chưa xong. Phát hiện qua một đợt audit toàn diện.

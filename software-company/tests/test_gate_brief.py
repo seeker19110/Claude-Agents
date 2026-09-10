@@ -226,7 +226,7 @@ def test_release_uoc_luong_va_ngan_sach_doi_tu_gate_plan(tmp_path):
 def test_release_uoc_luong_unknown_khi_khong_con_ticket_nao(tmp_path):
     """`tids` của release còn đó nhưng ticket đã bị xoá khỏi `lead.tickets` (dọn dữ liệu/lỗi đồng bộ) →
     `rel_tickets` rỗng, mục ước lượng phải `unknown` ngay, không tính min/median/max trên danh sách rỗng."""
-    db, _, orch = _scenario(tmp_path, to="release")
+    _db, _, orch = _scenario(tmp_path, to="release")
     del orch.lead.tickets["T1"]
     b = GB.build(orch, "REL-001")
     it = next(x for x in b["self_check"] if x["id"] == "plan.uoc-luong-co-so")
@@ -259,7 +259,7 @@ def test_release_uoc_luong_ok_khi_co_bai_hoc_cho_moi_assignee(tmp_path):
 def test_release_uoc_luong_unknown_khi_thieu_hieu_chinh_cho_assignee(tmp_path, monkeypatch):
     """Có bài học rồi (không rơi vào nhánh "dự án đầu") nhưng assignee của ticket này chưa có hiệu chỉnh
     riêng (agent mới, hoặc bài học chỉ tích luỹ cho agent khác) → vẫn `unknown`, không tự nhận `ok`."""
-    db, _, orch = _scenario(tmp_path)
+    _db, _, orch = _scenario(tmp_path)
     _pub(orch.bus, "acceptance-results", "REL-001", "ops",
          {"release_id": "REL-001", "project_id": "P1", "verdict": "accepted", "signed_by": "customer:po"})
     orch.run()
@@ -366,7 +366,7 @@ def test_acceptance_moi_truong_chua_co_release_events_nao(tmp_path, monkeypatch)
     """`_brief_acceptance` đọc `release-events` theo `rid` suy từ subject: rid chưa từng có sự kiện nào (khác
     trường hợp "chưa lên production" — ở đây chưa lên MÔI TRƯỜNG nào) → nói thẳng "chưa có release-events",
     nhánh `last is None` chưa test tới ở bất kỳ test nào khác (mọi kịch bản khác đều đã qua staging)."""
-    db, bus, orch = _scenario(tmp_path)
+    _db, bus, orch = _scenario(tmp_path)
     orig_replay = bus.replay
     monkeypatch.setattr(bus, "replay", lambda *a, **kw:
                          iter(()) if kw.get("topic") == "release-events" else orig_replay(*a, **kw))
@@ -381,7 +381,7 @@ def test_acceptance_unknown_khi_contract_noi_staging_va_moi_o_staging(tmp_path, 
     `gap` (không nhắc "staging" ở contract) đã test ở case trên. Pipeline giả (FakeClient) đi thẳng một lượt từ
     plan tới production nên không có mốc "đã có contract nhưng còn ở staging" tự nhiên — giả lập bằng cách lọc
     bớt release-event production khỏi thứ `_brief_acceptance` nhìn thấy, contract thật vẫn đọc từ blackboard."""
-    db, bus, orch = _scenario(tmp_path)   # tới acceptance: contract đã có, đã lên production
+    _db, bus, orch = _scenario(tmp_path)   # tới acceptance: contract đã có, đã lên production
     orch.blackboard.write("ops", "contract", "openapi.yaml",
                           content=CONTRACT + "# UAT chạy trên staging\n", project_id="P1")
     orig_replay = bus.replay
