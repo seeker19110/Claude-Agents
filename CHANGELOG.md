@@ -6,6 +6,14 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(console): **console một view — giai đoạn 5/5 (cuối) của ADR-0011** — sáu màn "thông tin vận hành"
+  (Trực ban, Phễu sản phẩm, Xưởng phần mềm, Công ty bảo trì, Chi phí, Nhật ký) trước đây ẩn/hiện qua sidebar
+  (một màn thấy tại một thời điểm) nay LUÔN hiển thị cùng lúc trên một trang cuộn dài; sidebar không còn
+  ẩn/hiện mà chỉ cuộn tới đúng mục. `render()` đã vẽ mọi hàm không điều kiện theo view từ trước nên gộp
+  không cần vẽ lại gì thêm; ba mục trước chỉ vẽ khi điều hướng tới (`renderSubmit`/`renderGuide`/`loadSettings`)
+  nay vẽ thêm một lần lúc mở trang để không rỗng nếu người dùng không bấm nav. `Cài đặt`/`Hướng dẫn` không đổi
+  hành vi (#268)
+
 - docs: **thứ tự backend mặc định cho công ty hợp nhất — giai đoạn 4/5 của ADR-0011** — chốt tường minh vào
   `docs/DIEU-PHOI-MODEL.md` §4 thứ tự `claude-code (sub) → codex (sub) → gateway (Antigravity) → model local →
   API trả phí` (đã đúng sẵn trong thứ tự khai báo mẫu, chỉ thiếu ghi thành tài liệu); thêm ví dụ backend

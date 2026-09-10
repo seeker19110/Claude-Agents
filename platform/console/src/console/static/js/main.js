@@ -7,14 +7,14 @@ import {renderEngine} from "./engine.js";
 import {renderKeeper} from "./keeper.js";
 import {renderLoops} from "./loops.js";
 import {VIEWS, applyRoute, readHash, showView, titles, view, writeHash} from "./router.js";
+import {loadSettings} from "./settings.js";
 import {SC, srcOk, st} from "./state.js";
 import {connect, freshLabel, load, mode, skeleton} from "./stream.js";
 import {renderBackends, renderBoards, renderTables} from "./tables.js";
 import {filter, renderStreams, renderTiles} from "./tiles.js";
 import {renderDeadlocks, renderDelivery, renderProductFunnel, renderRunning, renderSandbox, renderSilent} from "./truth.js";
 import {$, fold, setQ} from "./util.js";
-import "./settings.js";   // chỉ để chạy phần gắn sự kiện ở top-level
-import "./submit.js";   // chỉ để chạy phần gắn sự kiện ở top-level
+import {renderGuide, renderSubmit} from "./submit.js";
 import "./drawer.js";   // chỉ để chạy phần gắn sự kiện ở top-level
 
 /* ---------- vẽ lại toàn trang ---------- */
@@ -69,5 +69,11 @@ if("serviceWorker" in navigator && window.isSecureContext){
 addEventListener("scroll",hideTip,{passive:true});
 if(!location.hash) writeHash("truc-ban",null,null,true);
 showView(readHash().view);
+// ADR-0011 giai đoạn 5/5: mọi section giờ luôn hiện trên một trang cuộn (showView chỉ còn cuộn tới đúng
+// mục), nên ba mục trước đây CHỈ vẽ khi điều hướng tới (`phan-mem`/`huong-dan`/`cai-dat`) phải vẽ ngay từ
+// đầu — nếu không, người mở console mà không bấm nav sẽ thấy ba mục đó rỗng dù đã cuộn thấy chúng.
+renderSubmit("phan-mem");
+renderGuide();
+loadSettings();
 skeleton();
 connect();

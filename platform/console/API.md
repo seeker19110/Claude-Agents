@@ -284,11 +284,14 @@ Service worker **không bao giờ** cache `/api/*` (dữ liệu sống; `/api/st
 cache là treo) và **không bao giờ** cache `/` (HTML mang token phiên, token đổi mỗi lần chạy server).
 Chỉ icon được cache. Icon sinh lại bằng `uv run python tools/make_icons.py` (stdlib, không Pillow).
 
-Điều hướng — địa chỉ là trạng thái:
+Điều hướng — địa chỉ là trạng thái (ADR-0011 §5 giai đoạn 5/5: sáu màn "thông tin" — `truc-ban`, `phieu`,
+`phan-mem`, `bao-tri`, `chi-phi`, `nhat-ky` — nay LUÔN hiển thị cùng lúc trên một trang cuộn dài; `<màn>` chỉ
+còn quyết định nav cuộn tới đâu và tiêu đề nào hiện ở đầu trang, KHÔNG còn ẩn/hiện section. `cai-dat` và
+`huong-dan` không đổi):
 
 ```
 #/<màn>                     truc-ban | phieu | phan-mem | bao-tri | chi-phi | nhat-ky | cai-dat | huong-dan
-#/<màn>/gate/<id>           màn đó, ngăn kéo gate đang mở
+#/<màn>/gate/<id>           cuộn tới màn đó, ngăn kéo gate đang mở
 #/<màn>/ticket/<id>         ngăn kéo ticket
 ```
 
