@@ -199,3 +199,28 @@ def test_tu_choi_escalation_cua_rc_da_bi_ban_giao_vuot_qua_thi_huy_rc_khong_lam_
     assert orch._superseded_release("REL-009") is False and orch._superseded_release("REL-404") is False
     orch.delivered.clear()
     assert orch._superseded_release("REL-001") is False
+
+
+def test_huy_rc_superseded_khong_de_ticket_lai_cho_flush_releases_tao_rc_trung():
+    """Đo được 2026-09-10 (QLKH thật): huỷ một RC cũ vì superseded (nội dung đã nằm trong bản giao sau) đưa ticket
+    về `unreleased()` — đúng chủ đích cho ca xung đột tích hợp (`void_release`, docstring "ticket phải vào RC kế
+    tiếp"), nhưng SAI cho ca superseded: ticket không cần RC kế tiếp, nó đã giao rồi. `scheduler.tick()` (PR #251)
+    gọi `flush_releases()` mỗi nhịp sẽ thấy ticket "approved, không có RC" và tạo NGAY một RC trùng, gửi nó qua một
+    vòng staging/production MỚI — nếu vòng đó đụng lỗi thật (nhiễu backend, xung đột khác), `_on_release_event`
+    (dòng ~322) đá ticket ĐÃ GIAO về `changes_requested` rồi hết retry → `blocked`, dù code chưa từng sai gì.
+
+    Ticket sau khi huỷ RC vì superseded phải ở một DONE_STATE thật (không phải "approved" lửng lơ) và không còn
+    xuất hiện trong `unreleased()` — không có gì cho `flush_releases` gom lại."""
+    h = _pausing_release_engineer({"staging": 9})  # REL-001 (T1) không bao giờ deploy được — giữ T1 ở "approved"
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h))
+    _drive_to_plan(bus, orch); orch.run()
+    assert orch.lead.state["T1"] == "approved", "tiền đề: ticket chưa từng deploy thành công, còn approved"
+
+    orch.integrated.add("T1")
+    orch.lead.releases.append("REL-009"); orch.lead.release_tickets["REL-009"] = ["T9"]
+    orch.delivered["REL-009"] = {"release_id": "REL-009", "tag": "v9"}
+    orch.gate.decide("REL-001", "reject", by="human:lead", reason="đã nằm trong v9"); orch.run()
+    assert "REL-001" in orch.void_releases
+
+    assert orch.lead.state["T1"] != "approved", "phải chuyển sang DONE_STATE thật, không để lửng lơ ở approved"
+    assert "T1" not in orch.lead.unreleased("P1"), "ticket đã giao không được cho flush_releases gom lại"

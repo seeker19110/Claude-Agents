@@ -6,6 +6,14 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): **huỷ release "superseded" phải đóng sổ ticket, không để lửng lơ ở `approved`**. Khi một RC cũ bị
+  từ chối vì nội dung đã nằm trong bản giao sau (`_superseded_release`), `void_release` đưa ticket approved về
+  `unreleased()` — đúng cho ca xung đột tích hợp (ticket thật sự cần RC kế tiếp) nhưng sai ở đây: ticket đã giao
+  rồi. Không đóng sổ thì `scheduler.tick()` (flush_releases mỗi nhịp, #251) tạo ngay một RC trùng cho ticket đó;
+  nếu RC trùng đó đụng lỗi thật (nhiễu backend, xung đột khác), ticket ĐÃ GIAO bị đá về rework rồi hết retry →
+  blocked lần nữa — dù code chưa từng sai gì. Đo được 2026-09-10 (QLKH thật): QLKH-002/005 và nhóm
+  TCK-CR-RUNTIME-03..06 dính đúng vòng này sau khi dọn RC cũ. Vá: khi huỷ vì superseded, gọi
+  `mark_done_already_integrated` cho mọi ticket approved trong RC đó trước khi trả lại pool.
 - feat(console): **nút "Tick tất cả" cho checklist gate** (#254) — gate nợ kiến trúc (SD-*, DEF-*) có thể mang
   20-40 mục, tick từng ô một là việc vô nghĩa sau khi đã đọc hồ sơ bằng chứng. Chỉ hiện khi checklist có hơn
   một mục; không bỏ qua khoá lý do ≥20 ký tự hay logic mở khoá nút Duyệt — chỉ tự động hoá phần tick.

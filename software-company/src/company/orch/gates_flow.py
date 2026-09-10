@@ -129,6 +129,14 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
             # pending_human sẽ mở gate; từ chối theo hành vi cũ đá 14 ticket đã giao về changes_requested.
             o._audit("release.void", {"release_id": tid, "reason": f"nội dung đã nằm trong bản giao; {reason}"[:300]})
             o._void(tid); res.actions.append(f"void:{tid}")
+            # `void_release` (DeliveryLead) đưa ticket về `unreleased()` — đúng cho ca xung đột tích hợp (ticket
+            # thật sự cần một RC kế tiếp), nhưng SAI ở đây: ticket đã giao rồi, không cần RC nào nữa. Không đóng
+            # sổ ở đây thì `scheduler.tick()` (flush_releases mỗi nhịp, #251) thấy ticket "approved, không RC" và
+            # tạo ngay một RC trùng — nếu vòng đó đụng lỗi thật, ticket ĐÃ GIAO bị đá về rework rồi hết retry →
+            # blocked. Đo được 2026-09-10 (QLKH): QLKH-002/005 và cả nhóm TCK-CR-RUNTIME-03..06 dính đúng vòng này.
+            for rtid in o.lead.release_tickets.get(tid, []):
+                if o.lead.state.get(rtid) == "approved":
+                    o.lead.mark_done_already_integrated(rtid)
         else:
             o.lead.rework_release_tickets(tid, reason or "người từ chối escalation release: cần sửa nội dung thật")
             res.actions.append(f"release_reworked:{tid}")
