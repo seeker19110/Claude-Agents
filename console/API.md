@@ -6,7 +6,7 @@ Xoá file này khi console đã ổn định và hợp đồng chuyển hết v�
 ## Lớp
 
 ```
-collect.py   đọc SQLite bus của hai công ty + trạng thái gateway  → dict thuần
+collect.py   đọc SQLite bus của software-company + keeper + trạng thái gateway  → dict thuần
 truth.py     sự thật giao hàng của software-company: phễu release, quyết định chưa áp, bế tắc im lặng
 decide.py    ghi quyết định gate thật qua HumanGate của từng công ty
 server.py    ThreadingHTTPServer stdlib, phục vụ static/index.html + /api/*
@@ -14,12 +14,12 @@ static/      trang console (đã có thiết kế, chỉ cần nối dữ liệu
 ```
 
 Không dùng framework web. Chỉ `http.server`, `json`, `sqlite3` và hai gói `company`,
-`studio` qua path dependency.
+`keeper` qua path dependency.
 
 ## `collect.py`
 
 ```python
-def collect(company_db: Path | None, studio_db: Path | None, keeper_db: Path | None = None,
+def collect(company_db: Path | None, keeper_db: Path | None = None,
             gateway_token_file: Path | None = None,
             gateway_url: str = "http://127.0.0.1:1123") -> dict
 ```
@@ -32,17 +32,17 @@ công ty đó bao giờ).
 {
   "generated_at": "2026-09-03T08:41:12+07:00",
   // K7.5: phần mô tả HÌNH DẠNG dữ liệu dưới đây là bản rút gọn cho người đọc, KHÔNG phải nguồn sự thật.
-  // Nguồn sự thật là `topics/schemas/*.json` của hai công ty + hai test canh mối nối:
+  // Nguồn sự thật là `topics/schemas/*.json` của các công ty + hai test canh mối nối:
   //   `tests/test_hop_dong_schema.py`  — trường console đọc phải có trong schema (K7.4)
   //   `tests/test_es_module.py`        — mọi module được nạp, mọi tên nhập đều được export (K7.1)
   // Chỗ nào ở đây lệch với test thì TEST đúng. Xoá dần phần mô tả này khi test phủ hết.
-  // Mọi trường payload console đọc từ hai công ty đều bị `tests/test_hop_dong_schema.py` (K7.4) canh: nó quét
+  // Mọi trường payload console đọc từ các công ty đều bị `tests/test_hop_dong_schema.py` (K7.4) canh: nó quét
   // `collect.py`/`truth.py` và khẳng định từng tên có trong `topics/schemas/` của công ty. Đổi schema bên công
   // ty mà quên sửa console → test console ĐỎ, thay vì ô hiện rỗng mà không ai biết.
   "sources": {                       // để trang báo phần nào đang trống và vì sao
     "software-company": {"ok": true,  "db": "software-company/company.sqlite", "events": 238, "error": null,
                          "sandbox_available": true},   // K2.7: MÁY chạy console có docker/podman không
-    "Studio-creators":  {"ok": false, "db": null, "events": 0, "error": "chưa có file DB",
+    "keeper":           {"ok": false, "db": null, "events": 0, "error": "chưa có file DB",
                          "sandbox_available": true},
     "gateway":          {"ok": true,  "url": "http://127.0.0.1:1123", "error": null}
   },
@@ -56,12 +56,12 @@ công ty đó bao giờ).
     "unpriced_calls": 12, "calibration": 1.18
   },
   "gates": [{
-    "id": "PUB-vid-042", "xuong": "Studio-creators", "kind": "publish",
-    "by": "desk", "trigger": "human:owner", "hours": 26, "sev": "over",   // over|warn|calm
+    "id": "REL-001", "xuong": "software-company", "kind": "release",
+    "by": "delivery-lead", "trigger": "human:owner", "hours": 26, "sev": "over",   // over|warn|calm
     "effect": "Duyệt = … (hậu quả của việc duyệt, theo kind; rỗng khi xưởng không nói)",
     "reject": "Từ chối = … (ticket/RC về đâu; rỗng khi xưởng không nói)",   // C2
     "agent":  "ops",                                                       // agent chạy lại sau khi duyệt; "" khi không biết
-    "title": "…", "facts": [["video_id","vid-042"], …],
+    "title": "…", "facts": [["ticket_id","TCK-112"], …],
     "cl": [["review:fact:pass","mô tả ngắn lấy từ checklist/evidence"], …]
   }],
   "tickets": [{"id":"TCK-112","st":"in_review","who":"builder","t":"…",
@@ -74,9 +74,6 @@ công ty đó bao giờ).
   "reviews": [{"id":"TCK-112","src":"security","v":"block","f":"block · …","trim":"cắt api-contract 13.170 ký tự",
                "trim_src":[{"src":"api-contract","chars":13170},{"src":"payload","chars":804}],   // C5: từng nguồn bị cắt, hiện cạnh verdict
                "at":"04:07"}],
-  "videos":  [{"id":"vid-039","st":"published","t":"…","fmt":"long","used":132000,"bud":150000}],
-  "perf":    [{"id":"vid-039","imp":41200,"views":7840,"ctr":0.19,"avd":284}],
-  "retention": {"video_id": "vid-039", "points": [[0,100],[15,88], …]},
   "cost_days": {"days":["21/8", …], "series":[[0.42,0.31,0.06], …]},  // [strong, standard, light]
   "agents":  [["backend", 4.82], …],                                   // giảm dần, tối đa 10
   "backends":[{"n":"claude-code","tiers":"strong · standard","tools":"có",
@@ -110,7 +107,7 @@ công ty đó bao giờ).
   // 4L-5: đo vòng tool (`company.metrics.collect()["loops"]`, đặc tả L3 "cách đo"). `empty=true` (không có
   // audit `tools_used` nào) → MỌI trường số khác là `null`, KHÔNG phải 0 — 0 thật (vd `capped_ratio: 0`) và
   // "chưa đo được" (`empty: true`) là hai trạng thái khác nhau, trang phải tô khác nhau (ADR-0003, xem `.tile.zero`
-  // ở `static/index.html`). Xưởng phần mềm; không có bản riêng cho studio (đã dùng chung `company.metrics`).
+  // ở `static/index.html`). Chỉ xưởng phần mềm.
   "loops": {"turns_p50": 6.5, "turns_p90": 15.0, "turns_max": 25, "capped_ratio": 0.08,
              "no_progress_ratio": 0.0, "retry_max_ratio": 0.12, "n": 40, "empty": false},
   // BT8: công ty bảo trì `keeper`. `ran=false` (chưa cấu hình DB, chưa có file, HOẶC file có mà log rỗng) →
@@ -132,7 +129,6 @@ Nguồn của từng phần:
 | `gates` | `gate.request` chưa có `gate.decide` tương ứng, tính `hours` từ timestamp |
 | `tickets` | `tasks` + `TicketState` suy ra như `orchestrator.status()` |
 | `prs`, `reviews` | topic `pull-requests`, `review-results` |
-| `videos`, `perf`, `retention` | `video-briefs`, `performance-snapshots` |
 | `backends` | `routing.status()` nếu đọc được `llm.yaml`, nếu không thì gateway `/auth/status` |
 | `log` | `audit-log`, mới nhất trước, tối đa 200 bản ghi |
 | `delivery`, `pending_decisions`, `running`, `deadlocks` | `truth.py`: `release-candidates` + `release-events` + audit (`delivery.done`, `release.void`, `release.staged`, `integration.merged`, `orchestrated`, `gate.decide`) + `gate.pending/history` |
@@ -146,11 +142,11 @@ Nguồn của từng phần:
 ## `decide.py`
 
 ```python
-def decide(company_db: Path | None, studio_db: Path | None, keeper_db: Path | None = None, *,
+def decide(company_db: Path | None, keeper_db: Path | None = None, *,
            subject_id: str, xuong: str, decision: str, by: str, reason: str) -> dict
 ```
 
-- `xuong` ∈ `{"software-company", "Studio-creators", "keeper"}` chọn DB và lớp `HumanGate` tương ứng.
+- `xuong` ∈ `{"software-company", "keeper"}` chọn DB và lớp `HumanGate` tương ứng.
 - `decision` phải nằm trong `Decision` của công ty đó; sai thì `ValueError`.
 - Gọi đúng `HumanGate.decide(...)` của công ty, **không tự dựng event**, để four-eyes,
   allowlist người duyệt và ghi audit đi qua đúng đường của repo.
@@ -160,15 +156,15 @@ def decide(company_db: Path | None, studio_db: Path | None, keeper_db: Path | No
 ## `submit.py`
 
 ```python
-def submit(company_db: Path | None, studio_db: Path | None, keeper_db: Path | None = None, *,
+def submit(company_db: Path | None, keeper_db: Path | None = None, *,
            xuong: str, topic: str, payload: dict, actor: str) -> dict
 ```
 
 - Giao việc = publish một event do NGƯỜI tạo vào bus SQLite của xưởng. `FORMS` liệt kê topic nạp tay được
   và trường payload làm `key`: software-company `research-requests` / `clarification-answers` (key `project_id`),
-  Studio-creators `channel-briefs` (key `channel_id`), keeper `maintenance-signals` (key `subject`) — cùng quy
-  ước với CLI `publish` của từng công ty. `keeper` KHÔNG có form cho `maintenance-tickets`: ticket phải đi qua
-  `triager` để có `risk_tier` (`keeper.core.HUMAN_TOPICS`).
+  keeper `maintenance-signals` (key `subject`) — cùng quy ước với CLI `publish` của từng công ty. `keeper`
+  KHÔNG có form cho `maintenance-tickets`: ticket phải đi qua `triager` để có `risk_tier`
+  (`keeper.core.HUMAN_TOPICS`).
 - Đi qua đúng `SQLiteBus` + `Envelope` của công ty nên payload được kiểm theo `topics/schemas/<topic>.json`;
   bus từ chối → `SubmitError` (400) nguyên văn. Sai `xuong`/`topic`/`actor`/thiếu key → `ValueError` (400).
 - File bus chưa có thì tạo (như CLI): yêu cầu đầu tiên của công ty chưa chạy lần nào là chuyện bình thường.
@@ -236,10 +232,10 @@ class EngineManager:
     def stop_all(self) -> None          # chạy ở server_close() và atexit
 ```
 
-- Một động cơ = một tiến trình con chạy đúng CLI mà người vẫn gõ: company/studio
-  `python -m <mod> --db <db> run --watch <N>`, keeper `python -m keeper.cli watch --db <db> --repo <repo>
-  --interval <N>`. Dòng lệnh dựng từ `SPECS` chốt cứng trong mã nguồn — **không tham số nào của client đi
-  vào `argv`** ngoài `interval` đã kẹp; không `shell=True` (ADR-0004).
+- Một động cơ = một tiến trình con chạy đúng CLI mà người vẫn gõ: company
+  `python -m company.orchestrator --db <db> run --watch <N>`, keeper `python -m keeper.cli watch --db <db>
+  --repo <repo> --interval <N>`. Dòng lệnh dựng từ `SPECS` chốt cứng trong mã nguồn — **không tham số nào của
+  client đi vào `argv`** ngoài `interval` đã kẹp; không `shell=True` (ADR-0004).
 - `state` là thứ ĐO ĐƯỢC mỗi lần hỏi (`Popen.poll`): `running` | `stopped` (chưa bật trong phiên console
   này) | `exited` (đã chạy và đã kết thúc — kèm `exit_code`, `stopped_by` nếu do người tắt, và `tail` là
   ~12 dòng cuối của `console/.engine/<xuong>.log`). Không có trạng thái nào suy từ "đã bấm Bật".
@@ -277,11 +273,10 @@ Một file, không framework, không bước build. Phần dữ liệu:
 - `sources[x].ok === false`: phần của xưởng đó hiện trạng thái rỗng có lý do, không hiện số 0 giả.
 - Nút quyết định gate gọi `POST /api/gate/decide`; `readonly` thì nút bị khoá kèm giải thích
   cách bật `--allow-decide`.
-- Khối **Giao việc** ở đầu màn của từng xưởng — KHÔNG gộp chung một màn: *Xưởng phần mềm* có form yêu cầu
-  phần mềm (kèm nơi lưu dự án `repo`/`base`, ADR-0025 của công ty) và trả lời câu hỏi làm rõ; *Xưởng video*
-  có form brief kênh. Ba form = ba topic trong `submit.FORMS`. Trang chỉ gom trường thành payload đúng hình
-  schema (danh sách: mỗi dòng một mục; trả lời: `question_id: nội dung`), gọi `POST /api/request`;
-  `can_submit` false thì nút khoá kèm cách bật `--allow-submit`. Gửi xong hiện key + event id.
+- Khối **Giao việc** ở đầu màn Xưởng phần mềm: form yêu cầu phần mềm (kèm nơi lưu dự án `repo`/`base`,
+  ADR-0025 của công ty) và trả lời câu hỏi làm rõ. Hai form = hai topic trong `submit.FORMS`. Trang chỉ gom
+  trường thành payload đúng hình schema (danh sách: mỗi dòng một mục; trả lời: `question_id: nội dung`), gọi
+  `POST /api/request`; `can_submit` false thì nút khoá kèm cách bật `--allow-submit`. Gửi xong hiện key + event id.
 - Không còn dữ liệu mẫu nào trong file.
 
 Vỏ PWA — `manifest.webmanifest` + `sw.js`, để trang cài được thành app có cửa sổ riêng.
@@ -292,10 +287,9 @@ Chỉ icon được cache. Icon sinh lại bằng `uv run python tools/make_icon
 Điều hướng — địa chỉ là trạng thái:
 
 ```
-#/<màn>                     truc-ban | phan-mem | video | chi-phi | nhat-ky | cai-dat
+#/<màn>                     truc-ban | phieu | phan-mem | bao-tri | chi-phi | nhat-ky | cai-dat | huong-dan
 #/<màn>/gate/<id>           màn đó, ngăn kéo gate đang mở
 #/<màn>/ticket/<id>         ngăn kéo ticket
-#/<màn>/video/<id>          ngăn kéo video
 ```
 
 Dùng hash chứ không `history.pushState`: server chỉ phục vụ một đường `/`, đẩy đường dẫn thật vào
@@ -304,9 +298,9 @@ tại thì tự rút về màn tương ứng, không để thanh địa chỉ n�
 
 Lọc, tìm, sắp xếp — hoàn toàn phía client trên dữ liệu đã có, không thêm vòng gọi server nào:
 
-- Ô tìm chung (phím `/`) lọc gate, ticket, video, PR, review, số liệu và audit-log cùng lúc.
-  Gấp dấu tiếng Việt bằng NFD nên gõ `ong kinh` ra `Ống kính`; chỗ khớp được tô khi gõ có dấu.
-- Bảng ticket và video có chip lọc theo trạng thái kèm số đếm; chọn một trạng thái thì thu về một cột.
+- Ô tìm chung (phím `/`) lọc gate, ticket, PR, review, số liệu và audit-log cùng lúc.
+  Gấp dấu tiếng Việt bằng NFD; chỗ khớp được tô khi gõ có dấu.
+- Bảng ticket có chip lọc theo trạng thái kèm số đếm; chọn một trạng thái thì thu về một cột.
 - `<th data-k>` trong `<tr data-sort>` sắp xếp được, `data-t="n"` là cột số. Trạng thái sắp xếp nằm
   ở `aria-sort` nên đọc màn hình cũng biết.
 - Phím tắt: `/` vào ô tìm, `1`–`6` nhảy màn, `g` về Trực ban, `Esc` xoá ô tìm hoặc đóng ngăn kéo.

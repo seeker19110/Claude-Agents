@@ -390,7 +390,6 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
       <button class="nav" data-v="truc-ban" aria-current="true"><span class="dot"></span>Trực ban<span class="cnt" id="nav-gates">—</span></button>
       <button class="nav" data-v="phieu">Phễu sản phẩm<span class="cnt" id="nav-phieu">—</span></button>
       <button class="nav" data-v="phan-mem">Xưởng phần mềm<span class="cnt" id="nav-tickets">—</span></button>
-      <button class="nav" data-v="video">Xưởng video<span class="cnt" id="nav-videos">—</span></button>
       <button class="nav" data-v="bao-tri">Công ty bảo trì<span class="cnt" id="nav-keeper">—</span></button>
       <button class="nav" data-v="chi-phi">Chi phí &amp; hạn mức</button>
       <button class="nav" data-v="nhat-ky">Nhật ký</button>
@@ -420,7 +419,7 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
       </div>
       <div class="search">
         <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
-        <input id="q" type="search" placeholder="Tìm gate, ticket, video, PR…" aria-label="Tìm trong mọi bảng" autocomplete="off" spellcheck="false">
+        <input id="q" type="search" placeholder="Tìm gate, ticket, PR…" aria-label="Tìm trong mọi bảng" autocomplete="off" spellcheck="false">
         <kbd>/</kbd>
       </div>
       <div class="refresh">
@@ -577,37 +576,6 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
       </div>
     </section>
 
-    <!-- ============ VIDEO ============ -->
-    <section class="view" id="v-video">
-      <div class="sect submit" data-xuong="Studio-creators">
-        <div class="sect-head">
-          <h2>Giao việc cho xưởng video</h2>
-          <p>brief một kênh — điền ô thay cho viết JSON tay; event đi qua bus của xưởng, kiểm theo schema</p>
-        </div>
-        <div class="panel"></div>
-      </div>
-      <div class="sect">
-        <div class="sect-head"><h2>Dây chuyền video</h2><p>bấm một video để xem ngân sách token của nó</p></div>
-        <div class="filters" id="f-videos"></div>
-        <div class="board" id="board-videos"></div>
-      </div>
-      <div class="sect">
-        <div class="sect-head"><h2>Số liệu sau khi đăng</h2><p>kéo về từ YouTube Analytics, nuôi lại chiến lược kênh</p></div>
-        <div class="tablewrap">
-          <table>
-            <thead><tr data-sort="perf"><th data-k="id">Video</th><th class="r" data-k="imp" data-t="n">Hiển thị</th>
-              <th class="r" data-k="views" data-t="n">Lượt xem</th><th class="r" data-k="ctr" data-t="n">CTR</th>
-              <th class="r" data-k="avd" data-t="n">Xem TB</th><th>Giữ chân</th></tr></thead>
-            <tbody id="perf"></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="sect">
-        <div class="sect-head"><h2 id="ret-title">Đường giữ chân</h2><p>phần trăm người còn xem theo mốc thời gian; chỗ rơi sâu nhất được đánh dấu</p></div>
-        <div class="chartbox"><div id="chart-ret"></div></div>
-      </div>
-    </section>
-
     <!-- ============ BẢO TRÌ (keeper) ============ -->
     <section class="view" id="v-bao-tri">
       <div class="sect">
@@ -681,12 +649,11 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
     <!-- ============ HƯỚNG DẪN ============ -->
     <section class="view" id="v-huong-dan">
       <div class="sect">
-        <div class="sect-head"><h2>Hệ thống này làm gì</h2><p>một trang duy nhất nhìn cả hai công ty AI đang chạy trên máy bạn</p></div>
+        <div class="sect-head"><h2>Hệ thống này làm gì</h2><p>một trang duy nhất nhìn công ty AI đang chạy trên máy bạn</p></div>
         <div class="panel guide">
-          <p>Hai công ty tự chạy bằng agent: <b>xưởng phần mềm</b> biến một yêu cầu thô thành PRD, ticket, code trên
-          repo thật rồi review và phát hành; <b>xưởng video</b> đi từ kế hoạch kênh tới video đã đăng. Console không
-          tự quyết gì cả — nó <b>đọc bus SQLite của hai công ty</b> và, khi bạn bật quyền tương ứng, gửi quyết định
-          hoặc việc mới đi qua đúng cổng của công ty.</p>
+          <p>Công ty tự chạy bằng agent: <b>xưởng phần mềm</b> biến một yêu cầu thô thành PRD, ticket, code trên
+          repo thật rồi review và phát hành. Console không tự quyết gì cả — nó <b>đọc bus SQLite của công ty</b> và,
+          khi bạn bật quyền tương ứng, gửi quyết định hoặc việc mới đi qua đúng cổng của công ty.</p>
           <p class="note">Console không sinh ra event nào của riêng nó: mọi thứ bạn thấy đều đã nằm trong bus, và mọi
           thứ bạn gửi đều được kiểm theo JSON Schema của topic trước khi vào bus.</p>
         </div>
@@ -746,7 +713,7 @@ thead th[aria-sort="descending"]::after{border-bottom:0;border-top:4px solid var
         <div class="sect-head"><h2>Giao một việc mới</h2><p>điền ô thay cho viết JSON tay — cùng một event, cùng một schema</p></div>
         <div class="panel guide">
           <ol>
-            <li>Vào <b>Xưởng phần mềm</b> (hoặc <b>Xưởng video</b>), khối <i>Giao việc</i> ở đầu màn.</li>
+            <li>Vào <b>Xưởng phần mềm</b>, khối <i>Giao việc</i> ở đầu màn.</li>
             <li>Điền <b>Mã dự án</b> và <b>Mô tả yêu cầu</b>. Chưa biết viết gì thì bấm <b>Điền yêu cầu mẫu</b> — form
                 sẽ có sẵn một yêu cầu web app thật, sửa lại cho khách của bạn.</li>
             <li><b>Nơi lưu dự án</b> là repo git của khách <i>trên máy chạy orchestrator</i>. Bỏ trống thì dự án dùng

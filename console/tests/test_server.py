@@ -92,13 +92,13 @@ def fake_modules(monkeypatch: pytest.MonkeyPatch):
     state: dict[str, Any] = {"ok": True}
     box: dict[str, Any] = {"decide_result": {"ok": True, "subject_id": "PUB-1", "decision": "approve", "event_id": "e1"}}
 
-    def collect(company_db: Any, studio_db: Any, *a: Any, **k: Any) -> dict[str, Any]:
-        calls["collect"].append((company_db, studio_db))
+    def collect(company_db: Any, *a: Any, **k: Any) -> dict[str, Any]:
+        calls["collect"].append((company_db,))
         if isinstance(state.get("__raise__"), Exception):
             raise state["__raise__"]
         return state
 
-    def decide(company_db: Any, studio_db: Any, keeper_db: Any = None, **kw: Any) -> dict[str, Any]:
+    def decide(company_db: Any, keeper_db: Any = None, **kw: Any) -> dict[str, Any]:
         calls["decide"].append(kw)
         result = box["decide_result"]
         if isinstance(result, Exception):
@@ -108,8 +108,8 @@ def fake_modules(monkeypatch: pytest.MonkeyPatch):
     calls["submit"] = []
     box["submit_result"] = {"ok": True, "xuong": "software-company", "topic": "research-requests", "key": "P1", "event_id": "e9"}
 
-    def submit(company_db: Any, studio_db: Any, keeper_db: Any = None, **kw: Any) -> dict[str, Any]:
-        calls["submit"].append((company_db, studio_db, kw))
+    def submit(company_db: Any, keeper_db: Any = None, **kw: Any) -> dict[str, Any]:
+        calls["submit"].append((company_db, kw))
         result = box["submit_result"]
         if isinstance(result, Exception):
             raise result
@@ -139,11 +139,11 @@ def test_request_khoa_khi_khong_co_allow_submit(make_console, fake_modules) -> N
 
 
 def test_request_goi_xuyen_toi_submit(make_console, fake_modules, tmp_path: Path) -> None:
-    c = make_console(allow_submit=True, company_db=tmp_path / "c.sqlite", studio_db=tmp_path / "s.sqlite")
+    c = make_console(allow_submit=True, company_db=tmp_path / "c.sqlite")
     status, body = c.request("POST", "/api/request", body=_REQ)
     assert status == 200 and body["ok"] is True and body["event_id"] == "e9"
-    (company_db, studio_db, kw), = fake_modules.calls["submit"]
-    assert company_db == tmp_path / "c.sqlite" and studio_db == tmp_path / "s.sqlite"
+    (company_db, kw), = fake_modules.calls["submit"]
+    assert company_db == tmp_path / "c.sqlite"
     assert kw == {"xuong": "software-company", "topic": "research-requests", "actor": "human:sales",
                   "payload": {"project_id": "P1", "description": "web bán khoá học"}}
 
@@ -211,11 +211,11 @@ def test_state_sai_token_tra_401(make_console, fake_modules) -> None:
 def test_state_dung_token_tra_du_lieu_tu_collect(make_console, fake_modules) -> None:
     fake_modules.state.clear()
     fake_modules.state.update({"generated_at": "2026-09-03T08:41:12+07:00", "tiles": {"events": 238}})
-    c = make_console(company_db=Path("/a/company.sqlite"), studio_db=None)
+    c = make_console(company_db=Path("/a/company.sqlite"))
     status, body = c.request("GET", "/api/state")
     assert status == 200
     assert body == fake_modules.state
-    assert fake_modules.calls["collect"] == [(Path("/a/company.sqlite"), None)]
+    assert fake_modules.calls["collect"] == [(Path("/a/company.sqlite"),)]
 
 
 def test_collect_no_loi_thi_500(make_console, fake_modules) -> None:
@@ -246,7 +246,7 @@ def test_post_cross_origin_bi_tu_choi(make_console, fake_modules) -> None:
     status, _ = c.request(
         "POST", "/api/gate/decide",
         headers={"Origin": "https://evil.example"},
-        body={"subject_id": "PUB-1", "xuong": "Studio-creators", "decision": "approve", "by": "owner", "reason": "ok"},
+        body={"subject_id": "PUB-1", "xuong": "software-company", "decision": "approve", "by": "owner", "reason": "ok"},
     )
     assert status == 403
     assert fake_modules.calls["decide"] == []
@@ -257,14 +257,14 @@ def test_post_same_origin_duoc_qua(make_console, fake_modules) -> None:
     status, _ = c.request(
         "POST", "/api/gate/decide",
         headers={"Origin": f"http://127.0.0.1:{c.port}"},
-        body={"subject_id": "PUB-1", "xuong": "Studio-creators", "decision": "approve", "by": "owner", "reason": "ok"},
+        body={"subject_id": "PUB-1", "xuong": "software-company", "decision": "approve", "by": "owner", "reason": "ok"},
     )
     assert status == 200
 
 
 # --- readonly / decide -----------------------------------------------------
 
-DECIDE_BODY = {"subject_id": "PUB-1", "xuong": "Studio-creators", "decision": "approve", "by": "owner", "reason": "ok"}
+DECIDE_BODY = {"subject_id": "PUB-1", "xuong": "software-company", "decision": "approve", "by": "owner", "reason": "ok"}
 
 
 def test_readonly_chan_post(make_console, fake_modules) -> None:
@@ -282,7 +282,7 @@ def test_readonly_van_kiem_token_truoc(make_console, fake_modules) -> None:
 
 
 def test_allow_decide_goi_xuyen_toi_decide(make_console, fake_modules) -> None:
-    c = make_console(readonly=False, company_db=Path("/a/c.sqlite"), studio_db=Path("/b/s.sqlite"))
+    c = make_console(readonly=False, company_db=Path("/a/c.sqlite"))
     status, body = c.request("POST", "/api/gate/decide", body=DECIDE_BODY)
     assert status == 200
     assert body == {"ok": True, "subject_id": "PUB-1", "decision": "approve", "event_id": "e1"}
@@ -291,7 +291,7 @@ def test_allow_decide_goi_xuyen_toi_decide(make_console, fake_modules) -> None:
 
 def test_thieu_truong_thi_400(make_console, fake_modules) -> None:
     c = make_console(readonly=False)
-    status, _ = c.request("POST", "/api/gate/decide", body={"subject_id": "PUB-1", "xuong": "Studio-creators"})
+    status, _ = c.request("POST", "/api/gate/decide", body={"subject_id": "PUB-1", "xuong": "software-company"})
     assert status == 400
     assert fake_modules.calls["decide"] == []
 

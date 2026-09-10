@@ -53,7 +53,6 @@ DEFAULT_STRONG_MODEL = "claude-sonnet-4-6"
 DEFAULT_STANDARD_MODEL = "gemini-3.6-flash-medium"
 DEFAULT_CHECK_TARGETS = [
     REPO_ROOT / "software-company" / "llm.yaml",
-    REPO_ROOT / "Studio-creators" / "llm.yaml",
 ]
 
 

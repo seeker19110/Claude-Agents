@@ -31,17 +31,7 @@ software-company/demo-out/
 *.sqlite
 *.sqlite-journal
 
-# Studio-creators: dữ liệu chạy, asset sinh ra và cấu hình cá nhân
-Studio-creators/studio.sqlite*
-Studio-creators/output/
-Studio-creators/llm.yaml
-Studio-creators/llm.yaml.bak
-Studio-creators/media.yaml
-Studio-creators/*.yaml.bak*
 *.sqlite*.bak*
-
-# Studio-creators: OAuth client secret tải từ Google Cloud Console (chỉ dùng cho `studio.youtube login`) — không commit
-Studio-creators/client_secret*.json
 
 # gateway: token OAuth nằm ngoài cây repo (~/.x-agents/auth/); trong repo chỉ có venv
 gateway/.venv/
@@ -65,7 +55,6 @@ console/.engine/
 
 # log tiến trình orchestrator (sinh lúc chạy)
 software-company/var/
-Studio-creators/var/
 keeper/var/
 
 # keeper: dữ liệu chạy (state quan sát/triage) — không commit

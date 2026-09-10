@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from console import engine as en
-from console.engine import COMPANY, KEEPER, STUDIO
+from console.engine import COMPANY, KEEPER
 
 SLEEP = "import time,sys; print('song', flush=True); time.sleep(60)"
 DIE = "import sys; sys.stderr.write('vo tao roi\\n'); sys.exit(3)"
@@ -34,7 +34,7 @@ class FakeSpec(en.EngineSpec):
 @pytest.fixture
 def mgr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> en.EngineManager:
     monkeypatch.setitem(en.SPECS, COMPANY, FakeSpec("x", tmp_path, "xưởng phần mềm"))
-    m = en.EngineManager({COMPANY: tmp_path / "company.sqlite", STUDIO: None, KEEPER: None},
+    m = en.EngineManager({COMPANY: tmp_path / "company.sqlite", KEEPER: None},
                          log_dir=tmp_path / ".engine")
     yield m
     m.stop_all()
@@ -64,10 +64,6 @@ def test_argv_company_chay_run_watch_trong_thu_muc_cong_ty() -> None:
 def test_argv_keeper_dung_lenh_watch_cua_no_kem_repo() -> None:
     argv = en.SPECS[KEEPER].argv(Path("/tmp/keeper.sqlite"), 300.0)
     assert argv[3] == "watch" and "--repo" in argv and argv[-2:] == ["--interval", "300.0"]
-
-
-def test_argv_studio_giong_company() -> None:
-    assert en.SPECS[STUDIO].argv(Path("/tmp/s.sqlite"), 12.0)[-3:] == ["run", "--watch", "12.0"]
 
 
 # ---------- vòng đời ----------
@@ -153,7 +149,7 @@ def test_start_tu_choi_tham_so_sai(mgr: en.EngineManager, xuong: str, by: str, i
 
 def test_start_tu_choi_khi_console_khong_co_db_cua_xuong(mgr: en.EngineManager) -> None:
     with pytest.raises(en.EngineError, match="không có đường dẫn bus"):
-        mgr.start(STUDIO, interval=30, by="human:a")
+        mgr.start(KEEPER, interval=30, by="human:a")
 
 
 def test_start_tu_choi_khi_thu_muc_cong_ty_khong_ton_tai(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -183,8 +179,8 @@ def test_stop_tu_choi_xuong_la_va_thieu_nguoi(mgr: en.EngineManager) -> None:
 
 def test_xuong_khong_cau_hinh_db_hien_configured_false(mgr: en.EngineManager) -> None:
     st = {e["xuong"]: e for e in mgr.status()["engines"]}
-    assert set(st) == {COMPANY, STUDIO, KEEPER}
-    assert st[STUDIO]["configured"] is False and st[STUDIO]["state"] == "stopped" and st[STUDIO]["tail"] == ""
+    assert set(st) == {COMPANY, KEEPER}
+    assert st[KEEPER]["configured"] is False and st[KEEPER]["state"] == "stopped" and st[KEEPER]["tail"] == ""
     assert st[COMPANY]["configured"] is True
 
 
@@ -208,8 +204,8 @@ def test_tail_chi_lay_may_dong_cuoi(tmp_path: Path) -> None:
 
 
 def test_ten_xuong_khong_lech_voi_decide() -> None:
-    """`engine.py` chép ba hằng tên xưởng (xem chú thích ở đầu file). Chép thì phải có người canh."""
+    """`engine.py` chép hai hằng tên xưởng (xem chú thích ở đầu file). Chép thì phải có người canh."""
     from console import decide
 
-    assert (en.COMPANY, en.STUDIO, en.KEEPER) == (decide.COMPANY, decide.STUDIO, decide.KEEPER)
+    assert (en.COMPANY, en.KEEPER) == (decide.COMPANY, decide.KEEPER)
     assert en.XUONG == decide.XUONG and set(en.SPECS) == set(decide.XUONG)

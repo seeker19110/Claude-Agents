@@ -1,9 +1,8 @@
 """Ghi quyết định gate THẬT qua `HumanGate` của từng công ty.
 
 Console không tự dựng event `gate.decide`: nó mở đúng `PersistentGate` của xưởng tương ứng và gọi `decide(...)`, để
-four-eyes (người duyệt khác người tạo), allowlist người duyệt (`STUDIO_GATE_APPROVERS` / `media.yaml`) và bản ghi
-`audit-log` đều đi qua đúng đường của repo. Mọi lỗi người dùng thấy được đổi thành `GateError` với thông điệp tiếng
-Việt để `server.py` chuyển sang HTTP 4xx.
+four-eyes (người duyệt khác người tạo), allowlist người duyệt và bản ghi `audit-log` đều đi qua đúng đường của repo.
+Mọi lỗi người dùng thấy được đổi thành `GateError` với thông điệp tiếng Việt để `server.py` chuyển sang HTTP 4xx.
 """
 from __future__ import annotations
 
@@ -14,15 +13,10 @@ from company import gate_cli as company_gate_cli
 from company.gates import Decision as CompanyDecision
 from company.gates import gate_approvers as company_gate_approvers
 from company.sqlite_bus import SQLiteBus as CompanyBus
-from studio import gate_cli as studio_gate_cli
-from studio.gates import Decision as StudioDecision
-from studio.gates import gate_approvers
-from studio.sqlite_bus import SQLiteBus as StudioBus
 
 COMPANY = "software-company"
-STUDIO = "Studio-creators"
 KEEPER = "keeper"
-XUONG = (COMPANY, STUDIO, KEEPER)
+XUONG = (COMPANY, KEEPER)
 
 
 class GateError(Exception):
@@ -42,19 +36,8 @@ def _keeper_gate(bus: Any) -> Any:
     return KeeperPersistentGate(bus, approvers=keeper_gate_approvers())
 
 
-def _studio_gate(bus: Any) -> Any:
-    """Gate của xưởng video mang theo allowlist người duyệt như `studio.gate_cli` dựng."""
-    try:
-        from studio.media import load_media_config
-        cfg = load_media_config()
-    except Exception:
-        cfg = None
-    return studio_gate_cli.PersistentGate(bus, approvers=gate_approvers(cfg))
-
-
 def _company_gate(bus: Any) -> Any:
-    """Gate của công ty gia công mang theo allowlist người duyệt (`COMPANY_GATE_APPROVERS`, K3.7) — cùng đường
-    console duyệt studio, không thì console là lối tắt bỏ qua allowlist mà CLI/orchestrator company đều tuân."""
+    """Gate của công ty gia công mang theo allowlist người duyệt (`COMPANY_GATE_APPROVERS`, K3.7)."""
     return company_gate_cli.PersistentGate(bus, approvers=company_gate_approvers())
 
 
@@ -62,14 +45,12 @@ def _bus(xuong: str, db: Path) -> Any:
     """Bus BỀN VỮNG của đúng xưởng — ghi quyết định thì phải ghi vào file, khác `collect.py` (chỉ đọc)."""
     if xuong == COMPANY:
         return CompanyBus(db)
-    if xuong == STUDIO:
-        return StudioBus(db)
     from keeper.bus import KeeperBus
     from keeper.core import CORE as KEEPER_CORE
     return KeeperBus(KEEPER_CORE, db)
 
 
-def decide(company_db: Path | None, studio_db: Path | None, keeper_db: Path | None = None, *,
+def decide(company_db: Path | None, keeper_db: Path | None = None, *,
            subject_id: str, xuong: str, decision: str, by: str, reason: str) -> dict[str, Any]:
     """Duyệt/từ chối một gate đang chờ. Trả `{"ok", "subject_id", "decision", "event_id"}`.
 
@@ -77,8 +58,8 @@ def decide(company_db: Path | None, studio_db: Path | None, keeper_db: Path | No
     if xuong not in XUONG:
         raise ValueError(f"xưởng lạ: {xuong} (chỉ nhận {' | '.join(XUONG)})")
     from keeper.gates import Decision as KeeperDecision
-    db = {COMPANY: company_db, STUDIO: studio_db, KEEPER: keeper_db}[xuong]
-    allowed = _decisions({COMPANY: CompanyDecision, STUDIO: StudioDecision, KEEPER: KeeperDecision}[xuong])
+    db = {COMPANY: company_db, KEEPER: keeper_db}[xuong]
+    allowed = _decisions({COMPANY: CompanyDecision, KEEPER: KeeperDecision}[xuong])
     if decision not in allowed:
         raise ValueError(f"quyết định lạ: {decision} (chỉ nhận {' | '.join(allowed)})")
     if not subject_id.strip():
@@ -90,7 +71,7 @@ def decide(company_db: Path | None, studio_db: Path | None, keeper_db: Path | No
 
     bus = _bus(xuong, Path(db))
     try:
-        gate = {COMPANY: _company_gate, STUDIO: _studio_gate, KEEPER: _keeper_gate}[xuong](bus)
+        gate = {COMPANY: _company_gate, KEEPER: _keeper_gate}[xuong](bus)
         written: list[Any] = []
         bus.subscribe("audit-log", written.append)  # bắt chính envelope gate.decide mà gate vừa ghi
         try:

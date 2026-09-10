@@ -39,7 +39,6 @@ TOKEN_FILE = CONSOLE_DIR / ".console-token"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8200
 DEFAULT_COMPANY_DB = REPO_ROOT / "software-company" / "company.sqlite"
-DEFAULT_STUDIO_DB = REPO_ROOT / "Studio-creators" / "studio.sqlite"
 DEFAULT_KEEPER_DB = REPO_ROOT / "keeper" / "keeper.sqlite"
 
 DEFAULT_ENGINE_INTERVAL = 30.0   # giây giữa hai nhịp `run --watch` khi trang không nói gì khác
@@ -186,7 +185,6 @@ class ConsoleServer(ThreadingHTTPServer):
         allow_submit: bool = False,
         allow_engine: bool = False,
         company_db: Path | None = None,
-        studio_db: Path | None = None,
         keeper_db: Path | None = None,
         llm_yaml: dict[str, Path] | None = None,
         static_dir: Path = STATIC_DIR,
@@ -204,15 +202,14 @@ class ConsoleServer(ThreadingHTTPServer):
         # GHI vào bus, khác hẳn ba quyền trên (chỉ ghi một event hoặc một file cấu hình).
         self.allow_engine = allow_engine
         self.company_db = company_db
-        self.studio_db = studio_db
         self.keeper_db = keeper_db
         self.llm_yaml = llm_yaml
         self.static_dir = Path(static_dir)
         # None = stream sống tới khi client đóng (chế độ chạy thật). Test đặt một giá trị nhỏ
         # để vòng lặp tự kết thúc thay vì phải giết thread.
         self.stream_max_seconds = stream_max_seconds
-        from console.engine import COMPANY, KEEPER, STUDIO, EngineManager
-        self.engine = EngineManager({COMPANY: company_db, STUDIO: studio_db, KEEPER: keeper_db})
+        from console.engine import COMPANY, KEEPER, EngineManager
+        self.engine = EngineManager({COMPANY: company_db, KEEPER: keeper_db})
         # Con của console chết cùng console: cả đường đóng bình thường (`server_close`) lẫn đường thoát
         # đột ngột (`atexit`) đều phải dọn, nếu không một orchestrator mồ côi vẫn ghi bus sau khi tắt trang.
         atexit.register(self.engine.stop_all)
@@ -414,7 +411,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         lúc với "có gate nào chờ tôi không", một lần đọc phải trả lời cả hai."""
         from console.collect import collect  # nhập trễ: lớp dữ liệu do agent khác viết song song.
 
-        state = collect(self.server.company_db, self.server.studio_db, self.server.keeper_db)
+        state = collect(self.server.company_db, self.server.keeper_db)
         state["engine"] = {**self.server.engine.status(), "allowed": self.server.allow_engine}
         return state
 
@@ -465,7 +462,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         if self.command == "HEAD":
             return
 
-        dbs = (self.server.company_db, self.server.studio_db, self.server.keeper_db)
+        dbs = (self.server.company_db, self.server.keeper_db)
         fingerprint: str | None = None
         last_beat = 0.0
         deadline = None if self.server.stream_max_seconds is None else time.monotonic() + self.server.stream_max_seconds
@@ -508,7 +505,6 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         try:
             result = decide(
                 self.server.company_db,
-                self.server.studio_db,
                 self.server.keeper_db,
                 subject_id=args["subject_id"],
                 xuong=args["xuong"],
@@ -569,7 +565,6 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         try:
             result = submit(
                 self.server.company_db,
-                self.server.studio_db,
                 self.server.keeper_db,
                 xuong=payload["xuong"],
                 topic=payload["topic"],
@@ -679,7 +674,6 @@ def make_server(
     allow_submit: bool = False,
     allow_engine: bool = False,
     company_db: Path | None = None,
-    studio_db: Path | None = None,
     keeper_db: Path | None = None,
     llm_yaml: dict[str, Path] | None = None,
     static_dir: Path = STATIC_DIR,
@@ -694,7 +688,6 @@ def make_server(
         allow_submit=allow_submit,
         allow_engine=allow_engine,
         company_db=company_db,
-        studio_db=studio_db,
         keeper_db=keeper_db,
         llm_yaml=llm_yaml,
         static_dir=static_dir,

@@ -16,17 +16,13 @@ from typing import Any
 from company.bus import BusError as CompanyBusError
 from company.events import Envelope as CompanyEnvelope
 from company.sqlite_bus import SQLiteBus as CompanyBus
-from studio.bus import BusError as StudioBusError
-from studio.events import Envelope as StudioEnvelope
-from studio.sqlite_bus import SQLiteBus as StudioBus
 
-from console.decide import COMPANY, KEEPER, STUDIO, XUONG
+from console.decide import COMPANY, KEEPER, XUONG
 
-# topic người nạp được → trường payload dùng làm `key` của envelope (cùng quy ước với CLI `publish` của từng công ty:
-# software-company lấy project_id, Studio-creators lấy channel_id qua `key_for`).
+# topic người nạp được → trường payload dùng làm `key` của envelope (cùng quy ước với CLI `publish` của công ty:
+# software-company lấy project_id).
 FORMS: dict[str, dict[str, str]] = {
     COMPANY: {"research-requests": "project_id", "clarification-answers": "project_id"},
-    STUDIO: {"channel-briefs": "channel_id"},
     # `maintenance-signals` là topic DUY NHẤT người nạp tay được của `keeper` (`keeper.core.HUMAN_TOPICS`):
     # ticket bảo trì phải đi qua `triager` để có `risk_tier`, nên không có form nào cho `maintenance-tickets`.
     KEEPER: {"maintenance-signals": "subject"},
@@ -39,8 +35,6 @@ def _bus_for(xuong: str, db: Path) -> tuple[Any, Any, type[Exception]]:
     của nó — một phụ thuộc chỉ có nghĩa khi thật sự nạp việc cho công ty bảo trì."""
     if xuong == COMPANY:
         return CompanyBus(db), CompanyEnvelope, CompanyBusError
-    if xuong == STUDIO:
-        return StudioBus(db), StudioEnvelope, StudioBusError
     from keeper.bus import KeeperBus
     from keeper.core import CORE as KEEPER_CORE
     from keeper.events import Envelope as KeeperEnvelope
@@ -56,7 +50,7 @@ class SubmitError(Exception):
         self.http_status = http_status
 
 
-def submit(company_db: Path | None, studio_db: Path | None, keeper_db: Path | None = None, *,
+def submit(company_db: Path | None, keeper_db: Path | None = None, *,
            xuong: str, topic: str, payload: dict[str, Any], actor: str) -> dict[str, Any]:
     """Publish một event do người tạo. Trả `{"ok", "xuong", "topic", "key", "event_id"}`.
 
@@ -77,10 +71,10 @@ def submit(company_db: Path | None, studio_db: Path | None, keeper_db: Path | No
     key = str(payload.get(allowed[topic]) or "").strip()
     if not key:
         raise ValueError(f"payload thiếu `{allowed[topic]}` (dùng làm key của {topic})")
-    db = {COMPANY: company_db, STUDIO: studio_db, KEEPER: keeper_db}[xuong]
+    db = {COMPANY: company_db, KEEPER: keeper_db}[xuong]
     if db is None:
         raise ValueError(f"console chạy không có đường dẫn bus của {xuong} "
-                         f"(--company-db / --studio-db / --keeper-db)")
+                         f"(--company-db / --keeper-db)")
 
     Path(db).parent.mkdir(parents=True, exist_ok=True)
     bus, env_cls, bus_error = _bus_for(xuong, Path(db))

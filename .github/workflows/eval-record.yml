@@ -16,7 +16,7 @@ on:
         type: choice
         required: true
         default: company
-        options: [company, studio]
+        options: [company]
       agents:
         description: "`all`, hoặc danh sách id cách nhau bởi khoảng trắng (vd. `backend reviewer`)"
         type: string
@@ -49,8 +49,8 @@ jobs:
       contents: write        # tạo nhánh cho PR
       pull-requests: write   # mở PR
     env:
-      DIR: ${{ inputs.package == 'company' && 'software-company' || 'Studio-creators' }}
-      PREFIX: ${{ inputs.package == 'company' && 'COMPANY' || 'STUDIO' }}
+      DIR: software-company
+      PREFIX: COMPANY
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -79,16 +79,11 @@ jobs:
           JOBS: ${{ inputs.jobs }}
           # Provider và model do workflow chỉ đích danh, KHÔNG lấy từ `llm.yaml` (file đó không có trong repo —
           # luật cấm 3). Biến môi trường thắng file, xem `load_config`.
-          COMPANY_LLM_PROVIDER: ${{ inputs.package == 'company' && inputs.provider || '' }}
-          COMPANY_LLM_API_KEY: ${{ inputs.package == 'company' && (inputs.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || secrets.OPENAI_API_KEY) || '' }}
-          COMPANY_MODEL_STRONG: ${{ inputs.package == 'company' && vars.COMPANY_MODEL_STRONG || '' }}
-          COMPANY_MODEL_STANDARD: ${{ inputs.package == 'company' && vars.COMPANY_MODEL_STANDARD || '' }}
-          COMPANY_MODEL_LIGHT: ${{ inputs.package == 'company' && vars.COMPANY_MODEL_LIGHT || '' }}
-          STUDIO_LLM_PROVIDER: ${{ inputs.package == 'studio' && inputs.provider || '' }}
-          STUDIO_LLM_API_KEY: ${{ inputs.package == 'studio' && (inputs.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || secrets.OPENAI_API_KEY) || '' }}
-          STUDIO_MODEL_STRONG: ${{ inputs.package == 'studio' && vars.STUDIO_MODEL_STRONG || '' }}
-          STUDIO_MODEL_STANDARD: ${{ inputs.package == 'studio' && vars.STUDIO_MODEL_STANDARD || '' }}
-          STUDIO_MODEL_LIGHT: ${{ inputs.package == 'studio' && vars.STUDIO_MODEL_LIGHT || '' }}
+          COMPANY_LLM_PROVIDER: ${{ inputs.provider }}
+          COMPANY_LLM_API_KEY: ${{ inputs.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || secrets.OPENAI_API_KEY }}
+          COMPANY_MODEL_STRONG: ${{ vars.COMPANY_MODEL_STRONG }}
+          COMPANY_MODEL_STANDARD: ${{ vars.COMPANY_MODEL_STANDARD }}
+          COMPANY_MODEL_LIGHT: ${{ vars.COMPANY_MODEL_LIGHT }}
         run: |
           key_var="${PREFIX}_LLM_API_KEY"
           if [ -z "${!key_var}" ]; then
@@ -96,7 +91,7 @@ jobs:
             echo "Đặt ANTHROPIC_API_KEY hoặc OPENAI_API_KEY trong Settings → Secrets → Actions." >&2
             exit 2
           fi
-          mod="${{ inputs.package == 'company' && 'company' || 'studio' }}"
+          mod="company"
           # Điểm chấm KHÔNG phải cổng (K5.4, CONTRIBUTING §3): bước này xanh khi bản ghi ghi được, kể cả có ca
           # không đạt — bản ghi thật vừa ghi mà đỏ ngay thì không ai dám ghi lại. Bảng điểm ở job summary.
           for a in $AGENTS; do

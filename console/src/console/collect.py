@@ -1,12 +1,11 @@
-"""Đọc trạng thái hai công ty (software-company, Studio-creators) + gateway thành MỘT dict thuần cho trang console.
+"""Đọc trạng thái software-company + keeper + gateway thành MỘT dict thuần cho trang console.
 
 Nguyên tắc:
 
 - **Chỉ đọc.** SQLite mở bằng URI `mode=ro`: không tạo file, không chạy DDL, không đổi journal mode. Vì vậy không dùng
   `SQLiteBus` ở đây (constructor của nó `CREATE TABLE` + `PRAGMA journal_mode=WAL` — ghi vào DB của công ty đang chạy).
-  Envelope đọc lên được nạp thẳng vào `InMemoryBus` thật của từng công ty rồi replay qua chính DeliveryLead /
-  ProductionDesk / Supervisor / PersistentGate của họ — trạng thái ticket/video/gate suy ra đúng như orchestrator, không
-  chép lại máy trạng thái ở đây.
+  Envelope đọc lên được nạp thẳng vào `InMemoryBus` thật của công ty rồi replay qua chính DeliveryLead / Supervisor /
+  PersistentGate của họ — trạng thái ticket/gate suy ra đúng như orchestrator, không chép lại máy trạng thái ở đây.
 - **Không bao giờ ném.** DB thiếu hoặc hỏng là trạng thái bình thường (chưa chạy công ty đó bao giờ): `sources[...]`
   mang `ok=false` + lý do tiếng Việt, phần dữ liệu của xưởng đó rỗng.
 - Ngưỡng `sev` của gate lấy từ `HumanGate.timeout` / `HumanGate.remind_at` của chính công ty, không viết số ở đây.
@@ -47,14 +46,6 @@ from keeper.events import ReleaseNote as KeeperNote
 from keeper.events import Ticket as KeeperTicket
 from keeper.gates import PersistentGate as KeeperGate
 from keeper.ledger import Ledger
-from studio import gate_cli as studio_gate_cli
-from studio import llm as studio_llm
-from studio import routing as studio_routing
-from studio.bus import InMemoryBus as StudioBus
-from studio.desk import ProductionDesk
-from studio.events import Envelope as StudioEnvelope
-from studio.registry import load_agents as load_studio_agents
-from studio.supervisor import Supervisor as StudioSupervisor
 
 from console.git_truth import INTEGRATION_BRANCH, ahead_count
 from console.truth import Truth, gate_effect, gate_next_agent, gate_reject_effect
@@ -63,7 +54,6 @@ _LOOPS_EMPTY = {"turns_p50": None, "turns_p90": None, "turns_max": None, "capped
                 "no_progress_ratio": None, "retry_max_ratio": None, "n": 0, "empty": True}
 
 COMPANY = "software-company"
-STUDIO = "Studio-creators"
 KEEPER = "keeper"
 #: Chữ thay cho MỌI con số của tab `keeper` khi công ty bảo trì chưa chạy lần nào (BT8, `DAC-TA-KEEPER.md` §10).
 #: Một số 0 màu xanh và một hệ thống chưa từng chạy nhìn giống hệt nhau — nên khi chưa chạy thì không có số nào,
@@ -244,13 +234,13 @@ class _View:
         return [e for e in self.envelopes if e.topic == "audit-log"]
 
     def log(self) -> list[tuple[datetime, dict[str, Any]]]:
-        """(ts, dòng log) — ts để gộp hai xưởng theo đúng thứ tự thời gian, không phải theo chuỗi giờ:phút."""
+        """(ts, dòng log) — ts để gộp theo đúng thứ tự thời gian, không phải theo chuỗi giờ:phút."""
         rows: list[tuple[datetime, dict[str, Any]]] = []
         for e in reversed(self.audits()):
             p = e.payload
             if not str(p.get("action", "")).startswith("produced:"): continue
             rows.append((e.ts, {"t": e.ts.astimezone().strftime("%H:%M"), "a": p.get("actor", "?"),
-                                "ac": p.get("action", ""), "k": p.get("ticket_id") or p.get("video_id") or e.key,
+                                "ac": p.get("action", ""), "k": p.get("ticket_id") or e.key,
                                 "tok": int(p.get("tokens") or 0), "c": round(float(p.get("cost_usd") or 0.0), 4)}))
             if len(rows) >= LOG_LIMIT: break
         return rows
@@ -410,79 +400,6 @@ class CompanyView(_View):
         return sum(1 for st in self.lead.state.values() if st in STUCK_STATES) if self.ok else 0
 
 
-class StudioView(_View):
-    """Studio-creators: ProductionDesk + Supervisor + PersistentGate thật."""
-
-    def _read(self) -> list[Any]:
-        return _envelopes(self.db, StudioEnvelope)
-
-    def _replay(self) -> None:
-        self.bus = _load_bus(StudioBus(enforce_owners=False), self.envelopes)
-        self.gate = studio_gate_cli.PersistentGate(self.bus)
-        self.desk = ProductionDesk(self.bus)
-        self.sup = StudioSupervisor(self.bus)
-        for env in self.envelopes:
-            self.desk.replay(env)
-            self.sup.replay(env)
-        self.report = self.sup.report()
-        # `studio` không có module metrics riêng; `company.metrics` chỉ đọc envelope + audit-log (cùng hình dạng) nên
-        # dùng lại thay vì chép logic đếm call/token/tool sang đây.
-        self.metrics = company_metrics.collect(self.bus)
-
-    def tiers(self) -> dict[str, str]:
-        try:
-            return {a: spec.model_tier for a, spec in load_studio_agents().items()}
-        except Exception:
-            return {}
-
-    def _video_of(self, subject_id: str) -> str:
-        return subject_id.split("-", 1)[1] if subject_id.startswith(("PUB-", "PLAN-", "REP-")) else subject_id
-
-    def gate_title(self, r: Any) -> str:
-        b = self.desk.briefs.get(self._video_of(r.subject_id))
-        return b.working_title if b else f"{r.kind} · {r.subject_id}"
-
-    def gate_facts(self, r: Any) -> list[list[str]]:
-        facts = super().gate_facts(r)
-        vid = self._video_of(r.subject_id)
-        b = self.desk.briefs.get(vid)
-        if b: facts += [["video_id", vid], ["format", b.format], ["state", self.desk.state.get(vid, "?")]]
-        return facts
-
-    def review_note(self, subject_id: str, source: str) -> str:
-        return self._review_note("video_id", self._video_of(subject_id), source)
-
-    def videos(self) -> list[dict[str, Any]]:
-        if not self.ok: return []
-        out = []
-        for vid, st in self.desk.state.items():
-            b = self.desk.briefs.get(vid)
-            bud = self.sup.budgets.get(vid)
-            out.append({"id": vid, "st": st, "t": b.working_title if b else vid, "fmt": b.format if b else "long",
-                        "used": bud.used if bud else 0, "bud": b.budget_tokens if b else 0})
-        return out
-
-    def perf(self) -> list[dict[str, Any]]:
-        if not self.ok: return []
-        return [{"id": e.payload.get("video_id") or e.key, "imp": int(e.payload.get("impressions") or 0),
-                 "views": int(e.payload.get("views") or 0), "ctr": float(e.payload.get("ctr") or 0.0),
-                 "avd": round(float(e.payload.get("avg_view_duration_s") or 0.0))}
-                for e in self.latest_by("performance-snapshots", lambda e: e.payload.get("video_id") or e.key).values()]
-
-    def retention(self) -> dict[str, Any]:
-        if not self.ok: return {"video_id": None, "points": []}
-        for e in reversed(self.envelopes):
-            if e.topic != "performance-snapshots": continue
-            curve = e.payload.get("retention_curve") or []
-            if curve:
-                return {"video_id": e.payload.get("video_id") or e.key,
-                        "points": [[p.get("t"), p.get("pct")] for p in curve]}
-        return {"video_id": None, "points": []}
-
-    def stuck(self) -> int:
-        return sum(1 for st in self.desk.state.values() if st in STUCK_STATES) if self.ok else 0
-
-
 class KeeperView(_View):
     """`keeper` (công ty bảo trì): ticket bảo trì + sổ nợ + gate, replay trên log đã đọc.
 
@@ -557,9 +474,9 @@ class KeeperView(_View):
 # ---------- backends: llm.yaml (routing.status) rồi mới đến gateway ----------
 
 def _routing_status() -> list[dict[str, Any]] | None:
-    """`routing.status()` thật dựng từ `llm.yaml` của một trong hai công ty (nếu có file). Client không được tạo ở đây —
+    """`routing.status()` thật dựng từ `llm.yaml` của công ty (nếu có file). Client không được tạo ở đây —
     console chỉ hỏi trạng thái, không gọi model — nên mỗi backend dùng `FakeClient` làm chỗ giữ chỗ."""
-    for llm_mod, routing_mod in ((company_llm, company_routing), (studio_llm, studio_routing)):
+    for llm_mod, routing_mod in ((company_llm, company_routing),):
         path = getattr(llm_mod, "CONFIG_FILE", None)
         if not path or not Path(path).exists(): continue
         try:
@@ -664,27 +581,24 @@ def _co_container_runtime(which: Any = shutil.which) -> bool:
     return any(which(x) for x in ("docker", "podman"))
 
 
-def _tiles(company: CompanyView, studio: StudioView, views: list[_View], now: datetime) -> dict[str, Any]:
-    tickets, videos = company.tickets(), studio.videos()
+def _tiles(company: CompanyView, views: list[_View], now: datetime) -> dict[str, Any]:
+    tickets = company.tickets()
     cost_today, tokens_today = _today_totals(views, now)
     totals = [v.metrics["total"] for v in views]
     creport = company.report if company.ok else {}
-    sreport = studio.report if studio.ok else {}
-    rework = creport.get("rework_rate")
-    catch = creport.get("review_catch_rate")
     return {
         "events": sum(len(v.envelopes) for v in views),
         "queue": sum(_queue(v.envelopes) for v in views),
         "model_calls": sum(int(t.get("calls") or 0) for t in totals),
         "tool_calls": sum(int(t.get("tool_calls") or 0) for t in totals),
         "tokens": sum(int(t.get("tokens") or 0) for t in totals),
-        "project_budget_tokens": sum(t["bud"] for t in tickets) + sum(v["bud"] for v in videos),
-        "rework_rate": rework if rework is not None else sreport.get("rework_rate"),
-        "review_catch_rate": catch if catch is not None else sreport.get("review_catch_rate"),
+        "project_budget_tokens": sum(t["bud"] for t in tickets),
+        "rework_rate": creport.get("rework_rate"),
+        "review_catch_rate": creport.get("review_catch_rate"),
         "prs_unverified": int(creport.get("prs_unverified") or 0),
         "cost_today_usd": cost_today,
         "tokens_today": tokens_today,
-        "stuck_tickets": company.stuck() + studio.stuck(),
+        "stuck_tickets": company.stuck(),
         "project_cost_usd": round(sum(creport.get("project_cost_usd", {}).values()), 4),
         "project_budget_usd": company.sup.project_budget_usd if company.ok else None,
         "unpriced_calls": sum(int(t.get("unpriced") or 0) for t in totals),
@@ -692,17 +606,17 @@ def _tiles(company: CompanyView, studio: StudioView, views: list[_View], now: da
     }
 
 
-def collect(company_db: Path | None, studio_db: Path | None, keeper_db: Path | None = None,
+def collect(company_db: Path | None, keeper_db: Path | None = None,
             gateway_token_file: Path | None = None,
             gateway_url: str = "http://127.0.0.1:1123") -> dict[str, Any]:
-    """Trạng thái hợp nhất của hai công ty + gateway (xem `console/API.md`). Không bao giờ ném: nguồn nào hỏng thì
-    `sources[<nguồn>].ok = false` kèm lý do và phần dữ liệu của nguồn đó rỗng."""
+    """Trạng thái hợp nhất của software-company + keeper + gateway (xem `console/API.md`). Không bao giờ ném:
+    nguồn nào hỏng thì `sources[<nguồn>].ok = false` kèm lý do và phần dữ liệu của nguồn đó rỗng."""
     now = datetime.now(UTC).astimezone()
-    company, studio = CompanyView(COMPANY, company_db), StudioView(STUDIO, studio_db)
+    company = CompanyView(COMPANY, company_db)
     keeper = KeeperView(KEEPER, keeper_db)
     # `views` là danh sách nuôi các ô CHI PHÍ/TOKEN của trang Trực ban. `keeper` KHÔNG có tên trong đó: nó chưa
     # có `llm.yaml` nào và chưa gọi model lần nào, nên cộng nó vào chỉ thêm một số 0 vô nghĩa vào mẫu số.
-    views: list[_View] = [company, studio]
+    views: list[_View] = [company]
 
     backends = _routing_status()
     if backends is None:
@@ -714,26 +628,21 @@ def collect(company_db: Path | None, studio_db: Path | None, keeper_db: Path | N
     log = [row for _, row in sorted((r for v in views for r in v.log()), key=lambda r: r[0], reverse=True)[:LOG_LIMIT]]
     return {
         "generated_at": now.isoformat(timespec="seconds"),
-        "sources": {COMPANY: company.source, STUDIO: studio.source, KEEPER: keeper.source,
+        "sources": {COMPANY: company.source, KEEPER: keeper.source,
                     "gateway": {"ok": gateway_error is None, "url": gateway_url, "error": gateway_error}},
-        "tiles": _tiles(company, studio, views, now),
-        # Gate của `keeper` đi CHUNG hàng đợi Trực ban: người trực có một chỗ duy nhất để ký, và `decide.py`
-        # đã biết đường ghi cho cả ba xưởng. Tab `keeper` đếm lại chúng cho riêng mình.
-        "gates": company.gates(now) + studio.gates(now) + keeper.gates(now),
+        "tiles": _tiles(company, views, now),
+        # Gate của `keeper` đi CHUNG hàng đợi Trực ban: người trực có một chỗ duy nhất để ký.
+        "gates": company.gates(now) + keeper.gates(now),
         "keeper": keeper.block(now),
         "tickets": company.tickets(),
         "prs": company.prs(),
         "reviews": company.reviews(),
-        "videos": studio.videos(),
-        "perf": studio.perf(),
-        "retention": studio.retention(),
         "cost_days": _cost_days(views, now),
         "agents": _agents(views),
         "backends": backends,
         "supervisor": [a for v in views for a in v.supervisor_actions()],
         "log": log,
-        # 4L-5: đo vòng tool (`company.metrics`, đặc tả L3 "cách đo") — xưởng phần mềm, giống truth_block();
-        # dùng lại nguyên `metrics.loops`, không dựng bản riêng cho studio (studio đã tái dùng company.metrics.collect).
+        # 4L-5: đo vòng tool (`company.metrics`, đặc tả L3 "cách đo") — xưởng phần mềm, giống truth_block().
         "loops": company.metrics.get("loops", _LOOPS_EMPTY) if company.ok else _LOOPS_EMPTY,
         **company.truth_block(),
     }

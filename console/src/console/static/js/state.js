@@ -6,9 +6,9 @@ import {stream} from "./stream.js";
 import {$, esc, setQ} from "./util.js";
 
 /* ---------- trạng thái ---------- */
-export const SC="software-company", ST="Studio-creators", KP="keeper", GW="gateway";
-export const BLANK={generated_at:null,sources:{},tiles:{},gates:[],tickets:[],prs:[],reviews:[],videos:[],perf:[],
-  retention:null,cost_days:{days:[],series:[]},agents:[],backends:[],supervisor:[],log:[],
+export const SC="software-company", KP="keeper", GW="gateway";
+export const BLANK={generated_at:null,sources:{},tiles:{},gates:[],tickets:[],prs:[],reviews:[],
+  cost_days:{days:[],series:[]},agents:[],backends:[],supervisor:[],log:[],
   delivery:null,pending_decisions:[],running:null,deadlocks:[],product_funnel:[],silent_deadlocks:[],sandbox:null,
   loops:null,keeper:null};
 export let S=null;                    // dữ liệu tốt lần cuối đọc được — giữ nguyên khi lỗi

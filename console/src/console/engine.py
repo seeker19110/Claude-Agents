@@ -29,13 +29,12 @@ from typing import Any
 
 from console.server import CONSOLE_DIR, REPO_ROOT
 
-# Tên ba xưởng lặp lại ở đây thay vì nhập từ `console.decide` một cách CỐ Ý: `server.py` dựng `EngineManager`
+# Tên hai xưởng lặp lại ở đây thay vì nhập từ `console.decide` một cách CỐ Ý: `server.py` dựng `EngineManager`
 # ngay trong `__init__`, mà test của server thay hẳn `console.decide` bằng module giả trong `sys.modules`.
 # Nhập chéo lúc đó là một AttributeError phụ thuộc thứ tự import. `test_engine.py` canh hai bảng không lệch nhau.
 COMPANY = "software-company"
-STUDIO = "Studio-creators"
 KEEPER = "keeper"
-XUONG = (COMPANY, STUDIO, KEEPER)
+XUONG = (COMPANY, KEEPER)
 
 LOG_DIR = CONSOLE_DIR / ".engine"          # đã nằm trong .gitignore cùng .console-token
 LOG_TAIL_BYTES = 4096                      # đuôi log đọc cho trang: đủ thấy traceback cuối, không đủ để nghẽn
@@ -72,7 +71,6 @@ class EngineSpec:
 
 SPECS: dict[str, EngineSpec] = {
     COMPANY: EngineSpec("company.orchestrator", REPO_ROOT / "software-company", "xưởng phần mềm"),
-    STUDIO: EngineSpec("studio.orchestrator", REPO_ROOT / "Studio-creators", "xưởng video"),
     KEEPER: EngineSpec("keeper.cli", REPO_ROOT / "keeper", "công ty bảo trì", needs_repo=True),
 }
 

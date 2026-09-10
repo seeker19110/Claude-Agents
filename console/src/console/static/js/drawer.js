@@ -6,7 +6,7 @@ import {S, setDrawerOpen, st} from "./state.js";
 import {applyPending, freshLabel, load, retry} from "./stream.js";
 import {ahead} from "./tables.js";
 import {filter} from "./tiles.js";
-import {$, $$, esc, mmss, num, pctTxt, setQ} from "./util.js";
+import {$, $$, esc, num, setQ} from "./util.js";
 
 /* ---------- ngăn kéo ---------- */
 export const drawer=$("#drawer"), scrim=$("#scrim");
@@ -158,22 +158,5 @@ export function openTicket(id){
         ${rv.length?rv.map(r=>`<div class="check"><span><span class="n">${esc(r.src)} · ${esc(r.v)} <span style="color:var(--ink-muted);font-weight:400">${esc(r.at||"")}</span></span><span class="d">${esc(r.f)}</span>${(r.trim_src||[]).length?`<span class="d" style="color:var(--warn-ink)">bằng chứng bị cắt: ${(r.trim_src||[]).map(x=>esc(x.src)+" −"+num(x.chars)+" ký tự").join(", ")}</span>`:""}</span></div>`).join(""):'<div class="empty">Chưa có review.</div>'}</div>
     </div>`);
 }
-export function openVideo(id){
-  const v=(st().videos||[]).find(x=>x.id===id); if(!v) return;
-  openId=id; writeHash(view,"video",id,false);
-  const p=(st().perf||[]).find(x=>x.id===id);
-  show(`<div class="dr-h"><div><div class="id">${esc(v.id)}</div><h2>${esc(v.t)}</h2></div><button class="x" aria-label="Đóng">✕</button></div>
-    <div class="dr-b">
-      <dl class="dl"><dt>trạng thái</dt><dd>${esc(v.st)}</dd><dt>format</dt><dd>${esc(v.fmt)}</dd>
-        <dt>token</dt><dd>${num(v.used)} / ${num(v.bud)}</dd></dl>
-      <div><div class="eyebrow" style="margin-bottom:8px">Số liệu sau khi đăng</div>
-        ${p?`<dl class="dl"><dt>hiển thị</dt><dd>${num(p.imp)}</dd><dt>lượt xem</dt><dd>${num(p.views)}</dd>
-          <dt>CTR</dt><dd>${pctTxt(p.ctr)}</dd><dt>xem trung bình</dt><dd>${mmss(p.avd)}</dd></dl>`
-        :'<div class="empty">Chưa có số liệu — video chưa đăng hoặc chưa kéo về được từ nền tảng.</div>'}</div>
-      <p class="note">Cảnh, quyền sử dụng tài sản và manifest nằm trong bus của xưởng video; console chỉ đọc phần
-        đã có trong <code>/api/state</code>.</p>
-    </div>`);
-}
-
 /* `truth` mở ngăn kéo từ bảng phễu; xem ghi chú setQ ở util.js. */
 export function setOpenId(v){ openId=v; }

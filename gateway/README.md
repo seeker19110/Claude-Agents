@@ -124,8 +124,7 @@ Không có `make`: `uv run python -m gateway <lệnh>`. OAuth loopback dùng c�
 
 `setup` chỉ ghi dạng **một provider** (`provider: openai`, `base_url`, `models.strong/standard`, `max_tokens`), không có tier
 `light` và không có `backends:`. Nếu `llm.yaml` đã dùng `backends:` (nhiều gói, xem `../docs/HUONG-DAN-VAN-HANH.md` §3.2) thì các
-khoá `setup` ghi ra bị bỏ qua — khi đó khai gateway là một backend `antigravity` thay vì chạy `setup`. Studio-creators: dùng
-`--target ../Studio-creators/llm.yaml` hoặc khai backend tay.
+khoá `setup` ghi ra bị bỏ qua — khi đó khai gateway là một backend `antigravity` thay vì chạy `setup`.
 
 Rồi ở `software-company`:
 

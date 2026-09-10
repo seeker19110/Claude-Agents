@@ -52,3 +52,7 @@ mọi lựa chọn phải trả lời được câu "nếu bề mặt này bị 
   thể trễ tối đa một nhịp làm mới (10 giây).
 - Chưa có nhiều người dùng, chưa có phân quyền: `--allow-decide` cho phép duyệt dưới bất kỳ tên nào mà công ty chấp
   nhận. Nếu sau này có nhiều người vận hành thì phải bổ sung danh tính thật, không được dựa vào token phiên.
+
+**Cập nhật lịch sử (2026-09):** `Studio-creators` đã tách thành repo riêng ngoài hub; `StudioView` và mọi màn
+"Xưởng video" đã bị gỡ khỏi `console` (xem `docs/sessions/`). Quyết định "một package riêng, chỉ đọc theo mặc định"
+ở ADR này không đổi — console giờ chỉ hợp nhất `software-company` + `keeper`.

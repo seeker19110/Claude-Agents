@@ -1,8 +1,8 @@
 /* router.js — tách từ index.html ở K7.1 (kịch bản B). Không build step, không CDN.
     */
-import {openGate, openId, openTicket, openVideo, shut} from "./drawer.js";
+import {openGate, openId, openTicket, shut} from "./drawer.js";
 import {CFG, loadSettings} from "./settings.js";
-import {KP, SC, ST, drawerOpen, listOf, srcOk, srcWhy, st} from "./state.js";
+import {KP, SC, drawerOpen, listOf, srcOk, srcWhy, st} from "./state.js";
 import {renderGuide, renderSubmit} from "./submit.js";
 import {filter} from "./tiles.js";
 import {openRelease, renderProductFunnel} from "./truth.js";
@@ -14,7 +14,6 @@ export const TITLES={
    +(st().delivery?` · đã giao ${num(st().delivery.delivered)}/${num(st().delivery.releases_live)} release`:"")+` · hàng đợi còn ${num(st().tiles.queue)} event`],
  "phieu":()=>["Phễu sản phẩm",srcOk(SC)?(st().product_funnel||[]).length?`${(st().product_funnel||[]).length} sản phẩm · ô xám là ô CHƯA CÓ GÌ, không phải ô tốt`:"chưa có sản phẩm nào trên bus":srcWhy(SC)],
  "phan-mem":()=>["Xưởng phần mềm",srcOk(SC)?`${listOf(SC,st().tickets).length} ticket, ${listOf(SC,st().tickets).filter(t=>t.st==="in_review").length} đang review, ${listOf(SC,st().prs).length} PR đã nộp`:srcWhy(SC)],
- "video":()=>["Xưởng video",srcOk(ST)?`${listOf(ST,st().videos).length} video trong dây chuyền`:srcWhy(ST)],
  "bao-tri":()=>["Công ty bảo trì",srcOk(KP)?((st().keeper||{}).ran?`${((st().keeper||{}).tickets||[]).length} ticket bảo trì · ${((st().keeper||{}).gates||[]).length} gate chờ`:"chưa chạy lần nào"):srcWhy(KP)],
  "chi-phi":()=>["Chi phí & hạn mức",`${vnd(st().tiles.project_cost_usd)} / ${vnd(st().tiles.project_budget_usd)} USD dự án · ${st().backends.length} gói tài khoản`],
  "nhat-ky":()=>["Nhật ký",`audit-log ${num(st().log.length)} bản ghi · lọc theo hành động`],
@@ -29,8 +28,8 @@ export function titles(){const [t,s]=TITLES[view]();$("#vt").textContent=t;$("#v
    ngăn kéo thay vì rời trang, và gửi được link tới đúng một gate cho người khác.
    Dùng hash chứ không `history.pushState`: server chỉ phục vụ một đường `/`, đẩy đường dẫn thật
    vào thanh địa chỉ thì F5 sẽ ăn 404. */
-export const VIEWS=["truc-ban","phieu","phan-mem","video","bao-tri","chi-phi","nhat-ky","cai-dat","huong-dan"];
-export const OPENERS={gate:id=>openGate(id),ticket:id=>openTicket(id),video:id=>openVideo(id),release:id=>openRelease(id)};
+export const VIEWS=["truc-ban","phieu","phan-mem","bao-tri","chi-phi","nhat-ky","cai-dat","huong-dan"];
+export const OPENERS={gate:id=>openGate(id),ticket:id=>openTicket(id),release:id=>openRelease(id)};
 export let routing=false;                                // chặn vòng lặp hash -> mở -> đặt hash
 
 export function readHash(){
@@ -54,7 +53,7 @@ export function showView(v){
   $$(".view").forEach(x=>x.classList.toggle("on",x.id==="v-"+v));
   titles(); window.scrollTo({top:0});
   if(v==="cai-dat") loadSettings();
-  if(v==="phan-mem"||v==="video") renderSubmit(v);
+  if(v==="phan-mem") renderSubmit(v);
   if(v==="huong-dan") renderGuide();
   if(v==="phieu") renderProductFunnel();
 }

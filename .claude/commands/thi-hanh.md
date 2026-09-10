@@ -11,7 +11,7 @@ File trạng thái duy nhất: `docs/thi-hanh/<mã>.md` (ngoại lệ: mã `4l` 
 
 ## Nếu file chưa có → giai đoạn 1–4 (soạn), rồi tiếp giai đoạn 6
 
-1. **Giai đoạn 1 — Hiện trạng.** Tách đề bài thành các mảng độc lập (thường theo package: company, studio, core,
+1. **Giai đoạn 1 — Hiện trạng.** Tách đề bài thành các mảng độc lập (thường theo package: company, core,
    console, gateway, hoặc theo lớp/chủ đề). Gọi **song song** một subagent `Explore` mỗi mảng, câu hỏi đánh số,
    yêu cầu trả lời kèm `file:dòng`, factual. Gộp thành phần A theo khung §5 của khuôn. Mọi ô thiếu trỏ tới một mã
    việc.

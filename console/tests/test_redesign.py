@@ -41,17 +41,15 @@ def page() -> str:
 # collect: C1 phễu sản phẩm, C4 bế tắc im lặng, C5 nguồn bị cắt, C7 vượt integration
 # ---------------------------------------------------------------------------
 
-def test_state_mang_du_khoi_moi_va_nguon_hong_van_du_khoa(company_db: Path, studio_db: Path, tmp_path: Path) -> None:
-    s = collect(company_db, studio_db, gateway_url="http://127.0.0.1:9")
+def test_state_mang_du_khoi_moi_va_nguon_hong_van_du_khoa(company_db: Path, tmp_path: Path) -> None:
+    s = collect(company_db, gateway_url="http://127.0.0.1:9")
     assert isinstance(s["product_funnel"], list) and isinstance(s["silent_deadlocks"], list)
     assert s["reviews"][0]["trim_src"] == []
     assert s["tickets"][0]["ahead"] is None, "dự án không khai repo thì không đo được — phải là None, không phải 0"
     assert s["tickets"][0]["pending_decision"] is None
     rel = next(g for g in s["gates"] if g["id"] == "REL-001")
     assert "RC dừng tại đây" in rel["reject"] and rel["agent"] == "ops"
-    pub = next(g for g in s["gates"] if g["id"] == "PUB-vid-042")
-    assert pub["reject"] == "" and pub["agent"] == "", "xưởng video chưa khai hậu quả — im còn hơn đoán"
-    dead = collect(tmp_path / "khong-co.sqlite", studio_db, gateway_url="http://127.0.0.1:9")
+    dead = collect(tmp_path / "khong-co.sqlite", gateway_url="http://127.0.0.1:9")
     assert dead["product_funnel"] == [] and dead["silent_deadlocks"] == []
 
 
@@ -92,7 +90,7 @@ def test_c7_cot_vuot_integration_doc_repo_tu_chinh_bus(tmp_path: Path) -> None:
                                  "branch": "company/integration"})
     bus.close()
 
-    tickets = {t["id"]: t for t in collect(db, None, gateway_url="http://127.0.0.1:9")["tickets"]}
+    tickets = {t["id"]: t for t in collect(db, gateway_url="http://127.0.0.1:9")["tickets"]}
     assert tickets["T-dang-lam"]["ahead"] == 1, "1 commit còn nằm ngoài nhánh tích hợp"
     assert tickets["T-xong"]["ahead"] == 1, "ticket chưa ở trạng thái xong thì vẫn đo"
 
@@ -146,8 +144,8 @@ def test_c8_ly_do_khong_dung_duoc_di_ve_trang_chu_khong_thanh_500(console: srv.C
     assert status == 200 and body["ok"] is False and "không có trong hàng đợi gate" in body["error"]
     status, body = get(console, "/api/gate/brief?id=SPEC-1&closed=1")
     assert body["ok"] is True and body["kind"] == "spec", "gate đã đóng vẫn đọc lại được bằng closed=1"
-    status, body = get(console, "/api/gate/brief?id=PUB-1&xuong=Studio-creators")
-    assert body["ok"] is False and "Studio-creators" in body["error"]
+    status, body = get(console, "/api/gate/brief?id=PUB-1&xuong=keeper")
+    assert body["ok"] is False and "keeper" in body["error"]
     status, body = get(console, "/api/gate/brief")
     assert body["ok"] is False and "thiếu subject_id" in body["error"]
 
@@ -158,14 +156,14 @@ def test_c8_ho_so_van_can_token_phien(console: srv.ConsoleServer) -> None:
 
 
 # ---------------------------------------------------------------------------
-# C10: console không giữ state ngoài sqlite của hai công ty
+# C10: console không giữ state ngoài sqlite của công ty
 # ---------------------------------------------------------------------------
 
-def test_c10_khoi_dong_lai_khong_mat_gi(company_db: Path, studio_db: Path) -> None:
+def test_c10_khoi_dong_lai_khong_mat_gi(company_db: Path) -> None:
     """Mọi thứ console biết đều suy lại được từ bus: hai lần đọc (kể cả qua hai tiến trình server khác nhau) cho
     cùng một trạng thái, trừ dấu thời gian. Không có bộ nhớ nào chỉ sống trong RAM để mà mất khi F5."""
-    a = collect(company_db, studio_db, gateway_url="http://127.0.0.1:9")
-    b = collect(company_db, studio_db, gateway_url="http://127.0.0.1:9")
+    a = collect(company_db, gateway_url="http://127.0.0.1:9")
+    b = collect(company_db, gateway_url="http://127.0.0.1:9")
     a.pop("generated_at"), b.pop("generated_at")
     assert json.dumps(a, sort_keys=True, default=str) == json.dumps(b, sort_keys=True, default=str)
     assert not [f for f in vars(srv.ConsoleServer) if f.startswith("cache")]
@@ -226,11 +224,11 @@ def test_c5_nguon_bi_cat_hien_canh_verdict(page: str) -> None:
     tables = page[page.index("function renderTables()"):page.index("/* ---------- sự thật giao hàng ---------- */")]
     assert "r.trim_src" in tables and "ký tự" in tables
     assert "Agent thực sự thấy gì" in page, "cột phải có tên nói đúng nó đo gì"
-    assert "trim_src" in page[page.index("function openTicket(id)"):page.index("function openVideo(id)")]
+    assert "trim_src" in page[page.index("function openTicket(id)"):page.index("export function setOpenId")]
 
 
 def test_c6_hint_may_va_hint_nguoi_deu_hien_va_co_mau_de_go(page: str) -> None:
-    drawer = page[page.index("function openTicket(id)"):page.index("function openVideo(id)")]
+    drawer = page[page.index("function openTicket(id)"):page.index("export function setOpenId")]
     assert "t.human_hint" in drawer and "t.hint" in drawer, "phải hiện CẢ hint máy lẫn hint người"
     gate = page[page.index("function openGate(id)"):page.index("function openTicket(id)")]
     assert 'id="tmpl"' in gate and "root_cause" in gate and "decision" in gate and "hint" in gate

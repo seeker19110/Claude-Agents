@@ -75,7 +75,7 @@ def test_chua_chay_lan_nao_thi_moi_o_ghi_chu_khong_co_so(tmp_path: Path, db: str
         path = tmp_path / "rong.sqlite"
         KeeperBus(KEEPER_CORE, path).close()
 
-    k = collect(None, None, path, gateway_url=DEAD_GATEWAY)["keeper"]
+    k = collect(None, path, gateway_url=DEAD_GATEWAY)["keeper"]
     assert k["ran"] is False
     assert k["empty_note"] == KEEPER_EMPTY_NOTE == "chưa chạy lần nào"
     assert k["tickets"] == [] and k["debts"] == [] and k["gates"] == []
@@ -87,7 +87,7 @@ def test_chua_chay_lan_nao_thi_moi_o_ghi_chu_khong_co_so(tmp_path: Path, db: str
 
 def test_o_rong_khong_bao_gio_la_so_khong(tmp_path: Path) -> None:
     """Phép so tường minh: `v` phải là `None`, không phải một giá trị "giả rỗng" mà JSON in ra thành 0."""
-    k = collect(None, None, tmp_path / "khong-co.sqlite", gateway_url=DEAD_GATEWAY)["keeper"]
+    k = collect(None, tmp_path / "khong-co.sqlite", gateway_url=DEAD_GATEWAY)["keeper"]
     for c in k["cards"]:
         assert c["v"] is None and not isinstance(c["v"], int)
 
@@ -95,7 +95,7 @@ def test_o_rong_khong_bao_gio_la_so_khong(tmp_path: Path) -> None:
 # ---------- đã chạy: số thật ----------
 
 def test_da_chay_thi_hien_so_that(keeper_db: Path) -> None:
-    s = collect(None, None, keeper_db, gateway_url=DEAD_GATEWAY)
+    s = collect(None, keeper_db, gateway_url=DEAD_GATEWAY)
     k = s["keeper"]
     assert k["ran"] is True and s["sources"][KEEPER]["ok"] is True
     # KT-2 đã có dòng release → rời hàng đợi; KT-1 còn lại.
@@ -114,7 +114,7 @@ def test_da_chay_thi_hien_so_that(keeper_db: Path) -> None:
 def test_gate_keeper_di_chung_hang_doi_truc_ban(keeper_db: Path) -> None:
     """Người trực có MỘT chỗ để ký: gate của `keeper` nằm trong `state["gates"]` như hai xưởng kia, mang
     `xuong="keeper"` để `decide.py` biết ghi vào bus nào."""
-    gates = collect(None, None, keeper_db, gateway_url=DEAD_GATEWAY)["gates"]
+    gates = collect(None, keeper_db, gateway_url=DEAD_GATEWAY)["gates"]
     assert [(g["id"], g["xuong"], g["kind"]) for g in gates] == [("KT-1", KEEPER, "patch")]
 
 
@@ -124,7 +124,7 @@ def test_han_muc_tuan_doc_bien_moi_truong_moi_lan(keeper_db: Path, monkeypatch: 
     from keeper.budget import MAX_PR_ENV
 
     monkeypatch.setenv(MAX_PR_ENV, "1")
-    k = collect(None, None, keeper_db, gateway_url=DEAD_GATEWAY)["keeper"]
+    k = collect(None, keeper_db, gateway_url=DEAD_GATEWAY)["keeper"]
     assert dict((c["k"], c["v"]) for c in k["cards"])["Ngân sách còn lại"] == 0, \
         "đã soạn 1 dòng release trong tuần, trần 1 → còn 0 (số 0 THẬT, vì công ty đã chạy)"
 
@@ -138,7 +138,7 @@ def test_no_khong_qua_han_thi_o_hien_so_khong_that(tmp_path: Path) -> None:
         _publish(bus, "maintenance-tickets", "KT-9", "triager", t.model_dump())
     finally:
         bus.close()
-    k = collect(None, None, path, gateway_url=DEAD_GATEWAY)["keeper"]
+    k = collect(None, path, gateway_url=DEAD_GATEWAY)["keeper"]
     assert k["ran"] is True
     assert dict((c["k"], c["v"]) for c in k["cards"])["Nợ quá hạn"] == 0
 
@@ -149,7 +149,7 @@ def test_khong_ghi_mot_byte_nao_vao_db_cua_keeper(keeper_db: Path) -> None:
     """`collect` mở SQLite `mode=ro`: không `CREATE TABLE`, không đổi journal mode. Đo bằng nội dung file
     trước/sau — dựng `KeeperOrchestrator` hay `KeeperBus` ở đây sẽ làm test này đỏ."""
     truoc = keeper_db.read_bytes()
-    collect(None, None, keeper_db, gateway_url=DEAD_GATEWAY)
+    collect(None, keeper_db, gateway_url=DEAD_GATEWAY)
     assert keeper_db.read_bytes() == truoc
 
 
@@ -160,7 +160,7 @@ def test_log_hong_thi_noi_ly_do_chu_khong_nem(tmp_path: Path) -> None:
     con.execute("INSERT INTO events (body) VALUES (?)", ("khong-phai-json-envelope-hop-le",))
     con.commit()
     con.close()
-    s = collect(None, None, path, gateway_url=DEAD_GATEWAY)
+    s = collect(None, path, gateway_url=DEAD_GATEWAY)
     assert s["sources"][KEEPER]["ok"] is False and "log hỏng" in s["sources"][KEEPER]["error"]
     assert s["keeper"]["ran"] is False and [c["v"] for c in s["keeper"]["cards"]] == [None] * 4
 
@@ -174,10 +174,10 @@ def test_do_hai_chieu_tat_co_ran_thi_o_rong_hien_so_khong(tmp_path: Path,
     path = tmp_path / "rong.sqlite"
     KeeperBus(KEEPER_CORE, path).close()
 
-    assert [c["v"] for c in collect(None, None, path, gateway_url=DEAD_GATEWAY)["keeper"]["cards"]] == [None] * 4
+    assert [c["v"] for c in collect(None, path, gateway_url=DEAD_GATEWAY)["keeper"]["cards"]] == [None] * 4
 
     monkeypatch.setattr(KeeperView, "ran", property(lambda self: self.ok))
-    hong = collect(None, None, path, gateway_url=DEAD_GATEWAY)["keeper"]
+    hong = collect(None, path, gateway_url=DEAD_GATEWAY)["keeper"]
     assert hong["ran"] is True
     assert [c["v"] for c in hong["cards"]] == [0, 5, 0, 0], "bản hỏng đúng là bốn số xanh vì rỗng"
     with pytest.raises(AssertionError):
@@ -201,7 +201,7 @@ def test_duyet_gate_keeper_qua_console_di_dung_duong_gate(keeper_db: Path) -> No
 
     from console.decide import decide
 
-    out = decide(None, None, keeper_db, subject_id="KT-1", xuong=KEEPER, decision="approve",
+    out = decide(None, keeper_db, subject_id="KT-1", xuong=KEEPER, decision="approve",
                  by="human:truc-ban", reason="bằng chứng hai chiều đủ")
     assert out["ok"] is True and out["decision"] == "approve" and out["event_id"]
     bus = KeeperBus(KEEPER_CORE, keeper_db)
@@ -209,7 +209,7 @@ def test_duyet_gate_keeper_qua_console_di_dung_duong_gate(keeper_db: Path) -> No
         assert KeeperGate(bus).is_approved("KT-1")
     finally:
         bus.close()
-    assert collect(None, None, keeper_db, gateway_url=DEAD_GATEWAY)["keeper"]["gates"] == []
+    assert collect(None, keeper_db, gateway_url=DEAD_GATEWAY)["keeper"]["gates"] == []
 
 
 def test_four_eyes_va_allowlist_cua_keeper_van_ap_tren_duong_console(keeper_db: Path,
@@ -220,12 +220,12 @@ def test_four_eyes_va_allowlist_cua_keeper_van_ap_tren_duong_console(keeper_db: 
     from console.decide import GateError, decide
 
     with pytest.raises(GateError) as e:
-        decide(None, None, keeper_db, subject_id="KT-1", xuong=KEEPER, decision="approve",
+        decide(None, keeper_db, subject_id="KT-1", xuong=KEEPER, decision="approve",
                by="keeper-supervisor", reason="tự duyệt")
     assert "four-eyes" in str(e.value)
     monkeypatch.setenv(APPROVERS_ENV, "human:cto")
     with pytest.raises(GateError) as e2:
-        decide(None, None, keeper_db, subject_id="KT-1", xuong=KEEPER, decision="approve",
+        decide(None, keeper_db, subject_id="KT-1", xuong=KEEPER, decision="approve",
                by="human:nguoi-la", reason="")
     assert "danh sách người duyệt" in str(e2.value)
 
@@ -235,7 +235,7 @@ def test_quyet_dinh_rieng_cua_keeper_duoc_nhan(keeper_db: Path) -> None:
     phải bảng của company."""
     from console.decide import decide
 
-    assert decide(None, None, keeper_db, subject_id="KT-1", xuong=KEEPER, decision="hold",
+    assert decide(None, keeper_db, subject_id="KT-1", xuong=KEEPER, decision="hold",
                   by="human:truc-ban", reason="chờ ADR")["decision"] == "hold"
 
 
@@ -245,7 +245,7 @@ def test_nap_tin_hieu_bao_tri_qua_console(tmp_path: Path) -> None:
     from console import submit as sm
 
     db = tmp_path / "keeper.sqlite"
-    r = sm.submit(None, None, db, xuong=KEEPER, topic="maintenance-signals",
+    r = sm.submit(None, db, xuong=KEEPER, topic="maintenance-signals",
                   payload={"subject": "pyproject.toml", "kind": "dependency", "detail": "ruff tụt sau 3 minor"},
                   actor="human:truc-ban")
     assert r["ok"] is True and r["xuong"] == KEEPER and r["key"] == "pyproject.toml"
@@ -262,7 +262,7 @@ def test_khong_nap_tay_duoc_ticket_bao_tri(tmp_path: Path) -> None:
     from console import submit as sm
 
     with pytest.raises(ValueError, match="maintenance-tickets"):
-        sm.submit(None, None, tmp_path / "k.sqlite", xuong=KEEPER, topic="maintenance-tickets",
+        sm.submit(None, tmp_path / "k.sqlite", xuong=KEEPER, topic="maintenance-tickets",
                   payload={"ticket_id": "KT-3"}, actor="human:x")
 
 
@@ -270,7 +270,7 @@ def test_thieu_duong_dan_bus_keeper_thi_noi_ro_co(tmp_path: Path) -> None:
     from console import submit as sm
 
     with pytest.raises(ValueError, match="--keeper-db"):
-        sm.submit(None, None, None, xuong=KEEPER, topic="maintenance-signals",
+        sm.submit(None, None, xuong=KEEPER, topic="maintenance-signals",
                   payload={"subject": "a", "kind": "drift", "detail": "x"}, actor="human:x")
 
 

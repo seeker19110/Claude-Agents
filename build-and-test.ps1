@@ -29,7 +29,7 @@ uv sync
 
 # ---------- 2. Test tung package rieng (tranh dung ten module trung) ----------
 if (-not $SkipTests) {
-    foreach ($pkg in @("software-company", "Studio-creators", "gateway", "console")) {
+    foreach ($pkg in @("software-company", "gateway", "console")) {
         Step "pytest: $pkg"
         Set-Location (Join-Path $root $pkg)
         uv run pytest -q

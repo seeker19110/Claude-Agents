@@ -74,8 +74,7 @@ PRODUCT_STAGES = [
 HINT_TEMPLATE = "root_cause: \ndecision: \nhint: "
 
 # Agent chạy lại sau khi DUYỆT từng loại gate — người trực phải biết mình vừa đánh thức ai (C2).
-# ADR-0037: software-company không còn gate `plan` (kế hoạch do `_check_plan` cho đi thẳng). Studio vẫn có
-# `GateKind` `plan` riêng, nhưng `StudioView` không dùng bảng này — chỉ `CompanyView` gọi (`collect.py`).
+# ADR-0037: software-company không còn gate `plan` (kế hoạch do `_check_plan` cho đi thẳng).
 NEXT_AGENT = {"release": ROLE.OPS, "spec": f"{ROLE.SECURITY} + {ROLE.PRODUCT}",
               "acceptance": ROLE.OPS, "escalation": "agent đang giữ ticket"}
 

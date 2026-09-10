@@ -7,19 +7,17 @@ thể: `CODEMAP.md`.
 
 ```
                        ┌──────────────── console/ (127.0.0.1:8200) ────────────────┐
-                       │  đọc bus SQLite chỉ-đọc của hai công ty; duyệt gate qua   │
+                       │  đọc bus SQLite chỉ-đọc của công ty; duyệt gate qua       │
                        │  đúng HumanGate; giao việc qua đúng bus + schema           │
-                       └────────────┬──────────────────────────┬────────────────────┘
-                                    │                          │
-   ┌────────────────────────────────▼─────┐   ┌────────────────▼──────────────────────┐
-   │ software-company/  (package company) │   │ Studio-creators/  (package studio)     │
-   │ 6 agent · 45 skill · 19 topic        │   │ 14 agent · 24 skill · 19 topic         │
-   │ 3 human gate + escalation            │   │ 4 human gate                           │
-   │ code thật trên git worktree của khách│   │ render thật: TTS + ảnh + ffmpeg        │
-   └────────────────┬─────────────────────┘   └────────────────┬───────────────────────┘
-                    │                          │
-                    └──────────────┬───────────┘
-                                   ▼
+                       └────────────────────────────┬───────────────────────────────┘
+                                                     │
+                       ┌─────────────────────────────▼─────────────────────────┐
+                       │ software-company/  (package company)                  │
+                       │ 6 agent · 45 skill · 19 topic                        │
+                       │ 3 human gate + escalation                             │
+                       │ code thật trên git worktree của khách                 │
+                       └────────────────────────────┬───────────────────────────┘
+                                                     ▼
                     xagents-core/  (package xagents_core)
                     lõi chung: bus, llm, runner, guard, gate, trace, metrics, context, sandbox
                                    ▲
@@ -28,7 +26,7 @@ thể: `CODEMAP.md`.
         claude-code CLI · codex CLI · gateway/ (127.0.0.1:1123, xoay tài khoản Google) · model local · API
 ```
 
-Sáu package là sáu thành viên của một **uv workspace** — một `.venv`, một `uv.lock`. Không có `[project.scripts]`:
+Năm package là năm thành viên của một **uv workspace** — một `.venv`, một `uv.lock`. Không có `[project.scripts]`:
 mọi entry point là `python -m <package>.<module>`. Repo khách nằm **ngoài** repo này (`--repo <đường dẫn>`).
 
 ## Kiến trúc chung của một "công ty"
@@ -49,7 +47,7 @@ Năm nguyên tắc, mỗi cái có chỗ cắm trong code:
 
 | Nguyên tắc | Nghĩa là | Ở đâu |
 |---|---|---|
-| **Model quyết định – code hành động** | tính toán, kiểm định, render, deploy, đăng… là code xác định; model chỉ trả JSON | `tools.py`, `workspace.py`, `smoke.py` (company); `renderer.py`, `platform.py` (studio) |
+| **Model quyết định – code hành động** | tính toán, kiểm định, render, deploy, đăng… là code xác định; model chỉ trả JSON | `tools.py`, `workspace.py`, `smoke.py` (company) |
 | **Prompt là code** | agent/skill có `version`, golden test, eval ghi/phát lại chạy trong CI không gọi model | `agents/*.md` front matter, `tests/golden/`, `evals/recordings/` |
 | **Guardrail có hạn mức** | ngân sách token, retry, timeout đều có ngưỡng; hết ngưỡng → escalate, không đi tiếp | `supervisor.py`, `guard.py`, `context.py` |
 | **Self-hosted, resume được** | bus SQLite; dừng và chạy tiếp ở bất kỳ điểm nào; state dựng lại từ log | `sqlite_bus.py`, `_rehydrate` trong orchestrator |
@@ -63,7 +61,6 @@ Mọi trường mang nghĩa "đã làm được" phải do **code** điền, kh�
 - Release: `release-events.smoke.verified_by=orchestrator` — sản phẩm được khởi động thật, gọi một request thật
   (ADR-0029).
 - Identity của event (`env`, `release_id`, `ticket_id`) lấy từ ROUTE, model lệch thì `*_overridden` (#72, #75).
-- Studio: `platform_ref`/`url` do adapter YouTube điền từ API; số liệu do `sync-*` nạp; agent chỉ diễn giải.
 
 **Không chốt duyệt mức tool — có chủ đích**: thay bằng "không cấp tool thì không có hành động" (`allow_write/allow_run/write_scope`, sandbox, bốn gate công đoạn). Chi tiết: `docs/KIEN-TRUC-4-LOP.md` §A1 mục 4 (A1.4).
 
@@ -74,7 +71,6 @@ Còn lại là lời khai — hữu ích, nhưng chỉ ký gate trên bằng ch�
 | Công ty | Gate | Gác cái gì |
 |---|---|---|
 | software-company | `spec` → `release` → `acceptance` (+ `escalation`) | PRD; production; khách ký UAT (kế hoạch ticket do `_check_plan` chặn bằng code, không còn gate `plan` từ ADR-0037) |
-| Studio-creators | `plan` → `publish` → `replies` (+ `escalation`) | kế hoạch biên tập; đăng video; trả lời bình luận |
 | keeper | `keeper` (chưa chạy — BT7) | patch rủi ro cao: semver major, chạm `xagents-core`/`agents`/`.github`, security ≥ high |
 
 Gate là thật: hạn 24h, nhắc 12h, quá hạn escalate, four-eyes. Mỗi gate của software-company có trợ lý kiểm duyệt
@@ -82,8 +78,8 @@ chỉ đọc `sc-gate-<kind>` và hồ sơ bằng chứng `gate_brief`.
 
 ## CI (`.github/workflows/ci.yml`)
 
-`static` · `unit` · `eval-replay` · `audit` (pip-audit + gitleaks cả lịch sử) · `studio-static` · `studio-unit` ·
-`studio-eval-replay` · `golden-check` (golden + subagents dẫn xuất khớp nguồn) · `gateway-*` · `console-*` · `keeper-*` ·
+`static` · `unit` · `eval-replay` · `audit` (pip-audit + gitleaks cả lịch sử) ·
+`golden-check` (golden + subagents dẫn xuất khớp nguồn) · `gateway-*` · `console-*` · `keeper-*` ·
 `asset-scan` (ADR-0022) · `protection-guard` (ruleset file ↔ thật) · **`quality`** gom tất cả — required check của
 `main`, tên bất biến. `pr-policy.yml`: job `metadata` kiểm tiêu đề PR.
 
@@ -106,4 +102,4 @@ software-company AI agent framework")**; `d4abda1` cùng ngày gỡ MEP-Agents. 
 | Thi hành một đề bài lớn từ đặc tả tới PR merge, một lệnh | `docs/KHUON-THI-HANH.md`, `/thi-hanh` |
 | Bốn lớp Prompt/Agent/Loop/Graph: hiện trạng, tám việc, gói việc, điều phối subagent, khuôn công ty mới | `docs/KIEN-TRUC-4-LOP.md` |
 | Bảo mật: bí mật, phòng thủ, báo lỗi | `SECURITY.md` |
-| Vì sao quyết định thế này | `software-company/docs/adr/` (0001–0038), `Studio-creators/docs/adr/` (0001–0009), `console/docs/adr/` |
+| Vì sao quyết định thế này | `software-company/docs/adr/` (0001–0038), `console/docs/adr/` |

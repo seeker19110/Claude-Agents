@@ -4,7 +4,7 @@ Hợp đồng nội bộ giữa các lớp (hình dạng dữ liệu, route, has
 
 | Muốn | Sửa | Ghi chú |
 |---|---|---|
-| Đọc thêm bảng/topic từ bus hai công ty | `src/console/collect.py` | mở SQLite `mode=ro`; mỗi công ty một nhánh đọc |
+| Đọc thêm bảng/topic từ bus software-company/keeper | `src/console/collect.py` | mở SQLite `mode=ro`; mỗi công ty một nhánh đọc |
 | Phễu release, bế tắc im lặng, quyết định chưa áp, "đã giao n/m" | `src/console/truth.py` | lớp "sự thật giao hàng" (#76): tách sự thật git khỏi nhãn FSM |
 | Phễu **sản phẩm** (yêu cầu → … → nghiệm thu), ô rỗng là ô xám, smoke từng bậc | `src/console/truth.py` `product_funnel()`; màn `#/phieu` trong `index.html` | ADR-0003 mục 2–3: `empty=True` đến từ tầng dữ liệu, không do CSS đoán |
 | Hậu quả gate CẢ HAI CHIỀU (duyệt → agent nào; từ chối → về đâu) | `src/console/truth.py` `gate_effect` / `gate_reject_effect` / `gate_next_agent` | mỗi xưởng tự khai; không biết thì trả `""`, không đoán |
@@ -12,7 +12,7 @@ Hợp đồng nội bộ giữa các lớp (hình dạng dữ liệu, route, has
 | Cột "commit vượt integration" | `src/console/git_truth.py` (+ `CompanyView._ahead` trong `collect.py`) | `git rev-list --count`, KHÔNG `branch --contains`; repo đọc từ audit `project.repo` |
 | Hồ sơ `gate_brief` trong ngăn kéo gate | `src/console/brief.py`; route `GET /api/gate/brief` | gọi thẳng `company.gate_brief`; không chép lại logic, không cần `--allow-decide` |
 | Duyệt / từ chối gate, kiểm lý do, four-eyes | `src/console/decide.py` | gọi `HumanGate` của công ty; không tự dựng event |
-| Form giao việc (yêu cầu phần mềm + repo, trả lời làm rõ, brief kênh) | `src/console/submit.py` | publish qua `SQLiteBus` công ty → JSON Schema kiểm |
+| Form giao việc (yêu cầu phần mềm + repo, trả lời làm rõ) | `src/console/submit.py` | publish qua `SQLiteBus` công ty → JSON Schema kiểm |
 | Xem/đổi model, backend, `prefer`, tắt backend | `src/console/settings.py`; CLI `python -m console models` | ghi `llm.yaml` giữ `.bak`; "tắt phải tắt thật" |
 | Route HTTP, SSE `/api/stream`, token phiên, cờ `--allow-*`, `--i-know` | `src/console/server.py` | 403 khi không có cờ |
 | Giao diện, màn, ngăn kéo, tìm/lọc, phím tắt, PWA, hash `#/<màn>/gate/<id>` | `src/console/static/index.html` | một file, không framework; SW chỉ cache icon |

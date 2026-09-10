@@ -10,8 +10,8 @@ không gọi model) và trả Markdown cho trang. Không chép lại một dòng
 sơ do `/gate-brief` sinh ra phải là cùng một văn bản, nếu không thì người ký và trợ lý kiểm duyệt đọc hai thứ khác
 nhau.
 
-Chỉ có software-company: xưởng video chưa có `gate_brief` (studio C2 chưa làm), và nói "chưa có" đúng hơn là dựng
-một hồ sơ rỗng nhìn như đã kiểm.
+Chỉ có software-company có `gate_brief`; xưởng nào khác gọi vào đây thì nói "chưa có" đúng hơn là dựng một hồ sơ
+rỗng nhìn như đã kiểm.
 """
 from __future__ import annotations
 

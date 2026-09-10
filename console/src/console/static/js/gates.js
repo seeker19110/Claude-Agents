@@ -1,7 +1,7 @@
 /* gates.js — tách từ index.html ở K7.1 (kịch bản B). Không build step, không CDN.
     */
 import {openGate} from "./drawer.js";
-import {S, SC, ST, srcOk, srcWhy, st} from "./state.js";
+import {S, SC, srcOk, srcWhy, st} from "./state.js";
 import {filter} from "./tiles.js";
 import {$, $$, Q, esc, hay, hl} from "./util.js";
 
@@ -10,16 +10,16 @@ export const KIND={plan:"kế hoạch",publish:"đăng",escalation:"leo thang",a
 export function renderQueue(){
   const all=st().gates||[], q=$("#queue");
   const gates=all.filter(g=>hay(g.id,g.title,g.xuong,g.by,KIND[g.kind]||g.kind));
-  const dead=[SC,ST].filter(k=>!srcOk(k));
+  const dead=[SC].filter(k=>!srcOk(k));
   if(!gates.length&&Q&&all.length){
     q.innerHTML=`<div class="empty"><b>Không có gate nào khớp “${esc($("#q").value.trim())}”</b>${all.length} gate đang chờ, xoá ô tìm để xem hết.</div>`;
     $("#nav-gates").textContent=all.length; $("#chip-gates").textContent=all.length;
     return;
   }
   if(!gates.length){
-    q.innerHTML=dead.length===2
+    q.innerHTML=dead.length
       ? `<div class="empty"><b>Chưa đọc được xưởng nào</b>${esc(dead.map(k=>k+": "+srcWhy(k)).join(" · "))}</div>`
-      : `<div class="empty"><b>Sạch hàng đợi</b>Không có gì chờ bạn duyệt${dead.length?" (chưa tính "+esc(dead[0])+": "+esc(srcWhy(dead[0]))+")":""}.</div>`;
+      : `<div class="empty"><b>Sạch hàng đợi</b>Không có gì chờ bạn duyệt.</div>`;
   }else q.innerHTML=gates.map(g=>{
     const h=Number(g.hours||0);
     const flag=h>=24?'<span class="pill crit">quá hạn</span>':h>=12?'<span class="pill warn">sắp quá hạn</span>':'<span class="pill calm">còn hạn</span>';
