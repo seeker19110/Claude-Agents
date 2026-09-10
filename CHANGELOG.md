@@ -6,6 +6,10 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(company,console,core): **chuyển Studio-creators sang repo riêng (github.com/seeker19110/X-Studio,
+  giữ lịch sử git), copy gateway/ sang đó kèm lịch sử, xoá mọi tàn dư studio khỏi Claude-Agents** — console mất
+  màn "Xưởng video"/StudioView (test/coverage 100% giữ nguyên), CI mất ba job `studio-*`, workspace còn năm
+  package (#PENDING)
 - docs: **khớp README gốc với thực tế — số test company, trạng thái keeper** (#257). Software-company nói 1097
   test trong khi lần chạy thật gần nhất ra 1100; dòng keeper nói BT2–BT8 chưa có mã trong khi BT1–BT7 đã merge
   (mã thật, 532 test, ba lệnh CLI chạy được) — chỉ BT8 (canary) chưa xong. Phát hiện qua một đợt audit toàn diện.
