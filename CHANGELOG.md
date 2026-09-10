@@ -10,7 +10,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   console đã tự bật `orchestrator run --watch` sẵn từ ADR-0004 (`--allow-engine`), nên phần còn thiếu là
   gateway: cờ mới gọi `python -m gateway start` như tiến trình con trước khi phục vụ; `gateway start` đã
   idempotent và tự chờ `/health` xanh nên không dựng lại vòng chờ nào. Gateway không lên được thì console dừng
-  lại và báo, không im lặng phục vụ một công ty không có model (#PR)
+  lại và báo, không im lặng phục vụ một công ty không có model (#265)
 
 - docs: **gói việc thường trực đổi từ "tự kiểm số liệu" thành "audit toàn dự án"** (`docs/TASK-PACK.md`, vẫn theo ADR-0003). Bản đầu chỉ đo số liệu README gốc; ba loại lệch nặng nhất nằm ngoài phạm vi đó, nên gói mở ra **tám phép đo** A1–A8: số liệu tài liệu gốc · README gốc so README con · hoá thạch sau khi cấu trúc đổi (nguồn sự thật là `[tool.uv.workspace] members`, grep cả comment mã và comment CI) · ADR "được chấp nhận" so mã thật · sổ bốn lối thoát hợp lệ khỏi cổng (`pragma: no cover`, `omit`, `assetscan-waivers.txt`, `skip`/`xfail` — ba trong bốn không có trần, không có hạn đáo) · độ sâu phép đo (`branch = true` mới ở 2/5 package) · hạn dùng của bằng chứng (bản ghi eval, sổ nợ keeper) · cổng còn hiệu lực (job có trong `ci.yml` mà thiếu trong `needs:` của `quality` là cổng xanh giả — không test nào canh). Thêm mục **"Ranh giới với cổng máy"** (17 job CI đã canh gì, phiên audit không đo lại) và sổ **"Việc để lại đang treo"** — chỗ để leftovers sống tiếp thay vì chết trong một báo cáo cũ; nạp sẵn 6 dòng, gồm 2 dòng treo từ 2026-09-07 và 4 dòng đo được khi rà lại. Không đổi một dòng mã nào (#264)
 - fix(company): **`test_mcp_bridge` đỏ trên Windows vì server giả không đọc request** — `_one_shot_server`
