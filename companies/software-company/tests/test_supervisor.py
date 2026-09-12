@@ -56,6 +56,15 @@ def test_lessons_bo_qua_ban_ghi_summary_khong_phai_json_hop_le():
     assert [d["ticket_id"] for d in sup.lessons()] == ["T2"]
 
 
+def test_lessons_bo_qua_ban_ghi_content_ref_khong_phai_lesson():
+    """supervisor.py 180->179: `knowledge` có thể mang bản ghi khác không phải bài học (content_ref không có
+    tiền tố `audit-log:lesson:`) — `lessons()` phải bỏ qua, không cố parse `summary` của nó."""
+    from company.blackboard import Blackboard
+    bus = InMemoryBus(); sup = Supervisor(bus); bb = Blackboard(bus)
+    bb.write("supervisor", "knowledge", "audit-log:khong-phai-lesson:T3", json.dumps({"ticket_id": "T3"}))
+    assert sup.lessons() == []
+
+
 def test_sprint_report_model_khong_xac_dinh_khi_evidence_hong():
     """`cost_by_model` phải dùng khoá `"?"` khi `evidence` của một lượt `produced:*` không phải JSON hợp lệ."""
     bus = InMemoryBus(); sup = Supervisor(bus)

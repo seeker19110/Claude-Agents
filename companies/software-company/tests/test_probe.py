@@ -167,6 +167,33 @@ def test_probe_cli_bao_cli_khi_mot_backend_chi_dung_duoc_cli_tools(monkeypatch, 
     assert "chỉ dùng được `cli_tools: true`" in out
 
 
+def test_probe_cli_bo_qua_backend_da_ok_khi_liet_ke_backend_han_che(tmp_path, monkeypatch, capsys):
+    """probe.py 150->147: một backend `mode == "mcp"` (đã OK) đứng cạnh một backend `mode == "cli"` khi tổng
+    kết KHÔNG phải mọi backend đều OK — vòng lặp phải BỎ QUA backend đã "mcp" (không rơi vào nhánh cli/none
+    nào), chỉ nêu tên backend còn hạn chế."""
+    monkeypatch.delenv("COMPANY_LLM_BACKENDS", raising=False); monkeypatch.delenv("COMPANY_LLM_PROVIDER", raising=False)
+    p = tmp_path / "llm.yaml"
+    p.write_text(
+        "provider: fake\nbackends:\n"
+        "  - {name: b-ok, provider: claude-code, models: {light: m}}\n"
+        "  - {name: b-han-che, provider: claude-code, models: {light: m}}\n",
+        encoding="utf-8",
+    )
+    import company.probe as probe_mod
+    from company.probe import Result
+
+    def gia(cfg, name, timeout=300.0):
+        if name == "b-ok":
+            return Result(name, "mcp", "claude", "CLI gọi được tool của công ty", True, "m")
+        return Result(name, "cli", "claude", "CLI cũ, không hỗ trợ --mcp-config")
+
+    monkeypatch.setattr(probe_mod, "probe_backend", gia)
+    assert main(["--config", str(p)]) == 1
+    out = capsys.readouterr().out
+    assert "b-han-che: chỉ dùng được" in out
+    assert "b-ok: chỉ dùng được" not in out and "b-ok: không chạy được" not in out
+
+
 def test_probe_cli_reports_missing_binary(capsys):
     assert main(["--binary", "claude-khong-ton-tai-xyz"]) == 1
     out = capsys.readouterr().out
