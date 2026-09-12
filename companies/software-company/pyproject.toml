@@ -53,13 +53,14 @@ concurrency = ["thread"]
 # Phủ NHÁNH, không chỉ dòng — cùng lý do đã ghi ở keeper/pyproject.toml: `fail_under = 100` trên dòng vẫn để
 # lọt nhánh chưa đi (một if/else mà chỉ một vế từng chạy vẫn tính 100% dòng). Đo 2026-09-10: 86 nhánh chưa đi
 # trên toàn package; PR #258 bù xong 24/86 (8 file: assetscan, delivery, evals, gate_brief, llm, mcp_bridge,
-# metrics, orch/cli_cmds). Đo lại 2026-09-12 (bật tạm để đếm, không commit): CÒN 67 nhánh / 16 file — nhiều hơn
-# con số 62 dự tính ban đầu (16 file: gate_cli, orch/{gates_flow,rehydrate,release_fsm,routes,scheduler,
-# ticket_fsm,verify,worktree_flow}, orchestrator, probe, runner, subagents, supervisor, tools, web, workspace —
+# metrics, orch/cli_cmds). Đo lại 2026-09-12: CÒN 67 nhánh / 16 file. Phiên 2026-09-13: bù xong gate_cli.py
+# (5/67, xác nhận `uv run pytest -q tests/test_gate_risk.py --cov=company.gate_cli --cov-branch` 0 missing) —
+# CÒN 62 nhánh / 15 file (orch/{gates_flow,rehydrate,release_fsm,routes,scheduler,ticket_fsm,verify,
+# worktree_flow}, orchestrator, probe, runner, subagents, supervisor, tools, web, workspace —
 # `uv run pytest -q --cov --cov-report=term-missing` với `branch = true` tạm bật cho danh sách chính xác).
 # KHÔNG ghi "bật ở PR kế tiếp" nữa — dòng đó đã trôi qua nhiều PR không ai làm (bài học `TRAPS.md` §6: TODO
-# không hạn đáo là dẫn chiếu chết). Việc bù 67 nhánh nằm trong `docs/TASK-PACK.md` "Việc để lại đang treo".
-# branch = true   # bật khi bù xong 67 nhánh trên — xem sổ treo ở docs/TASK-PACK.md, không phải "PR kế tiếp"
+# không hạn đáo là dẫn chiếu chết). Việc bù 62 nhánh còn lại nằm trong `docs/TASK-PACK.md` "Việc để lại đang treo".
+# branch = true   # bật khi bù xong 62 nhánh trên — xem sổ treo ở docs/TASK-PACK.md, không phải "PR kế tiếp"
 
 [tool.coverage.report]
 # Cả năm package phủ 100%: ngưỡng bằng đúng mức đạt được, nên mất một dòng/nhánh phủ là CI đỏ.
