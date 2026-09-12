@@ -22,7 +22,7 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
       - run: uv run ruff check src tests
         working-directory: companies/software-company
       - run: uv run mypy src/company --ignore-missing-imports
@@ -52,7 +52,7 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python }}
-      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
       # --durations: test git/worktree chậm dần thì thấy ngay trong log, không phải đoán.
       # -n auto (pytest-xdist): test git/worktree nặng I/O, chạy tuần tự 346 s trên Windows; đo cục bộ
@@ -77,7 +77,7 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
       # Eval từ bản ghi (ADR-0010): không gọi model. `--strict` đỏ khi agent có tên trong
       # evals/recordings/REQUIRED.txt mà thiếu bản ghi, hoặc bản ghi ghi ở phiên bản prompt cũ.
       - run: uv run python -m company.evals all --replay --strict
@@ -97,11 +97,11 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - name: Phụ thuộc có CVE đã biết (cả bốn package, một uv.lock)
+      - name: Phụ thuộc có CVE đã biết (cả năm package, một uv.lock)
         shell: bash
         run: |
           set -euo pipefail
-          # Workspace có MỘT uv.lock ở root: export một lần là đủ cả bốn package. Bỏ dòng `-e`
+          # Workspace có MỘT uv.lock ở root: export một lần là đủ cả năm package. Bỏ dòng `-e`
           # (gói cục bộ trong repo, PyPI không có nên pip-audit đỏ); phụ thuộc bên thứ ba của
           # chúng vẫn nằm trong cùng bản export nên không mất phạm vi quét.
           uv export --no-hashes --no-dev --all-packages | sed '/^-e /d' > /tmp/req.txt
@@ -149,7 +149,7 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
       - run: UPDATE_GOLDEN=1 uv run pytest -q tests/test_golden_agents.py
         working-directory: ${{ matrix.dir }}
       - name: Golden đã commit có khớp không
@@ -177,7 +177,7 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
       - run: uv run ruff check src tests
         working-directory: platform/gateway
       - run: uv run mypy src/gateway --ignore-missing-imports
@@ -209,7 +209,7 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python }}
-      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
       # `shell: bash` cho CẢ hai nền tảng: mặc định của `run:` trên windows-latest là `pwsh`, và bước này
       # từng đỏ ở đó với đúng thông điệp "414 passed ... coverage 100.00%" rồi `exit code 1` — pytest xanh,
@@ -234,7 +234,7 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
       - run: uv run ruff check src tests
         working-directory: platform/console
       - run: uv run mypy src/console --ignore-missing-imports
@@ -266,7 +266,7 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python }}
-      - run: uv sync --locked   # workspace: một .venv ở root cho cả bốn package
+      - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
       # `shell: bash` cho CẢ hai nền tảng: mặc định của `run:` trên windows-latest là `pwsh`, và bước này
       # từng đỏ ở đó với đúng thông điệp "414 passed ... coverage 100.00%" rồi `exit code 1` — pytest xanh,
