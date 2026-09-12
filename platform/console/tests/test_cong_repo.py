@@ -67,6 +67,36 @@ def test_project_trong_entry_pre_commit_la_package_that() -> None:
     assert not hong, f"--project không trỏ tới package có pyproject.toml: {hong}"
 
 
+def _ci() -> dict:
+    return yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+
+
+def _packages() -> list[str]:
+    """Thành viên workspace — nguồn sự thật duy nhất về "repo có mấy package"."""
+    import tomllib
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    return list(data["tool"]["uv"]["workspace"]["members"])
+
+
+def test_moi_package_co_golden_deu_nam_trong_matrix_golden_check() -> None:
+    """`companies/keeper` có `tests/golden/` và target `make golden` nhưng KHÔNG trong matrix `golden-check`:
+    sửa prompt keeper mà quên tăng version/commit golden thì CI vẫn xanh. Cổng phải phủ mọi package có golden,
+    không phải chỉ package được nhớ tới lúc viết workflow."""
+    co_golden = {p for p in _packages() if (ROOT / p / "tests" / "test_golden_agents.py").is_file()}
+    trong_matrix = {m["dir"] for m in _ci()["jobs"]["golden-check"]["strategy"]["matrix"]["include"]}
+    thieu = sorted(co_golden - trong_matrix)
+    assert not thieu, f"package có golden nhưng không được golden-check canh: {thieu}"
+
+
+def test_quality_needs_phu_moi_job_con() -> None:
+    """`quality` là required status check của branch protection; job con không nằm trong `needs` của nó thì
+    hỏng cũng không chặn merge — cổng xanh giả. Luật này đang là chú thích trong ci.yml, không ai canh."""
+    jobs = _ci()["jobs"]
+    needs = set(jobs["quality"]["needs"])
+    thieu = sorted(set(jobs) - needs - {"quality"})
+    assert not thieu, f"job không có trong `needs` của quality (hỏng vẫn merge được): {thieu}"
+
+
 def test_moi_duong_dan_trong_codeowners_ton_tai() -> None:
     """CODEOWNERS trỏ đường dẫn cũ thì luật sở hữu rút về còn dòng `*` — mất hẳn lớp bảo vệ theo vùng."""
     if not CODEOWNERS.is_file():
