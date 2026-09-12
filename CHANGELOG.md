@@ -6,6 +6,14 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs: **bớt trùng lặp và dẫn chiếu chết trong bộ luật** — `README.md:123` liệt lại checklist 7 bước nhưng chỉ
+  ghi 4/7 (thiếu `assetscan`/`assetbudget`/`subagents`), đổi thành trỏ về `CONTRIBUTING.md` §3 thay vì liệt lại;
+  `AGENTS.md:77` trỏ sai section `TRAPS.md` (§4 thay vì §6 — bảng biện hộ thật); `docs/KHUON-THI-HANH.md:33` dẫn
+  "ADR-0026" thiếu namespace (ADR thật ở `companies/software-company/docs/adr/`, không phải `docs/adr/` gốc);
+  `docs/adr/README.md` tự nó còn hoá thạch `Studio-creators` (đã tách #259) — sửa và thêm câu neo rõ bốn dãy ADR
+  cùng đánh số từ 0001. Cố ý không đụng `docs/TASK-PACK.md`/`KHUON-THI-HANH.md` §3.6 ("mỗi PR một gói") — sửa ở
+  hạng mục 5 để không làm hai lần (#273)
+
 - docs(audit): **phiên audit toàn dự án đầu tiên chạy đủ A1–A8** (`docs/reports/2026-09-12-audit.md`) — sửa số
   liệu README gốc/con lệch đĩa (software-company 1100→1152 test; console ADR 0001–0003→0001–0004; gateway
   216→251 ca; `companies/software-company/README.md` tự mâu thuẫn 1151 vs 1097 ca ở hai dòng khác nhau), mở

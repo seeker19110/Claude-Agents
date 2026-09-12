@@ -120,9 +120,9 @@ topic (JSON Schema, có key) ──► registry: agent nào nhận topic nào
   `git diff --exit-code`; `asset-scan` quét tài sản prompt và ngân sách token của công ty (ADR-0022); `audit` chạy
   `pip-audit --strict` + gitleaks trên cả lịch sử; `quality` gom kết quả — tên job này là bất biến (required status check
   của `main`), thêm job con mới thì phải nối vào `needs` của nó. `pr-policy.yml` kiểm tra quy ước PR.
-- Sửa `agents/` hoặc `skills/` → tăng `version`, `make golden`, `make eval-record AGENT=<id>` bằng model thật, commit bản ghi.
-  Agent có tên trong `evals/recordings/REQUIRED.txt` mà thiếu bản ghi hoặc bản ghi lệch phiên bản prompt thì CI đỏ.
-  Checklist đầy đủ: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- Sửa `agents/` hoặc `skills/` → checklist 7 bước ở [`CONTRIBUTING.md`](CONTRIBUTING.md) §3 (tăng `version` là bước
+  đầu, không phải bước duy nhất — agent có tên trong `evals/recordings/REQUIRED.txt` mà thiếu bản ghi hoặc bản ghi
+  lệch phiên bản prompt thì CI đỏ). Không liệt lại ở đây để tránh lệch với nguồn khi checklist đổi.
 - Thay đổi lớn (kiến trúc, agent mới, schema topic) → viết ADR trong `<công ty>/docs/adr/` trước.
 - Không commit secret, `llm.yaml`, dữ liệu thật; không gọi provider trả phí trong test; mọi thay đổi vào `main` qua PR.
 

@@ -74,7 +74,7 @@ hạn mức; self-hosted, resume được; trung lập provider.
      hành vi mới ở bước này.
    - Việc "quá đơn giản nên khỏi test", "test sau cũng như nhau", "đã tự tay thử rồi" đều là chỗ né luật —
      test viết sau khi code đã chạy chỉ chứng minh nó xanh ngay từ lần đầu, không chứng minh nó **từng bắt
-     được lỗi**. Xem bảng biện hộ ở `TRAPS.md` §4 trước khi tự thuyết phục mình là ngoại lệ.
+     được lỗi**. Xem bảng biện hộ ở `TRAPS.md` §6 trước khi tự thuyết phục mình là ngoại lệ.
    - Ngoại lệ cần hỏi người trước: prototype vứt đi, code sinh tự động (`.claude/agents/sc-*`, `tests/golden/`
      — luật cấm 5 đã cấm sửa tay), file cấu hình thuần.
    - Bẫy: đây vẫn là **luật 4 cũ** (đo hai chiều) mở rộng ra toàn bộ code, không chỉ bugfix — tắt bản sửa/tính
