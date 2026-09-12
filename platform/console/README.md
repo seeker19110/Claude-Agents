@@ -69,9 +69,20 @@ bạn vẫn gõ tay (`orchestrator run --watch`, in nguyên văn vào đầu fil
 đúng thư mục công ty. Model vẫn là gói thuê bao khai trong `llm.yaml` — console không truyền model, không truyền
 API key. Không có ô này thì giao việc xong mà quên bật orchestrator là **việc nằm im, không lỗi, không dấu hiệu**.
 
-Ba giới hạn cố ý: động cơ do console bật **chết khi tắt console** (chạy dài ngày thì vẫn bật ở terminal như cũ);
-ô này **không thấy** orchestrator do người khác bật; và `--allow-engine` là cờ riêng, `--allow-decide` không mở nó
-— ký gate và đốt hạn mức model là hai quyền khác nhau.
+Bốn giới hạn cố ý: động cơ do console bật **chết khi tắt console** (chạy dài ngày thì vẫn bật ở terminal như cũ);
+ô này **không thấy** orchestrator do người khác bật; `--allow-engine` là cờ riêng, `--allow-decide` không mở nó
+— ký gate và đốt hạn mức model là hai quyền khác nhau; và **mặc định động cơ KHÔNG giao hàng**.
+
+Giao hàng phải nêu tên remote lúc chạy console:
+
+```bash
+uv run python -m console --allow-decide --allow-engine --deliver-remote origin
+```
+
+Không có `--deliver-remote` thì orchestrator chạy không `--deliver --push-remote`, nên release đã duyệt **không**
+được tag và đẩy lên repo khách — sự cố 2026-09-10 (QA pass, gate ký, khách nghiệm thu, sản phẩm nằm lại máy) đúng
+là chế độ này. Ô Động cơ khai `delivers` cho từng xưởng để chế độ đó không im lặng. Remote đến từ dòng lệnh của
+người trực, **không bao giờ** từ `POST /api/engine`: argv chốt cứng trong `SPECS`, không nhận tham số client.
 
 Mục **Cài đặt model** trong trang cho từng công ty: chọn model cho tier mạnh/tiêu chuẩn/nhẹ trên từng backend,
 đặt ưu tiên backend theo tier, bật/tắt backend. Giá trị hiển thị là đúng cái đang chạy (`llm.yaml`); lưu là ghi
