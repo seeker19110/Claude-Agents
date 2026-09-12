@@ -175,7 +175,8 @@ def test_agents_md_khong_khai_khong_ve_bo_khung_package() -> None:
         f"Hoặc thêm file cho đủ, hoặc sửa câu khai cho đúng thực tế — không để câu sai nằm trong file luật.")
 
 
-PACKAGE_CLAUDE_MD = ("platform/gateway", "platform/console", "companies/software-company")
+PACKAGE_CLAUDE_MD = ("platform/gateway", "platform/console", "platform/xagents-core",
+                     "companies/software-company", "companies/keeper")
 _DAN_CHIEU_GOC = re.compile(r"(?:\.\./)+(AGENTS|TRAPS|CONTRIBUTING|CODEMAP|ARCHITECTURE)\.md")
 
 
