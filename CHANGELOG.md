@@ -6,6 +6,16 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(adr): **ADR-0012 — PR theo hạng mục lớn, chốt quy trình mới** — hợp thức hoá luồng đã chạy thử qua bốn
+  hạng mục trước (#270–#273): một nhánh cho cả hạng mục (2–8 mã), mỗi mã một commit, PR mở **nháp** ngay sau mã
+  đầu (CI chạy thật trên nháp), `gh pr ready` + auto-merge khi hạng mục xong. Đo trước khi viết ADR: luật cũ
+  "mỗi PR một gói" bị vi phạm ở mọi bản thi hành thật có ≥2 mã (6 mã→1 PR #198, 3 mã→1 PR #266); "điền đủ 7
+  mục task pack" bị bỏ 3 mục ở 3/4 bản thật không được phép nói lý do. Sửa `docs/QUY-TRINH-GIT.md` (§2d mới),
+  `docs/KHUON-THI-HANH.md` (luật 2/6, bảng B đổi cột "loại PR"→"hạng mục"), `docs/TASK-PACK.md` (mục 1/2/4 được
+  viết "suy ra từ hạng mục lớn: ..." tường minh thay vì để trắng im lặng). Giữ nguyên luật 2c cho cả PR nháp —
+  không có ngoại lệ "nháp không tính". Nhược điểm ghi thẳng vào ADR: squash gộp mọi mã một hạng mục thành một
+  commit trên `main`, revert một mã cuốn theo cả hạng mục (#274)
+
 - docs: **bớt trùng lặp và dẫn chiếu chết trong bộ luật** — `README.md:123` liệt lại checklist 7 bước nhưng chỉ
   ghi 4/7 (thiếu `assetscan`/`assetbudget`/`subagents`), đổi thành trỏ về `CONTRIBUTING.md` §3 thay vì liệt lại;
   `AGENTS.md:77` trỏ sai section `TRAPS.md` (§4 thay vì §6 — bảng biện hộ thật); `docs/KHUON-THI-HANH.md:33` dẫn
