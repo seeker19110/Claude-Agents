@@ -57,8 +57,10 @@ from .evidence import EvidenceError, TwoWayEvidence, require_two_way, verificati
 from .gates import PersistentGate, gate_approvers, request_gate
 from .github import GitHubWriteAttempt
 from .patcher import HUMAN_ONLY_SEGMENTS
-from .release import compose
+from .publish import PullRequest, PullRequestExists, create_pr, push_branch
+from .release import compose, fill_pr_number
 from .triage import ObservedSignal, TriageState, triager
+from .worktree import KeeperWorktree
 
 __all__ = ["CODE_ACTOR", "HUMAN_ONLY", "REJECT_ACTION", "KeeperOrchestrator", "TickResult",
            "touches_human_only"]
@@ -291,6 +293,37 @@ class KeeperOrchestrator:
         self._audit("pr.intent", {"ticket_id": ticket.ticket_id, "changelog_line": note.changelog_line},
                     ticket_id=ticket.ticket_id)
         return self.notes[ticket.ticket_id]
+
+    def publish(self, ticket_id: str, wt: KeeperWorktree, *, remote: str = "origin", base: str = "main",
+               now: datetime | None = None) -> PullRequest | None:
+        """Biến ý định (`pr.intent`) thành PR THẬT (BT8 canary) — `git push` + `gh pr create`, rồi điền số PR
+        thật vào dòng CHANGELOG/session-log đã soạn (`release.fill_pr_number`) bằng một commit THỨ HAI vào
+        CHÍNH PR đó (`AGENTS.md` luật bắt buộc 10).
+
+        Giả định: commit ĐẦU TIÊN (patch + dòng release mang `release.PR_PLACEHOLDER`) đã có sẵn trong
+        `wt.path` — hàm này không tự vá, không tự commit lần đầu; nó chỉ publish. Idempotent: note đã có
+        `pr_number` thì trả `None` ngay, không gọi `push`/`gh` lần hai (I3)."""
+        note = self.notes.get(ticket_id)
+        if note is None:
+            raise ValueError(f"{ticket_id} chưa có release-notes — open_pr() chưa qua hết cổng?")
+        if note.pr_number is not None:
+            return None
+        ticket = self.tickets[ticket_id]
+
+        push_branch(wt, remote=remote)
+        try:
+            pr = create_pr(self.repo, title=f"fix(keeper): {ticket.subject}",
+                           body=f"Ticket bảo trì `{ticket_id}` — mở tự động bởi keeper (I1), cần người merge.",
+                           head=wt.branch, base=base)
+        except PullRequestExists as e:
+            pr = PullRequest(number=e.number, url=e.url)
+
+        moc = now or datetime.now(UTC)
+        moi = fill_pr_number(wt.path, note, pr.number, session_date=moc.strftime("%Y-%m-%d"))
+        self._publish("release-notes", ticket_id, RELEASE_ACTOR, moi.model_dump())
+        self._audit("pr.created", {"ticket_id": ticket_id, "pr_number": pr.number, "url": pr.url},
+                    ticket_id=ticket_id)
+        return pr
 
     # ---------- vòng lặp ----------
 
