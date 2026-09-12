@@ -6,6 +6,18 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(ci): **hồi sinh cổng chết và biến bốn luật thủ công thành cổng cứng** — cải tổ thư mục #262 làm
+  `.pre-commit-config.yaml` (`files:` + `--project`) và 7/9 pattern `.github/CODEOWNERS` trỏ vào hư không:
+  hook `subagents-check` **không bao giờ chạy nữa** và luật sở hữu rút về còn dòng `*`, không gì đỏ — cổng chết
+  im lặng nguy hiểm hơn không có cổng vì người ta vẫn tin nó canh. Vá đường dẫn, và thêm
+  `platform/console/tests/test_cong_repo.py` (17 ca) chặn tái phát bằng năm cổng cứng: mọi đường dẫn trong hai
+  file cấu hình cấp gốc phải tồn tại thật · mọi package có `tests/test_golden_agents.py` phải nằm trong matrix
+  `golden-check` (bắt được `companies/keeper` đang đứng ngoài — sửa prompt keeper quên tăng version thì CI vẫn
+  xanh) · `quality.needs` phải phủ mọi job con (job thiếu trong `needs` là cổng xanh giả) · **trần** cho ba lối
+  thoát khỏi `fail_under = 100` (`pragma: no cover` 21, `skip`/`xfail` 6, `omit` 2 — trước nay không trần, không
+  hạn đáo, không ai đếm lại) · `AGENTS.md:7` khai "mỗi package con có đủ bốn file khung" trong khi
+  `platform/xagents-core` và `companies/keeper` thiếu cả bốn — đã sửa câu khai, việc viết file vào sổ treo (#271)
+
 - fix(console): **động cơ bật từ console giao hàng được, và tự khai khi không** — bấm "Bật động cơ" trước đây
   luôn chạy `orchestrator` thiếu `--deliver --push-remote`, nên release đã duyệt **không bao giờ** được tag và
   đẩy lên repo khách: đúng sự cố 2026-09-10 (QA pass, gate ký, khách nghiệm thu, sản phẩm nằm lại máy). Khác

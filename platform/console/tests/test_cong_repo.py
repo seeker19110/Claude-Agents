@@ -1,0 +1,191 @@
+"""Cổng cứng cho các file cấu hình CẤP GỐC trỏ vào cây thư mục.
+
+Vì sao cần: cải tổ thư mục #262 (`software-company/` → `companies/software-company/`, `console|gateway|
+xagents-core` → `platform/`) làm mọi đường dẫn trong `.pre-commit-config.yaml` và `.github/CODEOWNERS` trỏ vào
+hư không. Không có gì gãy, không có gì đỏ — hook `subagents-check` chỉ đơn giản **không bao giờ chạy nữa**, và
+CODEOWNERS rút về còn mỗi dòng `*`. Một cổng chết im lặng nguy hiểm hơn không có cổng: người ta vẫn tin nó canh.
+
+Test này ở `platform/console/tests/` theo đúng lối `test_readme_goc.py` — package console là nơi repo đặt các
+phép canh cấp gốc (chạy trong job `console-unit` trên cả ba nền).
+"""
+
+from __future__ import annotations
+
+import re
+import tomllib
+from pathlib import Path
+
+import pytest
+import yaml
+
+ROOT = Path(__file__).resolve().parents[3]
+PRE_COMMIT = ROOT / ".pre-commit-config.yaml"
+CODEOWNERS = ROOT / ".github" / "CODEOWNERS"
+
+# Tiền tố đường dẫn nghĩa đen trong một regex `files:` — cắt ở ký tự metachar đầu tiên.
+_LITERAL = re.compile(r"[\w./-]+")
+
+
+def _duong_dan_trong_regex(pattern: str) -> list[str]:
+    """Các tiền tố đường dẫn nghĩa đen của một regex `files:` của pre-commit.
+
+    `^(a/b/|c/d\\.md|\\.claude/x-)` → ['a/b/', 'c/d.md', '.claude/x-']. Chỉ lấy nhánh nào trông như đường dẫn
+    (có dấu `/`); nhánh không có `/` là tiền tố tên file, không kiểm được bằng `exists()`.
+    """
+    than = pattern.lstrip("^").strip("()")
+    ra = []
+    for nhanh in than.split("|"):
+        m = _LITERAL.match(nhanh.replace("\\", ""))
+        if m and "/" in m.group(0):
+            ra.append(m.group(0))
+    return ra
+
+
+def _hooks_local() -> list[dict]:
+    cfg = yaml.safe_load(PRE_COMMIT.read_text(encoding="utf-8"))
+    return [h for r in cfg["repos"] if r.get("repo") == "local" for h in r["hooks"]]
+
+
+def test_moi_tien_to_duong_dan_trong_pre_commit_ton_tai() -> None:
+    """`files:` trỏ vào thư mục không tồn tại = hook không bao giờ khớp file nào = cổng chết im lặng."""
+    hong: list[str] = []
+    for hook in _hooks_local():
+        for dd in _duong_dan_trong_regex(hook.get("files", "")):
+            goc = dd.rstrip("/")
+            # tiền tố kiểu `.claude/agents/sc-` khớp nhiều file: đủ khi THƯ MỤC CHA có thật
+            if not (ROOT / goc).exists() and not (ROOT / goc).parent.is_dir():
+                hong.append(f"{hook['id']}: {dd}")
+    assert not hong, f".pre-commit-config.yaml trỏ vào đường dẫn không tồn tại: {hong}"
+
+
+def test_project_trong_entry_pre_commit_la_package_that() -> None:
+    """`uv run --project <path>` với path sai thì hook lỗi ngay khi chạy, không phải khi review."""
+    hong: list[str] = []
+    for hook in _hooks_local():
+        m = re.search(r"--project\s+(\S+)", hook.get("entry", ""))
+        if m and not (ROOT / m.group(1) / "pyproject.toml").is_file():
+            hong.append(f"{hook['id']}: --project {m.group(1)}")
+    assert not hong, f"--project không trỏ tới package có pyproject.toml: {hong}"
+
+
+def _ci() -> dict:
+    return yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+
+
+def _packages() -> list[str]:
+    """Thành viên workspace — nguồn sự thật duy nhất về "repo có mấy package"."""
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    return list(data["tool"]["uv"]["workspace"]["members"])
+
+
+def test_moi_package_co_golden_deu_nam_trong_matrix_golden_check() -> None:
+    """`companies/keeper` có `tests/golden/` và target `make golden` nhưng KHÔNG trong matrix `golden-check`:
+    sửa prompt keeper mà quên tăng version/commit golden thì CI vẫn xanh. Cổng phải phủ mọi package có golden,
+    không phải chỉ package được nhớ tới lúc viết workflow."""
+    co_golden = {p for p in _packages() if (ROOT / p / "tests" / "test_golden_agents.py").is_file()}
+    trong_matrix = {m["dir"] for m in _ci()["jobs"]["golden-check"]["strategy"]["matrix"]["include"]}
+    thieu = sorted(co_golden - trong_matrix)
+    assert not thieu, f"package có golden nhưng không được golden-check canh: {thieu}"
+
+
+def test_quality_needs_phu_moi_job_con() -> None:
+    """`quality` là required status check của branch protection; job con không nằm trong `needs` của nó thì
+    hỏng cũng không chặn merge — cổng xanh giả. Luật này đang là chú thích trong ci.yml, không ai canh."""
+    jobs = _ci()["jobs"]
+    needs = set(jobs["quality"]["needs"])
+    thieu = sorted(set(jobs) - needs - {"quality"})
+    assert not thieu, f"job không có trong `needs` của quality (hỏng vẫn merge được): {thieu}"
+
+
+# --- Trần cho các lối thoát hợp lệ khỏi `fail_under = 100` -------------------------------------------------
+#
+# `fail_under = 100` ở cả năm package là cổng mạnh nhất repo có. Nhưng nó có ba lối thoát hợp lệ, và tới trước
+# PR này cả ba đều KHÔNG CÓ TRẦN, KHÔNG CÓ HẠN ĐÁO, KHÔNG AI ĐẾM LẠI: thêm bao nhiêu cũng được, coverage vẫn
+# khai 100%. Sổ dưới đây là số đo ngày 2026-09-12. Thêm một lối thoát mới ⇒ CI đỏ tới khi sửa số ở đây, tức là
+# đi qua review. Bỏ bớt một lối thoát cũng phải sửa số — sổ chỉ có giá trị khi nó khớp chính xác hai chiều.
+TRAN_PRAGMA = {                      # `# pragma: no cover` trong src/ của từng package
+    "platform/xagents-core": 6,      # `grep 'pragma: no cover'` ra 7: llm.py:509 là văn xuôi NHẮC TỚI
+    "platform/gateway": 0,           # `` `pragma: no cover` `` (có backtick), không phải directive
+    "platform/console": 2,
+    "companies/software-company": 10,
+    "companies/keeper": 3,
+}
+TRAN_SKIP = {                        # skip/xfail trong tests/ của từng package
+    "platform/xagents-core": 0,
+    "platform/gateway": 3,
+    "platform/console": 1,
+    "companies/software-company": 2,
+    "companies/keeper": 0,
+}
+TRAN_OMIT = 2                        # dòng `omit` trong pyproject.toml của các package
+
+_PRAGMA = re.compile(r"#\s*pragma:\s*no cover")
+_SKIP = re.compile(r"(?:@pytest\.mark\.|pytest\.)(?:skip|xfail)")
+_TU_NO = "test_cong_repo.py"         # chính file này chứa các mẫu trên dưới dạng chuỗi — không tự đếm mình
+
+
+def _dem(thu_muc: Path, mau: re.Pattern[str]) -> int:
+    if not thu_muc.is_dir():
+        return 0
+    return sum(len(mau.findall(f.read_text(encoding="utf-8", errors="replace")))
+               for f in thu_muc.rglob("*.py") if f.name != _TU_NO)
+
+
+@pytest.mark.parametrize("pkg", sorted(TRAN_PRAGMA))
+def test_pragma_no_cover_khong_vuot_tran(pkg: str) -> None:
+    that = _dem(ROOT / pkg / "src", _PRAGMA)
+    assert that == TRAN_PRAGMA[pkg], (
+        f"{pkg}: đếm được {that} `pragma: no cover`, sổ ghi {TRAN_PRAGMA[pkg]}. Mỗi cái là một dòng được miễn "
+        f"khỏi fail_under=100 — thêm thì phải sửa số ở đây (đi qua review), bớt thì cũng phải sửa cho khớp.")
+
+
+@pytest.mark.parametrize("pkg", sorted(TRAN_SKIP))
+def test_skip_xfail_khong_vuot_tran(pkg: str) -> None:
+    that = _dem(ROOT / pkg / "tests", _SKIP)
+    assert that == TRAN_SKIP[pkg], (
+        f"{pkg}: đếm được {that} skip/xfail, sổ ghi {TRAN_SKIP[pkg]}. Ca bị bỏ im lặng không hiện trong "
+        f"`pytest -q` — đó là cách 'xanh vì rỗng' sống sót.")
+
+
+def test_omit_khong_vuot_tran() -> None:
+    that = sum(1 for p in _packages()
+               if (ROOT / p / "pyproject.toml").is_file()
+               for line in (ROOT / p / "pyproject.toml").read_text(encoding="utf-8").splitlines()
+               if line.strip().startswith("omit"))
+    assert that == TRAN_OMIT, (
+        f"đếm được {that} dòng `omit`, sổ ghi {TRAN_OMIT}. `omit` bỏ hẳn file khỏi mẫu số 100% — "
+        f"nặng hơn `pragma` vì không thấy được ở diff của file bị bỏ.")
+
+
+KHUNG = ("CLAUDE.md", "TRAPS.md", "CODEMAP.md", "ARCHITECTURE.md")
+
+
+def test_agents_md_khong_khai_khong_ve_bo_khung_package() -> None:
+    """`AGENTS.md` mở đầu bằng "Mỗi package con có CLAUDE.md, TRAPS.md, CODEMAP.md, ARCHITECTURE.md riêng" —
+    câu đầu tiên người mới tin. Đo 2026-09-12: `platform/xagents-core` và `companies/keeper` thiếu CẢ BỐN.
+
+    Đây là lời khai sai nằm trong chính file luật (`AGENTS.md` luật cấm 8: không tin lời khai — kể cả của
+    mình). Cổng này để câu đó chỉ đúng hoặc bị xoá, không có cửa thứ ba.
+    """
+    tuyen_bo = "Mỗi package con có" in (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    thieu = {p: [f for f in KHUNG if not (ROOT / p / f).is_file()] for p in _packages()}
+    thieu = {p: f for p, f in thieu.items() if f}
+    assert not (tuyen_bo and thieu), (
+        f"AGENTS.md khai mọi package có đủ {list(KHUNG)}, nhưng thiếu: {thieu}. "
+        f"Hoặc thêm file cho đủ, hoặc sửa câu khai cho đúng thực tế — không để câu sai nằm trong file luật.")
+
+
+def test_moi_duong_dan_trong_codeowners_ton_tai() -> None:
+    """CODEOWNERS trỏ đường dẫn cũ thì luật sở hữu rút về còn dòng `*` — mất hẳn lớp bảo vệ theo vùng."""
+    assert CODEOWNERS.is_file(), "repo mất .github/CODEOWNERS"
+    hong: list[str] = []
+    for dong in CODEOWNERS.read_text(encoding="utf-8").splitlines():
+        dong = dong.split("#", 1)[0].strip()
+        if not dong:
+            continue
+        mau = dong.split()[0]
+        if mau == "*" or "*" in mau:
+            continue
+        if not (ROOT / mau.strip("/")).exists():
+            hong.append(mau)
+    assert not hong, f".github/CODEOWNERS trỏ vào đường dẫn không tồn tại: {hong}"
