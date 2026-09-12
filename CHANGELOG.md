@@ -16,7 +16,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   nhánh: backend đã `mcp` OK đứng cạnh backend `cli` khi tổng kết), `supervisor.py` (1 nhánh: bản ghi `knowledge`
   không phải bài học bị bỏ qua). Còn 51/67 nhánh ở 12 file (`orch/{release_fsm,routes,scheduler,ticket_fsm,
   verify,worktree_flow}.py`, `orchestrator.py`, `runner.py`, `subagents.py`, `tools.py`, `web.py`,
-  `workspace.py`) — `branch = true` CHƯA bật thật, tiếp tục nhiều PR nhỏ theo cụm file (#PR_NUMBER)
+  `workspace.py`) — `branch = true` CHƯA bật thật, tiếp tục nhiều PR nhỏ theo cụm file (#278)
 
 - feat(keeper): **nối `git push` + `gh pr create` thật vào keeper (BT8 canary)** — đo được khi thử chạy canary
   thật: `orchestrator.open_pr()` chỉ ghi ý định PR (`pr.intent`), chưa từng gọi `gh`/`git push`. `publish.py`
