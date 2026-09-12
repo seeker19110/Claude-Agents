@@ -6,6 +6,16 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(keeper): **nối `git push` + `gh pr create` thật vào keeper (BT8 canary)** — đo được khi thử chạy canary
+  thật: `orchestrator.open_pr()` chỉ ghi ý định PR (`pr.intent`), chưa từng gọi `gh`/`git push`. `publish.py`
+  mới (`push_branch`, `create_pr`) là capability ghi THỨ BA của bất biến I1 (tạo nhánh, commit, mở PR — hai đầu
+  đã có), tách khỏi `github.py` để giữ nguyên bất biến "chỉ đọc" của nó. `KeeperOrchestrator.publish()` nối nó
+  vào vòng release: push nhánh → `gh pr create` → `release.fill_pr_number()` điền số PR thật vào dòng
+  CHANGELOG/session-log đã soạn (cơ chế đã có từ trước, chỉ chưa ai gọi bằng số thật) — đúng luật bắt buộc 10
+  (commit thứ hai vào CHÍNH PR đó). CLI `keeper publish <ticket_id>` cho người/script gọi thủ công — `watch`
+  CHƯA tự động gọi nó (chuỗi signal→patch→publish chưa nối thành một vòng, ghi trong `TRAPS.md`). Idempotent:
+  gọi lại không tạo PR trùng (I3); "gh báo đã có PR" dùng đúng số cũ, không coi là lỗi (#276)
+
 - fix(company,console): **dọn sổ "Việc để lại đang treo" của `docs/TASK-PACK.md`** — sửa lời khai sai của
   `supervisor` về phạm vi bài học `knowledge` (chỉ 2/5 agent đọc được, chỉ bản ghi mới nhất mỗi namespace, không
   phải "mọi agent" + "toàn bộ lịch sử"); vá đường dẫn chết `Makefile` assetscan/assetbudget (`../Studio-creators`

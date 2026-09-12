@@ -107,6 +107,36 @@ def _watch(args: argparse.Namespace) -> int:
 GATE_DECISIONS: tuple[str, ...] = ("approve", "request_changes", "reject", "hold", "rollback")
 
 
+def _publish(args: argparse.Namespace) -> int:
+    """`keeper publish` — biến ý định mở PR (`pr.intent`) của MỘT ticket thành PR THẬT (BT8 canary).
+
+    Đường của NGƯỜI, sao khuôn `_watch`: adapter `gh` dựng ở đây, không phải phụ thuộc ẩn trong orchestrator.
+    Đứng RIÊNG khỏi `watch` có chủ ý — vòng lặp tự động chưa nối scout→patch→verify (xem TRAPS.md), nên
+    "publish" hôm nay là bước người/script gọi sau khi patch đã commit vào worktree của ticket, không phải
+    một nhịp tự động."""
+    from .github import GitHubReader
+    from .orchestrator import KeeperOrchestrator
+    from .publish import PublishError
+    from .worktree import open_worktree
+
+    repo = Path(args.repo).resolve()
+    orc = KeeperOrchestrator(Path(args.db), repo, GitHubReader(repo))
+    wt = open_worktree(args.ticket_id, repo=repo)
+    try:
+        pr = orc.publish(args.ticket_id, wt, remote=args.remote, base=args.base)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    except PublishError as e:
+        print(str(e), file=sys.stderr)
+        return 3
+    if pr is None:
+        print(f"{args.ticket_id}: đã publish từ trước (idempotent) — không gọi lại push/gh")
+        return 0
+    print(f"{args.ticket_id}: PR #{pr.number} {pr.url}")
+    return 0
+
+
 def _gate(args: argparse.Namespace) -> int:
     """`keeper gate` — đường của NGƯỜI vào sổ gate (`gates.py`), sao khuôn `company/gate_cli.py`.
 
@@ -196,6 +226,13 @@ def main(argv: list[str] | None = None) -> int:
     watch.add_argument("--interval", type=float, default=300.0, help="giây giữa hai nhịp")
     watch.add_argument("--max-ticks", type=int, default=None, help="dừng sau bấy nhiêu nhịp (mặc định: mãi)")
     watch.set_defaults(func=_watch)
+    pub = sub.add_parser("publish", help="biến ý định mở PR của một ticket thành PR thật (BT8 canary)")
+    pub.add_argument("--db", required=True, help="file bus bền vững (keeper.sqlite)")
+    pub.add_argument("--repo", required=True, help="repo git để push nhánh + gọi `gh pr create`")
+    pub.add_argument("ticket_id", help="ticket đã có release-notes (đã qua open_pr()) và đã commit patch")
+    pub.add_argument("--remote", default="origin", help="remote để push nhánh (mặc định origin)")
+    pub.add_argument("--base", default="main", help="nhánh nền của PR (mặc định main)")
+    pub.set_defaults(func=_publish)
     gate = sub.add_parser("gate", help="sổ human gate: list / request / duyệt (BT7)")
     gate.add_argument("--db", required=True, help="file bus bền vững (keeper.sqlite)")
     gsub = gate.add_subparsers(dest="gate_cmd", required=True)

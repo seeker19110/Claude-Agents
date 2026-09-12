@@ -25,12 +25,18 @@ một trong bốn khuôn lỗi lặp lại của X-Agents (`TRAPS.md`).
 `human-only` là khoá VĨNH VIỄN: một người duyệt gate cũng không biến nó thành việc `keeper` tự làm — gate ở
 đó để người biết mà làm, không phải để uỷ quyền ngược lại cho máy.
 
-## "Mở PR" ở BT7 nghĩa là gì
+## "Mở PR" ở BT7 nghĩa là gì — và "publish" ở BT8 khác gì
 
-Nghĩa là soạn và phát `release-notes` + ghi `pr.intent` vào `audit-log`. Thao tác `gh pr create` THẬT không nằm
-ở đây: `github.py` chỉ đọc (bất biến I1) và một chu kỳ thật là việc của canary BT8. Nói "mở PR" cho một hàm
-KHÔNG gọi `gh` sẽ là lời khai, và `AGENTS.md` cấm §8 áp cho chính `keeper` trước tiên — nên cả tên hàm lẫn tên
-action đều nói **ý định**, không nói kết quả.
+`open_pr()` (BT7) soạn và phát `release-notes` + ghi `pr.intent` vào `audit-log` — chỉ Ý ĐỊNH. `gh pr create`
+THẬT không nằm ở đây: `github.py` chỉ đọc (bất biến I1). Nói "mở PR" cho một hàm KHÔNG gọi `gh` sẽ là lời khai,
+và `AGENTS.md` cấm §8 áp cho chính `keeper` trước tiên — nên cả tên hàm lẫn tên action đều nói ý định, không
+nói kết quả.
+
+`publish()` (BT8, `keeper/publish.py`) là bước KHÁC, gọi SAU `open_pr()`: nó push nhánh của ticket rồi
+`gh pr create` thật, sau đó `release.fill_pr_number()` điền số PR thật vào dòng CHANGELOG/session-log đã soạn.
+Nó không tự động — vòng lặp `watch` chưa nối scout→patch→verify→publish thành một chuỗi (không scout nào chạy
+tự động trong `tick()`, patch cần `keeper run` hoặc người commit tay), nên `publish()` là bước NGƯỜI/script gọi
+qua CLI `keeper publish <ticket_id>` sau khi patch đã commit vào worktree — không phải một nhịp tự động.
 
 Chính vì `open_pr()` không tạo PR thật mà `gh.open_prs()` vẫn trả 0 ở ticket kế tiếp trong CÙNG một nhịp (bộ
 đệm TTL của `GitHubReader` còn giữ câu trả lời cũ nữa). Nên cổng `budget` đếm THÊM những `release-notes` mà
@@ -57,8 +63,10 @@ from .evidence import EvidenceError, TwoWayEvidence, require_two_way, verificati
 from .gates import PersistentGate, gate_approvers, request_gate
 from .github import GitHubWriteAttempt
 from .patcher import HUMAN_ONLY_SEGMENTS
-from .release import compose
+from .publish import PullRequest, PullRequestExists, create_pr, push_branch
+from .release import compose, fill_pr_number
 from .triage import ObservedSignal, TriageState, triager
+from .worktree import KeeperWorktree
 
 __all__ = ["CODE_ACTOR", "HUMAN_ONLY", "REJECT_ACTION", "KeeperOrchestrator", "TickResult",
            "touches_human_only"]
@@ -291,6 +299,37 @@ class KeeperOrchestrator:
         self._audit("pr.intent", {"ticket_id": ticket.ticket_id, "changelog_line": note.changelog_line},
                     ticket_id=ticket.ticket_id)
         return self.notes[ticket.ticket_id]
+
+    def publish(self, ticket_id: str, wt: KeeperWorktree, *, remote: str = "origin", base: str = "main",
+               now: datetime | None = None) -> PullRequest | None:
+        """Biến ý định (`pr.intent`) thành PR THẬT (BT8 canary) — `git push` + `gh pr create`, rồi điền số PR
+        thật vào dòng CHANGELOG/session-log đã soạn (`release.fill_pr_number`) bằng một commit THỨ HAI vào
+        CHÍNH PR đó (`AGENTS.md` luật bắt buộc 10).
+
+        Giả định: commit ĐẦU TIÊN (patch + dòng release mang `release.PR_PLACEHOLDER`) đã có sẵn trong
+        `wt.path` — hàm này không tự vá, không tự commit lần đầu; nó chỉ publish. Idempotent: note đã có
+        `pr_number` thì trả `None` ngay, không gọi `push`/`gh` lần hai (I3)."""
+        note = self.notes.get(ticket_id)
+        if note is None:
+            raise ValueError(f"{ticket_id} chưa có release-notes — open_pr() chưa qua hết cổng?")
+        if note.pr_number is not None:
+            return None
+        ticket = self.tickets[ticket_id]
+
+        push_branch(wt, remote=remote)
+        try:
+            pr = create_pr(self.repo, title=f"fix(keeper): {ticket.subject}",
+                           body=f"Ticket bảo trì `{ticket_id}` — mở tự động bởi keeper (I1), cần người merge.",
+                           head=wt.branch, base=base)
+        except PullRequestExists as e:
+            pr = PullRequest(number=e.number, url=e.url)
+
+        moc = now or datetime.now(UTC)
+        moi = fill_pr_number(wt.path, note, pr.number, session_date=moc.strftime("%Y-%m-%d"))
+        self._publish("release-notes", ticket_id, RELEASE_ACTOR, moi.model_dump())
+        self._audit("pr.created", {"ticket_id": ticket_id, "pr_number": pr.number, "url": pr.url},
+                    ticket_id=ticket_id)
+        return pr
 
     # ---------- vòng lặp ----------
 

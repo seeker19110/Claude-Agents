@@ -18,7 +18,7 @@ Bốn khuôn chung ở `../../TRAPS.md` §1 áp nguyên vẹn (cùng kiến trú
 
 | Bẫy | Vì sao | Chốt chặn |
 |---|---|---|
-| Tưởng keeper đã "mở PR" | `release.py:open_pr()` **chưa gọi `gh pr create`** — "mở PR" hiện chỉ soạn `release-notes` + ghi `pr.intent` vào audit-log. Đọc audit-log thấy `pr.intent` rồi tưởng PR đã lên GitHub là sai | Kiểm PR thật bằng `gh pr list`, không suy từ audit-log |
+| `open_pr()` và `publish()` tưởng là một | `orchestrator.open_pr()` (BT7) chỉ soạn `release-notes` + ghi `pr.intent` — Ý ĐỊNH. `orchestrator.publish()` (BT8, `publish.py`) mới thật sự `git push` + `gh pr create`, và phải gọi RIÊNG (CLI `keeper publish <ticket_id>`) sau khi patch đã commit vào worktree. Đọc `pr.intent` trong audit-log rồi tưởng PR đã lên GitHub là sai — kiểm `pr.created` hoặc `gh pr list` | Đọc action `pr.created` (không phải `pr.intent`) để biết PR đã thật; `publish()` không tự chạy trong `watch` — chưa nối scout→patch→publish thành một chuỗi tự động |
 | Tưởng canary BT8 đã qua vì code chạy được | Điều kiện qua canary (I7, `docs/DAC-TA-KEEPER.md` §10) là MỘT CHU KỲ THẬT: keeper tự mở đúng một PR bảo trì có bằng chứng đo hai chiều, và PR đó **merge bởi người** (I1 cấm keeper tự merge). Code chạy được ≠ canary đã qua | Cần `gh auth login` trên máy thật + một PR merge thật trước khi coi BT8 xong |
 | `blackboard.py` của keeper tưởng đang chạy trong sản xuất | Lớp chỉ subclass 2 dòng `xagents_core.blackboard.Blackboard` — nhưng KHÔNG agent nào của keeper khai `context_namespace_write` (cả 10 đều null), nên đường ghi blackboard không chạy thật. Lớp tồn tại vì `EvalSuite.run_eval` cần một blackboard cho mọi ca | Đừng debug "vì sao blackboard keeper không có dữ liệu" — nó chưa từng được thiết kế để có |
 
