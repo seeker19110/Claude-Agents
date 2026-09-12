@@ -6,6 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(adr): **đối chiếu 50/50 ADR còn lại (audit A4) với mã thật, sửa 2 chỗ lệch** — `companies/software-company/docs/adr/0037-gop-21-agent-thanh-5-hai-gate.md` khai "Đề xuất/chưa cài" nhưng agent (5 vai) và `GateKind` (bỏ `plan`) đã khớp mã từ nhiều PR trước, đã sửa Trạng thái thành "Chấp nhận (đã cài đặt)"; `docs/adr/0008-allowlist-vai-duoc-tao-gate.md` sửa tham chiếu tới đường dẫn `Studio-creators/...` đã không còn tồn tại. Một mục (ADR-0004 `lessons_for`) chưa cài, để lại cho người quyết trong `docs/TASK-PACK.md` — không phải việc của audit. Bảng đầy đủ ở `docs/reports/2026-09-12-audit.md` mục A4 (#277)
+
 - feat(keeper): **nối `git push` + `gh pr create` thật vào keeper (BT8 canary)** — đo được khi thử chạy canary
   thật: `orchestrator.open_pr()` chỉ ghi ý định PR (`pr.intent`), chưa từng gọi `gh`/`git push`. `publish.py`
   mới (`push_branch`, `create_pr`) là capability ghi THỨ BA của bất biến I1 (tạo nhánh, commit, mở PR — hai đầu

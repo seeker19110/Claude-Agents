@@ -1,10 +1,14 @@
 # ADR-0037: Gộp 21 agent thành 5; hai human gate của công ty là `spec` và `release`
 
-Trạng thái: Đề xuất · Ngày: 2026-09-07 · Sửa ADR-0003, ADR-0006, ADR-0009, ADR-0021, ADR-0028 · Giữ nguyên ADR-0017, ADR-0034
+Trạng thái: Chấp nhận (đã cài đặt — sửa 2026-09-12 khi đối chiếu audit A4: PR-1..PR-5e đã merge, `CLAUDE.md` gốc
+của package tự khai "6 agent (5 công đoạn + supervisor)... 3 human gate + escalation", `GateKind` trong
+`src/company/gates.py` đúng bằng `spec`/`release`/`acceptance`/`escalation` như mục "Quyết định" §2 mô tả, không
+còn `plan`) · Ngày: 2026-09-07 · Sửa ADR-0003, ADR-0006, ADR-0009, ADR-0021, ADR-0028 · Giữ nguyên ADR-0017, ADR-0034
 · Đặc tả triển khai: `docs/DAC-TA-TRIEN-KHAI-ADR-0037.md`
 
 > ADR này chỉ quyết định **ranh giới vai và số gate**. Cài đặt đi theo đặc tả kèm, mỗi PR một scope, sau khi ADR
-> được chấp nhận. Chưa có dòng code nào đổi cùng ADR.
+> được chấp nhận — nay đã xong hết PR-1..PR-5e (xem `docs/sessions/2026-09-07-adr-0037.md`,
+> `docs/sessions/2026-09-07-adr0037-pr3.md` và mã nguồn hiện tại).
 
 ## Bối cảnh
 
