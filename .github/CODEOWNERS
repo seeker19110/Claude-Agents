@@ -4,22 +4,22 @@
 *                                       @seeker19110
 
 # Prompt và skill là code (ADR-0004): đổi nội dung phải kèm tăng version, golden và eval.
-/software-company/agents/                @seeker19110
-/software-company/skills/                @seeker19110
+/companies/software-company/agents/                @seeker19110
+/companies/software-company/skills/                @seeker19110
 
 # Hợp đồng giữa các agent: đổi schema là đổi giao diện của cả hệ (ADR-0014).
-/software-company/topics/                @seeker19110
+/companies/software-company/topics/                @seeker19110
 
 # Quyết định kiến trúc và cổng con người duyệt.
-/software-company/docs/adr/              @seeker19110
-/software-company/gates/                 @seeker19110
+/companies/software-company/docs/adr/              @seeker19110
+/companies/software-company/gates/                 @seeker19110
 
 
 # OAuth client và lưu trữ token của gateway: đổi sai là lộ tài khoản Google trong pool.
-/gateway/src/gateway/auth.py             @seeker19110
+/platform/gateway/src/gateway/auth.py             @seeker19110
 
 # Hạ tầng CI và chính các quy tắc này.
 /.github/                                @seeker19110
 
 # keeper: công ty bảo trì tự vận hành, chỉ đọc GitHub — đổi sai là vá nhầm hoặc phát hành nhầm.
-/keeper/                                 @seeker19110
+/companies/keeper/                                 @seeker19110

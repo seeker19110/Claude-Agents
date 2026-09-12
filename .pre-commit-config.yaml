@@ -29,7 +29,7 @@ repos:
     hooks:
       - id: subagents-check
         name: subagent dẫn xuất khớp nguồn
-        entry: uv run --project software-company python -m company.subagents check
+        entry: uv run --project companies/software-company python -m company.subagents check
         language: system
         pass_filenames: false
-        files: ^(software-company/(agents|skills)/|software-company/gates/checklists\.md|\.claude/agents/sc-)
+        files: ^(companies/software-company/(agents|skills)/|companies/software-company/gates/checklists\.md|\.claude/agents/sc-)
