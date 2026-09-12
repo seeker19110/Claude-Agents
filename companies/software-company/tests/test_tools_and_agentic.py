@@ -189,6 +189,69 @@ def test_clean_env_drops_keys(monkeypatch):
     assert "MY_API_KEY" not in env and "DB_PASSWORD" not in env and env["PATH_X"] == "z"
 
 
+def test_read_file_bao_loi_khong_co_file(tmp_path):
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    wt = WorkspaceTools(ws)
+    assert wt.read_file("khong_ton_tai.py") == "lỗi: không có file khong_ton_tai.py"
+
+
+def test_read_file_tu_choi_file_nhi_phan(tmp_path):
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    (ws.path / "logo.png").write_bytes(b"\x89PNG")
+    wt = WorkspaceTools(ws)
+    assert wt.read_file("logo.png") == "lỗi: file nhị phân"
+
+
+def test_write_file_khi_allow_write_false_nem_toolerror(tmp_path):
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    wt = WorkspaceTools(ws, allow_write=False)
+    with pytest.raises(ToolError, match="chỉ đọc"):
+        wt.write_file("x.py", "1")
+
+
+def test_write_file_qua_gioi_han_byte(tmp_path):
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    wt = WorkspaceTools(ws)
+    from company.tools import MAX_WRITE
+    out = wt.write_file("big.py", "x" * (MAX_WRITE + 1))
+    assert out.startswith("lỗi") and "byte" in out
+    assert not (ws.path / "big.py").exists()
+
+
+def test_list_files_bao_loi_khong_phai_thu_muc(tmp_path):
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    wt = WorkspaceTools(ws)
+    assert wt.list_files("mod.py") == "lỗi: không có thư mục mod.py"
+
+
+def test_list_files_cat_o_500(tmp_path):
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    (ws.path / "many").mkdir()
+    for i in range(510):
+        (ws.path / "many" / f"f{i}.py").write_text("x = 1\n", encoding="utf-8")
+    wt = WorkspaceTools(ws)
+    out = wt.list_files("many")
+    lines = out.splitlines()
+    assert lines[-1] == "… (cắt ở 500)" and len(lines) == 501
+
+
+def test_search_duyet_nhieu_dong_trong_mot_file(tmp_path):
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    (ws.path / "multi.py").write_text("a = 1\nb = 2\ndef foo():\n    pass\ndef bar():\n    pass\n", encoding="utf-8")
+    wt = WorkspaceTools(ws)
+    out = wt.search(r"^def ", glob="multi.py")
+    assert "multi.py:3:" in out and "multi.py:5:" in out
+
+
+def test_search_cat_o_max_search_hits(tmp_path):
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    (ws.path / "many.py").write_text("\n".join(f"x{i} = 1  # match" for i in range(80)) + "\n", encoding="utf-8")
+    wt = WorkspaceTools(ws)
+    out = wt.search("match", glob="many.py")
+    assert out.endswith("… (cắt)")
+    assert len(out.splitlines()) == 61
+
+
 def test_toolbox_truncates_long_output():
     tb = ToolBox(); tb.add(ToolSpec("big", "", {"type": "object", "properties": {}}), lambda: "x" * 10_000)
     out = tb.call(_tc("big"))
@@ -871,6 +934,28 @@ def test_reviewer_with_tools_but_no_calls_is_audited(tmp_path):
     assert lazy_qa and {a["agent"] for a in lazy_qa} == {"qa", "security"}
     assert {a["topic"] for a in lazy_qa} == {"pull-requests", "release-events"}
     assert all(a["agent"] == "qa" for a in lazy_qa if a["topic"] == "release-events")
+
+
+def test_engineer_ticket_ngoai_so_supervisor_dung_budget_tu_task(tmp_path):
+    """worktree_flow.py 190->195: ticket không có entry trong `o.supervisor.budgets` (chưa từng qua
+    `DeliveryLead.dispatch` — gọi `engineer` trực tiếp cho một Task tự dựng) → dùng thẳng `budget_tokens` của
+    Task, không cộng dồn phần ngân sách còn lại."""
+    from company.events import Task
+    from company.orch.routes import Route
+    from company.orch.worktree_flow import engineer
+    from company.workspace import TicketWorkspace
+
+    repo = _init_repo(tmp_path / "repo")
+    bus = InMemoryBus()
+    orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=_repo_tool_handler), repo=repo, base="main")
+    orch.lead.tickets["T-le"] = Task(ticket_id="T-le", project_id="P", requirement_id="R1", assignee="builder",
+                                       title="T-le", acceptance=["a"], budget_tokens=6_000)
+    orch.lead.state["T-le"] = "dispatched"
+    TicketWorkspace(repo, "T-le", base="main").create()
+    assert "T-le" not in orch.supervisor.budgets
+    task = Envelope(topic="tasks", key="T-le", actor="delivery-lead", payload=orch.lead.tickets["T-le"].model_dump())
+    r = Route(topic_in="tasks", agent="builder", topic_out="pull-requests")
+    engineer(orch, "builder", task, r)  # không ném lỗi khi thiếu entry trong supervisor.budgets lúc VÀO là đủ chứng minh nhánh
 
 
 def test_pr_with_failing_local_checks_goes_back_to_ticket_not_to_review(tmp_path):

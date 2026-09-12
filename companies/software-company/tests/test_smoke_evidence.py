@@ -146,6 +146,38 @@ def test_deployed_bi_ghi_de_failed_khi_san_pham_khong_chay(tmp_path):
     assert g.kind != "release", "không có deployed thật thì QA hồi quy không chạy, Gate 3 không mở"
 
 
+def test_smoke_fail_lan_hai_gate_da_pending_khong_mo_gate_trung(tmp_path):
+    """verify.py 91->94: RC đã escalate vì smoke fail lần đầu (gate `REL-001` đang pending) → smoke fail LẦN NỮA
+    cho cùng release không mở thêm gate escalation, chỉ ghi audit + hạ status."""
+    from company.orch import verify
+
+    repo = _repo(tmp_path, SERVER_DIE)
+    bus, orch = _orch(tmp_path, repo, {"command": "python serve.py", "port": 0, "timeout_s": 10})
+    orch.run()
+    g = orch.gate.pending.get("REL-001")
+    assert g is not None and g.kind == "escalation"
+    n_truoc = sum(1 for e in bus.replay(topic="audit-log") if e.payload["action"] == "gate.request"
+                  and '"subject_id": "REL-001"' in (e.payload.get("evidence") or ""))
+    rc = orch.latest("release-candidates", "REL-001")
+    integ = orch._integration_of_release(rc)
+    out = verify.smoke(orch, "release-engineer", rc, "REL-001", {"status": "deployed"}, integ)
+    assert out["status"] == "failed"
+    n_sau = sum(1 for e in bus.replay(topic="audit-log") if e.payload["action"] == "gate.request"
+                and '"subject_id": "REL-001"' in (e.payload.get("evidence") or ""))
+    assert n_sau == n_truoc
+
+
+def test_du_an_legacy_pid_none_thi_false():
+    """verify.py 47->exit: không xác định được `project_id` (RC ngoài dự án nào, hoặc gọi trực tiếp không có
+    `project_for`) → không thể tự khai `legacy`, coi như không legacy."""
+    from company.bus import InMemoryBus
+    from company.orch.verify import _du_an_legacy
+    from company.orchestrator import Orchestrator
+
+    orch = Orchestrator(InMemoryBus(), FakeClient(handler=handler))
+    assert _du_an_legacy(orch, None) is False
+
+
 def test_khong_khai_runtime_thi_unverified_khong_chan(tmp_path):
     repo = _repo(tmp_path, SERVER_DIE)
     bus, orch = _orch(tmp_path, repo, None)

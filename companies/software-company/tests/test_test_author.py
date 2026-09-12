@@ -230,6 +230,28 @@ def test_khong_dung_duoc_worktree_thi_di_duong_cu(tmp_path: Path, monkeypatch: p
     assert orch_mod._can_author_tests(_task(), orch) is False
 
 
+def test_khong_co_repo_thi_khong_co_worktree_di_duong_cu(tmp_path: Path) -> None:
+    """Dự án chạy không repo (`orch.workspace(tid)` trả None) → không phân vùng test được, đi đường cũ."""
+    from company import orchestrator as orch_mod
+    bus = InMemoryBus()
+    orch = Orchestrator(bus, FakeClient(handler=_handler, tool_handler=_tool_handler), test_author=True)
+    assert orch_mod._test_scope_ok(orch, "T1") is False
+
+
+def test_author_tests_khong_co_worktree_thi_none() -> None:
+    """worktree_flow.py 171->exit: gọi trực tiếp `author_tests` cho ticket không có worktree (`o.workspace(tid)`
+    trả None) → không có gì để làm, trả None, không sập."""
+    from company.orch.routes import Route
+    from company.orch.worktree_flow import author_tests
+    from company.orchestrator import Orchestrator
+
+    orch = Orchestrator(InMemoryBus(), FakeClient(handler=_handler, tool_handler=_tool_handler))
+    task = Envelope(topic="tasks", key="T-khong-co", actor="delivery-lead", payload={"ticket_id": "T-khong-co"})
+    r = Route(topic_in="tasks", agent="qa", topic_out="test-suites", phase="author")
+    assert orch.workspace("T-khong-co") is None
+    assert author_tests(orch, "qa", task, r) is None
+
+
 def test_orchestrator_ghi_audit_khi_test_xanh_ngay(tmp_path: Path) -> None:
     """Cùng tín hiệu như ở runner, nhưng đi qua orchestrator: cờ phải tới được audit-log của dự án."""
     repo = _init_repo(tmp_path / "repo")

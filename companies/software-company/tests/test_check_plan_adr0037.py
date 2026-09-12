@@ -81,6 +81,14 @@ def test_ticket_qua_1_ngay_bi_tu_choi():
     assert not any("quá 1 ngày/200k token" in p for p in problems)
 
 
+def test_thieu_estimate_tokens_bi_tu_choi():
+    o = _orch()
+    tickets = _baseline_ok(o)
+    tickets[0] = _task(estimate_tokens=None)
+    problems = o._check_plan(tickets, "P1")
+    assert any("thiếu estimate_tokens" in p for p in problems)
+
+
 def test_tat_kiem_token_thi_khong_con_problem(monkeypatch):
     """Chiều ngược: tắt trần token thì ticket vượt token (nhưng estimate_days bình thường) không còn bị chặn."""
     o = _orch()
@@ -149,6 +157,16 @@ def test_thieu_architecture_tren_blackboard():
 
     o.blackboard.write("product", "architecture", "docs/c4.md", "L1-L2", project_id="P1")
     o.blackboard.write("product", "api-contract", "openapi.yaml", "v1", project_id="P1")
+    problems = o._check_plan([_task()], "P1")
+    assert not any("blackboard thiếu" in p for p in problems)
+
+
+def test_khong_co_blackboard_thi_bo_qua_kiem_architecture():
+    """Dự án không có blackboard (`o.blackboard is None`) → không kiểm `architecture`/`api-contract`, không sập."""
+    o = _orch()
+    o.blackboard = None  # dự án không có blackboard (đo được: khách không cấu hình lưu trữ chung)
+    o.bus.publish(Envelope(topic="review-results", key="SPEC-P1", actor="security",
+                            payload=ReviewResult(ticket_id="SPEC-P1", source="security", verdict="pass").model_dump()))
     problems = o._check_plan([_task()], "P1")
     assert not any("blackboard thiếu" in p for p in problems)
 

@@ -632,6 +632,8 @@ def test_human_comment_and_takeover_with_repo(tmp_path, capsys, monkeypatch):
     assert orch.lead.state["T1"] == "dispatched" and orch.stats["errors"] >= 1
     with pytest.raises(ValueError, match="human"): orch.comment("T1", "builder", "x")
     with pytest.raises(ValueError, match="không có ticket"): orch.comment("T9", "human:lead", "x")
+    with pytest.raises(ValueError, match="human"): orch.takeover("T1", "builder")
+    with pytest.raises(ValueError, match="không có ticket"): orch.takeover("T9", "human:lead")
     with pytest.raises(ValueError, match="không có thay đổi"): orch.takeover("T1", "human:lead")
     t = orch.comment("T1", "human:lead", "dùng hàm add có sẵn trong mod.py")
     assert t.hint.startswith("dùng hàm add") and t.retry == 0 and orch.lead.state["T1"] == "dispatched"

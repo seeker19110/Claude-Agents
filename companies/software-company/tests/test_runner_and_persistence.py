@@ -32,7 +32,7 @@ from company.llm import (
     strict_schema,
 )
 from company.registry import load_agents
-from company.runner import AgentRunner, RunnerError, payload_schema
+from company.runner import AgentRunner, RunnerError, payload_schema, project_of
 from company.runner import main as runner_main
 from company.sqlite_bus import SQLiteBus
 from company.supervisor import Supervisor
@@ -225,6 +225,36 @@ def test_write_context_bo_qua_khi_khong_co_blackboard():
     assert [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload["action"] not in DIAG] == ["context_rejected"]
 
 
+def test_context_khong_loc_content_khi_goi_truc_tiep_khong_co_spec():
+    """`_context(spec=None)` (gọi trực tiếp, không qua `generate`) không lọc `content` theo `reads_full` — nhánh
+    lọc chỉ chạy khi có `spec`, xem docstring `_context`."""
+    bus = InMemoryBus(); bb = Blackboard(bus)
+    runner = AgentRunner(bus, FakeClient(), blackboard=bb)
+    runner.write_context("product", _pr_env(),
+                          [{"namespace": "architecture", "content_ref": "x", "summary": "s", "content": "toàn văn"}])
+    ctx, _paths = runner._context(project_of(_pr_env()), spec=None)
+    assert "content" in ctx["architecture"] and ctx["architecture"]["content"] == "toàn văn"
+
+
+def test_generate_bao_loi_khi_dau_ra_khong_phai_json_object():
+    bus = InMemoryBus()
+    client = FakeClient(responses=[["không", "phải", "object"]])
+    with pytest.raises(RunnerError, match="đầu ra không hợp lệ"):
+        AgentRunner(bus, client).generate("qa", _pr_env(), "review-results")
+
+
+def test_publish_ghi_audit_ruling_cho_tung_quyet_dinh_trong_danh_sach():
+    """`payload["rulings"]` có nhiều hơn một quyết định trong cùng một lượt — mỗi ruling một dòng audit `ruling`."""
+    bus = InMemoryBus()
+    runner = AgentRunner(bus, FakeClient())
+    rulings = [{"decision": "", "why": "vì A", "cost_if_wrong": "sửa lại A"},
+               {"decision": "B", "why": "vì B", "cost_if_wrong": "sửa lại B"}]
+    runner.publish("qa", _pr_env(), "review-results",
+                    {"ticket_id": "TCK-1", "source": "qa", "verdict": "pass", "rulings": rulings})
+    rows = [e for e in bus.replay(topic="audit-log") if e.payload["action"] == "ruling"]
+    assert len(rows) == 1, "quyết định rỗng bị bỏ qua, không ghi audit"
+
+
 def test_publish_bao_loi_khi_bus_tu_choi_payload():
     bus = InMemoryBus()
     runner = AgentRunner(bus, FakeClient())
@@ -406,6 +436,18 @@ def test_workspace_worktree_checks_and_commit(tmp_path):
     assert ws.create() == p, "idempotent"
     ws.remove(delete_branch=True)
     assert not p.exists()
+
+
+def test_remove_khong_co_worktree_van_xoa_duoc_branch(tmp_path):
+    """`remove(delete_branch=True)` khi worktree chưa từng tạo (hoặc đã bị xoá tay) vẫn phải xoá branch, không
+    được bỏ qua chỉ vì thiếu bước `worktree remove`."""
+    repo = _init_repo(tmp_path / "repo")
+    ws = TicketWorkspace(repo, "TCK-nowt", base="main")
+    subprocess.run(["git", "-C", str(repo), "branch", ws.branch], check=True)
+    assert not ws.path.exists()
+    ws.remove(delete_branch=True)
+    out = subprocess.run(["git", "-C", str(repo), "branch", "--list", ws.branch], capture_output=True, text=True).stdout
+    assert ws.branch not in out
 
 
 def test_git_loi_nem_workspace_error_voi_stderr(tmp_path):

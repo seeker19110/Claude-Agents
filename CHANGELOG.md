@@ -6,6 +6,14 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- test(company): **bù 48/51 nhánh coverage còn lại ở `companies/software-company`, đợt 2/2** — 11 file trong 12
+  đã 100% nhánh (`orch/release_fsm.py`, `orch/routes.py`, `orch/ticket_fsm.py`, `orch/verify.py`,
+  `orch/worktree_flow.py`, `orchestrator.py`, `runner.py`, `subagents.py`, `tools.py`, `web.py`, `workspace.py`);
+  file thứ 12 (`orch/scheduler.py`) còn 2/154 nhánh. Còn ĐÚNG 3 nhánh bế tắc thật (không phải thiếu test): cả ba
+  có hình `with <lock>: \n if <cond>: return <x>` — đo trực tiếp bằng test tối giản xác nhận coverage.py không
+  bao giờ ghi nhận arc `return` một dòng NẰM TRONG khối `with`, dù test gọi đúng nhánh và assert đúng hành vi.
+  `branch = true` VẪN chưa bật (giữ comment, xem lý do trong `pyproject.toml`) — cần người quyết ba nhánh này
+  trước khi bật thật (#TODO)
 - docs(adr): **đối chiếu 50/50 ADR còn lại (audit A4) với mã thật, sửa 2 chỗ lệch** — `companies/software-company/docs/adr/0037-gop-21-agent-thanh-5-hai-gate.md` khai "Đề xuất/chưa cài" nhưng agent (5 vai) và `GateKind` (bỏ `plan`) đã khớp mã từ nhiều PR trước, đã sửa Trạng thái thành "Chấp nhận (đã cài đặt)"; `docs/adr/0008-allowlist-vai-duoc-tao-gate.md` sửa tham chiếu tới đường dẫn `Studio-creators/...` đã không còn tồn tại. Một mục (ADR-0004 `lessons_for`) chưa cài, để lại cho người quyết trong `docs/TASK-PACK.md` — không phải việc của audit. Bảng đầy đủ ở `docs/reports/2026-09-12-audit.md` mục A4 (#277)
 - test(company): **bù 16/67 nhánh coverage còn thiếu ở `companies/software-company`** (đo 2026-09-12,
   `docs/reports/2026-09-12-audit.md` A6) — `gate_cli.trusted_autoapprove` (5 nhánh: topic/action sai, evidence

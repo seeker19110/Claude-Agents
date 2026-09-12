@@ -100,6 +100,23 @@ def test_rerun_khong_lam_gi_khi_khong_pending_human():
     assert orch._rerun_release("REL-999", "human:lead", "", res) is False  # không có RC
 
 
+def test_rerun_khong_chay_production_khi_gate_release_chua_duyet():
+    """release_fsm.py 256->exit: release-event cuối `pending_human` ở env `production` nhưng Gate 3 CHƯA duyệt
+    (sổ sách lệch, hoặc người gọi rerun trước khi ký gate) → không chạy lại, trả False — không được tự vượt qua
+    cổng người duyệt."""
+    from company.events import Envelope as _Env
+    from company.orchestrator import StepResult
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    bus.publish(_Env(topic="release-candidates", key="REL-1", actor="delivery-lead",
+                       payload={"release_id": "REL-1", "project_id": "P1", "version": "0.1.0", "tickets": []}))
+    bus.publish(_Env(topic="release-events", key="REL-1", actor="ops",
+                       payload={"release_id": "REL-1", "version": "0.1.0", "env": "production",
+                                "status": "pending_human", "summary": "chờ người"}))
+    assert not orch.lead._gate_kind_approved("REL-1", "release")
+    res = StepResult("x", "audit-log", "REL-1")
+    assert orch._rerun_release("REL-1", "human:lead", "", res) is False
+
+
 def test_ky_lai_gate_3_chay_lai_duoc_luot_production_khong_can_restart():
     """`partial[rc.event_id]` ghi release-engineer sau lượt production đầu; ký lại Gate 3 (như lead làm 03:06
     2026-09-06 cho REL-019) trước đây chỉ chạy được vì orchestrator vừa restart."""
