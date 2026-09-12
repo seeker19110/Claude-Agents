@@ -1,8 +1,9 @@
 {
  "agent": "supervisor",
- "prompt_version": 13,
- "recorded_at": "2026-09-09T06:42:47.980864+00:00",
+ "prompt_version": 14,
+ "recorded_at": "2026-09-12T14:37:43.913526+00:00",
  "models": [
+  "claude-haiku-4-5",
   "claude-sonnet-5"
  ],
  "cases": {
@@ -53,6 +54,30 @@
    "model": "claude-sonnet-5",
    "input_tokens": 32954,
    "output_tokens": 1525
+  },
+  "7accc91707bbbee4f95ec425": {
+   "text": "{\"payload\": {\"target\": \"backend\", \"action\": \"budget_cut\", \"reason\": \"TCK-10: agent backend vượt ngân sách token (128k/90k = 142%). Retry 3 lần cùng lỗi 'đầu ra không hợp lệ cho pull-requests' → lỗi hệ thống, cắt ngân sách dừng ticket.\", \"evidence\": \"audit-log TCK-10: tokens=128000, budget_tokens=90000 (142%), retry_count=3, error='đầu ra không hợp lệ cho pull-requests'\", \"project_id\": \"P1\", \"rulings\": [{\"decision\": \"Yêu cầu xem xét prompt/schema của backend cho topic pull-requests trước khi tiếp tục\", \"why\": \"Lỗi lặp ≥ 2 lần (3 retry) cùng kiểu 'đầu ra không hợp lệ' → không phải lỗi tạm; nguyên nhân là schema mismatch hoặc prompt không tuân output format của topic\", \"cost_if_wrong\": \"Ticket tiếp theo dùng backend sẽ lặp lỗi tương tự; token lãng phí thêm; escalate tới human gate yêu cầu decide rollback prompt (rework estimate, độ trễ)\"}]}, \"context_writes\": [{\"namespace\": \"knowledge\", \"content_ref\": \"tck-10-backend-schema-exhaustion\", \"summary\": \"Backend retry 3 lần, lỗi schema output, vượt budget 142% — cắt ngân sách\", \"content\": \"# TCK-10: Backend Schema Exhaustion — Bài học\\n\\n## Context\\n- Ticket: TCK-10 (project P1, actor=backend)\\n- Hành động: produced:pull-requests\\n- Ngân sách: 90,000 tokens\\n- Thực tế dùng: 128,000 tokens (142%)\\n- Retry count: 3 lần\\n\\n## Problem\\nAgent backend lặp lỗi cùng kiểu 3 lần liên tiếp: \\\"đầu ra không hợp lệ cho pull-requests\\\"\\n- Chưa thoát khỏi vòng lặp mặc dù retry\\n- Vượt ngân sách 42% mà vẫn không thành công\\n- Dấu hiệu rõ: schema output không khớp kỳ vọng của topic pull-requests\\n\\n## Root Cause Giả định\\n1. Schema của topic `pull-requests` đã đổi, prompt backend chưa cập nhật\\n2. Output formatting của backend không tuân schema bắt buộc\\n3. Golden test của backend có thể chưa cover use case TCK-10\\n\\n## Solution (Giai đoạn 1)\\n1. Verify version hiện tại của agent backend (front matter của agents/backend.md)\\n2. So sánh schema `topics/schemas/pull-requests.json` với output formatter trong prompt\\n3. Chạy golden test của backend trên test case TCK-10; nếu đỏ là prompt cũ\\n4. **Không** sửa prompt tay; viết test đỏ trước, rồi mới sửa (TDD)\\n5. Sau sửa: rerun TCK-10, kiểm token dùng và retry count về bình thường\\n\\n## Evidence\\n- `audit-log`: action=produced:pull-requests, actor=backend, tokens=128000, budget=90000\\n- Error message: \\\"đầu ra không hợp lệ cho pull-requests\\\" (3 lần liên tiếp)\\n- Condition: Lỗi lặp ≥ 2 lần ở cùng agent → ADR-0004 (prompt là code) → cần review/rollback\\n\\n## Escalation\\n- Nếu cần rollback prompt: ghi bài học gồm version cũ + version mới + số ca golden test\\n- Nếu schema topic đổi: escalate tới human gate (kiến trúc decision), không tự sửa schema\\n- Mỗi ticket tiếp theo dùng backend phải ghi \\\"TCK-10 chưa fix\\\" nếu lỗi lặp lần 4\\n\\n## Prevention\\n- Thêm test case \\\"pull-requests output schema validate\\\" vào golden test của backend\\n- Mỗi lần schema topic đổi: audit-log phải ghi, backend prompt phải cập nhật trong cùng PR\"}]}",
+   "model": "claude-haiku-4-5",
+   "input_tokens": 39537,
+   "output_tokens": 6327,
+   "score": 1.0,
+   "runs": 1
+  },
+  "a6df5f010f7ac605298df731": {
+   "text": "{\"payload\": {\"target\": \"P1\", \"action\": \"escalate\", \"reason\": \"DEF-01: consecutive=3 ≥ threshold=3 (tickets: QLKH-004, QLKH-007, QLKH-012; source: security). Đã escalated=1 lần nhưng shared-context trống → chưa có quyết định (debt.decided). Cần ticket ADR + người ký để quyết định kiến trúc thay vì để nợ bị né qua từng ticket.\", \"evidence\": \"{\\\"debt_id\\\": \\\"DEF-01\\\", \\\"times\\\": 1, \\\"consecutive\\\": 3, \\\"source\\\": \\\"security\\\", \\\"tickets\\\": [\\\"QLKH-004\\\", \\\"QLKH-007\\\", \\\"QLKH-012\\\"], \\\"hint\\\": \\\"cần ticket ADR + người ký: quyết định kiến trúc này đang bị né qua từng ticket\\\"}\", \"project_id\": \"P1\", \"rulings\": [{\"decision\": \"Escalate DEF-01 dù đã escalated=1 trước, vì shared-context trống (không tìm được debt.decided)\", \"why\": \"Quy tắc supervisor: escalate dòng nợ kiến trúc khi consecutive ≥ threshold mà escalated=0 HOẶC chưa có debt.decided. DEF-01 thỏa case 2: consecutive=3 ≥ threshold=3 AND escalated=1 AND no debt.decided in shared-context\", \"cost_if_wrong\": \"Escalate chủ yếu → rework nhỏ (reject nếu người quyết định không cần); không escalate → kẹt nợ lâu hạn\"}]}, \"context_writes\": []}",
+   "model": "claude-haiku-4-5",
+   "input_tokens": 42486,
+   "output_tokens": 7921,
+   "score": 1.0,
+   "runs": 1
+  },
+  "716dafb44975f36615632f74": {
+   "text": "{\"payload\": {\"target\": \"qa\", \"action\": \"warn\", \"reason\": \"TCK-11 ở in_review 2 giờ 20 phút, thiếu nguồn qa review; vượt ngưỡng 2h cảnh báo\", \"evidence\": \"audit-log: TCK-11 ở in_review 2h 20 phút; đã có review của reviewer, thiếu nguồn qa\", \"project_id\": \"P1\", \"rulings\": [{\"decision\": \"warn agent qa; chưa escalate\", \"why\": \"spec supervisor: ticket in_review quá 2h thiếu nguồn review → warn agent; quá 4h → escalate. TCK-11 chưa tới 4h\", \"cost_if_wrong\": \"không warn → qa không nhận cảnh báo, block kéo dài thêm 2h hoặc tới escalate; tổng đợi vượt SLA\"}]}, \"context_writes\": []}",
+   "model": "claude-haiku-4-5",
+   "input_tokens": 17315,
+   "output_tokens": 1539,
+   "score": 1.0,
+   "runs": 1
   }
  }
 }

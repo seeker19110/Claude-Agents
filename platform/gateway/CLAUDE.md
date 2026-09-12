@@ -1,4 +1,4 @@
-# gateway — luật riêng (bổ sung `../AGENTS.md`, không thay)
+# gateway — luật riêng (bổ sung `../../AGENTS.md`, không thay)
 
 Package `gateway`. Proxy OpenAI-compatible tại `127.0.0.1:1123/v1`, dịch sang Google Code Assist (Antigravity OAuth),
 xoay vòng nhiều tài khoản Google. Hai công ty trỏ `base_url` vào đây và **không biết gì về Google** — giữ nguyên
@@ -17,7 +17,7 @@ thoát không phân biệt hai ca.
 
 ## TDD ở package này
 
-`../AGENTS.md` luật bắt buộc 4 áp nguyên vẹn: viết test đỏ trong `tests/` trước (dùng `httpx.MockTransport`/
+`../../AGENTS.md` luật bắt buộc 4 áp nguyên vẹn: viết test đỏ trong `tests/` trước (dùng `httpx.MockTransport`/
 `aiohttp TestClient` — không gọi Google thật, xem "Không bao giờ" dưới), chạy `uv run pytest -q --cov -k <tên
 test>` thấy đỏ đúng lý do, rồi mới viết code trong `src/gateway/` cho nó xanh.
 
@@ -26,7 +26,7 @@ test>` thấy đỏ đúng lý do, rồi mới viết code trong `src/gateway/` 
 1. **Hợp đồng OpenAI Chat Completions ở mặt ngoài**: `usage` trả token thật từ `usageMetadata` (kể cả cache) —
    software-company ghi audit-log từ đây; `finish_reason` thật (`tool_calls`, `length`) không bị đè thành `stop`
    (`client.py:1030-1032`).
-2. **Chế độ hỏng phải tự khai báo** (`../TRAPS.md` khuôn 1): timeout → 504 có thông điệp (`server.py:57-58,70-72`),
+2. **Chế độ hỏng phải tự khai báo** (`../../TRAPS.md` khuôn 1): timeout → 504 có thông điệp (`server.py:57-58,70-72`),
    hết quota, refresh lỗi — mỗi cái một thông điệp riêng, mã riêng. Mọi tài khoản cooldown → **429 kèm "Thử lại sau
    khoảng Ns"** (`auth.py:358-362`) và header `Retry-After` (`server.py:95-99`); router của công ty khớp cả hai
    (`xagents-core/src/xagents_core/routing.py:74-76`, dùng chung cho cả hai công ty từ K3.3d) — đổi chuỗi là phá router.

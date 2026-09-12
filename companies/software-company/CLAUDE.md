@@ -1,4 +1,4 @@
-# software-company — luật riêng (bổ sung `../AGENTS.md`, không thay)
+# software-company — luật riêng (bổ sung `../../AGENTS.md`, không thay)
 
 Package `company`. Công ty gia công phần mềm: 6 agent (5 công đoạn + supervisor), 45 skill, 19 topic, 3 human gate + escalation, code thật
 trên git worktree của repo khách, giao hàng bằng tag + nhánh `company/release`.
@@ -17,7 +17,7 @@ uv run python -m company.gate_cli list | approve <subject> --by human:<tên> --r
 
 ## TDD ở package này
 
-`../AGENTS.md` luật bắt buộc 4 áp nguyên vẹn: viết test đỏ trong `tests/` trước, chạy
+`../../AGENTS.md` luật bắt buộc 4 áp nguyên vẹn: viết test đỏ trong `tests/` trước, chạy
 `uv run pytest -q -n auto --cov -k <tên test>` thấy đỏ đúng lý do, rồi mới viết code trong `src/company/` cho nó
 xanh. `fail_under = 100` (luật cấm 6) nghĩa là code mới không có test đi trước sẽ tự lộ ngay ở bước coverage.
 
@@ -35,7 +35,7 @@ xanh. `fail_under = 100` (luật cấm 6) nghĩa là code mới không có test 
 
 | Sửa | Phải |
 |---|---|
-| `agents/`, `skills/` | 7 bước `../CONTRIBUTING.md` §3 — tăng version, golden, eval-record, assetscan, assetbudget, subagents |
+| `agents/`, `skills/` | 7 bước `../../CONTRIBUTING.md` §3 — tăng version, golden, eval-record, assetscan, assetbudget, subagents |
 | `topics/schemas/*.json` | đổi model Pydantic trong `src/company/events.py` cùng lúc; `tests/test_schema_consistency.py` |
 | `gates/checklists.md` | khai nguồn bằng chứng ở `src/company/gate_checklists.py` trước, rồi `make subagents` |
 | `ROUTES` trong orchestrator | front matter `reads`/`writes` của agent khớp; bảng Consumer ở `docs/architecture.md` |
