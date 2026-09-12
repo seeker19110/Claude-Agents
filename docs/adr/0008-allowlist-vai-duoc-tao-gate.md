@@ -77,4 +77,6 @@ nới allowlist để chiều nó: nới allowlist cho một cái tên không c�
 - `docs/adr/0002-gate-request-tin-actor-cua-bus.md` — nửa thứ nhất (PR #212), nơi ghi việc hoãn gói này.
 - `docs/adr/0005-gate-request-tu-choi-created-by-rong.md` — `created_by` rỗng (PR #199).
 - `platform/xagents-core/src/xagents_core/gate_cli.py` — `REQUEST_ACTORS`, `_request_actor_allowed()`.
-- `companies/software-company/src/company/gate_cli.py`, `Studio-creators/src/studio/gate_cli.py` — danh sách của mỗi bên.
+- `companies/software-company/src/company/gate_cli.py` — danh sách của company. (Sửa 2026-09-12 khi đối chiếu audit
+  A4: dòng gốc còn trỏ `Studio-creators/src/studio/gate_cli.py` — công ty `studio` đã chuyển sang repo riêng từ
+  #259, đường dẫn đó không còn tồn tại trong repo này; nội dung "Quyết định"/"Hệ quả" ở trên vẫn khớp mã thật.)
