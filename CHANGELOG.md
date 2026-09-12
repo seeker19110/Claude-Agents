@@ -14,10 +14,13 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   `CODEMAP.md`/`ARCHITECTURE.md`) cho `platform/xagents-core` và `companies/keeper` (khảo sát bằng Explore agent,
   sự thật từ docstring + test đo được — không đoán) và khôi phục câu khai đúng "mỗi package con có đủ bốn file"
   ở `AGENTS.md`/`README.md`; sửa `ARCHITECTURE.md` nói đúng cả bốn dãy ADR của repo; đọc thêm 2 ADR gốc đối
-  chiếu mã thật (A4, nay 5/12); đo lại quy mô thật của hai dòng lớn còn treo — branch coverage
-  `software-company` (67 nhánh/16 file, không phải 62 như comment cũ) và canary `keeper` BT8 (chỉ còn thiếu một
-  chu kỳ vận hành thật, không sửa được bằng code) — cả hai để nguyên trong sổ, chưa đóng, vì là việc nhiều PR
-  hoặc cần người quyết riêng (#275)
+  chiếu mã thật (A4, nay 5/12); đo lại branch coverage `software-company` bằng cách bật tạm không commit —
+  **67 nhánh/16 file** chưa test, không phải 62 như comment cũ (sổ treo, quy mô một hạng mục riêng); **thử
+  chạy thật canary `keeper` BT8** — dừng đúng lúc khi phát hiện chuỗi tự động signal→patch chưa nối hết
+  (`watch` mới `triage`+ghi ý định, chưa có `git push`/`gh pr create` thật; `dependency-scout`/`security-auditor`
+  chưa nối CLI) và chính repo hiện quá sạch cho phạm vi vá đã nối (`fix_docs` chỉ thêm dòng CHANGELOG/session-log
+  thiếu — không thiếu dòng nào lúc đo; Dependabot alerts bị tắt ở repo; tín hiệu CI thật có nhưng không loại nào
+  vá tự động được) — không dựng kịch bản giả, ghi phát hiện thật vào sổ treo (#275)
 
 - docs(adr): **ADR-0012 — PR theo hạng mục lớn, chốt quy trình mới** — hợp thức hoá luồng đã chạy thử qua bốn
   hạng mục trước (#270–#273): một nhánh cho cả hạng mục (2–8 mã), mỗi mã một commit, PR mở **nháp** ngay sau mã
