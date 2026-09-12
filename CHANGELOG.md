@@ -6,6 +6,12 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs: **README gốc khớp lại số liệu keeper (8→10 agent) và số package workspace (6→5)** — `companies/keeper/README.md`
+  đã tự sửa "8 agent" thành 10 (đúng, lỗi đếm cũ) từ trước nhưng README gốc quên theo; "cả sáu package" còn sót
+  ở `AGENTS.md:36,103` và bốn dòng comment `ci.yml` sau khi `Studio-creators` rời workspace ở #259 (`members`
+  nay có 5). Đóng hai dòng trong sổ "Việc để lại đang treo" của `docs/TASK-PACK.md` ghi từ phiên audit
+  2026-09-10. Không đổi mã (#PR_NUMBER)
+
 - feat(console): **console một view — giai đoạn 5/5 (cuối) của ADR-0011** — sáu màn "thông tin vận hành"
   (Trực ban, Phễu sản phẩm, Xưởng phần mềm, Công ty bảo trì, Chi phí, Nhật ký) trước đây ẩn/hiện qua sidebar
   (một màn thấy tại một thời điểm) nay LUÔN hiển thị cùng lúc trên một trang cuộn dài; sidebar không còn
