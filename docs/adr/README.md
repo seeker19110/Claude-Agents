@@ -1,8 +1,12 @@
 # ADR cấp repo
 
-ADR ở đây là cho quyết định kiến trúc chạm **≥ 2 package** (`software-company`, `Studio-creators`, `gateway`,
-`console`, và về sau `xagents-core`). Quyết định chỉ trong một package thì ADR nằm ở
+ADR ở đây là cho quyết định kiến trúc chạm **≥ 2 package** (`companies/software-company`, `companies/keeper`,
+`platform/gateway`, `platform/console`, `platform/xagents-core`). Quyết định chỉ trong một package thì ADR nằm ở
 `<package>/docs/adr/` của package đó.
+
+**Bốn dãy số cùng bắt đầu từ 0001, không tiền tố**: `docs/adr/` (đây, cấp repo), `companies/software-company/docs/adr/`,
+`platform/console/docs/adr/`, `platform/gateway/docs/adr/`. Viết "ADR-0004" một mình là mơ hồ bốn chiều — luôn kèm
+đường dẫn thư mục (`companies/software-company/docs/adr/0004-...`) khi nhắc một ADR không phải của thư mục này.
 
 Mẫu bốn mục, theo khuôn của ADR-0032 (`companies/software-company/docs/adr/0032-*.md`):
 

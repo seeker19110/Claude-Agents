@@ -30,7 +30,7 @@ là bảng nghiệm thu không phụ thuộc tên đối tượng.
 
 ## 2. Ba mức phức tạp → model, cố định cho mọi đề bài
 
-| Mức | Nhận biết | Model · `effort` (ADR-0026) | Ai kiểm lại |
+| Mức | Nhận biết | Model · `effort` (`companies/software-company/docs/adr/0026-...`) | Ai kiểm lại |
 |---|---|---|---|
 | **C1 cơ học** | có mẫu, một file, sai thì CI bắt: tài liệu, điền yaml từ số đo, CHANGELOG, chạy lệnh CI dán output | Haiku 4.5, hoặc Sonnet 5 `low` | CI + phiên chính đọc diff |
 | **C2 cục bộ** | một module, hợp đồng cho sẵn (chữ ký hàm, ca test): hàm thuần, nhánh parse, metrics, test đỏ theo khung | Sonnet 5 `medium` | test hai chiều + một `sc-*` |
