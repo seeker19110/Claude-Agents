@@ -93,6 +93,43 @@ lại do rebase — an toàn nhất là commit cục bộ, `push` sau khi đã r
 origin` + `git rebase origin/main` trên nhánh việc kế tiếp (giữ lại các commit đã có), chạy lại `make lint`
 + `make test`, rồi mới `push` + `gh pr create`.
 
+## 2d. Việc lớn: một nhánh cho cả hạng mục, PR nháp sớm, mỗi task một commit (ADR-0012)
+
+Luồng chuẩn cho một việc đủ lớn để chia nhiều task nhỏ (không áp cho sửa lỗi một dòng, một PR nhỏ độc lập):
+
+```
+yêu cầu → phân tích hiện trạng → chốt yêu cầu → đặc tả kế hoạch + đặc tả triển khai chi tiết
+        → chia hạng mục lớn → chia task nhỏ trong mỗi hạng mục
+        → (mỗi hạng mục) một nhánh → task 1 (commit) → PR NHÁP → task 2..n (mỗi cái một commit + push)
+        → `gh pr ready` → auto-merge squash
+```
+
+- **Đơn vị PR là hạng mục lớn, không phải task nhỏ.** Một hạng mục là một mục tiêu nghiệm thu được, thường 2–8
+  task, chạm một mảng. Vượt trần này là hai hạng mục, không phải một PR to hơn — PR không ai review nổi và một
+  CI đỏ ở cuối phải tháo ngược nhiều commit.
+- **Mở PR ở trạng thái NHÁP ngay sau task đầu tiên**, không chờ xong cả hạng mục. Lý do: `pull_request.synchronize`
+  vẫn kích CI thật trên PR nháp (không job nào lọc theo `draft`), nên mỗi task push lên vẫn có CI thật — không
+  cần vòng "PR nháp riêng cho mỗi task rồi gộp lại". Có số PR từ đầu còn giải quyết dứt điểm luật bắt buộc 10:
+  điền `(#n)` vào CHANGELOG ngay từ commit thứ hai, không phải vá số sau khi mở PR.
+- **§5 bước 2 "không để nháp" vẫn đúng, chỉ đúng ở bước merge**: nháp trong lúc làm task, `gh pr ready` **rồi
+  mới** bật auto-merge khi hạng mục xong — không mâu thuẫn với "GitHub từ chối bật auto-merge trên PR nháp".
+- **§2c "chỉ một PR mở" áp nguyên vẹn cho cả PR nháp** — nháp vẫn tính là một PR đang mở. Nhánh khác (kể cả
+  hạng mục khác của cùng phiên) vẫn phải chờ PR trước merge rồi mới `gh pr create`, đúng lý do 2c tồn tại
+  (không hai nhánh cùng lệch nền một lúc lúc merge). Cái giá: một hạng mục nhiều task chạy lâu thì giữ chỗ hàng
+  đợi PR lâu — chấp nhận được vì mỗi task vẫn merge tuần tự với các phiên khác qua cùng một PR, không phải mỗi
+  task một PR chờ riêng.
+- **Mỗi task vẫn phải qua đúng lệnh CI cục bộ trước khi commit** (không đợi PR báo mới biết) — quyết định rõ khi
+  chốt quy trình này: một task sai chỉ lộ ra khi cả hạng mục xong là đánh đổi không chấp nhận được.
+- **Task hỏng giữa chừng** (luật bắt buộc 6: vá 3 lần lòi vấn đề mới ⇒ dừng, hỏi người): task 1..k đã xanh thì
+  vẫn có thể `ready` + merge phần đã xong nếu chúng tự đứng được; task hỏng tách sang hạng mục mới, không giam
+  cả hạng mục chờ một task không giải quyết được.
+- **Nhược điểm đã biết, không có cách vòng**: squash gộp mọi task của một hạng mục thành **một** commit trên
+  `main`. Task giữa gây lỗi thì `git revert` cuốn theo mọi task khác trong cùng hạng mục — mất độ mịn so với
+  một-PR-một-task cũ. Đổi lại số PR mở/merge giảm hẳn, tài liệu (CHANGELOG, session log) không còn phải rải
+  theo từng task nhỏ.
+- **Trạng thái sống trong `docs/thi-hanh/<mã>.md`** khi hạng mục đi qua `/thi-hanh` (bảng B cột "khi nào"); việc
+  không qua `/thi-hanh` thì trạng thái sống trong chính PR nháp (checklist task trong thân PR).
+
 ## 3. Commit
 
 - Conventional Commits: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `style`, `perf`,
@@ -141,7 +178,9 @@ Không commit secret, `llm.yaml`, khóa API, hay dữ liệu thật. Không gọ
      gốc viết "ADR-0037"; repo này không có file đó, ADR tách máy trạng thái là **0034**.
    - **Nhật ký phiên `docs/sessions/<ngày UTC>.md`** — chỉ **cảnh báo**, không chặn merge (K8.4): nhật ký
      là việc cuối phiên, không phải việc mỗi PR.
-2. **Tạo PR ở trạng thái ready, không để nháp.** GitHub từ chối bật auto-merge trên PR nháp.
+2. **Tạo PR ở trạng thái ready trước khi bật auto-merge.** GitHub từ chối bật auto-merge trên PR nháp. Việc
+   một hạng mục lớn (§2d) mở PR nháp sớm rồi `gh pr ready` khi xong là ngoại lệ đã tính — bước "ready" chỉ dời
+   lên trước bước này, không bỏ nó.
 3. **Bật auto-merge (squash) ngay sau lệnh tạo PR** — gọi một lần, không hỏi lại. Thất bại thì
    **không bỏ mặc PR**: theo dõi CI, **xanh + không xung đột là merge (squash) ngay**.
 

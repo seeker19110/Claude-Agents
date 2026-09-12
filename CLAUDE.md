@@ -6,7 +6,9 @@ Luật đầy đủ nằm ở `AGENTS.md` (nhập ở dòng đầu). Dưới đ�
 
 ## Bảy điều nếu chỉ đọc được bảy dòng
 
-1. Không commit lên `main`; nhánh → PR → auto-merge squash. Scope PR một từ chữ thường.
+1. Không commit lên `main`; nhánh → PR → auto-merge squash. Scope PR một từ chữ thường. Việc lớn nhiều task
+   liên quan: **một nhánh cho cả hạng mục** (không phải một nhánh mỗi task), PR nháp ngay sau task đầu, `gh pr
+   ready` khi hạng mục xong (`docs/QUY-TRINH-GIT.md` §2d, ADR-0012) — vẫn tính là một PR mở với luật 2b dưới đây.
 2. Mỗi phiên một `git worktree` — có phiên khác đang mở cùng thư mục này (`git worktree list` để kiểm). Có tool
    worktree riêng của harness (`EnterWorktree`/tương đương) thì dùng nó trước, đừng tự `git worktree add` —
    tool native lo cả đặt chỗ, tạo nhánh, dọn dẹp mà `git` tay không biết tới.
