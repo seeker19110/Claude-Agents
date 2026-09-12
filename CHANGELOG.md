@@ -6,6 +6,19 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company,console): **dọn sổ "Việc để lại đang treo" của `docs/TASK-PACK.md`** — sửa lời khai sai của
+  `supervisor` về phạm vi bài học `knowledge` (chỉ 2/5 agent đọc được, chỉ bản ghi mới nhất mỗi namespace, không
+  phải "mọi agent" + "toàn bộ lịch sử"); vá đường dẫn chết `Makefile` assetscan/assetbudget (`../Studio-creators`
+  đã tách repo ở #259); sửa dẫn chiếu chết `../AGENTS.md` ở ba `CLAUDE.md` cấp package (đúng một cấp trước
+  ADR-0011, nay phải `../../`) kèm cổng cứng chặn tái phát; viết đủ bốn file khung (`CLAUDE.md`/`TRAPS.md`/
+  `CODEMAP.md`/`ARCHITECTURE.md`) cho `platform/xagents-core` và `companies/keeper` (khảo sát bằng Explore agent,
+  sự thật từ docstring + test đo được — không đoán) và khôi phục câu khai đúng "mỗi package con có đủ bốn file"
+  ở `AGENTS.md`/`README.md`; sửa `ARCHITECTURE.md` nói đúng cả bốn dãy ADR của repo; đọc thêm 2 ADR gốc đối
+  chiếu mã thật (A4, nay 5/12); đo lại quy mô thật của hai dòng lớn còn treo — branch coverage
+  `software-company` (67 nhánh/16 file, không phải 62 như comment cũ) và canary `keeper` BT8 (chỉ còn thiếu một
+  chu kỳ vận hành thật, không sửa được bằng code) — cả hai để nguyên trong sổ, chưa đóng, vì là việc nhiều PR
+  hoặc cần người quyết riêng (#275)
+
 - docs(adr): **ADR-0012 — PR theo hạng mục lớn, chốt quy trình mới** — hợp thức hoá luồng đã chạy thử qua bốn
   hạng mục trước (#270–#273): một nhánh cho cả hạng mục (2–8 mã), mỗi mã một commit, PR mở **nháp** ngay sau mã
   đầu (CI chạy thật trên nháp), `gh pr ready` + auto-merge khi hạng mục xong. Đo trước khi viết ADR: luật cũ
