@@ -214,6 +214,51 @@ def test_with_gateway_that_bai_thi_dung_lai_khong_phuc_vu(
     assert "gateway" in capsys.readouterr().out.lower()
 
 
+# ---------- --deliver-remote: động cơ bật từ console phải giao hàng được (ADR-0027) ----------
+
+def test_deliver_remote_di_toi_engine_manager(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Thiếu `--deliver --push-remote` thì `_deliver()` không bao giờ chạy: release được ký, khách nghiệm
+    thu, mà tag/nhánh release không tới repo khách (sự cố 2026-09-10). Cờ phải đi tới `EngineManager`."""
+    nhan: dict[str, object] = {}
+    fake = _FakeServer(raise_on_serve=KeyboardInterrupt())
+    monkeypatch.setattr(cli, "make_server", lambda *a, **k: (nhan.update(k), fake)[1])
+    token_path = tmp_path / "tok-dl"; token_path.write_text("t", encoding="utf-8")
+    monkeypatch.setattr(cli, "write_token_file", lambda token: token_path)
+
+    code = cli.main(["--allow-engine", "--deliver-remote", "origin"])
+
+    assert code == 0
+    assert nhan["deliver_remote"] == "origin"
+
+
+def test_mac_dinh_khong_giao_hang(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Chiều ngược: không nêu remote thì không bao giờ push lên repo khách."""
+    nhan: dict[str, object] = {}
+    fake = _FakeServer(raise_on_serve=KeyboardInterrupt())
+    monkeypatch.setattr(cli, "make_server", lambda *a, **k: (nhan.update(k), fake)[1])
+    token_path = tmp_path / "tok-nodl"; token_path.write_text("t", encoding="utf-8")
+    monkeypatch.setattr(cli, "write_token_file", lambda token: token_path)
+
+    assert cli.main([]) == 0
+    assert nhan.get("deliver_remote") is None
+
+
+def test_deliver_remote_khong_co_allow_engine_thi_dung_lai(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Không có `--allow-engine` thì console không bật được động cơ nào, nên `--deliver-remote` là một lời
+    hứa suông. Dừng và nói ra, không im lặng nhận cờ rồi không giao gì cả (TRAPS: chế độ hỏng phải tự khai)."""
+    def _khong_duoc_goi(*a: object, **k: object) -> object:  # pragma: no cover - chạy vào là test đã sai
+        raise AssertionError("không được dựng server khi cờ mâu thuẫn")
+    monkeypatch.setattr(cli, "make_server", _khong_duoc_goi)
+    monkeypatch.setattr(cli, "write_token_file", lambda token: tmp_path / "khong-dung-toi")
+
+    code = cli.main(["--deliver-remote", "origin"])
+
+    assert code == 2
+    assert "--allow-engine" in capsys.readouterr().out
+
+
 def test_khong_co_co_thi_khong_dung_toi_gateway(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Mặc định KHÔNG bật gateway: console vẫn là bảng điều hành chỉ đọc, không tự spawn tiến trình nền."""
     def _khong_duoc_goi() -> int:  # pragma: no cover - thân hàm chạy là test đã sai

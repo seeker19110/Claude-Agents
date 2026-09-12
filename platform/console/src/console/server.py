@@ -189,6 +189,7 @@ class ConsoleServer(ThreadingHTTPServer):
         llm_yaml: dict[str, Path] | None = None,
         static_dir: Path = STATIC_DIR,
         stream_max_seconds: float | None = None,
+        deliver_remote: str | None = None,
     ) -> None:
         if ":" in host and not host.startswith("["):
             self.address_family = socket.AF_INET6
@@ -209,7 +210,7 @@ class ConsoleServer(ThreadingHTTPServer):
         # để vòng lặp tự kết thúc thay vì phải giết thread.
         self.stream_max_seconds = stream_max_seconds
         from console.engine import COMPANY, KEEPER, EngineManager
-        self.engine = EngineManager({COMPANY: company_db, KEEPER: keeper_db})
+        self.engine = EngineManager({COMPANY: company_db, KEEPER: keeper_db}, deliver_remote=deliver_remote)
         # Con của console chết cùng console: cả đường đóng bình thường (`server_close`) lẫn đường thoát
         # đột ngột (`atexit`) đều phải dọn, nếu không một orchestrator mồ côi vẫn ghi bus sau khi tắt trang.
         atexit.register(self.engine.stop_all)
@@ -678,6 +679,7 @@ def make_server(
     llm_yaml: dict[str, Path] | None = None,
     static_dir: Path = STATIC_DIR,
     stream_max_seconds: float | None = None,
+    deliver_remote: str | None = None,
 ) -> ConsoleServer:
     return ConsoleServer(
         host,
@@ -692,4 +694,5 @@ def make_server(
         llm_yaml=llm_yaml,
         static_dir=static_dir,
         stream_max_seconds=stream_max_seconds,
+        deliver_remote=deliver_remote,
     )
