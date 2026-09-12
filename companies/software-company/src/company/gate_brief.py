@@ -309,6 +309,21 @@ def _brief_release(orch: Orchestrator, g: GateSection, subject: str, pid: str | 
     items = _by_id(g); out: list[dict[str, Any]] = []; unavailable: list[dict[str, Any]] = []
     tids = orch.lead.release_tickets.get(subject, [])
 
+    # Đọc trạng thái TIẾN TRÌNH, không đọc lời khai của agent: `--deliver` tắt thì `_deliver()` không bao giờ
+    # chạy, nên release ký ở đây sẽ không tới repo khách (sự cố 2026-09-10, ADR-0027).
+    it = items["release.giao-hang-duoc"]
+    d_src = [{"kind": "process", "ref": "orchestrator", "url": None}]
+    if getattr(orch, "deliver", False):
+        remote = getattr(orch, "push_remote", None)
+        dat = f"`--deliver` bật; push lên remote `{remote}`" if remote else \
+              "`--deliver` bật; KHÔNG `--push-remote` — tag và nhánh release chỉ nằm ở bản sao cục bộ của repo khách"
+        out.append(_item(it, "ok" if remote else "gap", [dat], d_src))
+    else:
+        out.append(_item(it, "gap", [
+            "`--deliver` TẮT: ký gate này xong `_deliver()` vẫn không chạy — release sẽ không được tag và không "
+            "tới repo khách. Bật lại orchestrator kèm `--deliver --push-remote <remote>` (console: "
+            "`--deliver-remote <remote>`) rồi mới ký."], d_src))
+
     it = items["release.dashboard-alert"]
     contract, c_src = _ns(orch, "api-contract", pid); infra, i_src = _ns(orch, "infra", pid)
     srcs = [s for s in (c_src, i_src) if s]

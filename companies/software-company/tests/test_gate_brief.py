@@ -272,6 +272,25 @@ def test_release_uoc_luong_unknown_khi_thieu_hieu_chinh_cho_assignee(tmp_path, m
 
 # ---------- release ----------
 
+def test_release_khai_bao_tien_trinh_co_giao_hang_duoc_khong(tmp_path):
+    """Sự cố 2026-09-10: gate release được ký, khách nghiệm thu, mà tag/nhánh release không bao giờ tới repo
+    khách vì tiến trình chạy thiếu `--deliver`. Gate release ký TRƯỚC khi giao, nên thứ kiểm được ở đây là
+    *có giao được không*, đọc từ trạng thái tiến trình thật — không phải lời khai của agent."""
+    db, _, orch = _scenario(tmp_path, to="release")
+
+    orch.deliver, orch.push_remote = False, None
+    it = next(x for x in GB.build(GB.load_state(db), "REL-001")["self_check"]
+              if x["id"] == "release.giao-hang-duoc")
+    assert it["verdict"] == "gap"
+    assert any("--deliver" in f for f in it["facts"])
+
+    orch.deliver, orch.push_remote = True, "origin"
+    st = GB.load_state(db)
+    st.deliver, st.push_remote = True, "origin"
+    it = next(x for x in GB.build(st, "REL-001")["self_check"] if x["id"] == "release.giao-hang-duoc")
+    assert it["verdict"] == "ok" and any("origin" in f for f in it["facts"])
+
+
 def test_release_dashboard_doi_chieu_contract_voi_infra(tmp_path):
     db, _, orch = _scenario(tmp_path, to="release")
     b = GB.build(GB.load_state(db), "REL-001")

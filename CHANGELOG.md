@@ -14,7 +14,10 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   `--allow-engine`, thiếu thì dừng mã 2 thay vì hứa suông), remote đến từ dòng lệnh người trực chứ không từ
   `POST /api/engine`; `status()` khai `delivers`/`deliver_remote` để chế độ không-giao-hàng **tự khai báo** thay
   vì nhìn y hệt chế độ giao hàng. `docs/HUONG-DAN-VAN-HANH.md:872` trước đó còn khẳng định nút này chạy "đúng
-  lệnh ở §5/§6/§7" — đã sửa (#270)
+  lệnh ở §5/§6/§7" — đã sửa. Chặn ở gate: gate `release` (ký **trước** khi `_deliver()` chạy) thêm mục tự kiểm
+  `release.giao-hang-duoc`, `gate_brief` đọc **trạng thái tiến trình thật** (`orch.deliver`/`push_remote`) chứ
+  không đọc lời khai agent — `--deliver` tắt thì hồ sơ báo `gap` kèm câu "ký xong vẫn không tới repo khách",
+  đúng chỗ mà bốn gate xanh trước đây vẫn lọt (#270)
 
 - docs: **README gốc khớp lại số liệu keeper (8→10 agent) và số package workspace (6→5)** — `companies/keeper/README.md`
   đã tự sửa "8 agent" thành 10 (đúng, lỗi đếm cũ) từ trước nhưng README gốc quên theo; "cả sáu package" còn sót

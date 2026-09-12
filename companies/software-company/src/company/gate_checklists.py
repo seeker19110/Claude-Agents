@@ -76,6 +76,11 @@ SELF_CHECK_SOURCES: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {
                 "audit-log `spec.runtime_missing` theo project_id — số lần spec bị trả lại vì thiếu runtime")),
     },
     "release": {
+        # Gate release ký TRƯỚC khi `_deliver()` chạy, nên thứ kiểm được ở đây là *có giao được không*, không
+        # phải *đã giao chưa*. Sự cố 2026-09-10: ký xong mới biết tiến trình chạy thiếu `--deliver`.
+        "Tiến trình đang chạy giao hàng được (`--deliver`)": ("release.giao-hang-duoc", (
+            "trạng thái tiến trình orchestrator — cờ `--deliver` và `--push-remote` lúc khởi động (ADR-0027); "
+            "console bật động cơ thì là `--deliver-remote` của `python -m console`",)),
         "Dashboard + alert (có runbook) cho dịch vụ/tính năng mới": ("release.dashboard-alert", (
             "api-contract@latest — endpoint/dịch vụ trong contract",
             "infra@latest — dashboard/alert/runbook có nhắc tới endpoint đó",
