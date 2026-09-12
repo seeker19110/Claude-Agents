@@ -15,7 +15,7 @@ Mọi giai đoạn ghi vào **một file duy nhất** `docs/thi-hanh/<mã>.md` (
 | # | Giai đoạn | Sản phẩm (phần trong file) | Điều kiện sang giai đoạn kế | Ai làm |
 |---|---|---|---|---|
 | 1 | **Đặc tả** — đề bài là gì, đo hiện trạng | **A. Hiện trạng**: kết luận ≤ 6 dòng; bảng đối chiếu *đề bài đòi gì · repo có gì · ở đâu (file:dòng)*, mỗi ô thiếu trỏ tới một mã việc | mọi ô có `file:dòng` hoặc "không có"; không ô nào là ấn tượng đọc mã | phiên chính + subagent `Explore` song song (một mỗi package/mảng, chỉ đọc) |
-| 2 | **Đặc tả chi tiết** — làm gì, không làm gì | **B. Kế hoạch**: một bảng *mã · việc · lớp/mảng · loại PR · mức C1/C2/C3 · ưu · nhược · khi nào*; danh sách "cố ý không làm" có lý do; dòng "rủi ro của chính file này" | mỗi việc gắn được vào một hạng mục lộ trình đã có hoặc là PR nhỏ độc lập; không mở kế hoạch thứ hai | phiên chính |
+| 2 | **Đặc tả chi tiết** — làm gì, không làm gì | **B. Kế hoạch**: một bảng *mã · việc · lớp/mảng · hạng mục · mức C1/C2/C3 · ưu · nhược · khi nào*; danh sách "cố ý không làm" có lý do; dòng "rủi ro của chính file này" | mỗi việc gắn vào đúng một hạng mục (2–8 mã, một mảng), không hạng mục nào rỗng; không mở kế hoạch thứ hai | phiên chính |
 | 3 | **Đặc tả triển khai** — từng việc làm thế nào | **C. Gói việc**: mỗi mã một khối 7 mục `docs/TASK-PACK.md`; mục 5 chứa khung code mức chữ ký hàm, mục 7 chứa ca test bắt buộc (có ca chiều ngược) + tiêu đề PR | mỗi gói tự đứng: subagent chỉ đọc gói đó + `AGENTS.md` là làm được | phiên chính (đọc code thật trước khi viết chữ ký — tránh ghi tên hàm không tồn tại, nhật ký 2026-09-07) |
 | 4 | **Chia subagent** — ai, mức nào, song song hay tuần tự | **D. Điều phối**: bảng đợt *song song (phát triển) · thứ tự PR · điều kiện vào đợt*; quy tắc mức → model; `sc-*` nào chấm gói nào; khuôn giao việc | đồ thị phụ thuộc không vòng; mỗi đợt ≤ 3 gói song song; PR tuần tự | phiên chính |
 | 5 | **Lệnh** — một dòng | **F. Lệnh thi hành** ghi cuối file: lệnh nguyên văn + điều kiện trước khi gõ; phiên soạn in lại mục F làm câu cuối cùng của nó | file A–D+F đã commit; người copy được một dòng | phiên chính viết, người gõ |
@@ -44,18 +44,26 @@ Không hạ C3 (giá là một vòng PR đỏ), không nâng C1 (Opus viết CHA
 1. **Phiên chính không code.** Nó tách gói → tiểu gói, giao subagent (`Agent` với `model` theo mức, mỗi subagent
    một `git worktree`), gom kết quả, chạy lại lệnh CI trong worktree (báo cáo subagent là lời khai — luật cấm 8),
    commit, mở PR, bật auto-merge, theo dõi CI, ghi CHANGELOG + session log, cập nhật bảng B.
-2. **Song song là song song phát triển.** PR mở **tuần tự** (luật 2b): gói kế chỉ mở PR sau khi PR trước merge và
-   nhánh đã `rebase origin/main`.
-3. **Thứ tự trong một gói cố định**: test đỏ (dán output) → code → test xanh + lệnh CI (dán output) → `sc-*` chấm
-   → phiên chính đọc diff → PR. Subagent không bỏ ca test trong khung; muốn bỏ phải nêu lý do.
+2. **Một nhánh cho cả hạng mục, PR mở tuần tự giữa các hạng mục** (`QUY-TRINH-GIT.md` §2d, ADR-0012): mọi mã của
+   một hạng mục dùng chung một nhánh, mỗi mã một commit; mở PR **nháp** ngay sau mã đầu tiên của hạng mục (CI
+   chạy thật trên nháp), `gh pr ready` + bật auto-merge khi mọi mã của hạng mục `xong`. Hạng mục kế chỉ mở PR
+   (kể cả nháp) sau khi PR hạng mục trước merge và nhánh đã `rebase origin/main` (luật 2c/2b) — song song là
+   song song **phát triển** trên worktree riêng, không song song **mở PR**.
+3. **Thứ tự trong một mã cố định**: test đỏ (dán output) → code → test xanh + lệnh CI (dán output) → `sc-*` chấm
+   (C3 chấm ngay khi mã đó xong; C1/C2 chấm một lượt cuối hạng mục) → phiên chính đọc diff → commit + push vào
+   nhánh hạng mục. Subagent không bỏ ca test trong khung; muốn bỏ phải nêu lý do.
 4. **Idempotent.** Chạy lại `/thi-hanh <mã>` bất kỳ lúc nào: đọc bảng B, bỏ qua mã đã `xong #n`, tiếp từ gói dở.
    Trạng thái sống trong file, không trong đầu phiên (khuôn 2 `TRAPS.md`).
 5. **Dừng chỉ khi**: thao tác không đảo ngược ngoài PR thường (xoá dữ liệu, đổi lịch sử git); việc nhạy cảm bảo
    mật; kế hoạch hỏng tới mức mọi hướng là đoán (ví dụ test đỏ ba lần liên tiếp với ba cách sửa khác nhau); gói
    cần **người** (máy có key, ký gate). Khi dừng: ghi rõ trong bảng B cột "khi nào" là `chờ người: <lý do>` và
    session log, rồi tiếp gói khác không phụ thuộc. Không hỏi "tiếp không?".
-6. **Mỗi PR một gói**, tiêu đề `<type>(<scope>): <mã> — <một câu>`, scope một từ. Gói chạm `agents/`/`skills/`
-   đi đủ 7 bước `CONTRIBUTING.md` §3 — không có ngoại lệ vì "đang thi hành tự động".
+6. **Mỗi PR một hạng mục** (không phải một mã), tiêu đề `<type>(<scope>): <hạng mục> — <một câu>`, scope một từ.
+   Trần một hạng mục: **≤ 8 mã, ≤ 2 package** — vượt là hai hạng mục, không phải một PR to hơn. Mã nào chạm
+   `agents/`/`skills/` đi đủ 7 bước `CONTRIBUTING.md` §3 — không có ngoại lệ vì "đang thi hành tự động". Mã giữa
+   hạng mục lòi ra kiến trúc sai (luật bắt buộc 6: vá 3 lần lòi vấn đề mới ⇒ dừng hỏi người): các mã đã `xong`
+   trước đó trong hạng mục vẫn `ready` + merge nếu tự đứng được; mã hỏng tách sang hạng mục mới trong bảng B,
+   không giam cả hạng mục chờ một mã không giải quyết được.
 7. **Xong** = mọi mã trong B `xong #n`, mọi PR merge, `make test` gốc xanh, session log có mục kết. Phiên chính
    in bảng B cuối cùng. Không tuyên bố xong khi còn `chờ người`.
 
@@ -80,7 +88,7 @@ Ngày lập · căn cứ `main@<sha>` (#<PR>) · một dòng nói file này dùn
 
 ## A. Hiện trạng
 ### A1. Kết luận (≤ 6 dòng)      ### A2. Bảng đối chiếu (… · ở đâu · mã việc)
-## B. Kế hoạch — một bảng (mã · việc · mảng · PR · mức · ưu · nhược · khi nào) + cố ý không làm + rủi ro của file
+## B. Kế hoạch — một bảng (mã · việc · mảng · hạng mục · mức · ưu · nhược · khi nào) + cố ý không làm + rủi ro của file
 ## C. Gói việc (mỗi mã 7 mục; mục 5 khung code, mục 7 ca test + tiêu đề PR)
 ## D. Điều phối (bảng đợt; mức → model; sc-* chấm; khuôn giao việc = §4 file này, chỉ tham chiếu)
 ## E. Khuôn cho lần sau (tuỳ chọn)

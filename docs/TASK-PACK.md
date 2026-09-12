@@ -2,7 +2,15 @@
 
 Một phiên agent nhận việc như một lập trình viên mới đến ngày đầu: không biết vì sao, không biết ranh giới, không
 biết "xong" nghĩa là gì. Gói việc là tờ giấy đặt lên bàn nó. **Điền đủ 7 mục, dán vào đầu phiên.** Mục nào để trống
-là mục agent sẽ tự đoán — và đoán sai im lặng.
+**im lặng** là mục agent sẽ tự đoán — và đoán sai im lặng.
+
+**Mục 1 (mục tiêu), 2 (kết quả mong đợi), 4 (bối cảnh) được phép viết một dòng "suy ra từ hạng mục lớn: <câu>"
+thay vì điền đầy đủ, KHI VÀ CHỈ KHI mã này thuộc một hạng mục lớn (`QUY-TRINH-GIT.md` §2d, ADR-0012) mà ba mục
+đó đã trả lời chung ở tầm hạng mục** — mọi mã trong cùng hạng mục thường chia sẻ cùng lý do, cùng "xong" nghĩa
+là gì, cùng bối cảnh cần đọc. Đo được từ thực tế: 3/4 bản thi hành thật bỏ trắng ba mục này không nói lý do —
+đó là chỗ luật cũ bị vi phạm, không phải chỗ ba mục thừa. "Suy ra: ..." là một câu **tường minh**, khác hẳn để
+trắng: người đọc sau biết ngay đây là quyết định có chủ ý, không phải quên. Mã KHÔNG thuộc hạng mục lớn nào
+(PR nhỏ độc lập) vẫn phải điền đủ cả 7 mục như cũ.
 
 Mẫu (copy từ dòng này):
 
@@ -191,6 +199,7 @@ CHANGELOG.
 | 2026-09-10 | `companies/keeper` chưa qua canary (BT8) nên tầng audit tự động mới có `drift-check` chạy thật trong CI (phép A7) | Là một gói việc riêng, không phải việc của phiên đo |
 | 2026-09-12 | `platform/xagents-core` và `companies/keeper` thiếu cả bốn file khung (`CLAUDE.md`/`TRAPS.md`/`CODEMAP.md`/`ARCHITECTURE.md`). #271 đã sửa câu khai sai ở `AGENTS.md:7`+`README.md:34` và dựng cổng canh, **chưa viết file** | Viết bốn file có nội dung thật cho hai package là một gói việc riêng; đẻ stub rỗng để qua cổng còn tệ hơn thiếu |
 | 2026-09-12 | Phép A4 (`docs/reports/2026-09-12-audit.md`): 9/11 ADR gốc + 39 ADR `companies/software-company/docs/adr/` chưa đọc đối chiếu nội dung quyết định với mã thật — mới kiểm 2/11 (ADR-0010, ADR-0011, đều khớp) | Phép này chậm, không tự động hoá được (khuôn A4) — đọc N ADR/vòng ở phiên audit sau, ghi rõ đã tới đâu |
+| 2026-09-12 | `ARCHITECTURE.md:109` ghi `companies/software-company/docs/adr/` "0001–0038" (đĩa có 39, đã đúng ở `README.md`) và bỏ sót hẳn `docs/adr/` gốc + `platform/gateway/docs/adr/` trong bảng "vì sao quyết định thế này" | Phát hiện ngoài phiên audit, khi thêm ADR-0012; không có cổng canh `ARCHITECTURE.md` — chờ phiên audit A1 kế đo lại rồi sửa cùng báo cáo |
 
 
 ## Khi nào không cần gói việc
