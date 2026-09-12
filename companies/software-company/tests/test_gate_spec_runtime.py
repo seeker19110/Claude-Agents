@@ -96,6 +96,28 @@ def test_ung_dung_thieu_runtime_thi_khong_mo_gate_ma_tra_lai_spec_writer_roi_esc
     assert orch.gate.pending["P1"].created_by == "product"
 
 
+def test_escalate_lan_hai_khi_gate_da_pending_khong_mo_gate_trung():
+    """ticket_fsm.py 173->176: dự án đã escalate vì thiếu runtime (gate `P1` đang `pending`), một spec khác lại
+    thiếu runtime lần nữa (vd. spec-writer publish tay, không qua vòng rework) → không mở gate `escalation` thứ
+    hai cho cùng dự án, chỉ ghi audit + cập nhật sổ `unhandled`."""
+    from company.orch.ticket_fsm import _spec_runtime_missing
+    from company.orchestrator import StepResult
+
+    h, _seen = _handler_with(lambda p, n: _spec(p.get("project_id", "P1"), kind="application"))
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h))
+    _to_spec(bus, orch)
+    assert "P1" in orch.gate.pending and orch.gate.pending["P1"].kind == "escalation"
+    n_truoc = sum(1 for e in bus.replay(topic="audit-log") if e.payload["action"] == "gate.request"
+                  and '"subject_id": "P1"' in (e.payload.get("evidence") or ""))
+    env2 = Envelope(topic="approved-specs", key="P1", actor="product",
+                     payload={"project_id": "P1", "kind": "application", "status": "pending_human"})
+    res = StepResult(env2.event_id, env2.topic, env2.key)
+    _spec_runtime_missing(orch, env2, "P1", "thiếu `runtime` (lần nữa)", res)
+    n_sau = sum(1 for e in bus.replay(topic="audit-log") if e.payload["action"] == "gate.request"
+                and '"subject_id": "P1"' in (e.payload.get("evidence") or ""))
+    assert n_sau == n_truoc, "gate escalation đã pending cho P1 thì không mở lần hai"
+
+
 def test_spec_writer_sua_theo_hint_thi_gate_mo_nhu_cu():
     h, seen = _handler_with(lambda p, n: _spec("P1", kind="application", **({"runtime": RUNTIME} if "hint" in p else {})))
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h))

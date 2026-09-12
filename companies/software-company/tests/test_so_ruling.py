@@ -31,8 +31,8 @@ def _orch(tmp_path, h=_handler_co_ruling):
     return bus, orch
 
 
-def _dispatch(bus, orch, tid="T1"):
-    orch.lead.tickets[tid] = Task(ticket_id=tid, project_id="P", requirement_id="R1", assignee="builder", title=tid, acceptance=["a"])
+def _dispatch(bus, orch, tid="T1", project_id="P"):
+    orch.lead.tickets[tid] = Task(ticket_id=tid, project_id=project_id, requirement_id="R1", assignee="builder", title=tid, acceptance=["a"])
     orch.lead.state[tid] = "dispatched"
     bus.publish(Envelope(topic="tasks", key=tid, actor="delivery-lead", payload=orch.lead.tickets[tid].model_dump()))
 
@@ -49,6 +49,17 @@ def test_ruling_vao_audit_va_doc_lai_duoc(tmp_path):
     assert len(r) == 1 and r[0]["by"] == "builder" and r[0]["cost_if_wrong"].startswith("đổi adapter")
     assert orch.rulings(ticket_id="T1") and not orch.rulings(ticket_id="T9") and orch.rulings(project_id="P")
     assert orch.status()["rulings"] == 1
+
+
+def test_rulings_loc_theo_project_bo_qua_du_lieu_du_an_khac(tmp_path):
+    """Nhiều ruling ở nhiều dự án khác nhau — lọc theo `project_id` phải bỏ qua đúng những dòng không khớp,
+    không chỉ dừng ở dòng đầu (vòng lặp phải tiếp tục qua `continue`)."""
+    bus, orch = _orch(tmp_path)
+    _dispatch(bus, orch, tid="T1", project_id="P"); orch.run()
+    _dispatch(bus, orch, tid="T2", project_id="Q"); orch.run()
+    assert len(orch.rulings()) == 2
+    assert len(orch.rulings(project_id="P")) == 1
+    assert orch.rulings(project_id="P")[0]["ticket_id"] == "T1"
 
 
 def test_ruling_song_sot_qua_restart_vi_so_nam_tren_bus(tmp_path):

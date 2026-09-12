@@ -18,7 +18,7 @@ from company.events import Envelope, Task
 from company.gate_cli import PersistentGate
 from company.metrics import collect
 from company.tools import ToolError
-from company.web import check_url, resolve_host
+from company.web import _parse_ddg, check_url, resolve_host
 
 T1 = {"ticket_id": "T1", "project_id": "P1", "requirement_id": "REQ-1", "assignee": "builder", "title": "GET /orders",
       "acceptance": ["given/when/then"], "estimate_tokens": 4_000, "budget_tokens": 6_000}
@@ -264,3 +264,107 @@ def test_web_search_voi_search_url_json_hong_bao_loi_ro(monkeypatch):
         return 200, "application/json", b"khong phai json"
     web = web_mod.WebTools(fetcher=fetcher, search_url="http://searx.internal:8080/search?q={q}&format=json")
     assert web.web_search("abc") == "lỗi: máy tìm kiếm không trả JSON {results: [...]}"
+
+
+def test_resolve_host_bao_loi_khi_getaddrinfo_tra_danh_sach_rong(monkeypatch):
+    """web.py 61->exit: `getaddrinfo` không ném lỗi nhưng trả danh sách rỗng (máy/hệ điều hành lạ) → vẫn bị chặn
+    như không phân giải được, không để `ips[0]` sập với IndexError."""
+    monkeypatch.setattr(web_mod.socket, "getaddrinfo", lambda host, port: [])
+    with pytest.raises(ToolError, match="host bị chặn"):
+        resolve_host("rong.example")
+
+
+def test_default_fetcher_qua_han_tong_giua_chung_chuyen_huong(monkeypatch):
+    """web.py 147->exit: hạn tổng cho CẢ lượt (kể cả theo chuyển hướng) hết ngay giữa vòng lặp, không phải chỉ ở
+    lần gọi socket đầu — mỗi chặng đều phải kiểm `deadline`, không chỉ chặng cuối."""
+    _dns(monkeypatch, {"a.example": "93.184.216.34", "b.example": "1.1.1.1"})
+    times = iter([0.0, 0.0, 100.0])  # đủ cho: deadline=T0+60, lần kiểm đầu (left>0), lần kiểm hai (đã quá hạn)
+
+    def fake_monotonic():
+        return next(times, 100.0)
+    monkeypatch.setattr(web_mod.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(web_mod, "_open_pinned",
+                        lambda url, ip, t: _Resp(301, {"Location": "https://b.example/"}))
+    with pytest.raises(ToolError, match=f"quá {web_mod.TOTAL_TIMEOUT}s cho cả lượt lấy"):
+        web_mod.default_fetcher("https://a.example/")
+
+
+def test_read_deadline_dung_dung_khi_du_max_bytes(monkeypatch):
+    """web.py 165->171: đọc đủ (hoặc vượt) `MAX_BYTES` thì vòng lặp dừng bằng điều kiện `while`, không cần chạm
+    hạn thời gian — trả đúng phần đã đọc, không đọc thêm."""
+    monkeypatch.setattr(web_mod, "MAX_BYTES", 10)
+    r = _Resp(200, {}, b"0123456789ABCDEF")  # 16 byte > MAX_BYTES=10
+    out = web_mod._read_deadline(r, web_mod.time.monotonic() + 60, "https://x.example/")
+    assert len(out) == 11, "đọc tới khi vượt MAX_BYTES rồi dừng ở lần đọc kế tiếp"
+
+
+def test_fetch_url_http_loi_tra_thong_bao_khong_lay_noi_dung(monkeypatch):
+    """HTTP >= 400 → trả thông báo lỗi ngay, không đụng tới thân trang."""
+    _dns(monkeypatch, {"loi.example": "93.184.216.34"})
+    def fetcher(url):
+        return 404, "text/plain", b"not found"
+    web = web_mod.WebTools(fetcher=fetcher)
+    out = web.fetch_url("https://loi.example/")
+    assert out == "lỗi: HTTP 404 cho https://loi.example/"
+
+
+def test_fetch_url_trang_qua_lon_bao_loi_ro(monkeypatch):
+    """web.py 208->exit: `fetcher` (đã tự giới hạn theo `MAX_BYTES` khi đọc stream) vẫn có thể trả về đúng-bằng
+    hoặc lớn hơn hạn — `fetch_url` phải tự kiểm lại, không tin dữ liệu đã đủ nhỏ."""
+    monkeypatch.setattr(web_mod, "MAX_BYTES", 10)
+    _dns(monkeypatch, {"lon.example": "93.184.216.34"})
+    def fetcher(url):
+        return 200, "text/plain", b"noi dung dai hon muoi byte"
+    web = web_mod.WebTools(fetcher=fetcher)
+    out = web.fetch_url("https://lon.example/")
+    assert out == "lỗi: trang > 10 byte"
+
+
+def test_fetch_url_van_ban_thuan_khong_qua_html_to_text(monkeypatch):
+    """web.py 213->215: nội dung KHÔNG phải JSON và không phải HTML (content-type `text/plain`, không mở đầu
+    bằng `<`) → giữ nguyên văn bản, không đi qua `html_to_text`."""
+    _dns(monkeypatch, {"txt.example": "93.184.216.34"})
+    def fetcher(url):
+        return 200, "text/plain", b"chi la van ban thuan, khong the/tag nao"
+    web = web_mod.WebTools(fetcher=fetcher)
+    out = web.fetch_url("https://txt.example/")
+    assert "chi la van ban thuan" in out
+
+
+def test_web_search_query_rong_bao_loi_ro():
+    web = web_mod.WebTools(fetcher=lambda url: (200, "", b""))
+    assert web.web_search("   ") == "lỗi: query rỗng"
+
+
+def test_web_search_search_url_http_loi(monkeypatch):
+    """web.py 231->exit: nhánh CÓ `search_url` mà máy tìm kiếm trả HTTP lỗi."""
+    _dns(monkeypatch, {"searx.internal": "10.0.0.5"})
+    def fetcher(url):
+        return 503, "text/plain", b"unavailable"
+    web = web_mod.WebTools(fetcher=fetcher, search_url="http://searx.internal:8080/search?q={q}&format=json")
+    assert web.web_search("abc") == "lỗi: HTTP 503 từ máy tìm kiếm"
+
+
+def test_web_search_duckduckgo_http_loi(monkeypatch):
+    """web.py 239->exit: nhánh KHÔNG có `search_url` (duckduckgo) mà HTTP lỗi."""
+    _dns(monkeypatch, {"html.duckduckgo.com": "1.1.1.1"})
+    def fetcher(url):
+        return 500, "text/html", b"error"
+    web = web_mod.WebTools(fetcher=fetcher)
+    assert web.web_search("abc") == "lỗi: HTTP 500 từ máy tìm kiếm"
+
+
+def test_web_search_duckduckgo_khong_co_ket_qua(monkeypatch):
+    """web.py 241->exit: trang kết quả không khớp regex nào → không phải lỗi, chỉ là rỗng."""
+    _dns(monkeypatch, {"html.duckduckgo.com": "1.1.1.1"})
+    def fetcher(url):
+        return 200, "text/html", b"<html><body>khong co ket qua nao</body></html>"
+    web = web_mod.WebTools(fetcher=fetcher)
+    assert web.web_search("abc") == "(không có kết quả)"
+
+
+def test_parse_ddg_link_khong_boc_uddg_giu_nguyen_href():
+    """web.py 274->277: href KHÔNG mang tham số `uddg=` (không bọc qua chuyển hướng của DDG) → dùng thẳng href."""
+    page = '<a class="result__a" href="https://direct.example/page">Direct hit</a>'
+    rows = _parse_ddg(page)
+    assert rows and rows[0][1] == "https://direct.example/page"

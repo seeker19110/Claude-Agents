@@ -51,6 +51,27 @@ def test_process_defer_khi_project_paused():
     assert res is not None and res.deferred == "paused:P1"
 
 
+# ---------- process(): event đã xử lý (idempotent, gọi lại không làm gì) ----------
+
+def test_process_bo_qua_event_da_xu_ly():
+    orch = _orch()
+    env = Envelope(topic="pull-requests", key="T1", actor="builder", payload={"ticket_id": "T1"})
+    orch.processed.add(env.event_id)
+    assert orch.process(env) is None
+
+
+# ---------- _call(): slot đã chạy xong ở lần xử lý trước (event bị hoãn transient) → không chạy lại ----------
+
+def test_call_bo_qua_khi_slot_da_co_trong_partial():
+    orch = _orch()
+    env = Envelope(topic="pull-requests", key="T1", actor="builder", payload={"ticket_id": "T1"})
+    r = Route(topic_in="pull-requests", agent="builder", topic_out="review-results")
+    orch.partial[env.event_id] = {f"builder:{r.topic_out}"}
+    res = StepResult(env.event_id, env.topic, env.key)
+    orch._call("builder", env, r, res)
+    assert res.actions == []
+
+
 # ---------- _rework_after_error: rework() vẫn có thể raise ValueError (race giữa các worker) ----------
 
 def test_rework_after_error_bat_value_error(monkeypatch):

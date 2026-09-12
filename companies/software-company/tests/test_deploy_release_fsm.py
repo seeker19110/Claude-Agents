@@ -149,6 +149,25 @@ def test_model_khai_deployed_nhung_container_khong_chay(tmp_path, monkeypatch):
     assert "release.deploy_failed" in _acts(bus)
 
 
+def test_deploy_failed_lan_hai_gate_da_pending_khong_mo_gate_trung(tmp_path, monkeypatch):
+    """verify.py 100->exit (`_escalate`): RC đã escalate vì deploy_failed lần đầu → deploy_failed LẦN NỮA cho
+    cùng release không mở thêm gate escalation."""
+    from company.orch import verify
+
+    fn, _fake = _fake_deploy(monkeypatch, ps=(0, PS_EXITED, ""))
+    bus, orch = _orch(tmp_path, _repo(tmp_path), deploy_fn=fn, runtime=RUNTIME)
+    orch.run()
+    g = orch.gate.pending.get("REL-001")
+    assert g is not None and g.kind == "escalation"
+    n_truoc = sum(1 for e in _acts(bus) if e == "gate.request")
+    rc = orch.latest("release-candidates", "REL-001")
+    integ = orch._integration_of_release(rc)
+    out = verify.deploy_release(orch, "ops", rc, "REL-001", {"status": "deployed"}, integ, "staging")
+    assert out["status"] == "deploy_failed"
+    n_sau = sum(1 for e in _acts(bus) if e == "gate.request")
+    assert n_sau == n_truoc
+
+
 def test_deploy_failed_khong_tra_ticket_ve_lam_lai(tmp_path, monkeypatch):
     """`deploy_failed` KHÁC `failed`: chưa dựng được môi trường chạy (thường là hạ tầng máy trực) không phải bằng
     chứng code hỏng, nên ticket nằm yên chờ người quyết ở gate escalation thay vì rơi về `changes_requested`."""

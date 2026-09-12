@@ -107,6 +107,17 @@ def test_rollback_lui_con_tro_giu_tag_va_khong_de_len_release_sau(tmp_path):
     assert _git(repo, "tag", "-l").split() == ["v0.1.1", "v0.1.2", "v0.1.3"], "tag là lịch sử bất biến"
 
 
+def test_rollback_khi_da_o_dung_sha_khong_di_chuyen_nhanh(tmp_path):
+    """`to_sha` trùng `cur` (đã lùi rồi, hoặc gọi lại idempotent): không có gì để `branch -f`, `branch_moved` False."""
+    repo = _init_repo(tmp_path / "repo"); it = Integration(repo, base="main"); it.ensure()
+    _merge_ticket(repo, it, "A", "a.py"); r1 = it.deliver("0.1.1", "1")
+    _merge_ticket(repo, it, "B", "b.py"); r2 = it.deliver("0.1.2", "2")
+    rb = it.rollback_delivery(r2.previous, expected=r2.sha)
+    assert rb.ok and rb.branch_moved
+    rb2 = it.rollback_delivery(r1.sha, expected=r1.sha)
+    assert rb2.ok and not rb2.branch_moved and _rev(repo, "company/release") == r1.sha
+
+
 def test_push_len_remote_cua_khach_va_loi_push_khong_chan(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     bare = tmp_path / "remote.git"; subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)

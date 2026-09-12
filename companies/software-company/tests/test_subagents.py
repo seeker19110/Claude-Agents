@@ -13,8 +13,8 @@ import yaml
 
 from company import gate_checklists as GC
 from company.gates import GateKind
-from company.registry import load_agents
-from company.subagents import GATE_PREFIX, PREFIX, TOOLS, build, diffs, render_all, sections
+from company.registry import AgentSpec, load_agents
+from company.subagents import GATE_PREFIX, PREFIX, TOOLS, build, diffs, render, render_all, role_summary, sections
 from company.subagents import main as sub_main
 
 N_AGENTS, N_GATES = 6, 4   # ADR-0037: GateKind bỏ `plan`; PR-5b gộp → ops (21→19), PR-5c gộp
@@ -126,6 +126,27 @@ def test_khong_vuot_tran_prompt():
 def test_ban_dan_xuat_tren_dia_khop_nguon():
     """Chống trôi: `.claude/agents/` được commit, nên nó phải luôn khớp nguồn (CI gọi cùng chỗ với golden)."""
     assert diffs() == [], "chạy `make subagents` rồi commit lại .claude/agents/"
+
+
+def test_role_summary_rong_khi_khong_co_muc_vai_tro():
+    """Prompt không có mục `## Vai trò` (hoặc rỗng) → description không có câu vai trò thêm vào."""
+    assert role_summary("## Khác\n\nnội dung không liên quan\n") == ""
+
+
+def test_render_bo_qua_muc_copy_sections_rong_va_khong_co_skill():
+    """`render` phải bỏ qua mục trống trong COPY_SECTIONS (vòng lặp tiếp tục) và không thêm khối checklist khi
+    agent không khai skill nào (`core` rỗng)."""
+    spec = AgentSpec(
+        id="toi_gian", block="test", model_tier="fast", reads=[], writes=[],
+        context_namespace_write=None, skills=[], budget_tokens_per_task=1, max_retries=1, timeout_minutes=1,
+        prompt="## Vai trò\n\nKhông có gì đặc biệt.\n\n## Bạn KHÔNG ĐƯỢC\n\nkhông làm X.\n",
+        source_rel="agents/toi_gian.md",
+    )
+    text = render(spec)
+    assert "Bạn PHẢI" not in text.split("## Bạn KHÔNG ĐƯỢC")[0] or "### Bạn KHÔNG ĐƯỢC" in text
+    assert "### Bạn KHÔNG ĐƯỢC" in text and "không làm X." in text
+    assert "### Bạn PHẢI" not in text
+    assert "Checklist skill liên quan" not in text
 
 
 def test_only_va_agent_la():

@@ -21,7 +21,7 @@ from company.web import ToolError, pin_url
 from company.workspace import Integration, WorkspaceError, _git_ok
 from test_delivery_real import _merge_ticket, _rev
 from test_gate_brief import _scenario, fail_handler, rich_handler
-from test_orchestrator import _drive_to_plan, handler
+from test_orchestrator import _agent_of, _drive_to_plan, _inp, _ops_phase, handler
 from test_tools_and_agentic import _init_repo, _repo_tool_handler
 
 
@@ -141,6 +141,41 @@ def test_khong_giao_khi_gate_release_chua_duyet(tmp_path, monkeypatch):
     assert not orch.delivered and res.actions == []
     skipped = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "delivery.skipped"]
     assert skipped and "gate release chưa duyệt" in skipped[-1]["evidence"]
+
+
+def test_version_khop_thi_khong_ghi_de_khong_audit(tmp_path):
+    """release_fsm.py 83->87: model trả đúng `version` như RC yêu cầu — không ghi đè, không audit
+    `release.version_overridden` (nhánh còn lại của phòng thủ đã test ở test_release_engineer_cannot_override_rc_version)."""
+    def h(system, user):
+        a, p = _agent_of(system), _inp(user)
+        if a == "ops" and _ops_phase(system) == "deploy":
+            return {"release_id": p["release_id"], "version": p.get("version"), "env": p["target_env"], "status": "deployed"}
+        return handler(system, user)
+
+    repo = _init_repo(tmp_path / "repo"); bus = InMemoryBus()
+    orch = Orchestrator(bus, FakeClient(handler=h, tool_handler=_repo_tool_handler), repo=repo, base="main")
+    _drive_to_plan(bus, orch); orch.run()
+    orch.gate.decide("REL-001", "approve", by="human:release-manager", reason="ok"); orch.run()
+    n = sum(1 for e in bus.replay(topic="audit-log") if e.payload["action"] == "release.version_overridden")
+    assert n == 0
+    evs = [e.payload["version"] for e in bus.replay(topic="release-events") if e.key == "REL-001"]
+    assert evs and all(v for v in evs)
+
+
+def test_giao_lai_release_da_giao_thi_khong_lam_gi(tmp_path):
+    """`rid in o.delivered` (đã giao rồi) → `_deliver` không giao lại, không audit thêm lần nữa."""
+    from company.orchestrator import StepResult
+    _repo, bus, orch = _orch_da_giao(tmp_path)
+    orch.gate.decide("REL-001", "approve", by="human:release-manager"); orch.run()
+    assert "REL-001" in orch.delivered
+    n_done_truoc = len([e for e in bus.replay(topic="audit-log") if e.payload["action"] == "delivery.done"])
+    env = next(e for e in bus.replay(topic="release-events")
+               if e.payload.get("env") == "production" and e.key == "REL-001")
+    res = StepResult(env.event_id, env.topic, env.key)
+    orch._deliver(env, res)
+    assert res.actions == []
+    n_done_sau = len([e for e in bus.replay(topic="audit-log") if e.payload["action"] == "delivery.done"])
+    assert n_done_sau == n_done_truoc
 
 
 def test_loi_workspace_khi_giao_thanh_audit_khong_ném(tmp_path, monkeypatch):
