@@ -12,6 +12,7 @@ phép canh cấp gốc (chạy trong job `console-unit` trên cả ba nền).
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -73,7 +74,6 @@ def _ci() -> dict:
 
 def _packages() -> list[str]:
     """Thành viên workspace — nguồn sự thật duy nhất về "repo có mấy package"."""
-    import tomllib
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     return list(data["tool"]["uv"]["workspace"]["members"])
 
@@ -97,10 +97,87 @@ def test_quality_needs_phu_moi_job_con() -> None:
     assert not thieu, f"job không có trong `needs` của quality (hỏng vẫn merge được): {thieu}"
 
 
+# --- Trần cho các lối thoát hợp lệ khỏi `fail_under = 100` -------------------------------------------------
+#
+# `fail_under = 100` ở cả năm package là cổng mạnh nhất repo có. Nhưng nó có ba lối thoát hợp lệ, và tới trước
+# PR này cả ba đều KHÔNG CÓ TRẦN, KHÔNG CÓ HẠN ĐÁO, KHÔNG AI ĐẾM LẠI: thêm bao nhiêu cũng được, coverage vẫn
+# khai 100%. Sổ dưới đây là số đo ngày 2026-09-12. Thêm một lối thoát mới ⇒ CI đỏ tới khi sửa số ở đây, tức là
+# đi qua review. Bỏ bớt một lối thoát cũng phải sửa số — sổ chỉ có giá trị khi nó khớp chính xác hai chiều.
+TRAN_PRAGMA = {                      # `# pragma: no cover` trong src/ của từng package
+    "platform/xagents-core": 6,      # `grep 'pragma: no cover'` ra 7: llm.py:509 là văn xuôi NHẮC TỚI
+    "platform/gateway": 0,           # `` `pragma: no cover` `` (có backtick), không phải directive
+    "platform/console": 2,
+    "companies/software-company": 10,
+    "companies/keeper": 3,
+}
+TRAN_SKIP = {                        # skip/xfail trong tests/ của từng package
+    "platform/xagents-core": 0,
+    "platform/gateway": 3,
+    "platform/console": 1,
+    "companies/software-company": 2,
+    "companies/keeper": 0,
+}
+TRAN_OMIT = 2                        # dòng `omit` trong pyproject.toml của các package
+
+_PRAGMA = re.compile(r"#\s*pragma:\s*no cover")
+_SKIP = re.compile(r"(?:@pytest\.mark\.|pytest\.)(?:skip|xfail)")
+_TU_NO = "test_cong_repo.py"         # chính file này chứa các mẫu trên dưới dạng chuỗi — không tự đếm mình
+
+
+def _dem(thu_muc: Path, mau: re.Pattern[str]) -> int:
+    if not thu_muc.is_dir():
+        return 0
+    return sum(len(mau.findall(f.read_text(encoding="utf-8", errors="replace")))
+               for f in thu_muc.rglob("*.py") if f.name != _TU_NO)
+
+
+@pytest.mark.parametrize("pkg", sorted(TRAN_PRAGMA))
+def test_pragma_no_cover_khong_vuot_tran(pkg: str) -> None:
+    that = _dem(ROOT / pkg / "src", _PRAGMA)
+    assert that == TRAN_PRAGMA[pkg], (
+        f"{pkg}: đếm được {that} `pragma: no cover`, sổ ghi {TRAN_PRAGMA[pkg]}. Mỗi cái là một dòng được miễn "
+        f"khỏi fail_under=100 — thêm thì phải sửa số ở đây (đi qua review), bớt thì cũng phải sửa cho khớp.")
+
+
+@pytest.mark.parametrize("pkg", sorted(TRAN_SKIP))
+def test_skip_xfail_khong_vuot_tran(pkg: str) -> None:
+    that = _dem(ROOT / pkg / "tests", _SKIP)
+    assert that == TRAN_SKIP[pkg], (
+        f"{pkg}: đếm được {that} skip/xfail, sổ ghi {TRAN_SKIP[pkg]}. Ca bị bỏ im lặng không hiện trong "
+        f"`pytest -q` — đó là cách 'xanh vì rỗng' sống sót.")
+
+
+def test_omit_khong_vuot_tran() -> None:
+    that = sum(1 for p in _packages()
+               if (ROOT / p / "pyproject.toml").is_file()
+               for line in (ROOT / p / "pyproject.toml").read_text(encoding="utf-8").splitlines()
+               if line.strip().startswith("omit"))
+    assert that == TRAN_OMIT, (
+        f"đếm được {that} dòng `omit`, sổ ghi {TRAN_OMIT}. `omit` bỏ hẳn file khỏi mẫu số 100% — "
+        f"nặng hơn `pragma` vì không thấy được ở diff của file bị bỏ.")
+
+
+KHUNG = ("CLAUDE.md", "TRAPS.md", "CODEMAP.md", "ARCHITECTURE.md")
+
+
+def test_agents_md_khong_khai_khong_ve_bo_khung_package() -> None:
+    """`AGENTS.md` mở đầu bằng "Mỗi package con có CLAUDE.md, TRAPS.md, CODEMAP.md, ARCHITECTURE.md riêng" —
+    câu đầu tiên người mới tin. Đo 2026-09-12: `platform/xagents-core` và `companies/keeper` thiếu CẢ BỐN.
+
+    Đây là lời khai sai nằm trong chính file luật (`AGENTS.md` luật cấm 8: không tin lời khai — kể cả của
+    mình). Cổng này để câu đó chỉ đúng hoặc bị xoá, không có cửa thứ ba.
+    """
+    tuyen_bo = "Mỗi package con có" in (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    thieu = {p: [f for f in KHUNG if not (ROOT / p / f).is_file()] for p in _packages()}
+    thieu = {p: f for p, f in thieu.items() if f}
+    assert not (tuyen_bo and thieu), (
+        f"AGENTS.md khai mọi package có đủ {list(KHUNG)}, nhưng thiếu: {thieu}. "
+        f"Hoặc thêm file cho đủ, hoặc sửa câu khai cho đúng thực tế — không để câu sai nằm trong file luật.")
+
+
 def test_moi_duong_dan_trong_codeowners_ton_tai() -> None:
     """CODEOWNERS trỏ đường dẫn cũ thì luật sở hữu rút về còn dòng `*` — mất hẳn lớp bảo vệ theo vùng."""
-    if not CODEOWNERS.is_file():
-        pytest.skip("repo không dùng CODEOWNERS")
+    assert CODEOWNERS.is_file(), "repo mất .github/CODEOWNERS"
     hong: list[str] = []
     for dong in CODEOWNERS.read_text(encoding="utf-8").splitlines():
         dong = dong.split("#", 1)[0].strip()

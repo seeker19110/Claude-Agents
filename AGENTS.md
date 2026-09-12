@@ -4,7 +4,10 @@
 **điều cấm, điều bắt buộc, và đi đâu để biết thêm**. Bộ khung 10 file: `AGENTS.md` (luật) · `CLAUDE.md` (luật cho
 Claude Code, nhập file này) · `TRAPS.md` (bẫy đã mắc) · `ARCHITECTURE.md` (bản đồ hệ) · `CODEMAP.md` (muốn đổi X thì
 sửa ở đâu) · `CHANGELOG.md` (đã đổi gì) · `docs/TASK-PACK.md` (gói việc) · `docs/PROMPT-SHEET.md` (câu lệnh chuẩn) ·
-`docs/sessions/` (nhật ký phiên) · `docs/NGON-NGU.md` (thuật ngữ và cách gọi phải tránh). Mỗi package con có `CLAUDE.md`, `TRAPS.md`, `CODEMAP.md`, `ARCHITECTURE.md` riêng.
+`docs/sessions/` (nhật ký phiên) · `docs/NGON-NGU.md` (thuật ngữ và cách gọi phải tránh). Ba package có bộ `CLAUDE.md`, `TRAPS.md`, `CODEMAP.md`, `ARCHITECTURE.md` riêng (`companies/software-company`,
+`platform/console`, `platform/gateway`); `platform/xagents-core` và `companies/keeper` **chưa có** — đọc `README.md`
+của chúng và tài liệu trong `docs/` của package. Số này có cổng canh (`platform/console/tests/test_cong_repo.py`)
+nên câu trên không tự lệch được: thêm đủ file thì sửa câu, chưa đủ thì câu phải nói đúng như đang nói.
 
 ## Repo này là gì
 
