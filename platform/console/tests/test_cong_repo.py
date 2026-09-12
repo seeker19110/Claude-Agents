@@ -108,7 +108,8 @@ TRAN_PRAGMA = {                      # `# pragma: no cover` trong src/ của t�
     "platform/gateway": 0,           # `` `pragma: no cover` `` (có backtick), không phải directive
     "platform/console": 2,
     "companies/software-company": 10,
-    "companies/keeper": 3,
+    "companies/keeper": 4,               # +1 (2026-09-12): PullRequestExists.__str__ (publish.py) — chỉ phục
+                                          # vụ traceback người đọc, không ai assert chuỗi này
 }
 TRAN_SKIP = {                        # skip/xfail trong tests/ của từng package
     "platform/xagents-core": 0,

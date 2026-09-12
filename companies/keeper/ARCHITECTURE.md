@@ -24,11 +24,18 @@ patcher.py (3 thao tác: bump_dependency / regen_derived / fix_docs; FORBIDDEN_P
 evidence.require_two_way() ── BẮT BUỘC: đo trước (đỏ) và đo sau (xanh), không có ca nào bỏ qua
    │
    ▼
-release-clerk ── soạn CHANGELOG, ghi pr.intent vào audit-log (open_pr() CHƯA gọi gh pr create thật)
+release-clerk ── open_pr(): soạn CHANGELOG (PR_PLACEHOLDER), ghi pr.intent vào audit-log — Ý ĐỊNH, chưa PR thật
    │
    ▼
-NGƯỜI mở PR thật + merge (I1: keeper không có quyền ghi ngoài worktree riêng của chính nó)
+NGƯỜI/script gọi `keeper publish <ticket_id>` ── orchestrator.publish(): push_branch() + create_pr() (publish.py)
+   │                                              rồi fill_pr_number() điền số PR thật, ghi audit pr.created
+   ▼
+NGƯỜI merge PR thật (I1: keeper không có quyền tự merge)
 ```
+
+`publish()` KHÔNG chạy tự động trong `watch` — vòng lặp mới nối `triage`+`open_pr` (ý định); scout chưa nối
+vào `tick()`, patch cần `keeper run`/người commit tay. Đây là ranh giới đã đo được khi thử canary thật lần đầu
+(`TRAPS.md`): từng mảnh có mã + test, nhưng chuỗi signal→patch→publish chưa nối thành một vòng tự động.
 
 `orchestrator.py` chạy vòng lặp trên, resume được qua `SQLiteBus` — mở lại tiến trình không làm lại việc đã
 xong. `worktree.py` cấp một worktree git riêng mỗi ticket; tuyệt đối không `reset --hard`/`clean` trên checkout
@@ -50,11 +57,12 @@ chung của phiên khác.
 
 - **Vào**: `xagents_core` (bus, gate, runner, guard — 25 file import, đo 2026-09-12); không nhận việc từ
   `platform/console` qua đường ghi (console chỉ đọc bus của keeper).
-- **Ra**: GitHub API (chỉ đọc qua `gh` CLI, `GitHubReader`); model qua `llm.py` (mặc định provider `fake`,
-  offline — chạy model thật cần `llm.yaml` riêng, tiền tố env `KEEPER_*`).
+- **Ra**: GitHub API qua `gh` CLI — đọc (`GitHubReader`, mọi nơi khác) và GHI (`publish.py`, chỉ `git push`
+  nhánh của ticket + `gh pr create`, không gì khác); model qua `llm.py` (mặc định provider `fake`, offline —
+  chạy model thật cần `llm.yaml` riêng, tiền tố env `KEEPER_*`).
 - **Đĩa**: `company.sqlite`-kiểu bus SQLite riêng của keeper; worktree riêng mỗi ticket dưới thư mục tạm, không
   đụng checkout chính.
-- **Test**: 533 ca (`uv run pytest --collect-only -q`, đo 2026-09-12); `branch = true` + `fail_under = 100` đã
+- **Test**: 553 ca (`uv run pytest --collect-only -q`, đo 2026-09-12); `branch = true` + `fail_under = 100` đã
   bật — một trong hai package đầu tiên đạt mốc này cùng `xagents-core`.
 - **ADR**: không có `docs/adr/` riêng trong package; ADR duy nhất liên quan là `docs/adr/0006-cong-ty-bao-tri-
   keeper.md` ở gốc repo. Đặc tả chi tiết (bất biến, lộ trình BT1–BT8) ở `docs/DAC-TA-KEEPER.md`.

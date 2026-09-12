@@ -11,7 +11,12 @@ cd companies/keeper
 uv run pytest -q --cov && uv run ruff check src tests && uv run mypy src/keeper --ignore-missing-imports
 uv run python -m keeper run --dry-run       # mặc định: in kế hoạch, không chạm file nào
 uv run python -m keeper watch --db <path> --repo <path> --interval N
+uv run python -m keeper publish --db <path> --repo <path> <ticket_id>   # push + gh pr create THẬT (BT8)
 ```
+
+**`watch` chưa tự động gọi `publish`** — vòng lặp mới nối `triage`+ghi ý định PR (`pr.intent`); scout chưa
+nối vào `tick()`, patch cần `keeper run`/người commit tay. `publish` là bước NGƯỜI/script gọi sau khi patch đã
+commit vào worktree của ticket (`open_worktree(ticket_id, repo)`), biến ý định thành PR thật.
 
 ## TDD ở package này
 
@@ -21,9 +26,10 @@ cùng `xagents-core`) — nhánh chưa test là CI đỏ ngay, không phải "đ
 
 ## Bảy bất biến (I1–I7, `docs/DAC-TA-KEEPER.md` §0) — không được phá
 
-1. **I1 — không quyền ghi ngoài worktree riêng.** `github.py` chỉ có hàm ĐỌC; `GitHubReader._run()` ném
-   `GitHubWriteAttempt` khi argv chứa cờ ghi (`-f`, `-F`, `--field`, `--raw-field`, `--input`, và mọi biến thể
-   POST ẩn — bảng gốc từng thiếu 5 cờ này, đã vá).
+1. **I1 — không quyền ghi ngoài worktree riêng, commit, và mở PR.** `github.py` chỉ có hàm ĐỌC;
+   `GitHubReader._run()` ném `GitHubWriteAttempt` khi argv chứa cờ ghi (`-f`, `-F`, `--field`, `--raw-field`,
+   `--input`, và mọi biến thể POST ẩn — bảng gốc từng thiếu 5 cờ này, đã vá). Quyền ghi thứ ba (mở PR) sống
+   TÁCH RIÊNG ở `publish.py` — `push_branch()`/`create_pr()` — để không lẫn vào các hàm đọc của `github.py`.
 2. **I2 — bằng chứng đo hai chiều bắt buộc trước khi rời pha quality.** `evidence.require_two_way()` ném
    `EvidenceError` nếu `before.exit_code == 0` (chưa từng đỏ) hoặc `after != 0` (chưa xanh).
 3. **I3 — đúng một PR bảo trì mở tại một thời điểm.** `budget.can_open_pr()` LUÔN hỏi GitHub thật, không đếm
@@ -45,3 +51,4 @@ cùng `xagents-core`) — nhánh chưa test là CI đỏ ngay, không phải "đ
 | Thêm loại tín hiệu mới | `events.py` (thêm `kind`), `topics/schemas/*.json` viết tay + test đối chiếu `set(get_args(Topic)) == set(bus._schemas)`, thêm hàng vào `risk.py:RISK_RULES`, cập nhật nơi phát signal (`scout.py`/`health.py`/`drift.py`) |
 | Đổi ngưỡng rủi ro tự động vá | `risk.py:RISK_RULES` — bảng dữ liệu tra theo TÊN HÀNG, khớp hàng đầu tiên, mọi `high` phải đứng trước `low`. Không viết chuỗi `if` (bài học K1.7) |
 | Đổi luật ngân sách PR | `budget.py:can_open_pr()` — giữ nguyên tắc hỏi GitHub thật, không cache trong RAM |
+| Publish PR thật cho một ticket | `orchestrator.publish()` (`push_branch`+`create_pr` từ `publish.py`, rồi `release.fill_pr_number`) qua CLI `keeper publish <ticket_id>` — không tự vá/tự commit, giả định worktree đã có patch |
