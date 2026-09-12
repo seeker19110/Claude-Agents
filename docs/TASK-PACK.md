@@ -188,8 +188,6 @@ CHANGELOG.
 |---|---|---|
 | 2026-09-07 | Mở rộng `platform/console/tests/test_readme_goc.py` canh thêm số test và số ADR của `platform/console`/`xagents-core` trong README gốc | Thêm test là sửa code — luật cấm 7, phải PR riêng |
 | 2026-09-07 | `companies/software-company/agents/supervisor/supervisor.md:28` nói bài học vào ngữ cảnh **mọi** agent; thực tế `snapshot()` chỉ đưa một JSON của ticket đóng gần nhất | Sửa prompt phải đi đủ bảy bước `CONTRIBUTING.md` §3 |
-| 2026-09-10 | `README.md:29` ghi keeper "8 agent"; đĩa có **10**, và `companies/keeper/README.md` đã tự sửa thành 10 — README gốc quên theo (phép A2) | Phát hiện ngoài phiên audit; chờ phiên audit kế đo lại rồi sửa cùng báo cáo |
-| 2026-09-10 | "cả **sáu** package" còn sót ở `AGENTS.md:36,103` và `ci.yml:126,362,411,431` sau khi `Studio-creators` rời workspace (#259); `members` nay có **5** (phép A3) | như trên |
 | 2026-09-10 | `branch = true` mới có ở `companies/keeper` và `platform/xagents-core`; ba package còn lại chỉ phủ dòng — `companies/software-company/pyproject.toml:54` tự khai 86 nhánh chưa đi (phép A6) | Bật là sửa cấu hình cổng và sẽ lòi ra nhánh cần test — PR riêng, có thể nhiều PR |
 | 2026-09-10 | `companies/keeper` chưa qua canary (BT8) nên tầng audit tự động mới có `drift-check` chạy thật trong CI (phép A7) | Là một gói việc riêng, không phải việc của phiên đo |
 

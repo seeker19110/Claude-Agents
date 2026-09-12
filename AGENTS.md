@@ -33,7 +33,7 @@ hạn mức; self-hosted, resume được; trung lập provider.
 4. **Không gọi provider trả phí trong test.** Provider `fake` + bản ghi eval đủ chạy offline toàn bộ.
 5. **Không sửa tay bản dẫn xuất**: `.claude/agents/sc-*.md` sinh từ `companies/software-company/agents/`, `skills/`,
    `gates/checklists.md` bằng `make subagents`; `tests/golden/` sinh bằng `make golden`. Sửa nguồn rồi sinh lại.
-6. **Không hạ ngưỡng coverage để PR qua cổng.** `fail_under = 100` ở cả sáu package; mất một dòng phủ là CI đỏ
+6. **Không hạ ngưỡng coverage để PR qua cổng.** `fail_under = 100` ở cả năm package; mất một dòng phủ là CI đỏ
    — thêm test, không hạ số.
 7. **Không "sửa" code cạnh bên.** Mỗi dòng đổi phải truy được về yêu cầu. Thấy dead code thì nói, đừng xoá.
 8. **Không tin lời khai.** Của model, của agent, của chính mình. "Tests pass" cần output lệnh vừa chạy; "đã
@@ -100,7 +100,7 @@ hạn mức; self-hosted, resume được; trung lập provider.
 
 ```bash
 uv sync                          # một lần ở gốc
-make test                        # cả sáu package; hoặc cd <pkg> && uv run pytest -q
+make test                        # cả năm package; hoặc cd <pkg> && uv run pytest -q
 cd companies/software-company && uv run python -m company.orchestrator status      # PHẢI ở trong companies/software-company/ (gốc có company.sqlite rỗng)
 cd platform/console && uv run python -m console --allow-decide                    # trực ban; bật console thì bật luôn orchestrator run --watch
 ```
