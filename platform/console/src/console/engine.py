@@ -61,16 +61,22 @@ class EngineSpec:
     cwd: Path
     label: str
     needs_repo: bool = False
+    supports_deliver: bool = False
 
-    def argv(self, db: Path, interval: float) -> list[str]:
+    def argv(self, db: Path, interval: float, *, deliver_remote: str | None = None) -> list[str]:
         if self.needs_repo:      # keeper: `watch --db … --repo … --interval N` (keeper/src/keeper/cli.py)
             return [sys.executable, "-m", self.module, "watch", "--db", str(db),
                     "--repo", str(REPO_ROOT), "--interval", str(interval)]
-        return [sys.executable, "-m", self.module, "--db", str(db), "run", "--watch", str(interval)]
+        # ADR-0027: không có `--deliver --push-remote` thì `_deliver()` KHÔNG BAO GIỜ chạy — release được ký,
+        # khách nghiệm thu, mà tag/nhánh release không bao giờ tới repo khách (sự cố 2026-09-10). Hai cờ này
+        # là cờ toàn cục của `company.orchestrator`, phải đứng trước subcommand `run`.
+        giao = ["--deliver", "--push-remote", deliver_remote] if (self.supports_deliver and deliver_remote) else []
+        return [sys.executable, "-m", self.module, "--db", str(db), *giao, "run", "--watch", str(interval)]
 
 
 SPECS: dict[str, EngineSpec] = {
-    COMPANY: EngineSpec("company.orchestrator", REPO_ROOT / "companies" / "software-company", "xưởng phần mềm"),
+    COMPANY: EngineSpec("company.orchestrator", REPO_ROOT / "companies" / "software-company", "xưởng phần mềm",
+                        supports_deliver=True),
     KEEPER: EngineSpec("keeper.cli", REPO_ROOT / "companies" / "keeper", "công ty bảo trì", needs_repo=True),
 }
 
@@ -102,9 +108,13 @@ class _Proc:
 class EngineManager:
     """Sổ tiến trình con của console, một khoá cho cả sổ (bật/tắt hiếm và nhanh, không đáng chia nhỏ khoá)."""
 
-    def __init__(self, dbs: dict[str, Path | None], *, log_dir: Path = LOG_DIR) -> None:
+    def __init__(self, dbs: dict[str, Path | None], *, log_dir: Path = LOG_DIR,
+                 deliver_remote: str | None = None) -> None:
         self._dbs = dbs
         self._log_dir = log_dir
+        # Quyết định của NGƯỜI TRỰC lúc gõ lệnh (`--deliver-remote`), không bao giờ là trường trong POST
+        # /api/engine — `console/CLAUDE.md`: argv chốt cứng trong SPECS, không nhận tham số client.
+        self.deliver_remote = deliver_remote
         self._procs: dict[str, _Proc] = {}
         self._last: dict[str, dict[str, Any]] = {}   # lần chạy gần nhất đã kết thúc, để trang còn kể được
         self._lock = threading.Lock()
@@ -124,8 +134,12 @@ class EngineManager:
     def _one(self, xuong: str) -> dict[str, Any]:
         spec = SPECS[xuong]
         db = self._dbs.get(xuong)
+        # `delivers` là lời khai BẮT BUỘC của trạng thái: một động cơ chạy mà không giao hàng nhìn y hệt một
+        # động cơ giao hàng, và đó là cách sự cố 2026-09-10 sống sót qua cả gate ký lẫn nghiệm thu của khách.
+        giao = spec.supports_deliver and bool(self.deliver_remote)
         base: dict[str, Any] = {"xuong": xuong, "label": spec.label, "db": str(db) if db else None,
-                                "configured": db is not None}
+                                "configured": db is not None, "delivers": giao,
+                                "deliver_remote": self.deliver_remote if giao else None}
         proc = self._procs.get(xuong)
         if proc is not None:
             code = proc.popen.poll()
@@ -174,7 +188,7 @@ class EngineManager:
                 raise EngineError(f"động cơ {spec.label} đang chạy rồi (pid {running.popen.pid})", 409)
             self._log_dir.mkdir(parents=True, exist_ok=True)
             log = self._log_dir / f"{xuong}.log"
-            argv = spec.argv(Path(db).resolve(), interval)
+            argv = spec.argv(Path(db).resolve(), interval, deliver_remote=self.deliver_remote)
             # Nối stdout+stderr vào một file: người trực đọc một dòng thời gian, không phải ghép hai file.
             handle = log.open("ab", buffering=0)
             try:

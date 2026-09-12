@@ -868,9 +868,9 @@ uv run python -m console --allow-decide --allow-submit --allow-engine   # điề
 ```
 
 **Điều khiển trọn vòng trên trang (ADR-0004 của console).** Với ba cờ trên, người trực không cần terminal thứ hai:
-ô *Động cơ* ở đầu màn Trực ban bật/tắt `orchestrator run --watch` của từng xưởng (đúng lệnh ở §5/§6/§7, chạy trong
-đúng thư mục công ty, model vẫn là gói thuê bao khai trong `llm.yaml`), form *Yêu cầu phần mềm* giao việc, ngăn kéo
-gate ký quyết định. Thứ tự một ngày: **bật động cơ → giao việc → ký gate → xem phễu → tắt động cơ**.
+ô *Động cơ* ở đầu màn Trực ban bật/tắt `orchestrator run --watch` của từng xưởng (chạy trong đúng thư mục công ty,
+model vẫn là gói thuê bao khai trong `llm.yaml`), form *Yêu cầu phần mềm* giao việc, ngăn kéo gate ký quyết định.
+Thứ tự một ngày: **bật động cơ → giao việc → ký gate → xem phễu → tắt động cơ**.
 
 Ba điều phải biết trước khi dựa vào nó:
 
@@ -879,6 +879,14 @@ Ba điều phải biết trước khi dựa vào nó:
 - Ô này hiện trạng thái **đo được**, không phải "đã bấm Bật": động cơ chết vì thiếu `llm.yaml` hiện `đã dừng` kèm
   mã thoát và đuôi log (`platform/console/.engine/<xưởng>.log`), không hiện `đang chạy`.
 - `--allow-engine` là cờ **riêng**, `--allow-decide` không mở nó: ký gate và đốt hạn mức model là hai quyền khác nhau.
+- **Động cơ bật từ console KHÔNG giao hàng, trừ khi console chạy kèm `--deliver-remote <remote>`.** Không có cờ
+  đó thì `orchestrator` chạy không `--deliver --push-remote`, nên release được duyệt vẫn **không** được tag và
+  đẩy lên repo khách — đúng sự cố 2026-09-10 (QA pass, gate ký, khách nghiệm thu, sản phẩm nằm lại máy). Ô Động
+  cơ nói rõ trạng thái này (`delivers`); thấy *không giao hàng* mà đang chạy release thật thì tắt, bật lại kèm cờ:
+  ```bash
+  uv run python -m console --allow-decide --allow-engine --deliver-remote origin
+  ```
+  `--deliver-remote` cần `--allow-engine`; nêu một mình thì console dừng ngay với mã 2 thay vì hứa suông.
 
 Mở đúng địa chỉ terminal in ra (có token phiên trong đó). Đường dẫn DB khác mặc định thì chỉ ra bằng
 `--company-db` / `--studio-db` / `--keeper-db`.

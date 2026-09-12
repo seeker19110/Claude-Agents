@@ -53,6 +53,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--allow-engine", action="store_true",
                    help="cho phép POST /api/engine (bật/tắt `orchestrator run --watch` của từng xưởng ngay trên "
                         "trang); quyền riêng và nặng nhất — tiến trình con gọi model và ghi vào bus")
+    p.add_argument("--deliver-remote", metavar="REMOTE",
+                   help="động cơ xưởng phần mềm chạy kèm `--deliver --push-remote REMOTE` (ADR-0027): release "
+                        "được duyệt sẽ tag + đẩy nhánh release lên repo khách. Cần --allow-engine. Không nêu "
+                        "thì động cơ chạy KHÔNG giao hàng — gate ký xong sản phẩm vẫn nằm lại máy")
     p.add_argument("--i-know", action="store_true", help="chấp nhận rủi ro khi bind ra ngoài loopback")
     p.add_argument("--with-gateway", action="store_true",
                    help="bật gateway (pool tài khoản subscription) trước khi phục vụ; đã chạy sẵn thì bỏ qua")
@@ -177,6 +181,12 @@ def main(argv: list[str] | None = None) -> int:
         print("    Xem log gateway, hoặc bỏ --with-gateway nếu backend của bạn không đi qua gateway.")
         return 1
 
+    # Cờ mâu thuẫn: không có --allow-engine thì console không bật được động cơ nào, nên --deliver-remote là
+    # một lời hứa suông. Nói ra thay vì nhận cờ rồi lặng lẽ không giao gì (TRAPS: chế độ hỏng phải tự khai báo).
+    if args.deliver_remote and not args.allow_engine:
+        print("[-] --deliver-remote cần --allow-engine: console không bật được động cơ thì không giao hàng được.")
+        return 2
+
     token = generate_token()
     token_path = write_token_file(token)
     try:
@@ -190,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
             allow_engine=args.allow_engine,
             company_db=args.company_db,
             keeper_db=args.keeper_db,
+            deliver_remote=args.deliver_remote,
         )
     except OSError as e:
         print(f"[-] Không mở được {args.host}:{args.port}: {e}")

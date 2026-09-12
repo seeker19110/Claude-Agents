@@ -32,6 +32,21 @@
   "self_check": [
     {
       "facts": [
+        "`--deliver` TẮT: ký gate này xong `_deliver()` vẫn không chạy — release sẽ không được tag và không tới repo khách. Bật lại orchestrator kèm `--deliver --push-remote <remote>` (console: `--deliver-remote <remote>`) rồi mới ký."
+      ],
+      "id": "release.giao-hang-duoc",
+      "question": "Tiến trình đang chạy giao hàng được (`--deliver`)",
+      "sources": [
+        {
+          "kind": "process",
+          "ref": "orchestrator",
+          "url": null
+        }
+      ],
+      "verdict": "gap"
+    },
+    {
+      "facts": [
         "2 endpoint trong api-contract, 2 được nhắc trong infra",
         "infra có nhắc dashboard/alert/runbook"
       ],

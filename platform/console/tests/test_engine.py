@@ -27,7 +27,7 @@ class FakeSpec(en.EngineSpec):
 
     code: str = SLEEP
 
-    def argv(self, db: Path, interval: float) -> list[str]:
+    def argv(self, db: Path, interval: float, *, deliver_remote: str | None = None) -> list[str]:
         return [sys.executable, "-c", self.code]
 
 
@@ -64,6 +64,62 @@ def test_argv_company_chay_run_watch_trong_thu_muc_cong_ty() -> None:
 def test_argv_keeper_dung_lenh_watch_cua_no_kem_repo() -> None:
     argv = en.SPECS[KEEPER].argv(Path("/tmp/keeper.sqlite"), 300.0)
     assert argv[3] == "watch" and "--repo" in argv and argv[-2:] == ["--interval", "300.0"]
+
+
+# ---------- giao hàng: động cơ bật từ console phải giao được, và im lặng không giao là chế độ hỏng ----------
+
+def test_argv_company_mac_dinh_khong_giao_hang() -> None:
+    """Chiều ngược: không ai bật thì tuyệt đối không có cờ giao hàng — push lên remote của khách
+    không bao giờ được là mặc định."""
+    argv = en.SPECS[COMPANY].argv(Path("/tmp/company.sqlite"), 30.0)
+    assert "--deliver" not in argv and "--push-remote" not in argv
+
+
+def test_argv_company_mang_co_giao_hang_khi_nguoi_truc_bat() -> None:
+    """Sự cố 2026-09-10: QA pass, gate ký, khách nghiệm thu — nhưng `_deliver()` không bao giờ chạy vì
+    tiến trình thiếu `--deliver --push-remote`. Động cơ bật từ console phải giao được."""
+    argv = en.SPECS[COMPANY].argv(Path("/tmp/company.sqlite"), 30.0, deliver_remote="origin")
+    assert "--deliver" in argv and argv[argv.index("--push-remote") + 1] == "origin"
+    # cờ toàn cục phải đứng TRƯỚC subcommand `run` (argparse: chúng khai trên parser gốc, không trên subparser)
+    assert argv.index("--deliver") < argv.index("run")
+    assert argv[-3:] == ["run", "--watch", "30.0"]
+
+
+def test_keeper_khong_nhan_co_giao_hang() -> None:
+    """`keeper.cli watch` không có hai cờ đó; truyền nhầm là tiến trình chết ngay lúc khởi động."""
+    argv = en.SPECS[KEEPER].argv(Path("/tmp/keeper.sqlite"), 300.0, deliver_remote="origin")
+    assert "--deliver" not in argv and "--push-remote" not in argv
+
+
+def test_status_khai_bao_dong_co_co_giao_hang_hay_khong(tmp_path: Path) -> None:
+    """Khuôn lỗi số 1 của repo: *chế độ hỏng không tự khai báo*. Một động cơ chạy mà không giao hàng nhìn
+    y hệt một động cơ giao hàng — đêm 2026-09-10 mất nhiều giờ mới phát hiện. Trạng thái phải nói ra."""
+    tat = en.EngineManager({COMPANY: tmp_path / "c.sqlite", KEEPER: None}, log_dir=tmp_path / ".e1")
+    cong_ty = next(e for e in tat.status()["engines"] if e["xuong"] == COMPANY)
+    assert cong_ty["deliver_remote"] is None and cong_ty["delivers"] is False
+
+    bat = en.EngineManager({COMPANY: tmp_path / "c.sqlite", KEEPER: None},
+                           log_dir=tmp_path / ".e2", deliver_remote="origin")
+    cong_ty = next(e for e in bat.status()["engines"] if e["xuong"] == COMPANY)
+    assert cong_ty["deliver_remote"] == "origin" and cong_ty["delivers"] is True
+
+
+def test_status_keeper_khong_bao_gio_khai_giao_hang(tmp_path: Path) -> None:
+    """Keeper không có đường giao hàng nào; khai `delivers=True` cho nó là nói dối người trực."""
+    m = en.EngineManager({COMPANY: None, KEEPER: tmp_path / "k.sqlite"},
+                         log_dir=tmp_path / ".e3", deliver_remote="origin")
+    keeper = next(e for e in m.status()["engines"] if e["xuong"] == KEEPER)
+    assert keeper["delivers"] is False and keeper["deliver_remote"] is None
+
+
+def test_co_giao_hang_den_tu_dong_lenh_console_khong_tu_client(tmp_path: Path) -> None:
+    """`console/CLAUDE.md`: argv chốt cứng trong SPECS, KHÔNG nhận tham số client. Remote là quyết định
+    của người trực lúc gõ lệnh, không phải trường trong POST /api/engine."""
+    m = en.EngineManager({COMPANY: tmp_path / "c.sqlite", KEEPER: None},
+                         log_dir=tmp_path / ".engine", deliver_remote="origin")
+    assert m.deliver_remote == "origin"
+    import inspect
+    assert "deliver" not in inspect.signature(m.start).parameters
 
 
 def test_cwd_cua_hai_dong_co_co_that_tren_dia() -> None:

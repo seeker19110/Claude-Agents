@@ -58,6 +58,7 @@ Code gửi kèm: `tests`, `scan`, `regression-staging`, `smoke`, `perf`, `a11y`,
 - [ ] `architecture` — C4 L1–L2 và ADR trên blackboard
 
 Người tự kiểm thêm:
+- [ ] Tiến trình đang chạy giao hàng được (`--deliver`)
 - [ ] Dashboard + alert (có runbook) cho dịch vụ/tính năng mới
 - [ ] Changelog, docs, NOTICE cập nhật
 - [ ] Error budget không âm

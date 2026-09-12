@@ -50,6 +50,8 @@ Các khoá dưới đây đã có trong checklist của gate và người duyệ
 
 Mỗi mục phải xuất hiện trong báo cáo với đúng một kết luận `ok` / `gap` / `unknown` và nguồn kiểm chứng lại được. Nguồn gợi ý bên dưới là nơi bắt đầu tìm, không phải danh sách đóng.
 
+- **Tiến trình đang chạy giao hàng được (`--deliver`)** (`release.giao-hang-duoc`)
+  - nguồn: trạng thái tiến trình orchestrator — cờ `--deliver` và `--push-remote` lúc khởi động (ADR-0027); console bật động cơ thì là `--deliver-remote` của `python -m console`
 - **Dashboard + alert (có runbook) cho dịch vụ/tính năng mới** (`release.dashboard-alert`)
   - nguồn: api-contract@latest — endpoint/dịch vụ trong contract
   - nguồn: infra@latest — dashboard/alert/runbook có nhắc tới endpoint đó

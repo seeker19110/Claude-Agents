@@ -6,6 +6,19 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(console): **động cơ bật từ console giao hàng được, và tự khai khi không** — bấm "Bật động cơ" trước đây
+  luôn chạy `orchestrator` thiếu `--deliver --push-remote`, nên release đã duyệt **không bao giờ** được tag và
+  đẩy lên repo khách: đúng sự cố 2026-09-10 (QA pass, gate ký, khách nghiệm thu, sản phẩm nằm lại máy). Khác
+  `--repo` — cờ đó đã thành per-project ở ADR-0025 nên console không truyền là đúng thiết kế; còn
+  `Orchestrator.deliver` là cờ **toàn tiến trình**, không override được. Thêm `--deliver-remote REMOTE` (cần
+  `--allow-engine`, thiếu thì dừng mã 2 thay vì hứa suông), remote đến từ dòng lệnh người trực chứ không từ
+  `POST /api/engine`; `status()` khai `delivers`/`deliver_remote` để chế độ không-giao-hàng **tự khai báo** thay
+  vì nhìn y hệt chế độ giao hàng. `docs/HUONG-DAN-VAN-HANH.md:872` trước đó còn khẳng định nút này chạy "đúng
+  lệnh ở §5/§6/§7" — đã sửa. Chặn ở gate: gate `release` (ký **trước** khi `_deliver()` chạy) thêm mục tự kiểm
+  `release.giao-hang-duoc`, `gate_brief` đọc **trạng thái tiến trình thật** (`orch.deliver`/`push_remote`) chứ
+  không đọc lời khai agent — `--deliver` tắt thì hồ sơ báo `gap` kèm câu "ký xong vẫn không tới repo khách",
+  đúng chỗ mà bốn gate xanh trước đây vẫn lọt (#270)
+
 - docs: **README gốc khớp lại số liệu keeper (8→10 agent) và số package workspace (6→5)** — `companies/keeper/README.md`
   đã tự sửa "8 agent" thành 10 (đúng, lỗi đếm cũ) từ trước nhưng README gốc quên theo; "cả sáu package" còn sót
   ở `AGENTS.md:36,103` và bốn dòng comment `ci.yml` sau khi `Studio-creators` rời workspace ở #259 (`members`
