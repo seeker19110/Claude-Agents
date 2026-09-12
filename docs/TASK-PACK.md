@@ -186,12 +186,11 @@ CHANGELOG.
 
 | Từ | Việc | Vì sao chưa làm trong phiên đo |
 |---|---|---|
-| 2026-09-07 | Mở rộng `platform/console/tests/test_readme_goc.py` canh thêm số test và số ADR của `platform/console`/`xagents-core` trong README gốc | Thêm test là sửa code — luật cấm 7, phải PR riêng |
 | 2026-09-07 | `companies/software-company/agents/supervisor/supervisor.md:28` nói bài học vào ngữ cảnh **mọi** agent; thực tế `snapshot()` chỉ đưa một JSON của ticket đóng gần nhất | Sửa prompt phải đi đủ bảy bước `CONTRIBUTING.md` §3 |
-| 2026-09-10 | `branch = true` mới có ở `companies/keeper` và `platform/xagents-core`; ba package còn lại chỉ phủ dòng — `companies/software-company/pyproject.toml:54` tự khai 86 nhánh chưa đi (phép A6) | Bật là sửa cấu hình cổng và sẽ lòi ra nhánh cần test — PR riêng, có thể nhiều PR |
+| 2026-09-10 | `branch = true` mới có ở `companies/keeper` và `platform/xagents-core`; ba package còn lại chỉ phủ dòng — `companies/software-company/pyproject.toml:59` tự khai 62/86 nhánh chưa đi (phép A6) | Bật là sửa cấu hình cổng và sẽ lòi ra nhánh cần test — PR riêng, có thể nhiều PR |
 | 2026-09-10 | `companies/keeper` chưa qua canary (BT8) nên tầng audit tự động mới có `drift-check` chạy thật trong CI (phép A7) | Là một gói việc riêng, không phải việc của phiên đo |
 | 2026-09-12 | `platform/xagents-core` và `companies/keeper` thiếu cả bốn file khung (`CLAUDE.md`/`TRAPS.md`/`CODEMAP.md`/`ARCHITECTURE.md`). #271 đã sửa câu khai sai ở `AGENTS.md:7`+`README.md:34` và dựng cổng canh, **chưa viết file** | Viết bốn file có nội dung thật cho hai package là một gói việc riêng; đẻ stub rỗng để qua cổng còn tệ hơn thiếu |
-| 2026-09-12 | `docs/HUONG-DAN-VAN-HANH.md` còn **35 chỗ** nhắc `Studio-creators` (cả §6 dài 85 dòng là quy trình của công ty đã tách ở #259); `DIEU-PHOI-MODEL.md` 3 chỗ, `TRAPS.md` 5 chỗ | Thuộc hạng mục 3 (phiên audit A1–A8) — dọn một lượt kèm bảng bằng chứng, không vá lẻ |
+| 2026-09-12 | Phép A4 (`docs/reports/2026-09-12-audit.md`): 9/11 ADR gốc + 39 ADR `companies/software-company/docs/adr/` chưa đọc đối chiếu nội dung quyết định với mã thật — mới kiểm 2/11 (ADR-0010, ADR-0011, đều khớp) | Phép này chậm, không tự động hoá được (khuôn A4) — đọc N ADR/vòng ở phiên audit sau, ghi rõ đã tới đâu |
 
 
 ## Khi nào không cần gói việc

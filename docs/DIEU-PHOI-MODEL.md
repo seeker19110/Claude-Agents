@@ -3,7 +3,7 @@
 Các công ty trong X-Agents **không mua token qua API**. Chúng dùng những gói đăng ký đang có trên máy và tự chia việc
 cho đúng model theo mức độ khó của từng agent, ưu tiên gói nào đang còn hạn mức. Tài liệu này là nguồn sự thật cho
 ba câu hỏi: gói nào dùng được, agent nào cần model mức nào, và code điều phối ra sao.
-Quyết định kiến trúc: `companies/software-company/docs/adr/0019-subscription-routing.md`, `Studio-creators/docs/adr/0006-subscription-routing.md`.
+Quyết định kiến trúc: `companies/software-company/docs/adr/0019-subscription-routing.md`.
 
 ## 1. Các gói tài khoản (backend)
 
@@ -16,9 +16,9 @@ Quyết định kiến trúc: `companies/software-company/docs/adr/0019-subscrip
 | (API trả phí) | provider `anthropic` / `openai` với key | tuỳ | Vẫn hỗ trợ, nhưng không phải mặc định của hub |
 
 Khai báo trong `llm.yaml` của từng công ty dưới khoá `backends:` (mẫu trong `llm.example.yaml`). Thứ tự khai báo là
-thứ tự ưu tiên; `routing.prefer` ghi đè theo tier. Khi mọi backend đều đang nghỉ: software-company ném `TransientError`
-(orchestrator hoãn event, nhịp sau thử lại), Studio-creators ném `LLMError` (chạy lại `run` sau). Backend CLI có thể ép
-`supports_tools: true` nếu muốn thử tool-use qua đó (mặc định false).
+thứ tự ưu tiên; `routing.prefer` ghi đè theo tier. Khi mọi backend đều đang nghỉ, software-company ném
+`TransientError` (orchestrator hoãn event, nhịp sau thử lại). Backend CLI có thể ép `supports_tools: true` nếu
+muốn thử tool-use qua đó (mặc định false).
 
 ## 2. Ba tier
 
@@ -56,26 +56,6 @@ Ghi chú lịch sử còn giá trị (2026-09-03, khi `researcher` còn là agen
 eval đòi ≥3 glossary, ≥2 persona, ≥1 flow, ≥1 option kỹ thuật và trích đúng số hiệu văn bản; `gemini-3.8-flash-medium/high`,
 `gemini-pro-agent`, `claude-sonnet-4-6` đều 0/2, `claude-sonnet-5` và `opus-5` pass 2/2. Đầu ra nghiên cứu mỏng thì
 pha `spec` không cứu được: nó khử mâu thuẫn chứ không đi nghiên cứu lại. Đó là lý do `product` giữ `strong`.
-
-### Studio-creators (14 agent)
-
-| Agent | Tier | Vì sao |
-|---|---|---|
-| channel-strategist | strong | Kế hoạch biên tập có ước lượng/ưu tiên/rủi ro; gate `plan` duyệt nhưng chất lượng kế hoạch quyết định cả kênh |
-| script-writer | strong | Sáng tác: hook, giữ chân, CTA, sổ claim có nguồn; chất lượng nội dung là sản phẩm |
-| fact-checker, rights-checker, quality-reviewer | strong | Ba cổng review độc lập trước gate publish; sai ở đây là đăng nội dung sai/vi phạm bản quyền |
-| trend-researcher | standard | Gom nguồn, bằng chứng, đối thủ theo mẫu dossier; script-writer và fact-checker (strong) dùng lại |
-| production-manager | standard | Chia kịch bản thành scene manifest có cấu trúc; renderer là code, editor xem lại |
-| editor | standard | Quyết định cut-list sửa/khoá cảnh; tối đa 3 vòng, quality-reviewer kiểm sau |
-| seo-optimizer | standard | Metadata theo kho từ khoá; preflight là code kiểm lại |
-| analytics-analyst | standard | Diễn giải số liệu đã được code tính (retention map, A/B đã kiểm định) |
-| thumbnail-designer | light *(trước: standard)* | Đặc tả prompt + chữ phủ cho 2–3 biến thể; CTR đo thật, A/B chọn |
-| publisher | light *(trước: standard)* | Chỉ mô tả hành động đăng sau khi gate đã duyệt; mọi thứ đã được chốt |
-| community-manager | light *(trước: standard)* | Phân loại bình luận, nháp trả lời theo giọng kênh; gate `replies` duyệt từng câu |
-| supervisor | light *(trước: standard)* | Như software-company |
-
-Đổi tier của agent = sửa `model_tier` trong front matter + `make golden` (registry golden ghi tier); không cần tăng
-`version` hay ghi lại bản ghi eval vì system prompt không đổi.
 
 ## 4. Chiến lược ưu tiên theo tier (gợi ý `routing.prefer`)
 

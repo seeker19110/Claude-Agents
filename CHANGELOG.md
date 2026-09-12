@@ -6,6 +6,15 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(audit): **phiên audit toàn dự án đầu tiên chạy đủ A1–A8** (`docs/reports/2026-09-12-audit.md`) — sửa số
+  liệu README gốc/con lệch đĩa (software-company 1100→1152 test; console ADR 0001–0003→0001–0004; gateway
+  216→251 ca; `companies/software-company/README.md` tự mâu thuẫn 1151 vs 1097 ca ở hai dòng khác nhau), mở
+  rộng `test_readme_goc.py` canh thêm dãy ADR console+gateway (đóng dòng treo từ 2026-09-07), và dọn 38 chỗ
+  nhắc `Studio-creators` còn sót trong `HUONG-DAN-VAN-HANH.md`/`DIEU-PHOI-MODEL.md` sau khi công ty đó tách
+  repo ở #259 (cả một mục §3.3 34 dòng và §6 85 dòng mô tả quy trình không còn tồn tại). Đề xuất mở rộng phạm
+  vi phép A3 sang tên riêng công ty đã xoá, không chỉ số đếm package. A4 (đọc 50 ADR đối chiếu mã) và A6/A7
+  (branch coverage, canary keeper) vào sổ "Việc để lại đang treo" — phép A4 chậm, không tự động hoá được (#272)
+
 - fix(ci): **hồi sinh cổng chết và biến bốn luật thủ công thành cổng cứng** — cải tổ thư mục #262 làm
   `.pre-commit-config.yaml` (`files:` + `--project`) và 7/9 pattern `.github/CODEOWNERS` trỏ vào hư không:
   hook `subagents-check` **không bao giờ chạy nữa** và luật sở hữu rút về còn dòng `*`, không gì đỏ — cổng chết

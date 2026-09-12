@@ -10,13 +10,12 @@ Mục lục
 3. [Cấu hình model theo gói tài khoản](#3-cấu-hình-model-theo-gói-tài-khoản) — 3.5 nhiều tài khoản cùng gói
 4. [Chạy thử offline](#4-chạy-thử-offline-không-tốn-hạn-mức)
 5. [Vận hành software-company](#5-vận-hành-software-company)
-6. [Vận hành Studio-creators](#6-vận-hành-studio-creators) — 6.3 nối YouTube thật
-7. [Vận hành keeper (công ty bảo trì)](#7-vận-hành-keeper-công-ty-bảo-trì)
-8. [Vận hành gateway](#8-vận-hành-gateway)
-9. [Trực ban hợp nhất (console)](#9-trực-ban-hợp-nhất-console)
-10. [Theo dõi, chi phí, sự cố](#10-theo-dõi-chi-phí-sự-cố)
-11. [Bảo trì: sửa agent, skill, model](#11-bảo-trì-sửa-agent-skill-model)
-12. [Checklist hàng ngày](#12-checklist-hàng-ngày)
+6. [Vận hành keeper (công ty bảo trì)](#6-vận-hành-keeper-công-ty-bảo-trì)
+7. [Vận hành gateway](#7-vận-hành-gateway)
+8. [Trực ban hợp nhất (console)](#8-trực-ban-hợp-nhất-console)
+9. [Theo dõi, chi phí, sự cố](#9-theo-dõi-chi-phí-sự-cố)
+10. [Bảo trì: sửa agent, skill, model](#10-bảo-trì-sửa-agent-skill-model)
+11. [Checklist hàng ngày](#11-checklist-hàng-ngày)
 
 ---
 
@@ -36,7 +35,7 @@ git clone <URL repo> x-agents && cd x-agents
 uv sync
 ```
 
-Cả repo là **một** uv workspace: một lệnh cài cả bốn package vào một `.venv` ở gốc. Không cần `PYTHONPATH`.
+Cả repo là **một** uv workspace: một lệnh cài cả năm package vào một `.venv` ở gốc. Không cần `PYTHONPATH`.
 
 ### Bước 2 — xem cả công ty chạy một vòng (≈ 1 phút)
 
@@ -183,8 +182,6 @@ tuần** (đó là nghiệm thu K9.3 của `docs/DAC-TA-KICH-BAN-B.md`). Ngườ
 | Claude Code CLI (`claude`) đã `claude login` | Nếu dùng gói Claude Pro/Max | provider `claude-code`; không cần API key |
 | Codex CLI (`codex`) đã `codex login` | Nếu dùng gói ChatGPT Plus/Pro | provider `codex`; app Codex Windows đi kèm CLI |
 | Tài khoản Google (Antigravity) | Nếu dùng gateway | miễn phí theo quota; nhiều tài khoản thì xoay vòng |
-| Google Cloud OAuth client (`client_secret.json`) | Studio-creators, khi đăng YouTube thật | YouTube Data API v3 + YouTube Analytics API; đăng nhập một lần bằng `studio.youtube login` |
-| `ffmpeg` trên PATH | Studio-creators, khi ghép video thật | thiếu thì test ghép video tự bỏ qua, provider `fake` vẫn chạy |
 | `make` | Không | Windows thường không có; mọi lệnh `make x` đều có dạng `uv run` tương đương ghi trong `Makefile` |
 
 Windows: dùng Git Bash hoặc PowerShell đều được. Khi lệnh in tiếng Việt lỗi mã hoá, đặt `PYTHONIOENCODING=utf-8`.
@@ -237,8 +234,8 @@ Nhiều tài khoản cho cùng một gói: xem 3.5.
 
 ### 3.2 Viết `llm.yaml`
 
-Mẫu đầy đủ có chú thích: `companies/software-company/llm.example.yaml`, `Studio-creators/llm.example.yaml`. Cấu hình khuyến nghị
-khi có cả Claude và Antigravity (giống nhau cho hai công ty, chỉ khác tiền tố biến môi trường):
+Mẫu đầy đủ có chú thích: `companies/software-company/llm.example.yaml`. Cấu hình khuyến nghị khi có cả Claude
+và Antigravity:
 
 ```yaml
 provider: claude-code          # chỉ là mặc định; có `backends:` thì các backend bên dưới mới được dùng
@@ -293,43 +290,6 @@ Quy tắc cần nhớ:
 - `gateway setup` ghi `llm.yaml` dạng một provider (không `backends:`); đã có `backends:` thì đừng chạy `setup`, khai backend
   `antigravity` như mẫu trên.
 
-### 3.3 Media và nền tảng cho Studio-creators (TTS, ảnh, ghép video, YouTube)
-
-```bash
-cd Studio-creators
-cp media.example.yaml media.yaml     # rồi sửa provider/model; key đặt qua STUDIO_MEDIA_API_KEY (hoặc OPENAI_API_KEY)
-```
-
-`media.yaml` có bốn khoá: `tts`, `image`, `video` (`ffmpeg`: fps, resolution), và `platform` (`provider: fake | youtube`,
-`tokens:` đường dẫn token). Chưa có nhà cung cấp media thì để `fake` cho cả ba kênh: pipeline vẫn chạy trọn vẹn với file giữ
-chỗ. `platform` mặc định `fake` (không chạm YouTube); bật thật ở 6.3.
-
-Provider giọng đọc (`tts.provider`): `openai` (OpenAI hoặc server tương thích), `gemini` (Gemini TTS, có tiếng Việt),
-`elevenlabs`, `azure` (giọng `vi-VN-HoaiMyNeural` / `vi-VN-NamMinhNeural`), `google` (Cloud Text-to-Speech `vi-VN-Neural2-*`),
-`command` (lệnh cục bộ như Piper, Kokoro, edge-tts — không tốn tiền, văn bản không rời máy). Provider ảnh (`image.provider`):
-`openai`, `gemini` (`gemini-2.5-flash-image` hoặc `imagen-*`), `stability`, `replicate` (Flux, SDXL…). Mỗi provider có khối
-mẫu đủ tham số, đang chú thích, trong `media.example.yaml`; bỏ chú thích khối muốn dùng và đổi `provider`.
-
-Khoá API: khai `api_key_env: TEN_BIEN` trong từng kênh, hoặc đặt biến quen thuộc của nhà cung cấp (`GEMINI_API_KEY`,
-`ELEVENLABS_API_KEY`, `AZURE_SPEECH_KEY`, `GOOGLE_API_KEY`, `STABILITY_API_KEY`, `REPLICATE_API_TOKEN`); `STUDIO_MEDIA_API_KEY`
-là dự phòng chung khi tts và ảnh cùng một nhà. Giọng: production-manager ghi `voice_id`/`pace` vào manifest mà không biết
-provider nào sẽ đọc, nên với provider có id giọng riêng (elevenlabs, azure, google) hãy khai `tts.voice` mặc định hoặc bảng
-`tts.voices: {alloy: vi-VN-HoaiMyNeural}`. Lưu ý kích thước ảnh theo model: `gpt-image-1` chỉ nhận `1536x1024` / `1024x1536`
-/ `1024x1024`. Biến môi trường tương ứng: `STUDIO_MEDIA_{TTS,IMAGE,VIDEO}_PROVIDER`, `STUDIO_MEDIA_BASE_URL` (chỉ cho
-provider `openai`), `STUDIO_MEDIA_OUTPUT_DIR`, `STUDIO_PLATFORM`, `STUDIO_YOUTUBE_TOKENS`.
-
-Với `video.provider: ffmpeg`, khung hình bám theo `aspect` của manifest (video dài `1920x1080`, Shorts tự thành `1080x1920`),
-mỗi cảnh dài đúng bằng giọng đọc cộng `tail_pad_s` giây im lặng, và ảnh lấp đầy khung (`fit: cover`, đổi `contain` nếu muốn
-giữ trọn ảnh và chấp nhận viền đen). Mỗi cảnh còn có chuyển động nhẹ (`motion: auto` xoay vòng zoom/pan; `none` để tắt),
-các cảnh nối bằng chuyển cảnh mờ dần `transition_s` giây (tự kẹp ≤ `tail_pad_s` nên giọng đọc hai cảnh không chồng nhau),
-và âm lượng chuẩn hoá về `loudness_lufs` (-14 LUFS, đỉnh -1 dBTP). Bản cuối kèm phụ đề `captions_v<n>.srt` sinh từ chính
-narration của manifest; sau khi upload video, phụ đề được đăng kèm. Trước gate publish, code đo lại file thật bằng ffprobe
-(khung hình, thời lượng, âm lượng, đoạn hình đen, khoảng lặng, thumbnail) và đưa kết quả vào checklist dưới dạng
-dòng `qc:`. Thumbnail cũng do ffmpeg hoàn thiện: model ảnh chỉ vẽ nền, code phủ chữ rồi xuất
-1280x720 JPEG ≤ 2 MB. Chữ cần một font đậm có dấu tiếng Việt; máy không có thì cài (`apt install fonts-dejavu-core`) hoặc
-khai `video.font` trỏ tới file `.ttf`. Thiếu font, thumbnail vẫn đúng kích thước nhưng không có chữ và audit
-`thumbnail.finish` ghi rõ lý do.
-
 ### 3.3b Đường tắt: hồ sơ gói Claude + gateway có sẵn
 
 Không muốn tự viết `backends:` thì mỗi công ty có sẵn một hồ sơ chạy thật, đã kiểm trong CI:
@@ -338,8 +298,7 @@ Không muốn tự viết `backends:` thì mỗi công ty có sẵn một hồ s
 claude login                                   # gói Claude Pro/Max trên máy
 cd platform/gateway && make login && make start         # thêm tài khoản Google, bật daemon 127.0.0.1:1123
 cd ../../companies/software-company && make llm             # chép llm.claude-gateway.yaml → llm.yaml (không ghi đè file đang có)
-cd ../Studio-creators   && make llm
-cd ../../platform/gateway && make models                   # đối chiếu tên model của cả hai công ty, exit 1 nếu lệch
+cd ../../platform/gateway && make models                   # đối chiếu tên model, exit 1 nếu lệch
 ```
 
 Hồ sơ đó: tier `strong` đi gói Claude (`claude-opus-5`, bật `mcp_tools` nên khối kỹ thuật có tool), `standard`/`light` đi
@@ -371,9 +330,9 @@ Sau khi chạy vài ticket, đọc lại audit để biết lượt nào đã đ
 ### 3.4 Kiểm tra cấu hình bằng một lượt gọi thật
 
 ```bash
-cd Studio-creators   # hoặc software-company
+cd companies/software-company
 PYTHONIOENCODING=utf-8 uv run python -c "
-from studio.llm import make_client   # software-company: from company.llm import make_client
+from company.llm import make_client
 c = make_client()
 for tier in ('light','standard','strong'):
     r = c.complete(system='Trả lời JSON.', user='answer=ok', schema={'type':'object','properties':{'answer':{'type':'string'}}}, model_tier=tier)
@@ -406,8 +365,7 @@ CODEX_HOME=~/.codex-acc2 codex login status             # "Logged in using ChatG
 curl http://127.0.0.1:1123/auth/status                  # pool Google: total / available
 ```
 
-Ví dụ `llm.yaml` đầy đủ với 3 tài khoản Claude, 2 tài khoản ChatGPT và pool Google (Studio-creators; software-company
-thêm `prices:` giá 0 như 3.2):
+Ví dụ `llm.yaml` đầy đủ với 3 tài khoản Claude, 2 tài khoản ChatGPT và pool Google (thêm `prices:` giá 0 như 3.2):
 
 ```yaml
 provider: claude-code
@@ -473,9 +431,6 @@ Lưu ý:
 ```bash
 cd companies/software-company
 uv run python -m company.demo        # cả công ty với client giả, dừng ở human gate rồi tự duyệt
-
-cd ../Studio-creators
-uv run python -m studio.demo         # brief → plan → gate → kịch bản → render giả → gate publish → đăng
 ```
 
 Demo dùng `COMPANY_LLM_PROVIDER=fake` nội bộ, không đọc `llm.yaml`. Đây là cách nhanh nhất để thấy luồng topic, gate và
@@ -678,93 +633,7 @@ uv run python -m company.orchestrator report            # estimate vs actual, US
 uv run python -m company.orchestrator metrics [--prometheus]
 ```
 
-## 6. Vận hành Studio-creators
-
-Mọi lệnh chạy trong `Studio-creators/`. Trạng thái trong `studio.sqlite`; asset sinh ra ở `output/<video_id>/`.
-Nguyên tắc approval-first: **không có gì được lên lịch, đăng hay trả lời công khai trước khi qua gate**.
-
-### 6.1 Đưa brief kênh vào
-
-`brief.json` (payload topic `channel-briefs`; bắt buộc `channel_id`, `goals`, `audience`, `pillars`):
-
-```json
-{
-  "channel_id": "CH1",
-  "goals": ["1000 sub trong 3 tháng"],
-  "audience": "người mới làm YouTube",
-  "pillars": ["hướng dẫn", "so sánh"],
-  "cadence": "2 video/tuần",
-  "boundaries": ["không hứa thu nhập", "không dùng nhạc chưa có license"],
-  "language": "vi"
-}
-```
-
-```bash
-uv run python -m studio.orchestrator publish channel-briefs brief.json --actor human:owner
-uv run python -m studio.orchestrator run --watch 5
-```
-
-Hoặc điền form *Brief kênh video* ở khối *Giao việc* đầu màn **Xưởng video** của console (chạy với `--allow-submit`) —
-cùng event, cùng schema.
-
-### 6.2 Bốn gate
-
-| Gate | Khi nào | Lệnh |
-|---|---|---|
-| `plan` | strategist đưa kế hoạch biên tập | `gate_cli approve PLAN-CH1-1 --by human:owner` |
-| `publish` | video cuối + metadata + thumbnail + 3 review (fact, rights, quality) đều pass | `gate_cli approve PUB-CH1-V1 --by human:editor --reason "đăng 12:00 thứ 6"` |
-| `replies` | community-manager nháp trả lời bình luận | `gate_cli approve REP-CH1-... --by human:owner` |
-| `escalation` | supervisor thấy lỗi lặp / vượt ngân sách | `gate_cli approve|reject ...` |
-
-```bash
-uv run python -m studio.gate_cli list
-```
-
-### 6.3 Nối với nền tảng thật (YouTube, ADR-0008)
-
-Mặc định `STUDIO_PLATFORM=fake`: publisher tạo `publish-events` mô tả hành động đăng, con người (hoặc script) thực hiện
-rồi báo lại; số liệu và bình luận đưa vào bằng file:
-
-```bash
-uv run python -m studio.orchestrator publish publish-events published.json        # đã công khai
-uv run python -m studio.orchestrator publish performance-snapshots stats.json     # số liệu thật → analytics
-uv run python -m studio.orchestrator publish audience-comments comments.json      # bình luận → nháp trả lời
-uv run python -m studio.orchestrator status
-uv run python -m studio.orchestrator report
-```
-
-Adapter YouTube thật (`src/studio/platform.py`, `youtube.py`, `urllib` thuần, approval-first): code chỉ chạm YouTube sau khi
-gate `publish` / `replies` được approve. Bật bằng `platform: {provider: youtube}` trong `media.yaml` hoặc `STUDIO_PLATFORM=youtube`.
-
-1. Google Cloud Console: bật YouTube Data API v3 + YouTube Analytics API, tạo OAuth client loại "Desktop app", tải
-   `client_secret.json` (bị gitignore).
-2. Đăng nhập một lần, do NGƯỜI DÙNG làm (mở trình duyệt, loopback 127.0.0.1):
-
-```bash
-cd Studio-creators
-uv run python -m studio.youtube login --client-secrets client_secret.json   # [--port 8765] [--no-browser]
-uv run python -m studio.youtube status        # có token? hết hạn? scopes? (không in secret)
-```
-
-Token lưu `~/.x-agents/auth/youtube_tokens.json` (quyền 600, đổi bằng `STUDIO_YOUTUBE_TOKENS` hoặc `--tokens`), tự refresh
-kể cả khi gặp 401; không bao giờ commit.
-
-3. Vận hành: gate `publish` approve → code upload video private + thumbnail đã chọn + `publishAt` theo lịch publisher quyết,
-   `publish-events` mang `platform_ref`/`url` thật. Gate `replies` approve → code đăng từng reply đã duyệt. Hết quota (403) →
-   `failed` kèm bằng chứng, không im lặng.
-4. Kéo số liệu và bình luận thật lên bus (gọi tay hoặc cron; chưa có lịch tự động):
-
-```bash
-STUDIO_PLATFORM=youtube uv run python -m studio.youtube sync-comments CH1-V1 [--ref YT_ID] [--since 2026-09-01T00:00:00Z]
-STUDIO_PLATFORM=youtube uv run python -m studio.youtube sync-metrics  CH1-V1 --window 7 [--variant A] [--ref YT_ID] [--channel]
-```
-
-`sync-metrics` lấy views, phút xem, AVD, like, comment và retention theo cảnh từ Analytics; impressions/CTR API không cấp nên
-ghi 0 kèm evidence. Chưa có: playlist, Shorts flag, đổi lịch/gỡ video (rollback vẫn do người).
-
-Schema của từng topic ở `topics/schemas/*.json`; mẫu tài liệu ở `templates/`.
-
-## 7. Vận hành keeper (công ty bảo trì)
+## 6. Vận hành keeper (công ty bảo trì)
 
 Mọi lệnh chạy trong `companies/keeper/`. Trạng thái trong `keeper.sqlite`. Khách hàng số 0 của nó là **chính repo này**:
 nó đọc tín hiệu (dependabot, CI, trôi tài liệu), gom thành ticket bảo trì có bậc rủi ro, và chỉ được mở PR khi
@@ -792,7 +661,7 @@ uv run python -m keeper.cli gate --db keeper.sqlite list      # gate đang chờ
 ```
 
 Hàng đợi ticket, ngân sách còn lại, sổ nợ quá hạn và gate chờ đọc gọn hơn ở tab **Công ty bảo trì** của console
-(§9). Ô nào ghi *"chưa chạy lần nào"* thì đúng nghĩa đen là chưa chạy — nó **không** hiện số 0.
+(§8). Ô nào ghi *"chưa chạy lần nào"* thì đúng nghĩa đen là chưa chạy — nó **không** hiện số 0.
 
 ### 7.3 Duyệt gate
 
@@ -831,7 +700,7 @@ export KEEPER_GATE_APPROVERS="human:truc-ban,human:cto"
 - Canary (một chu kỳ thật trên chính X-Agents, tự mở đúng một PR bảo trì có bằng chứng) **chưa chạy**.
 - `keeper` chưa có `llm.yaml` nào, nên nó không xuất hiện ở màn *Cài đặt model* của console.
 
-## 8. Vận hành gateway
+## 7. Vận hành gateway
 
 ```bash
 cd platform/gateway
@@ -854,10 +723,10 @@ curl http://127.0.0.1:1123/v1/models
   tài khoản thì gửi email của tài khoản đó làm bearer.
 - Chạy trên VPS: copy file token lên, `start`; refresh token tự làm mới.
 
-## 9. Trực ban hợp nhất (console)
+## 8. Trực ban hợp nhất (console)
 
-Một trang web cục bộ nhìn cả ba công ty (software-company, Studio-creators, keeper) trên một màn hình, thay cho
-việc mở bốn cửa sổ `status` / `report` / `gate_cli`.
+Một trang web cục bộ nhìn cả hai công ty (software-company, keeper) trên một màn hình, thay cho việc mở nhiều
+cửa sổ `status` / `report` / `gate_cli`.
 
 ```bash
 cd platform/console
@@ -889,14 +758,14 @@ Ba điều phải biết trước khi dựa vào nó:
   `--deliver-remote` cần `--allow-engine`; nêu một mình thì console dừng ngay với mã 2 thay vì hứa suông.
 
 Mở đúng địa chỉ terminal in ra (có token phiên trong đó). Đường dẫn DB khác mặc định thì chỉ ra bằng
-`--company-db` / `--studio-db` / `--keeper-db`.
+`--company-db` / `--keeper-db`.
 
-Sáu màn hình chính: **Trực ban** (hàng đợi gate của cả ba công ty xếp theo mức quá hạn, ô số event/token/PR chưa kiểm,
-chi phí 14 ngày theo tier, bảng gói tài khoản đang xoay), **Xưởng phần mềm** (bảng ticket, PR chờ review, kết quả
-review), **Xưởng video** (dây chuyền video, số liệu sau khi đăng, đường giữ chân), **Công ty bảo trì** (hàng đợi
-ticket bảo trì, ngân sách còn lại, sổ nợ quá hạn, gate chờ — xem §7), **Chi phí & hạn mức**
-(trần dự án, ngân sách token từng ticket, chi phí theo agent, can thiệp của supervisor), **Nhật ký** (audit-log
-có bộ lọc). Trang tự làm mới 10 giây một lần, có nút tạm dừng, và ngưng làm mới khi ngăn kéo chi tiết đang mở.
+Năm màn hình chính: **Trực ban** (hàng đợi gate của cả hai công ty xếp theo mức quá hạn, ô số event/token/PR chưa
+kiểm, chi phí 14 ngày theo tier, bảng gói tài khoản đang xoay), **Xưởng phần mềm** (bảng ticket, PR chờ review,
+kết quả review), **Công ty bảo trì** (hàng đợi ticket bảo trì, ngân sách còn lại, sổ nợ quá hạn, gate chờ — xem
+§6), **Chi phí & hạn mức** (trần dự án, ngân sách token từng ticket, chi phí theo agent, can thiệp của
+supervisor), **Nhật ký** (audit-log có bộ lọc). Trang tự làm mới 10 giây một lần, có nút tạm dừng, và ngưng làm
+mới khi ngăn kéo chi tiết đang mở.
 
 Cần biết khi vận hành:
 
@@ -916,7 +785,7 @@ Cần biết khi vận hành:
 
 Chi tiết: [`../../platform/console/README.md`](../../platform/console/README.md), quyết định thiết kế ở `platform/console/docs/adr/0001-console-hop-nhat.md`.
 
-## 10. Theo dõi, chi phí, sự cố
+## 9. Theo dõi, chi phí, sự cố
 
 **Audit-log là nguồn sự thật.** Mọi lời gọi model, tool, gate, hành động supervisor đều là bản ghi `audit-log` trong
 SQLite; `status` / `report` / `metrics` đọc từ đó.
@@ -934,7 +803,7 @@ SQLite; `status` / `report` / `metrics` đọc từ đó.
 Ngân sách: mỗi brief/ticket phải có `estimate_tokens`; code từ chối kế hoạch nếu `budget_tokens < estimate × 1.5`.
 software-company còn có trần `budget_usd` theo dự án: 80% warn, 100% pause cho tới khi người `resume`.
 
-## 11. Bảo trì: sửa agent, skill, model
+## 10. Bảo trì: sửa agent, skill, model
 
 | Việc | Cần làm |
 |---|---|
@@ -942,29 +811,26 @@ software-company còn có trần `budget_usd` theo dự án: 80% warn, 100% paus
 | Đổi tier của một agent | sửa `model_tier` trong front matter `agents/<khối>/<agent>.md` → `make golden` (registry golden ghi tier). Không cần tăng `version`, không cần ghi lại eval. Cập nhật bảng ở `DIEU-PHOI-MODEL.md` |
 | Sửa prompt agent hoặc skill | tăng `version` trong front matter → `make golden` → `make eval-record AGENT=<id>` bằng model thật → commit `evals/recordings/<id>.json`. CI phát lại bản ghi và đỏ nếu lệch |
 | Thêm provider mới | thêm một class client trong `llm.py` + nhánh trong `_single_client` (hiện: anthropic, openai, claude-code, codex, fake); khai báo trong `backends:` |
-| Thêm nền tảng đăng (TikTok, Facebook…) | cài interface `Platform` trong `Studio-creators/src/studio/platform.py`, thêm vào `make_platform`; hiện: `fake`, `youtube` |
 | Thêm agent / topic / đổi schema | viết ADR ở `<công ty>/docs/adr/` trước; cập nhật `topics/`, `registry`, golden |
-| Đổi tool web | `COMPANY_SEARCH_URL` / `STUDIO_SEARCH_URL` (SearXNG...) |
+| Đổi tool web | `COMPANY_SEARCH_URL` (SearXNG...) |
 
 Lệnh kiểm tra chuẩn trước khi mở PR (mỗi thư mục):
 
 ```bash
 uv run ruff check src tests
-uv run mypy src/company --ignore-missing-imports      # software-company (CI chỉ chạy mypy và coverage ≥ 90% ở đây)
-uv run pytest -q                                      # software-company: 314 ca; Studio: 164; gateway: 54
-uv run python -m company.evals all --replay --strict   # studio: python -m studio.evals all --replay
+uv run mypy src/company --ignore-missing-imports      # software-company
+uv run pytest -q --cov                                # fail_under=100 ở cả năm package (AGENTS.md luật cấm 6)
+uv run python -m company.evals all --replay --strict
 ```
 
 Quy trình Git: [`QUY-TRINH-GIT.md`](QUY-TRINH-GIT.md). Không commit `llm.yaml`, `media.yaml`, `*.sqlite`, `output/`,
 token gateway.
 
-## 12. Checklist hàng ngày
+## 11. Checklist hàng ngày
 
 1. `gateway status`: còn tài khoản sẵn sàng không; `claude auth status` còn đăng nhập không.
 2. `orchestrator status` từng công ty: có gate nào chờ người, event nào hoãn lâu, ticket nào pause.
    Hoặc mở console (`cd platform/console && uv run python -m console`) để thấy cả hai xưởng trên một màn hình.
 3. Duyệt gate; trả lời clarification / change request nếu có.
 4. `report`: chi phí và hành động supervisor bất thường; `llm_retry` cho biết gói nào đang gánh việc.
-5. Với Studio: chạy `studio.youtube sync-metrics` / `sync-comments` (hoặc đưa file `publish-events`, `performance-snapshots`,
-   `audience-comments` khi platform `fake`) để số liệu thật nuôi chiến lược; `studio.youtube status` xem token còn hạn.
-6. Sao lưu `company.sqlite` / `studio.sqlite` và `output/` nếu có nội dung quan trọng.
+5. Sao lưu `company.sqlite` / `keeper.sqlite` nếu có nội dung quan trọng.
