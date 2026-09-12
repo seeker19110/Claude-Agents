@@ -25,12 +25,18 @@ một trong bốn khuôn lỗi lặp lại của X-Agents (`TRAPS.md`).
 `human-only` là khoá VĨNH VIỄN: một người duyệt gate cũng không biến nó thành việc `keeper` tự làm — gate ở
 đó để người biết mà làm, không phải để uỷ quyền ngược lại cho máy.
 
-## "Mở PR" ở BT7 nghĩa là gì
+## "Mở PR" ở BT7 nghĩa là gì — và "publish" ở BT8 khác gì
 
-Nghĩa là soạn và phát `release-notes` + ghi `pr.intent` vào `audit-log`. Thao tác `gh pr create` THẬT không nằm
-ở đây: `github.py` chỉ đọc (bất biến I1) và một chu kỳ thật là việc của canary BT8. Nói "mở PR" cho một hàm
-KHÔNG gọi `gh` sẽ là lời khai, và `AGENTS.md` cấm §8 áp cho chính `keeper` trước tiên — nên cả tên hàm lẫn tên
-action đều nói **ý định**, không nói kết quả.
+`open_pr()` (BT7) soạn và phát `release-notes` + ghi `pr.intent` vào `audit-log` — chỉ Ý ĐỊNH. `gh pr create`
+THẬT không nằm ở đây: `github.py` chỉ đọc (bất biến I1). Nói "mở PR" cho một hàm KHÔNG gọi `gh` sẽ là lời khai,
+và `AGENTS.md` cấm §8 áp cho chính `keeper` trước tiên — nên cả tên hàm lẫn tên action đều nói ý định, không
+nói kết quả.
+
+`publish()` (BT8, `keeper/publish.py`) là bước KHÁC, gọi SAU `open_pr()`: nó push nhánh của ticket rồi
+`gh pr create` thật, sau đó `release.fill_pr_number()` điền số PR thật vào dòng CHANGELOG/session-log đã soạn.
+Nó không tự động — vòng lặp `watch` chưa nối scout→patch→verify→publish thành một chuỗi (không scout nào chạy
+tự động trong `tick()`, patch cần `keeper run` hoặc người commit tay), nên `publish()` là bước NGƯỜI/script gọi
+qua CLI `keeper publish <ticket_id>` sau khi patch đã commit vào worktree — không phải một nhịp tự động.
 
 Chính vì `open_pr()` không tạo PR thật mà `gh.open_prs()` vẫn trả 0 ở ticket kế tiếp trong CÙNG một nhịp (bộ
 đệm TTL của `GitHubReader` còn giữ câu trả lời cũ nữa). Nên cổng `budget` đếm THÊM những `release-notes` mà
