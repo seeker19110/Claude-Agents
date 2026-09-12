@@ -1,4 +1,4 @@
-# console — luật riêng (bổ sung `../AGENTS.md`, không thay)
+# console — luật riêng (bổ sung `../../AGENTS.md`, không thay)
 
 Package `console`. Trực ban hợp nhất tại `127.0.0.1:8200`: một trang HTML tĩnh + `http.server` thư viện chuẩn, đọc
 bus SQLite của hai công ty **chỉ đọc**, duyệt gate qua đúng `HumanGate` của từng công ty, giao việc qua đúng bus +
@@ -20,7 +20,7 @@ ngày thì vẫn bật ở terminal như cũ, và ô Động cơ nói rõ nó ch
 
 ## TDD ở package này
 
-`../AGENTS.md` luật bắt buộc 4 áp nguyên vẹn: viết test đỏ trong `tests/` trước, chạy `uv run pytest -q --cov -k
+`../../AGENTS.md` luật bắt buộc 4 áp nguyên vẹn: viết test đỏ trong `tests/` trước, chạy `uv run pytest -q --cov -k
 <tên test>` thấy đỏ đúng lý do, rồi mới viết code trong `src/console/` cho nó xanh. Đổi `static/js/*.js` cũng
 tính — có `tests/test_es_module.py` canh việc nhập module, viết test canh trước khi thêm màn mới.
 
