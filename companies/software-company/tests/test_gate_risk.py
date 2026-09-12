@@ -210,3 +210,48 @@ def test_actor_code_gia_mao_khong_dong_duoc_gate_that(monkeypatch):
     env = _fake_code_decide_log("REL-9", reason="không có tiền tố")
     bus._log.append(env); bus._notify(bus._subs, env)  # đi vòng qua ACL publish, mô phỏng log bị sửa tay
     assert "REL-9" in PersistentGate(bus).pending
+
+
+# ---------- nhánh chưa đi trong trusted_autoapprove (đo coverage 2026-09-12) ----------
+
+def test_trusted_autoapprove_bo_qua_topic_khac_audit_log():
+    env = Envelope(topic="tasks", key="code", actor=AUTOAPPROVE_ACTOR, payload={"action": "gate.decide"})
+    assert trusted_autoapprove(env) is None
+
+
+def test_trusted_autoapprove_bo_qua_action_khac_gate_decide(monkeypatch):
+    monkeypatch.setenv(AUTOAPPROVE_ENV, "1")
+    env = Envelope(topic="audit-log", key=AUTOAPPROVE_ACTOR, actor=AUTOAPPROVE_ACTOR,
+                    payload=AuditLog(actor=AUTOAPPROVE_ACTOR, action="gate.request", evidence="{}").model_dump())
+    assert trusted_autoapprove(env) is None
+
+
+def test_trusted_autoapprove_evidence_khong_phai_dict(monkeypatch):
+    monkeypatch.setenv(AUTOAPPROVE_ENV, "1")
+    env = Envelope(topic="audit-log", key=AUTOAPPROVE_ACTOR, actor=AUTOAPPROVE_ACTOR,
+                    payload=AuditLog(actor=AUTOAPPROVE_ACTOR, action="gate.decide", evidence="[1, 2, 3]").model_dump())
+    assert trusted_autoapprove(env) is None
+
+
+def test_trusted_autoapprove_subject_id_rong(monkeypatch):
+    monkeypatch.setenv(AUTOAPPROVE_ENV, "1")
+    ev = json.dumps({"subject_id": "", "decision": "approve", "by": AUTOAPPROVE_ACTOR,
+                      "reason": f"{AUTOAPPROVE_REASON_PREFIX}fake-low"})
+    env = Envelope(topic="audit-log", key=AUTOAPPROVE_ACTOR, actor=AUTOAPPROVE_ACTOR,
+                    payload=AuditLog(actor=AUTOAPPROVE_ACTOR, action="gate.decide", evidence=ev).model_dump())
+    assert trusted_autoapprove(env) is None
+
+
+def test_trusted_autoapprove_by_khac_actor_code(monkeypatch):
+    monkeypatch.setenv(AUTOAPPROVE_ENV, "1")
+    env = _fake_code_decide_log("REL-11", reason=f"{AUTOAPPROVE_REASON_PREFIX}fake-low", by="human:ai-mao-danh")
+    assert trusted_autoapprove(env) is None
+
+
+def test_trusted_autoapprove_decision_khong_phai_chuoi(monkeypatch):
+    monkeypatch.setenv(AUTOAPPROVE_ENV, "1")
+    ev = json.dumps({"subject_id": "REL-12", "decision": 123, "by": AUTOAPPROVE_ACTOR,
+                      "reason": f"{AUTOAPPROVE_REASON_PREFIX}fake-low"})
+    env = Envelope(topic="audit-log", key=AUTOAPPROVE_ACTOR, actor=AUTOAPPROVE_ACTOR,
+                    payload=AuditLog(actor=AUTOAPPROVE_ACTOR, action="gate.decide", evidence=ev).model_dump())
+    assert trusted_autoapprove(env) is None

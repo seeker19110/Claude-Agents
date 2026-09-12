@@ -1269,6 +1269,21 @@ def test_hen_cho_backend_song_sot_qua_restart(tmp_path):
     orch3._nap_lai_hen({env.event_id: ("khong-phai-ngay-thang", "transient:backend")})
     assert [e.event_id for e in orch3.queue] == [env.event_id]
 
+    # event trong queue không có mốc hẹn nào ghi cho nó (không nằm trong `hen`) → rehydrate.py 136->139: bỏ
+    # qua nhánh `if moc:`, coi như `con=0.0`, vẫn phải cho chạy ngay, không mất khỏi queue
+    orch3.queue = [env]
+    orch3._nap_lai_hen({"mot-event-khac-khong-lien-quan": (datetime.now(UTC).isoformat(), "transient:backend")})
+    assert [e.event_id for e in orch3.queue] == [env.event_id]
+
+
+def test_retry_con_can_khong_suy_ra_duoc_route_thi_giu_nguyen_hanh_vi_cu(tmp_path):
+    """rehydrate.py 162->exit: `rec` mang `topic`/`agent` không khớp ROUTE nào (vd. dữ liệu cũ hỏng) → không
+    suy ra được `outs` → `_retry_con_can` phải trả True (thà chạy lại còn hơn kẹt vĩnh viễn), không raise."""
+    db = tmp_path / "c.sqlite"
+    bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient())
+    rec = {"topic": "topic-khong-ton-tai", "agent": "agent-khong-ton-tai", "project_id": "P1"}
+    assert orch._retry_con_can([], 0, rec) is True
+
 
 def test_tick_tu_gom_ticket_approved_con_sot_thanh_release():
     """`flush_releases` trước đây chỉ được gọi ngay lúc MỘT ticket vừa review pass (`_on_review`) hoặc lúc đóng

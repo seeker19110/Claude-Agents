@@ -7,6 +7,16 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 ## Chưa phát hành
 
 - docs(adr): **đối chiếu 50/50 ADR còn lại (audit A4) với mã thật, sửa 2 chỗ lệch** — `companies/software-company/docs/adr/0037-gop-21-agent-thanh-5-hai-gate.md` khai "Đề xuất/chưa cài" nhưng agent (5 vai) và `GateKind` (bỏ `plan`) đã khớp mã từ nhiều PR trước, đã sửa Trạng thái thành "Chấp nhận (đã cài đặt)"; `docs/adr/0008-allowlist-vai-duoc-tao-gate.md` sửa tham chiếu tới đường dẫn `Studio-creators/...` đã không còn tồn tại. Một mục (ADR-0004 `lessons_for`) chưa cài, để lại cho người quyết trong `docs/TASK-PACK.md` — không phải việc của audit. Bảng đầy đủ ở `docs/reports/2026-09-12-audit.md` mục A4 (#277)
+- test(company): **bù 16/67 nhánh coverage còn thiếu ở `companies/software-company`** (đo 2026-09-12,
+  `docs/reports/2026-09-12-audit.md` A6) — `gate_cli.trusted_autoapprove` (5 nhánh: topic/action sai, evidence
+  không phải dict, `subject_id` rỗng, `by` giả mạo, `decision` không phải chuỗi), `orch/gates_flow.py` (7 nhánh:
+  gate release duyệt mà chưa có release-candidates, escalation bỏ qua ticket không `approved`, gate acceptance/
+  escalation đã pending thì không mở trùng, `_rework_after_error`/`_retry_stalled` các đường thoát sớm),
+  `orch/rehydrate.py` (2 nhánh: event không có mốc hẹn, không suy ra được route để chạy lại), `probe.py` (1
+  nhánh: backend đã `mcp` OK đứng cạnh backend `cli` khi tổng kết), `supervisor.py` (1 nhánh: bản ghi `knowledge`
+  không phải bài học bị bỏ qua). Còn 51/67 nhánh ở 12 file (`orch/{release_fsm,routes,scheduler,ticket_fsm,
+  verify,worktree_flow}.py`, `orchestrator.py`, `runner.py`, `subagents.py`, `tools.py`, `web.py`,
+  `workspace.py`) — `branch = true` CHƯA bật thật, tiếp tục nhiều PR nhỏ theo cụm file (#278)
 
 - feat(keeper): **nối `git push` + `gh pr create` thật vào keeper (BT8 canary)** — đo được khi thử chạy canary
   thật: `orchestrator.open_pr()` chỉ ghi ý định PR (`pr.intent`), chưa từng gọi `gh`/`git push`. `publish.py`
