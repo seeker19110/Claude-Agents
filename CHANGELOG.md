@@ -6,6 +6,13 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): **`product` bắt buộc gọi tool đọc repo khách trước khi kết luận `data.codebase`, và bắt buộc
+  ghi `architecture`+`api-contract` lên blackboard ngay trong lượt planning** — vận hành thật dự án QLKH lộ ra
+  research chưa từng gọi tool đọc repo (5/5 lượt `tool_calls: 0`) nên `_check_plan` từ chối cả kế hoạch hợp lệ
+  vì thiếu hai namespace này, và gate `escalation` mở ra không có route xử lý cho lỗi cấp dự án đó. Sửa
+  `agents/research/product.md` v2→v3, eval-record 16/16 (lần đầu 14/16 do dao động điểm, xác nhận bằng chạy
+  lại lần hai) (#283)
+- ci: thêm `dependency-review` workflow, tham khảo `project-template`, cập nhật `docs/QUY-TRINH-GIT.md` §4 (#282)
 - build(deps): bump `anthropic` 1.3.0 → 1.4.0 (dependabot) (#246)
 - docs(keeper): **ghi lại canary BT8 lần hai — chạy pipeline `keeper` thật trên tín hiệu drift `pr-280` có thật**
   (thiếu dòng CHANGELOG của PR #280), dừng đúng ở cổng ngân sách I3 (PR #246 đang mở chặn PR canary) thay vì tự
