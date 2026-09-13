@@ -382,3 +382,19 @@ def check_routes(agents: dict[str, AgentSpec]) -> list[str]:
     lead = agents[ROLE.PRODUCT]
     bad += [f"{ROLE.PRODUCT} không đọc {t}" for t in PLAN_INPUTS if t not in lead.reads]
     return bad
+
+
+def source_for(r: Route) -> str | None:
+    """Nhãn `source` mà một route `review-results` PHẢI phát — suy từ ROUTE, không hỏi model.
+
+    `security` chấm dưới một nhãn duy nhất. `qa` mang hai nhãn vì nó chấm hai thứ khác nhau và `delivery.py`
+    đếm chúng vào hai chỗ khác nhau: một TICKET (`pull-requests` → `reviewer`, review nền của mọi PR) và cả
+    một RELEASE (`release-events` → `qa`, hồi quy trên staging). Route không phải `review-results` trả `None`.
+    """
+    if r.topic_out != "review-results":
+        return None
+    if r.agent == ROLE.SECURITY:
+        return SOURCE.SECURITY
+    if r.agent == ROLE.QA:
+        return SOURCE.QA if r.topic_in == "release-events" else SOURCE.REVIEWER
+    return None
