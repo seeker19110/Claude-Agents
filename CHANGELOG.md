@@ -10,11 +10,11 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   model thật thấy model khai nhầm nhãn 4/18 ca khi prompt mang nhiều vai; `delivery.py` đếm review THEO NHÃN
   nên khai nhầm là ticket rủi ro **không bao giờ đủ review và nằm im** mà `status` không báo gì — cùng họ sự
   cố QLKH-001 (13 ticket chờ vô hạn). `review_source.source_for`/`enforce_source` (module `orch/` riêng để
-  giữ hai trần của `test_orch_khuon_loi`), vết ghi đè ở audit `review.source_overridden`. (#<PR>)
+  giữ hai trần của `test_orch_khuon_loi`), vết ghi đè ở audit `review.source_overridden`. (#286)
 - refactor(company): **`GateRiskContext` mang thêm `created_by` và `seq`** — mở đường cho hàng `RISK_RULES`
   đầu tiên (cổng tự qua khi rủi ro thấp) mà không bịa trường: `created_by` phân biệt `escalation` do
   supervisor/ops/delivery-lead mở, `seq` là thế hệ gate — thứ duy nhất diễn đạt được "chỉ tự động lần đầu".
-  **Không thêm luật, không đổi hành vi**: `RISK_RULES` vẫn rỗng, mọi gate vẫn chờ người. (#<PR>)
+  **Không thêm luật, không đổi hành vi**: `RISK_RULES` vẫn rỗng, mọi gate vẫn chờ người. (#286)
 
 - feat(platform): container hoá hub console+orchestrator để chạy trên WSL — ADR-0013, Dockerfile+
   docker-compose.yml+entrypoint ở gốc repo, state qua volume (không bake `company.sqlite`/secret vào image),
