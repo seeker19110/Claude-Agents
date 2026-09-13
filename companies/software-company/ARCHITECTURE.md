@@ -7,7 +7,7 @@ chiếu với `ROUTES`, vòng đời ticket, trạng thái, human gate). Tiêu c
 ## Năm công đoạn (ADR-0037)
 
 `product` (pha `intake`/`research`/`spec`/`plan`) · `builder` (pha = `stack` của ticket: backend, frontend, mobile,
-database, platform, data) · `qa` (pha `author`/`review`/`security`) · `ops` (pha `deploy`/`docs`/
+database, platform, data) · `qa` (pha `author`/`review`) · `security` (không pha) · `ops` (pha `deploy`/`docs`/
 `account`). Cộng `supervisor` — code, không phải công đoạn — nên `load_agents()` trả **6**. Pha quyết định skill nào
 được nạp cho lượt đó (`phases:` trong front matter), không phải một agent khác.
 
@@ -16,8 +16,8 @@ database, platform, data) · `qa` (pha `author`/`review`/`security`) · `ops` (p
 ```
 yêu cầu thô ─► product[intake] ─► product[research] (4 mảng) ─► product[spec] (draft kèm risks)
    ─► product[intake] (câu hỏi làm rõ) ⇄ người ─► product[spec] → approved-specs
-   ─► GATE spec ─► qa[security] (threat model) ─► product[plan] (C4, contract, ticket) ─► _check_plan (CODE, không gate)
-   ─► [qa[author] lượt mù] ─► builder[stack] (worktree ticket/<id>, lint/test thật) ─► qa[review] (+ qa[security] nếu risk_tags)
+   ─► GATE spec ─► security (threat model) ─► product[plan] (C4, contract, ticket) ─► _check_plan (CODE, không gate)
+   ─► [qa[author] lượt mù] ─► builder[stack] (worktree ticket/<id>, lint/test thật) ─► qa[review] (+ security nếu risk_tags)
    ─► delivery.py: approved → merge vào company/integration ─► release-candidate
    ─► ops[deploy] staging ─► ORCHESTRATOR SMOKE (ADR-0029) ─► qa[review] hồi quy ─► GATE release
    ─► ops[deploy] production ─► tag v<version> + company/release (ADR-0027) ─► GATE acceptance (khách ký)

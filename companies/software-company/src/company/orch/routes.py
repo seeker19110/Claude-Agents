@@ -30,24 +30,7 @@ MAX_CONFLICT_RETRIES = 6  # xung đột merge thứ 7 liên tiếp cho một tic
 RESEARCH_TOPICS = frozenset({"research-requests", "research-findings", "requirements-draft", "clarification-answers"})
 CONTROL_TOPICS = frozenset({"audit-log", "shared-context", "supervisor-actions"})
 # Nhãn `source` của review-results → agent chấm. ADR-0037: `reviewer` và `qa` là hai GÓC NHÌN của cùng agent `qa`.
-# ADR-0040: cả ba nhãn nay cùng một agent `qa` — khác PHA, khác lượt gọi. Bảng vẫn tồn tại vì nó ánh xạ
-# NHÃN bằng chứng → AGENT phát, và nhãn thì không gộp (ADR-0040 §3).
-REVIEW_AGENT = {SOURCE.REVIEWER: ROLE.QA, SOURCE.QA: ROLE.QA, SOURCE.SECURITY: ROLE.QA}
-
-# Nhãn `source` → PHA đã phát nó. ADR-0040 làm `(agent, topic_out)` của hai route chấm PR trùng nhau
-# (`qa` → `review-results`), nên khoá chống-chạy-lại phải phân biệt thêm bằng pha; khi mở lại từ bus, pha
-# không nằm trong event mà suy được từ `payload.source`. Đây là chỗ DUY NHẤT ánh xạ đó tồn tại.
-SOURCE_PHASE = {SOURCE.REVIEWER: "review", SOURCE.QA: "review", SOURCE.SECURITY: "security"}
-
-
-def slot_of(agent: str, topic_out: str, phase: str | None) -> str:
-    """Khoá `partial`: "<agent>:<topic_out>" (PR-5b), thêm ":<pha>" CHỈ khi cặp đó có nhiều hơn một route.
-
-    Thêm pha cho mọi route là làm lệch khoá dựng lại từ bus (`rehydrate` không biết pha của event cũ), nên
-    agent sẽ chạy lại sau restart — đúng thứ PR-5b dựng khoá này để chặn. Vì thế chỉ nới đúng chỗ nhập nhằng.
-    """
-    return f"{agent}:{topic_out}:{phase or ''}" if (agent, topic_out) in AMBIGUOUS else f"{agent}:{topic_out}"
-
+REVIEW_AGENT = {SOURCE.REVIEWER: ROLE.QA, SOURCE.QA: ROLE.QA, SOURCE.SECURITY: ROLE.SECURITY}
 KEY_FIELD = {"tasks": "ticket_id", "pull-requests": "ticket_id", "test-suites": "ticket_id", "review-results": "ticket_id", "incidents": "incident_id",
              "change-requests": "change_id", "release-candidates": "release_id", "release-events": "release_id",
              "acceptance-results": "release_id"}  # topic khác (project_id) giữ key của event nguồn
@@ -327,10 +310,10 @@ ROUTES: tuple[Route, ...] = (
     # về làm lại dù reviewer + QA pass. Có tool thì nó đọc đúng file bị cắt rồi mới chấm.
     Route("pull-requests", ROLE.QA, "review-results",
           enrich=lambda e, o: {**_with_diff(e, o), **_with_chan_doan(e, o)}, tools="ro", phase="review"),
-    Route("pull-requests", ROLE.QA, "review-results", _needs_security, enrich=_with_diff, tools="ro", phase="security"),
+    Route("pull-requests", ROLE.SECURITY, "review-results", _needs_security, enrich=_with_diff, tools="ro"),
     # vận hành: RC → staging (+ security DAST/license khi có risk) → QA hồi quy; production đi qua gate 3 (PROD_ROUTE)
     STAGING_ROUTE,
-    Route("release-candidates", ROLE.QA, "review-results", _release_needs_security, phase="security"),
+    Route("release-candidates", ROLE.SECURITY, "review-results", _release_needs_security),
     Route("release-events", ROLE.QA, "review-results", _deployed("staging"), tools="ro", phase="review"),  # tool trên worktree tích hợp
     Route("release-events", ROLE.OPS, CONTEXT_ONLY, _deployed("production"), phase="docs"),  # docs, release notes, runbook
     # khách và hậu release
@@ -370,7 +353,7 @@ def spec_route(topic_in: str) -> Route:
     return replace(base, topic_in=topic_in, when=None, enrich=None if topic_in == "requirements-draft" else base.enrich)
 
 
-THREAT_ROUTE = Route("approved-specs", ROLE.QA, "review-results", phase="security")  # threat model trước ticket đầu (ADR-0003)
+THREAT_ROUTE = Route("approved-specs", ROLE.SECURITY, "review-results")  # threat model trước ticket đầu (ADR-0003)
 
 # Đầu vào khiến `product` pha `plan` lập kế hoạch (sinh nhiều ticket một lượt) → `_check_plan` → dispatch (ADR-0037).
 PLAN_INPUTS: dict[str, When] = {
@@ -399,45 +382,3 @@ def check_routes(agents: dict[str, AgentSpec]) -> list[str]:
     lead = agents[ROLE.PRODUCT]
     bad += [f"{ROLE.PRODUCT} không đọc {t}" for t in PLAN_INPUTS if t not in lead.reads]
     return bad
-
-
-# Cặp (agent, topic_out) mà HAI route cùng đọc MỘT topic vào — tức hai route có thể khớp CÙNG một event và
-# do đó đụng khoá `partial` (xem `slot_of`). Tính theo cả `topic_in`: hai route cùng (agent, topic_out) nhưng
-# khác topic vào thì không bao giờ tranh nhau một event, khoá 2 phần của PR-5b vẫn đúng cho chúng.
-# Tính từ ROUTES nên thêm/bớt route là bảng tự đúng, không phải nhớ cập nhật tay.
-_ALL_ROUTES = (*ROUTES, PROD_ROUTE, THREAT_ROUTE)
-AMBIGUOUS: frozenset[tuple[str, str]] = frozenset(
-    (a, out) for (a, out, _in) in {(r.agent, r.topic_out, r.topic_in) for r in _ALL_ROUTES}
-    if sum(1 for r in _ALL_ROUTES if (r.agent, r.topic_out, r.topic_in) == (a, out, _in)) > 1
-)
-
-
-def phase_of_output(agent: str, topic_out: str, payload: dict) -> str | None:
-    """Pha đã phát một event ĐẦU RA — dùng khi dựng lại `partial` từ bus, nơi pha không được ghi vào event.
-
-    Hai nguồn, theo thứ tự: nhãn `source` của `review-results` (ADR-0040: `reviewer|qa` → pha `review`,
-    `security` → pha `security`), rồi trường hợp mọi route nhập nhằng của cặp này vốn cùng MỘT pha — lúc đó
-    không cần suy gì, pha nào cũng là pha đó. Không rơi vào hai nhóm ấy thì trả `None`.
-    """
-    if topic_out == "review-results":
-        src = payload.get("source")
-        if isinstance(src, str) and src in SOURCE_PHASE:
-            return SOURCE_PHASE[src]
-    phases = {r.phase for r in _ALL_ROUTES if (r.agent, r.topic_out) == (agent, topic_out)}
-    return phases.pop() if len(phases) == 1 else None
-
-
-def source_for(r: Route) -> str | None:
-    """Nhãn `source` mà một route `review-results` PHẢI phát — suy từ ROUTE, không hỏi model (ADR-0040).
-
-    Pha `security` luôn là nhãn `security`. Pha `review` mang hai nhãn vì nó chấm hai thứ khác nhau: một
-    TICKET (`pull-requests` → `reviewer`) và cả một RELEASE (`release-events` → `qa`); `delivery.py` đếm hai
-    nhãn ấy vào hai chỗ khác nhau nên không gộp được. Route không phải `review-results` trả `None`.
-    """
-    if r.topic_out != "review-results":
-        return None
-    if r.phase == "security":
-        return SOURCE.SECURITY
-    if r.phase == "review":
-        return SOURCE.QA if r.topic_in == "release-events" else SOURCE.REVIEWER
-    return None

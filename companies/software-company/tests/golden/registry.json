@@ -101,16 +101,14 @@
   },
   "qa": {
     "block": "quality",
-    "budget_tokens_per_task": 80000,
-    "context_namespace_write": "threat-model",
+    "budget_tokens_per_task": 60000,
+    "context_namespace_write": null,
     "max_retries": 1,
-    "model_tier": "strong",
+    "model_tier": "standard",
     "reads": [
       "tasks",
       "pull-requests",
-      "release-events",
-      "approved-specs",
-      "release-candidates"
+      "release-events"
     ],
     "skills": [
       "testing"
@@ -120,10 +118,38 @@
       "api-contract",
       "accessibility"
     ],
-    "timeout_minutes": 90,
-    "version": 2,
+    "timeout_minutes": 60,
+    "version": 1,
     "writes": [
       "test-suites",
+      "review-results"
+    ]
+  },
+  "security": {
+    "block": "quality",
+    "budget_tokens_per_task": 80000,
+    "context_namespace_write": "threat-model",
+    "max_retries": 1,
+    "model_tier": "strong",
+    "reads": [
+      "approved-specs",
+      "pull-requests",
+      "release-candidates"
+    ],
+    "skills": [
+      "threat-modeling",
+      "security",
+      "license-compliance",
+      "privacy-compliance",
+      "dependency-management"
+    ],
+    "skills_core": [
+      "ai-governance",
+      "devops"
+    ],
+    "timeout_minutes": 90,
+    "version": 8,
+    "writes": [
       "review-results"
     ]
   },

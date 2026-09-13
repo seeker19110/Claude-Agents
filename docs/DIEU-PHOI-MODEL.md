@@ -36,10 +36,9 @@ không còn lựa chọn).
 Tiêu chí xếp: (a) độ sâu suy luận cần thiết; (b) hậu quả nếu sai và có lớp nào bắt lỗi phía sau không (gate người,
 code kiểm định, agent review khác); (c) độ dài/độ phức tạp đầu ra; (d) tần suất chạy (agent chạy nhiều lượt kéo chi phí).
 
-### software-company (5 agent: 4 công đoạn + supervisor — ADR-0040)
+### software-company (6 agent: 5 công đoạn + supervisor — ADR-0037)
 
-ADR-0037 gộp 21 agent thành 5 công đoạn, ADR-0040 gộp tiếp `security` vào `qa` còn 4; mỗi công đoạn nhiều việc
-thì chia **pha** (`phases:` trong front matter).
+ADR-0037 gộp 21 agent thành 5 công đoạn; mỗi công đoạn nhiều việc thì chia **pha** (`phases:` trong front matter).
 Tier là của **agent**, không của pha — một agent chạy mọi pha của nó trên cùng một tier, nên tier phải đủ cho pha
 nặng nhất. Đó là thay đổi thực chất so với bảng 21 dòng cũ: `intake`/`clarifier` từng là `light` nay chạy dưới
 `product` (`strong`), còn `test-author` từng là `standard` nay chạy dưới `qa` (`standard`, không đổi).

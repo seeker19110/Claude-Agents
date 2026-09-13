@@ -595,7 +595,7 @@ Hồ sơ in ra màn hình và ghi `company.artifacts/<project>/gate-brief/<subje
 `unknown` kèm sự việc và nguồn (namespace@version, topic, worktree) — không có mục nào là "nên duyệt". Với gate `escalation`
 hồ sơ gom lịch sử thất bại, hint đã dùng (và hint lặp lại y hệt), ngân sách còn, worktree để hint mới cụ thể hơn "thử lại".
 Trong Claude Code, `/gate-brief REL-001` chạy lệnh trên rồi gọi subagent `sc-gate-release` + trợ lý chuyên môn (`sc-qa`,
-`sc-ops`; chỉ Read/Grep/Glob) đọc hồ sơ và in một bản tóm; câu cuối luôn là lệnh
+`sc-security`, `sc-ops`; chỉ Read/Grep/Glob) đọc hồ sơ và in một bản tóm; câu cuối luôn là lệnh
 `gate_cli` để bạn tự ký.
 
 Con người trả lời câu hỏi làm rõ (`product` pha `intake`), quyết định change request, nhận xét ticket đang chạy, hoặc
@@ -616,7 +616,7 @@ lên production. Khách ký nghiệm thu bằng `acceptance-results` qua `ops` (
 `COMPANY_GATE_AUTOAPPROVE=1` bật đường code tự đóng gate khi bậc rủi ro (do `company/gate_risk.py:RISK_RULES`
 xếp — một bảng tra cứu được, không phải model tự khai) là `"low"`. **Bảng `RISK_RULES` khởi tạo RỖNG**: bật cờ
 này ngay bây giờ KHÔNG đổi hành vi gì cả — chưa có luật cứng nào để tự động qua, mọi gate vẫn chờ người y hệt
-hôm nay. Bảng chỉ có tác dụng sau khi một PR riêng (đi qua `sc-qa`) thêm hàng đầu tiên.
+hôm nay. Bảng chỉ có tác dụng sau khi một PR riêng (đi qua `sc-security`) thêm hàng đầu tiên.
 
 Khi có hàng rồi: gate khớp đúng một hàng `tier="low"` được `code` (actor mới, không phải `"orchestrator"`) tự
 `approve`, ghi `verified_by`-tương-đương qua `reason` mang tiền tố `auto-risk:<tên hàng>` trong `audit-log` —

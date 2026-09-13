@@ -36,7 +36,7 @@ def test_namespace_owner_enforced():
 def test_new_namespaces_writable_by_owner():
     bus = InMemoryBus()
     # ADR-0037 PR-5d: `infra` và `analytics` đổi chủ từ platform/data sang `builder` (một agent cho cả sáu mảng)
-    for actor, ns in (("product", "design"), ("qa", "threat-model"),
+    for actor, ns in (("product", "design"), ("security", "threat-model"),
                       ("builder", "infra"), ("builder", "analytics")):
         bus.publish(Envelope(topic="shared-context", key=ns, actor=actor,
                              payload={"namespace": ns, "version": 1, "content_ref": "x"}))

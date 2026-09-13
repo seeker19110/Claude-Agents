@@ -103,7 +103,7 @@ gói nào đổi schema topic; audit action mới chỉ là dòng thừa với c
 ### 4L-1a · Ngưỡng eval
 
 1. **Mục tiêu**: `evals.py:311-356` cổng CI là `gate_ok`; `cases_ok` chỉ in "CHÚ Ý". Điểm tụt 90 → 60% vẫn xanh.
-2. **Xong khi**: `evals/thresholds.yaml` 5 agent = điểm đo hôm nay làm tròn xuống 0.05 · `evals all --replay --strict`
+2. **Xong khi**: `evals/thresholds.yaml` 6 agent = điểm đo hôm nay làm tròn xuống 0.05 · `evals all --replay --strict`
    exit 0 · bản sao tạm sửa `expect` sai → exit 1 dòng `dưới ngưỡng` · 8 ca test xanh.
 3. **Phạm vi**: `src/company/evals.py`, `evals/thresholds.yaml`, `tests/test_evals_thresholds.py`, `Makefile`
    (`eval-thresholds`), `CONTRIBUTING.md` §3 bước 3. **Không**: `agents/`, `skills/`, `evals/*.yaml`, `recordings/`.
@@ -288,7 +288,7 @@ gom tiểu gói của một gói vào một nhánh, mở PR, chờ merge, rebase
 
 Tiểu gói trong một gói, thứ tự cố định: **test đỏ** (Sonnet `medium` viết theo khung, dán output) → **code**
 (mức theo bảng B; phần C3 của một gói là phần ghép vào runtime, phần thuần/parse/test là C2, phần đo/điền/CHANGELOG
-là C1) → **test xanh + lệnh CI** (C1) → **`sc-*` chỉ đọc chấm** (`sc-qa` mọi gói code, gồm cả góc nhìn bảo mật; khi chạm
+là C1) → **test xanh + lệnh CI** (C1) → **`sc-*` chỉ đọc chấm** (`sc-qa` mọi gói code; `sc-security` khi chạm
 tool/guard/gate: 4L-2, 4L-6; `sc-builder` khi chạm runner/core: 4L-3, 4L-4, 4L-7; `sc-ops` cho ô console 4L-5;
 `sc-supervisor` cho ADR-0040) → phiên chính đọc diff → PR. Subagent không được bỏ ca test trong khung; muốn bỏ
 phải nêu lý do để phiên chính quyết.

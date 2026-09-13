@@ -13,24 +13,23 @@ EXPECTED = {
     # engineering (1) — ADR-0037 PR-5d: backend + frontend + mobile + database + platform + data gộp thành
     # `builder`, sáu tên cũ thành PHA chọn theo `stack` của ticket
     "builder",
-    # quality (1) — ADR-0037 PR-5c gộp test-author + reviewer + qa-debugger thành `qa`; ADR-0040 gộp thêm
-    # `security` thành pha thứ ba (pha `author`/`review`/`security`)
-    "qa",
+    # quality (2) — ADR-0037 PR-5c: test-author + reviewer + qa-debugger gộp thành `qa` (pha `author`/`review`)
+    "qa", "security",
     # operations (1) — ADR-0037 PR-5b: release-engineer + support-docs + account-manager gộp thành `ops`
     "ops",
     # supervision (1)
     "supervisor",
 }
 
-def test_all_5_agents_load():
-    """ADR-0040 nói "4 agent công đoạn"; con số ở đây là **5** và đó không phải sai lệch: `supervisor` là một
-    file trong `agents/` (khối `supervisor`) nên `load_agents()` đếm nó, còn ADR đếm CÔNG ĐOẠN và không tính
+def test_all_6_agents_load():
+    """ADR-0037 nói "21 agent → 5"; con số ở đây là **6** và đó không phải sai lệch: `supervisor` là một file
+    trong `agents/` (khối `supervisor`) nên `load_agents()` đếm nó, còn ADR đếm năm CÔNG ĐOẠN và không tính
     supervisor — nó là phần code giám sát, không nhận ticket nào. Khoá cả hai con số ở đây để lần sau không ai
     phải đoán bên nào đúng."""
     agents = load_agents()
     assert set(agents) == EXPECTED
-    assert len(agents) == 5
-    assert len(EXPECTED - {"supervisor"}) == 4, "4 công đoạn theo ADR-0040 + supervisor (code)"
+    assert len(agents) == 6
+    assert len(EXPECTED - {"supervisor"}) == 5, "5 công đoạn theo ADR-0037 + supervisor (code)"
 
 def test_prompts_have_skills_and_dod():
     for a in load_agents().values():
@@ -127,17 +126,16 @@ def test_context_namespace_read_names_real_namespaces():
     for spec in agents.values():
         assert spec.context_namespace_read is not None, f"{spec.id}: thiếu context_namespace_read"
         assert set(spec.context_namespace_read) <= set(NAMESPACE_OWNERS), spec.id
-    for aid in ("qa", "ops", "supervisor"):
+    for aid in ("qa", "security", "ops", "supervisor"):
         assert agents[aid].max_input_chars and agents[aid].max_input_chars <= 70_000, aid
 
 
 def test_review_tiers_per_adr0021():
     agents = load_agents()
-    # ADR-0040: `qa` nuốt pha `security` mà `Phase` không mang `model_tier` riêng, nên cả agent lên `strong`
-    # (ADR-0040 §4 ghi rõ đây là giá phải trả: mọi lượt qa nay chạy tier mạnh).
-    assert agents["qa"].model_tier == "strong", "ADR-0040: pha `security` kéo cả `qa` lên tier mạnh"
+    assert agents["qa"].model_tier == "standard", "ADR-0021: chấm code/test dùng tier standard"
+    assert agents["security"].model_tier == "strong", "separation of duties: security giữ tier mạnh"
     # ADR-0037: `qa` chấm MỌI PR (route pha `review` không còn guard risk_tags) nên nó là review NỀN, không
-    # phải review "thêm" của ticket rủi ro — chỉ NHÃN `security` mới là (nay do chính `qa` phát, pha khác).
+    # phải review "thêm" của ticket rủi ro — chỉ `security` mới là.
     assert DeliveryLead.RISK_REVIEWS == {SOURCE.SECURITY} and DeliveryLead.BASE_REVIEWS == {SOURCE.REVIEWER}
 
 

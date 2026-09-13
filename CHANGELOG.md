@@ -6,16 +6,6 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- refactor(company): **gộp agent `security` vào `qa` thành pha thứ ba — 5 agent công đoạn còn 4** (ADR-0040).
-  Lật bất biến #2 của ADR-0037 (review ≠ security) theo yêu cầu giảm số vai. Ranh giới **bằng chứng** giữ
-  nguyên, không nhân nhượng: `SOURCE.SECURITY` ở lại `ReviewSource`, `RISK_REVIEWS` vẫn đòi một dòng review
-  nhãn `security` phát ở **lượt gọi model riêng** (pha `security`), nên số lượt/ticket KHÔNG giảm — cái giảm là
-  số vai phải bảo trì. `REVIEW_AGENT[security] → qa`, 4 route + `THREAT_ROUTE` mang `phase="security"`,
-  namespace `threat-model` sang `qa`. `Phase` không có `model_tier` riêng nên `qa` buộc lên tier `strong`
-  (mọi lượt qa nay đắt hơn — ADR-0040 §4 ghi rõ là giá phải trả). `sc-security` biến mất (10 → 9 subagent).
-  Đo hai chiều: 11 test ADR-0040 đỏ trước khi sửa (7 ca hành vi mới) và xanh sau; 4 ca guard "không được đổi"
-  xanh cả hai chiều. (#<PR>)
-
 - feat(platform): container hoá hub console+orchestrator để chạy trên WSL — ADR-0013, Dockerfile+
   docker-compose.yml+entrypoint ở gốc repo, state qua volume (không bake `company.sqlite`/secret vào image),
   socket `docker.sock` passthrough cho orchestrator gọi `docker compose` deploy khách (ADR-0039) mà không cần

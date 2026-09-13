@@ -34,7 +34,7 @@ là bảng nghiệm thu không phụ thuộc tên đối tượng.
 |---|---|---|---|
 | **C1 cơ học** | có mẫu, một file, sai thì CI bắt: tài liệu, điền yaml từ số đo, CHANGELOG, chạy lệnh CI dán output | Haiku 4.5, hoặc Sonnet 5 `low` | CI + phiên chính đọc diff |
 | **C2 cục bộ** | một module, hợp đồng cho sẵn (chữ ký hàm, ca test): hàm thuần, nhánh parse, metrics, test đỏ theo khung | Sonnet 5 `medium` | test hai chiều + một `sc-*` |
-| **C3 xuyên module** | đổi hành vi runtime, chạm ≥ 2 package, phải quyết điều gói chưa quyết, hoặc cần ADR | Opus 5 `high` (`xhigh` khi ADR) | test hai chiều + `sc-qa` + `sc-builder` tuỳ vùng + phiên chính đọc toàn diff |
+| **C3 xuyên module** | đổi hành vi runtime, chạm ≥ 2 package, phải quyết điều gói chưa quyết, hoặc cần ADR | Opus 5 `high` (`xhigh` khi ADR) | test hai chiều + `sc-qa` + `sc-security`/`sc-builder` tuỳ vùng + phiên chính đọc toàn diff |
 
 Trong một gói, phần *ghép vào runtime* là C3, phần *thuần / parse / test* là C2, phần *đo / điền / tài liệu* là C1.
 Không hạ C3 (giá là một vòng PR đỏ), không nâng C1 (Opus viết CHANGELOG không tốt hơn Haiku).

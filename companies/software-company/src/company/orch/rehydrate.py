@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from ..events import Envelope
 from ..roles import ROLE
 from ..runner import CONTEXT_ONLY
-from .routes import ACTOR, ROUTES, phase_of_output, slot_of
+from .routes import ACTOR, ROUTES
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator
@@ -99,11 +99,7 @@ def rehydrate(o: Orchestrator) -> None:
         if env.actor in o.agents and env.causation_id:
             # Đầu ra agent đã publish cho event chưa được đánh dấu xong (crash giữa hai route): agent đó KHÔNG chạy
             # lại khi mở lại — tốn token và sinh PR/review trùng. `partial` được dựng lại từ causation_id.
-            # slot = "<agent>:<topic_out>" (PR-5b), + ":<pha>" cho cặp nhập nhằng (ADR-0040). Pha không nằm
-            # trong event nên suy từ chính đầu ra (`phase_of_output`); suy sai thì agent chạy lại một lần sau
-            # restart, nên nó chỉ suy khi có căn cứ chắc và trả `None` nếu không.
-            o.partial.setdefault(env.causation_id, set()).add(
-                slot_of(env.actor, env.topic, phase_of_output(env.actor, env.topic, env.payload)))
+            o.partial.setdefault(env.causation_id, set()).add(f"{env.actor}:{env.topic}")  # slot = "<agent>:<topic_out>" (PR-5b)
         o.supervisor.replay(env)
     # Lệnh thử-lại chỉ sống trong RAM: `_retry_stalled` bỏ dấu `processed` rồi đẩy event vào `o.queue`.
     # Restart giữa lúc đó là mất trắng — event vẫn mang dấu `orchestrated` của LẦN LỖI, nên hàng đợi dựng lại

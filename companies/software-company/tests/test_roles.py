@@ -46,11 +46,7 @@ OLD_IDS = frozenset({
 # Đã gộp/đổi tên tới đâu (PR-5a..5e): id cũ → id mới. Lớn dần đúng một dòng mỗi PR-5x, và là chỗ DUY NHẤT test
 # biết đợt gộp đã đi tới đâu — quên cập nhật khi đổi `ROLE.*` là đỏ ở `test_hang_role_khop_front_matter_hai_chieu`.
 MIGRATED: dict[str, str] = {
-    # PR-5a đổi `security-engineer` → `security`; ADR-0040 gộp tiếp `security` → `qa`. Bảng này trỏ về id
-    # HÔM NAY chứ không phải chặng giữa, nên cả hai tên cũ cùng trỏ `qa` (chuỗi hai chặng đã gộp lại).
-    # `SOURCE.SECURITY` thì CÒN — nhãn bằng chứng không gộp theo (ADR-0040 §3), nên chuỗi "security" vẫn
-    # hợp lệ trong roles.py dưới dạng `SOURCE.SECURITY`.
-    "security-engineer": "qa", "security": "qa",  # PR-5a + ADR-0040
+    "security-engineer": "security",  # PR-5a
     "release-engineer": "ops", "support-docs": "ops", "account-manager": "ops",  # PR-5b (gộp 3→1)
     "test-author": "qa", "reviewer": "qa", "qa-debugger": "qa",  # PR-5c (gộp 3→1, pha `author`/`review`)
     # PR-5d (gộp 6→1): sáu tên cũ SỐNG TIẾP nhưng đổi nghĩa — chúng là `stack` của ticket và pha của `builder`

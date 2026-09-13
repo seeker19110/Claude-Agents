@@ -62,7 +62,7 @@ Mỗi mục phải xuất hiện trong báo cáo với đúng một kết luận
 ## Trợ lý chuyên môn nên gọi cùng hồ sơ
 
 - sc-product
-- sc-qa
+- sc-security
 
 ## Đầu ra
 

@@ -494,7 +494,7 @@ class _FlakySecurityThreatModel:
         self.inner = FakeClient(handler=handler); self.calls = self.inner.calls; self.exc = exc; self.raised = False
 
     def complete(self, **kw):
-        if _agent_of(kw["system"]) == "qa" and "`approved-specs`" in kw["user"] and not self.raised:
+        if _agent_of(kw["system"]) == "security" and "`approved-specs`" in kw["user"] and not self.raised:
             self.raised = True
             raise self.exc
         return self.inner.complete(**kw)
@@ -774,7 +774,7 @@ def test_human_pr_replaces_agent_pr_in_review():
 def test_context_scoped_by_role_and_per_agent_max_input(tmp_path):
     bus = InMemoryBus(); bb = Blackboard(bus, store=tmp_path / "art")
     bb.write("product", "prd", "docs/prd.md", "PRD tóm tắt", content="# PRD\n\nREQ-1: đăng nhập")
-    bb.write("qa", "threat-model", "docs/threat.md", "16 mối đe doạ", content="# Threat model\n\nT-01 XSS")
+    bb.write("security", "threat-model", "docs/threat.md", "16 mối đe doạ", content="# Threat model\n\nT-01 XSS")
     client = FakeClient(responses=[REVIEW])
     runner = AgentRunner(bus, client, blackboard=bb)
     spec = runner.agents["qa"]
@@ -785,7 +785,7 @@ def test_context_scoped_by_role_and_per_agent_max_input(tmp_path):
     assert "REQ-1" in user, "namespace trong context_namespace_read: toàn văn"
     assert "T-01 XSS" not in user and "16 mối đe doạ" in user and "content_omitted" in user, "namespace ngoài: chỉ tóm tắt"
     # namespace mình sở hữu luôn toàn văn, kể cả không có trong danh sách đọc
-    sec = runner.agents["qa"]
+    sec = runner.agents["security"]
     assert sec.reads_full("threat-model") and not sec.reads_full("docs")
     # agent không khai báo danh sách đọc → như trước
     spec.context_namespace_read = None

@@ -81,10 +81,7 @@ def _product(system: str, p: dict, pid: str) -> dict:
 
 
 def _qa_phase(system: str) -> str:
-    """`qa[author]` khai `skills: []` nên không có tiêu đề pha nào để nhận ra — mặc định về `author`.
-    ADR-0040 thêm pha `security` (gộp từ agent `security` cũ), nhận ra bằng tiêu đề skill của nó."""
-    if "# Skills của pha security" in system:
-        return "security"
+    """`qa[author]` khai `skills: []` nên không có tiêu đề pha nào để nhận ra — mặc định về `author`."""
     return "review" if "# Skills của pha review" in system else "author"
 
 
@@ -103,14 +100,13 @@ def handler(system: str, user: str) -> dict:
         # ADR-0028 + ADR-0037: pha `author` viết bộ test, đầu ra là `test-suites` chứ không phải review
         return {"ticket_id": p["ticket_id"], "assignee": p.get("assignee", "builder"), "files": ["tests/test_t.py"],
                 "acceptance_covered": [{"acceptance": "A1", "tests": ["tests/test_t.py::t"]}], "blind": True}
-    if a == "qa":
+    if a in {"qa", "security"}:
         # ADR-0037: `source` là NHÃN chấm, không phải id agent — lượt PR của `qa` chấm dưới nhãn `reviewer`,
-        # lượt hồi quy staging (`release-events`) dưới nhãn `qa`. ADR-0040: pha `security` giữ nhãn `security`.
-        ph = _qa_phase(system)
-        src = "security" if ph == "security" else ("qa" if p.get("release_id") and "ticket_id" not in p else "reviewer")
+        # lượt hồi quy staging (`release-events`) dưới nhãn `qa`.
+        src = "security" if a == "security" else ("qa" if p.get("release_id") and "ticket_id" not in p else "reviewer")
         tid = p.get("ticket_id") or p.get("release_id") or f"SPEC-{pid}"
         out = {"ticket_id": tid, "source": src, "verdict": "pass"}
-        if ph == "security" and "artifacts" in p:  # threat model từ spec: ghi blackboard
+        if a == "security" and "artifacts" in p:  # threat model từ spec: ghi blackboard
             return {"payload": out, "context_writes": [{"namespace": "threat-model", "content_ref": "docs/threat-model.md", "summary": "v1"}]}
         return out
     if a == "ops":
@@ -177,7 +173,7 @@ def test_check_routes_bat_route_khai_pha_agent_khong_co(monkeypatch):
     lac = Route("pull-requests", "qa", "review-results", phase="khong-co")
     monkeypatch.setattr(routes_mod, "ROUTES", (*ROUTES, lac))
     bad = check_routes(agents)
-    assert bad == ["qa không có pha khong-co (front matter khai: ['author', 'review', 'security'])"]
+    assert bad == ["qa không có pha khong-co (front matter khai: ['author', 'review'])"]
     assert routes_mod.phase_for(lac, agents["qa"], _pub_env()) == "khong-co", "route khai pha thì dùng pha đó"
 
 
@@ -198,9 +194,7 @@ def test_phase_for_lay_stack_cua_ticket_cho_route_sua_code():
     assert routes_mod.phase_for(rw, khong_pha, _task_env(stack="frontend")) is None, "agent không chia pha: không pha"
     co_pha = replace(agents["builder"], phases={"backend": Phase()})
     assert routes_mod.phase_for(rw, co_pha, _task_env(stack="backend")) == "backend"
-    # ADR-0040 cho mọi route `tools=None` còn lại một `phase=`, nên không còn route nào sẵn có cả hai đều
-    # rỗng — dựng thẳng một cái, vì điều đang đo là `phase_for`, không phải bảng ROUTES có gì.
-    khong_rw = replace(next(r for r in ROUTES if r.tools is None), phase=None)
+    khong_rw = next(r for r in ROUTES if r.tools is None and r.phase is None)
     assert routes_mod.phase_for(khong_rw, co_pha, _task_env(stack="backend")) is None, \
         "route không sửa code: stack không phải pha"
 
@@ -360,7 +354,7 @@ def test_loi_agent_khong_nhanh_nao_nhan_thi_mo_gate_chu_khong_im_lang():
         # Không hỏng lượt threat-model của security (nhận diện qua `artifacts` trong payload
         # `approved-specs`) — nếu không plan bị `_check_plan` từ chối vì thiếu threat model (ADR-0037 PR-1),
         # còn test này muốn phủ nhánh reviewer hỏng ở bước review PR.
-        if _agent_of(system) == "qa" and "artifacts" not in _inp(user):
+        if _agent_of(system) in {"qa", "security"} and "artifacts" not in _inp(user):
             raise LLMError("model không trả về nội dung nào")
         return handler(system, user)
 
@@ -530,10 +524,7 @@ def test_duyet_escalation_do_reviewer_loi_thi_review_con_thieu_duoc_chay_lai(tmp
     calls = {"qa": 0}
 
     def reviewer_hong_lan_dau(system, user):
-        # ADR-0040: đếm và làm hỏng đúng pha `review`. Lượt `qa` ĐẦU TIÊN của một dự án nay là pha `security`
-        # (threat model trên `approved-specs`); hỏng ở đó thì kế hoạch không bao giờ được lập, và test đo
-        # nhầm thứ khác hẳn cái tên nó nói.
-        if _agent_of(system) == "qa" and _qa_phase(system) == "review":
+        if _agent_of(system) == "qa":
             calls["qa"] += 1
             if calls["qa"] == 1: raise LLMError("reviewer hỏng một lần")
         return handler(system, user)
@@ -788,7 +779,7 @@ def test_state_song_sot_qua_restart_ca_khi_co_escalation(tmp_path):
         # sinh action "escalate"; nhánh ticket blocked gọi thẳng `gate.request`, không qua supervisor). Loại trừ
         # lượt threat-model (payload có `artifacts`) — hỏng nó thì `_check_plan` từ chối plan (ADR-0037 PR-1),
         # không tới được nhánh review PR mà test này muốn phủ.
-        if _agent_of(system) == "qa" and "artifacts" not in _inp(user):
+        if _agent_of(system) in {"qa", "security"} and "artifacts" not in _inp(user):
             raise LLMError("reviewer hỏng")
         return handler(system, user)
 
@@ -878,7 +869,7 @@ def test_review_tren_release_khong_tu_khai_duoc_ticket_id():
     2026-09-06 (QLKH REL-024). Subject của review trên release là của ROUTE: code ghi đè và ghi audit."""
     def sneaky(system, user):
         a, p = _agent_of(system), _inp(user)
-        if a == "qa" and _qa_phase(system) == "security" and "release_id" in p and "ticket_id" not in p:
+        if a == "security" and "release_id" in p and "ticket_id" not in p:
             return {"ticket_id": p["tickets"][0], "source": "security", "verdict": "pass"}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=sneaky))
@@ -979,7 +970,7 @@ def test_agents_write_blackboard_and_threat_model_precedes_plan():
 
 def test_security_block_on_spec_stops_planning():
     def blocker(system, user):
-        if _agent_of(system) == "qa" and "artifacts" in _inp(user):
+        if _agent_of(system) == "security" and "artifacts" in _inp(user):
             return {"ticket_id": "SPEC-P1", "source": "security", "verdict": "block", "findings": [{"level": "block", "text": "PII không mã hoá"}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=blocker))
@@ -1066,8 +1057,7 @@ def test_conditional_acceptance_opens_change_request_and_lessons_recorded():
 
 def test_blocked_ticket_opens_escalation_gate_and_reopens_on_approve():
     def failing(system, user):
-        # ADR-0040: chặn đúng pha `review`; pha `security` còn chạy trên `approved-specs` (không có ticket_id).
-        if _agent_of(system) == "qa" and _qa_phase(system) == "review":
+        if _agent_of(system) == "qa":
             return {"ticket_id": _inp(user)["ticket_id"], "source": "reviewer", "verdict": "block", "findings": [{"level": "block", "text": "sai contract"}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=failing))

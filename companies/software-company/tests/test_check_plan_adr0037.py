@@ -23,7 +23,7 @@ def _task(**kw) -> Task:
 
 
 def _satisfy_threat_and_blackboard(o: Orchestrator, project: str = "P1") -> None:
-    o.bus.publish(Envelope(topic="review-results", key=f"SPEC-{project}", actor="qa",
+    o.bus.publish(Envelope(topic="review-results", key=f"SPEC-{project}", actor="security",
                             payload=ReviewResult(ticket_id=f"SPEC-{project}", source="security", verdict="pass").model_dump()))
     o.blackboard.write("product", "architecture", "docs/c4.md", "L1-L2", project_id=project)
     o.blackboard.write("product", "api-contract", "openapi.yaml", "v1", project_id=project)
@@ -131,7 +131,7 @@ def test_thieu_threat_model():
     problems = o._check_plan([_task()], "P1")
     assert any("thiếu threat model" in p for p in problems)
 
-    o.bus.publish(Envelope(topic="review-results", key="SPEC-P1", actor="qa",
+    o.bus.publish(Envelope(topic="review-results", key="SPEC-P1", actor="security",
                             payload=ReviewResult(ticket_id="SPEC-P1", source="security", verdict="pass").model_dump()))
     problems = o._check_plan([_task()], "P1")
     assert not any("thiếu threat model" in p for p in problems)
@@ -149,7 +149,7 @@ def test_missing_threat_model_set_cung_chan():
 
 def test_thieu_architecture_tren_blackboard():
     o = _orch()
-    o.bus.publish(Envelope(topic="review-results", key="SPEC-P1", actor="qa",
+    o.bus.publish(Envelope(topic="review-results", key="SPEC-P1", actor="security",
                             payload=ReviewResult(ticket_id="SPEC-P1", source="security", verdict="pass").model_dump()))
     problems = o._check_plan([_task()], "P1")
     assert any("blackboard thiếu architecture" in p for p in problems)
@@ -165,7 +165,7 @@ def test_khong_co_blackboard_thi_bo_qua_kiem_architecture():
     """Dự án không có blackboard (`o.blackboard is None`) → không kiểm `architecture`/`api-contract`, không sập."""
     o = _orch()
     o.blackboard = None  # dự án không có blackboard (đo được: khách không cấu hình lưu trữ chung)
-    o.bus.publish(Envelope(topic="review-results", key="SPEC-P1", actor="qa",
+    o.bus.publish(Envelope(topic="review-results", key="SPEC-P1", actor="security",
                             payload=ReviewResult(ticket_id="SPEC-P1", source="security", verdict="pass").model_dump()))
     problems = o._check_plan([_task()], "P1")
     assert not any("blackboard thiếu" in p for p in problems)

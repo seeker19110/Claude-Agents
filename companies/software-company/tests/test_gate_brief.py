@@ -49,7 +49,7 @@ def rich_handler(system: str, user: str) -> dict:
         out["context_writes"][0]["content"] = PRD
     elif a == "product" and _product_phase(system) == "plan" and "items" in out:
         out["context_writes"][0]["content"] = C4; out["context_writes"][1]["content"] = CONTRACT
-    elif a == "qa" and "context_writes" in out: out["context_writes"][0]["content"] = THREAT
+    elif a == "security" and "context_writes" in out: out["context_writes"][0]["content"] = THREAT
     return out
 
 

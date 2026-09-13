@@ -30,7 +30,7 @@ from .roles import ENGINEERING, LEAD_ACTOR, ROLE, SOURCE
 # phát topic mình khai `writes`. `audit-log` ai cũng ghi; `shared-context` kiểm theo `namespace_owners`. Bus là chốt
 # chặn cuối: runner đã kiểm `writes`, nhưng CLI `publish` hay code gọi thẳng `bus.publish` cũng không được vượt quyền.
 ENGINEERING_ACTORS = frozenset(ENGINEERING)
-REVIEW_PRODUCERS = frozenset({ROLE.QA, SOURCE.QA, SOURCE.SECURITY})  # tên agent hoặc `source`
+REVIEW_PRODUCERS = frozenset({ROLE.QA, ROLE.SECURITY, SOURCE.QA, SOURCE.SECURITY})  # tên agent hoặc `source`
 TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
     "research-requests": frozenset({ROLE.OPS}),
     "research-findings": frozenset({ROLE.PRODUCT}),

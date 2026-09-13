@@ -11,7 +11,7 @@ from company.gate_cli import PersistentGate
 from company.llm import FakeClient
 from company.orchestrator import Orchestrator
 from company.workspace import Integration, MergeResult
-from test_orchestrator import _agent_of, _drive_to_plan, _drive_to_spec_gate, _inp, _qa_phase, handler
+from test_orchestrator import _agent_of, _drive_to_plan, _drive_to_spec_gate, _inp, handler
 from test_tools_and_agentic import _init_repo, _repo_tool_handler
 
 
@@ -20,9 +20,7 @@ def test_threat_model_ghi_o_luot_review_pr_nam_trong_du_an_cua_ticket():
     security rơi vào ô toàn cục (hiện ở mọi dự án) và audit produced:* không có project_id."""
     def h(system, user):
         a, p = _agent_of(system), _inp(user)
-        # ADR-0040: chỉ PHA `security` phát nhãn `security`; pha `review` vẫn phải phát `reviewer`, không thì
-        # ticket không bao giờ đủ review và đứng ở `waiting`.
-        if a == "qa" and _qa_phase(system) == "security" and "ticket_id" in p and "artifacts" not in p:
+        if a == "security" and "ticket_id" in p and "artifacts" not in p:
             return {"payload": {"ticket_id": p["ticket_id"], "source": "security", "verdict": "pass"},
                     "context_writes": [{"namespace": "threat-model", "content_ref": "docs/tm.md", "summary": "PR", "content": "# TM từ PR"}]}
         return handler(system, user)
@@ -162,9 +160,7 @@ def test_ticket_bi_bo_khong_mo_khoa_ticket_phu_thuoc():
 def test_ticket_bi_bo_duoc_dung_lai_khi_mo_lai_tu_sqlite(tmp_path):
     from company.sqlite_bus import SQLiteBus
     def failing(system, user):
-        # ADR-0040: chặn đúng pha `review` — pha `security` còn chạy trên `approved-specs` (threat model),
-        # nơi payload không có `ticket_id`.
-        if _agent_of(system) == "qa" and _qa_phase(system) == "review":
+        if _agent_of(system) == "qa":
             return {"ticket_id": _inp(user)["ticket_id"], "source": "reviewer", "verdict": "block", "findings": [{"level": "block", "text": "sai"}]}
         return handler(system, user)
     db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=failing))
@@ -200,13 +196,12 @@ def test_mo_lai_khong_chay_lai_agent_da_xong_cua_event_do_dang(tmp_path):
                     (f"%{pr.event_id}%",))
     calls_before = len(FakeClient(handler=handler).calls)
     c2 = FakeClient(handler=handler); o2 = Orchestrator(SQLiteBus(db), c2)
-    # ADR-0037 PR-5b: slot = "<agent>:<topic_out>"; ADR-0040 thêm ":<pha>" cho cặp nhập nhằng — hai lượt chấm
-    # PR nay CÙNG agent `qa` và CÙNG `topic_out`, chỉ khác pha (xem `routes.slot_of`). Dựng lại từ bus thì pha
-    # suy từ nhãn `source` của chính review đã publish (`routes.phase_of_output`).
-    assert o2.partial.get(pr.event_id) == {"qa:review-results:review", "qa:review-results:security"}
+    # ADR-0037 PR-5b: slot = "<agent>:<topic_out>" (khoá thêm topic_out để hai route của cùng agent gộp trên
+    # cùng event không nuốt nhau — xem `Orchestrator._call`).
+    assert o2.partial.get(pr.event_id) == {"qa:review-results", "security:review-results"}
     assert any(e.event_id == pr.event_id for e in o2.queue), "event vẫn được xử lý nốt (đánh dấu xong)"
     o2.run()
-    reran = [c for c in c2.calls if _agent_of(c["system"]) == "qa"
+    reran = [c for c in c2.calls if _agent_of(c["system"]) in {"qa", "security"}
              and _inp(c["user"]).get("ticket_id") == "T2"]
     assert not reran and len(c2.calls) - calls_before >= 0, "không gọi lại model cho lượt review đã có"
     assert len([e for e in o2.bus.replay(topic="review-results") if e.causation_id == pr.event_id]) == 2
@@ -464,6 +459,5 @@ def test_reviewer_va_security_co_tool_chi_doc_khi_cham_pr():
     """Diff dài hơn max_input_chars bị cắt giữa; không có tool thì agent BLOCK vì 'diff không có trong đầu vào'
     (TCK-CR-DEV-001-02, 2026-09-06). Cả ba nguồn review PR phải đọc được worktree."""
     from company.orchestrator import ROUTES
-    # ADR-0040: hai lượt chấm PR nay cùng agent `qa`, phân biệt bằng PHA — gom theo agent sẽ nuốt mất một route.
-    tools = {(r.agent, r.phase): r.tools for r in ROUTES if r.topic_in == "pull-requests" and r.topic_out == "review-results"}
-    assert tools == {("qa", "review"): "ro", ("qa", "security"): "ro"}
+    tools = {r.agent: r.tools for r in ROUTES if r.topic_in == "pull-requests" and r.topic_out == "review-results"}
+    assert tools == {"qa": "ro", "security": "ro"}
