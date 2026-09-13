@@ -12,6 +12,8 @@ release (`review.subject_overridden`) và `local_checks.verified_by=workspace`.
 """
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from company.bus import InMemoryBus
@@ -42,6 +44,14 @@ def test_threat_route_la_security() -> None:
 
 def test_route_khong_phai_review_thi_khong_co_source() -> None:
     assert source_for(next(r for r in ROUTES if r.topic_out != "review-results")) is None
+
+
+def test_agent_la_tren_review_results_thi_khong_suy_duoc() -> None:
+    """Nhánh phòng thủ, cặp với test ngay dưới: ai thêm route `review-results` cho một agent thứ ba mà quên dạy
+    `source_for` thì ở đây ra `None`, và `test_moi_route_review_results_deu_suy_duoc_source` biến `None` đó
+    thành một ca đỏ — thay vì lặng lẽ để nhãn rơi lại vào tay model."""
+    la = replace(_route("pull-requests", ROLE.QA), agent=ROLE.OPS)
+    assert source_for(la) is None
 
 
 def test_moi_route_review_results_deu_suy_duoc_source() -> None:
