@@ -16,7 +16,8 @@ import pytest
 
 from company.bus import InMemoryBus
 from company.llm import FakeClient
-from company.orch.routes import ROUTES, THREAT_ROUTE, source_for
+from company.orch.review_source import source_for
+from company.orch.routes import ROUTES, THREAT_ROUTE
 from company.orchestrator import Orchestrator
 from company.roles import ROLE, SOURCE
 

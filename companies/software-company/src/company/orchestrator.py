@@ -63,6 +63,7 @@ from .gates import gate_approvers
 from .llm import LLMError, ModelClient, TransientError
 from .orch import fsm, gates_flow, rehydrate, release_fsm, scheduler, ticket_fsm, verify, worktree_flow
 from .orch.cli import main, source_fingerprint
+from .orch.review_source import enforce_source as enforce_source
 
 # Không dùng trong file này nhưng là hợp đồng công khai của module (gate_brief.py, test) — giữ re-export tường
 # minh bằng alias cùng tên để ruff không coi là import thừa.
@@ -84,7 +85,6 @@ from .orch.routes import _has_dispute as _has_dispute
 from .orch.routes import _test_scope_ok as _test_scope_ok
 from .orch.routes import _with_chan_doan as _with_chan_doan
 from .orch.routes import _with_diff as _with_diff
-from .orch.routes import source_for as source_for
 from .orch.routes import spec_runtime_gap as spec_runtime_gap
 from .orch.state import OrchState, install_aliases
 from .orch.ticket_fsm import _cycle as _cycle
@@ -377,15 +377,7 @@ class Orchestrator:
                     self._audit("review.no_tool_evidence", {"agent": agent, "topic": env.topic, "key": env.key},
                                 actor=agent, ticket_id=inp.payload.get("ticket_id"), project_id=self.project_for(env))
                 p = g.payloads[0]
-                if (src := source_for(r)) and p.get("source") != src:
-                    # Nhãn `source` là IDENTITY CỦA LƯỢT, ROUTE biết chắc — cùng nhóm "code điền" với `ticket_id`
-                    # ngay dưới. Đo 2026-09-13 bằng model thật: khi `security`/`qa` tạm bị gộp làm một agent hai
-                    # pha, 4/18 ca pha `security` khai `reviewer`. Việc gộp đã lùi, nhưng chỗ hở thì có sẵn từ
-                    # trước — `delivery.py` đếm review THEO NHÃN nên khai nhầm là ticket rủi ro thiếu review
-                    # vĩnh viễn, nằm im mà `status` không báo gì.
-                    self._audit("review.source_overridden", {"claimed": p.get("source"), "source": src},
-                                actor=agent, ticket_id=p.get("ticket_id"), project_id=self.project_for(env))
-                    p = {**p, "source": src}
+                p = enforce_source(self, r, p, env, agent)  # nhãn `source` từ ROUTE, không từ lời khai model
                 if r.topic_out == "review-results" and env.topic in {"release-candidates", "release-events"}                         and (rid := env.payload.get("release_id")) and p.get("ticket_id") != rid:
                     # Review trên RELEASE (release-check của security, QA hồi quy trên staging): subject là release_id
                     # của ROUTE, không phải lời khai của model — cùng nguyên tắc với `env`/`release_id` trong
