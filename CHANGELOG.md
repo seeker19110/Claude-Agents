@@ -16,7 +16,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   ngữ cảnh build, `llm.yaml` vào bằng mount `:ro`, `extra_hosts: host.docker.internal`, state mount theo THƯ MỤC
   `var/` (đóng cả hai lỗi state bằng một quyết định). Không đổi một dòng mã: `--company-db`/`--keeper-db` đã có
   sẵn, entrypoint chỉ truyền đường dẫn. Cổng cứng mới `platform/console/tests/test_cong_docker.py` 6 ca, viết
-  trước bản vá — đo hai chiều: tắt vá 6/6 đỏ, bật vá 6/6 xanh.
+  trước bản vá — đo hai chiều: tắt vá 6/6 đỏ, bật vá 6/6 xanh. (#287)
 
 - docs(audit): **audit toàn dự án 2026-09-13 — tám phép đo A1–A8 + rà bề mặt HTTP**
   (`docs/reports/2026-09-13-audit.md`). Mọi cổng máy chạy lại và xanh (2852 test, 100% coverage cả năm package,
@@ -25,7 +25,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   package đã bật `branch = true`, ba comment `pyproject.toml` còn đếm "bốn"/"sáu" package. Bảy việc để lại,
   trong đó ba cái mới: `is_loopback_host` nhận mọi tên miền bắt đầu bằng `127.` ở CẢ console và gateway (trái
   với chính docstring chống-DNS-rebinding của chúng); `pragma: no branch` là lối thoát thứ năm khỏi
-  `fail_under = 100` mà sổ trần chưa đếm; luật "lý do duyệt gate ≥ 20 ký tự" không có chốt mã nào.
+  `fail_under = 100` mà sổ trần chưa đếm; luật "lý do duyệt gate ≥ 20 ký tự" không có chốt mã nào. (#287)
 
 - fix(company): **nhãn `source` của `review-results` do CODE điền từ ROUTE**, không do model khai. Đo bằng
   model thật thấy model khai nhầm nhãn 4/18 ca khi prompt mang nhiều vai; `delivery.py` đếm review THEO NHÃN
