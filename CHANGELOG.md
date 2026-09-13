@@ -6,15 +6,18 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- build(deps): bump `anthropic` 1.3.0 → 1.4.0 (dependabot) (#246)
 - docs(keeper): **ghi lại canary BT8 lần hai — chạy pipeline `keeper` thật trên tín hiệu drift `pr-280` có thật**
   (thiếu dòng CHANGELOG của PR #280), dừng đúng ở cổng ngân sách I3 (PR #246 đang mở chặn PR canary) thay vì tự
   merge/đóng PR ngoài phạm vi. Ticket + patch + đo hai chiều đỏ/xanh đều chạy thật, chỉ còn thiếu bước `publish`.
-  Cập nhật `docs/reports/2026-09-12-audit.md` mục A7 + `docs/TASK-PACK.md` (#281)
+  Cập nhật `docs/reports/2026-09-12-audit.md` mục A7 + `docs/TASK-PACK.md`. Nhân đây cũng điền lại dòng CHANGELOG
+  của #280 (tín hiệu drift thứ hai lộ ra khi CI chạy lại — merge #246 để mở đường cho canary tạo ra chính tín
+  hiệu này) (#281)
 - test(company): **bật chính thức `branch = true` cho `companies/software-company` — bù xong 3 nhánh bế tắc
   cuối cùng (86/86 nhánh)** — `orchestrator.py:_call`, `orch/scheduler.py:_take_batch`, `orch/scheduler.py:_audit`
   đều có test đúng từ trước nhưng coverage.py không đăng ký được arc `return` một dòng lồng trong `with`; người
   quyết định tách `return` ra dòng riêng (đổi format, không đổi hành vi) thay vì `# pragma: no branch`. CI xanh:
-  `ruff check`, `mypy`, `pytest --cov` (`fail_under = 100` cả dòng lẫn nhánh)
+  `ruff check`, `mypy`, `pytest --cov` (`fail_under = 100` cả dòng lẫn nhánh) (#280)
 - test(company): **bù 48/51 nhánh coverage còn lại ở `companies/software-company`, đợt 2/2** — 11 file trong 12
   đã 100% nhánh (`orch/release_fsm.py`, `orch/routes.py`, `orch/ticket_fsm.py`, `orch/verify.py`,
   `orch/worktree_flow.py`, `orchestrator.py`, `runner.py`, `subagents.py`, `tools.py`, `web.py`, `workspace.py`);
