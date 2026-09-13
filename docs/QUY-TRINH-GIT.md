@@ -145,6 +145,7 @@ yêu cầu → phân tích hiện trạng → chốt yêu cầu → đặc tả 
 | Code `src/company/**` | `make lint` + `make test`, thêm test cho hành vi mới |
 | Schema topic / hợp đồng event | Các cổng trên + ADR + kiểm test nhất quán registry↔events |
 | Đổi cổng CI | Chạy thật trên PR đó rồi đọc thời gian từng job, không đoán |
+| Thêm/đổi phụ thuộc (`pyproject.toml`, `uv.lock`) | Job `dependency-review` (`.github/workflows/dependency-review.yml`) tự chạy trên PR, chặn khi thêm mới có CVE mức `high`+ — không thay `pip-audit` trong `quality` (soi toàn bộ resolve mỗi lần), chỉ chặn sớm hơn ở đúng PR gây ra thay đổi |
 
 Không commit secret, `llm.yaml`, khóa API, hay dữ liệu thật. Không gọi provider trả phí trong test.
 

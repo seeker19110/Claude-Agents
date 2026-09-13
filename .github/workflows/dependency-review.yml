@@ -1,0 +1,23 @@
+name: Dependency review
+
+# pip-audit trong ci.yml quét TOÀN BỘ phụ thuộc đã resolve mỗi lần chạy; dependency-review-action
+# chỉ soi PHẦN THÊM MỚI trong diff của PR trước khi merge (kèm license), nên chặn sớm hơn ở đúng
+# PR gây ra thay đổi — không thay pip-audit, bổ sung điểm chặn khác.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
