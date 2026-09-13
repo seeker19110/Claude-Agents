@@ -6,6 +6,10 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(platform): container hoá hub console+orchestrator để chạy trên WSL — ADR-0013, Dockerfile+
+  docker-compose.yml+entrypoint ở gốc repo, state qua volume (không bake `company.sqlite`/secret vào image),
+  socket `docker.sock` passthrough cho orchestrator gọi `docker compose` deploy khách (ADR-0039) mà không cần
+  `dockerd` trong container; thêm Mức 0 vào `docs/TRUC-VA-DUNG-KHAN.md` (#285)
 - fix(company): **`product` bắt buộc gọi tool đọc repo khách trước khi kết luận `data.codebase`, và bắt buộc
   ghi `architecture`+`api-contract` lên blackboard ngay trong lượt planning** — vận hành thật dự án QLKH lộ ra
   research chưa từng gọi tool đọc repo (5/5 lượt `tool_calls: 0`) nên `_check_plan` từ chối cả kế hoạch hợp lệ
