@@ -6,6 +6,15 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(audit): **audit toàn dự án 2026-09-13 — tám phép đo A1–A8 + rà bề mặt HTTP**
+  (`docs/reports/2026-09-13-audit.md`). Mọi cổng máy chạy lại và xanh (2852 test, 100% coverage cả năm package,
+  ruff/mypy sạch, eval phát lại, `subagents check`, `assetscan`, `keeper drift`). Sáu dòng tài liệu lệch đã sửa
+  trong chính PR này: số màn console (6 → 8, `1`–`7` → `1`–`8`), bốn câu coverage nói "100% dòng" sau khi ba
+  package đã bật `branch = true`, ba comment `pyproject.toml` còn đếm "bốn"/"sáu" package. Bảy việc để lại,
+  trong đó ba cái mới: `is_loopback_host` nhận mọi tên miền bắt đầu bằng `127.` ở CẢ console và gateway (trái
+  với chính docstring chống-DNS-rebinding của chúng); `pragma: no branch` là lối thoát thứ năm khỏi
+  `fail_under = 100` mà sổ trần chưa đếm; luật "lý do duyệt gate ≥ 20 ký tự" không có chốt mã nào.
+
 - fix(company): **nhãn `source` của `review-results` do CODE điền từ ROUTE**, không do model khai. Đo bằng
   model thật thấy model khai nhầm nhãn 4/18 ca khi prompt mang nhiều vai; `delivery.py` đếm review THEO NHÃN
   nên khai nhầm là ticket rủi ro **không bao giờ đủ review và nằm im** mà `status` không báo gì — cùng họ sự
