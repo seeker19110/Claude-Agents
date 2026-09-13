@@ -63,6 +63,7 @@ from .gates import gate_approvers
 from .llm import LLMError, ModelClient, TransientError
 from .orch import fsm, gates_flow, rehydrate, release_fsm, scheduler, ticket_fsm, verify, worktree_flow
 from .orch.cli import main, source_fingerprint
+from .orch.review_source import enforce_source as enforce_source
 
 # Không dùng trong file này nhưng là hợp đồng công khai của module (gate_brief.py, test) — giữ re-export tường
 # minh bằng alias cùng tên để ruff không coi là import thừa.
@@ -376,6 +377,7 @@ class Orchestrator:
                     self._audit("review.no_tool_evidence", {"agent": agent, "topic": env.topic, "key": env.key},
                                 actor=agent, ticket_id=inp.payload.get("ticket_id"), project_id=self.project_for(env))
                 p = g.payloads[0]
+                p = enforce_source(self, r, p, env, agent)  # nhãn `source` từ ROUTE, không từ lời khai model
                 if r.topic_out == "review-results" and env.topic in {"release-candidates", "release-events"}                         and (rid := env.payload.get("release_id")) and p.get("ticket_id") != rid:
                     # Review trên RELEASE (release-check của security, QA hồi quy trên staging): subject là release_id
                     # của ROUTE, không phải lời khai của model — cùng nguyên tắc với `env`/`release_id` trong

@@ -382,3 +382,4 @@ def check_routes(agents: dict[str, AgentSpec]) -> list[str]:
     lead = agents[ROLE.PRODUCT]
     bad += [f"{ROLE.PRODUCT} không đọc {t}" for t in PLAN_INPUTS if t not in lead.reads]
     return bad
+

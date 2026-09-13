@@ -39,10 +39,21 @@ class GateRiskContext:
     """Ngữ cảnh CÓ THẬT ở mọi điểm gọi `gate.request` — không bịa trường chưa ai đo được.
 
     `kind: str` (không phải `GateKind`): `GateRequest.kind` kế thừa từ `CoreGateRequest` giữ kiểu `str` (core
-    không thu hẹp Literal theo miền của từng công ty — xem `gates.py`), nên trường ở đây khớp đúng kiểu thật."""
+    không thu hẹp Literal theo miền của từng công ty — xem `gates.py`), nên trường ở đây khớp đúng kiểu thật.
+
+    `created_by` và `seq` vào đây vì ba trường đầu không đủ để viết một luật đáng tin:
+    - `created_by` — cùng `kind="escalation"` và cùng `checklist` nhưng `supervisor` mở (ticket blocked) là
+      chuyện khác hẳn `ops` mở (release hỏng) hay `delivery-lead` mở (review release fail). Không phân biệt
+      được người mở thì luật nào cũng vơ cả ba vào một rọ.
+    - `seq` — thế hệ gate do `HumanGate.request()` gán (không phải người gọi điền). Đây là thứ DUY NHẤT cho
+      phép diễn đạt "chỉ tự động lần đầu, lần hai phải có người"; thiếu cap đó thì một luật auto-approve thành
+      vòng lặp tự duyệt chính mình.
+    Cả hai đều đã có sẵn ở mọi điểm mở gate — không bịa trường chưa ai đo được."""
     kind: str
     subject_id: str
     checklist: tuple[str, ...]
+    created_by: str | None = None
+    seq: int = 0
 
 
 @dataclass(frozen=True)
@@ -55,6 +66,14 @@ class RiskRule:
 
 # RỖNG có chủ đích — xem docstring module.
 RISK_RULES: tuple[RiskRule, ...] = ()
+
+
+def context_of(req: GateRequest) -> GateRiskContext:
+    """`GateRequest` → `GateRiskContext`. Một chỗ dựng duy nhất, nên thêm trường về sau chỉ sửa ở đây.
+
+    Đọc SAU khi `HumanGate.request()` chạy thì `seq` mới là thế hệ thật (trước đó nó là 0 mặc định)."""
+    return GateRiskContext(kind=req.kind, subject_id=req.subject_id, checklist=tuple(req.checklist),
+                           created_by=req.created_by, seq=req.seq)
 
 
 def rules_without(*names: str) -> tuple[RiskRule, ...]:
@@ -89,7 +108,7 @@ def request_gate(gate: PersistentGate, req: GateRequest) -> GateRequest:
     gate.request(req)
     if not gate_autoapprove_enabled():
         return req
-    ctx = GateRiskContext(kind=req.kind, subject_id=req.subject_id, checklist=tuple(req.checklist))
+    ctx = context_of(req)  # sau `gate.request(req)`: `seq` đã là thế hệ thật
     matched = [r for r in RISK_RULES if r.match(ctx)]
     if len(matched) == 1 and matched[0].tier == "low":
         # `actor=AUTOAPPROVE_ACTOR` PHẢI truyền tường minh (sc-security, adr113 2026-09-10): không truyền,
