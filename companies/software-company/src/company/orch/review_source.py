@@ -10,6 +10,7 @@ trần (thân hàm `orchestrator.py` ≤ 260 dòng, mỗi module `orch/` ≤ 400
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from ..events import Envelope
@@ -36,7 +37,7 @@ def source_for(r: Route) -> str | None:
     return None
 
 
-def enforce_source(o: Orchestrator, r: Route, p: dict[str, Any], env: Envelope, agent: str) -> dict[str, Any]:
+def enforce_source(o: Orchestrator, r: Route, p: Mapping[str, Any], env: Envelope, agent: str) -> dict[str, Any]:
     """Ghi đè nhãn `source` của một `review-results` bằng nhãn của ROUTE, và để lại vết nếu model khai khác.
 
     Nhãn là IDENTITY CỦA LƯỢT — cùng nhóm "code điền" với `ticket_id` của review trên release
@@ -47,7 +48,7 @@ def enforce_source(o: Orchestrator, r: Route, p: dict[str, Any], env: Envelope, 
     """
     src = source_for(r)
     if not src or p.get("source") == src:
-        return p
+        return dict(p)
     o._audit("review.source_overridden", {"claimed": p.get("source"), "source": src},
              actor=agent, ticket_id=p.get("ticket_id"), project_id=o.project_for(env))
     return {**p, "source": src}
