@@ -137,6 +137,11 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   trong đó ba cái mới: `is_loopback_host` nhận mọi tên miền bắt đầu bằng `127.` ở CẢ console và gateway (trái
   với chính docstring chống-DNS-rebinding của chúng); `pragma: no branch` là lối thoát thứ năm khỏi
   `fail_under = 100` mà sổ trần chưa đếm; luật "lý do duyệt gate ≥ 20 ký tự" không có chốt mã nào. (#287)
+- docs(traps): **bài học gộp agent** vào `TRAPS.md` gốc (3 mục §2: gộp vai để "giảm cổng" không bỏ được cổng
+  nào; quyết lại điều một ADR đã quyết; ba lần vá lòi chỗ mới = kiến trúc sai) và `software-company/TRAPS.md`
+  (3 mục Prompt/eval: `phases:` chỉ cắt SKILL không cắt thân prompt — prompt phình 13× mà `assetbudget` vẫn
+  xanh; một agent hai pha lẫn đúng nhãn phân biệt hai pha; hai route cùng agent+`topic_out` đụng khoá
+  `partial`). Rút từ ADR-0040 đã lùi ở #286. (#<PR>)
 
 - fix(company): **nhãn `source` của `review-results` do CODE điền từ ROUTE**, không do model khai. Đo bằng
   model thật thấy model khai nhầm nhãn 4/18 ca khi prompt mang nhiều vai; `delivery.py` đếm review THEO NHÃN
