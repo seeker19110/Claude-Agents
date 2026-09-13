@@ -6,6 +6,16 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(platform): **`is_loopback_host` không còn nhận tên miền giả loopback** ở CẢ `platform/console` và
+  `platform/gateway`. Cả hai kết thúc bằng `startswith("127.")`, nên `127.0.0.1.evil.example` — kẻ tấn công chỉ
+  cần một bản ghi A trỏ về 127.0.0.1, không cần DNS rebinding — đi lọt cả hàng rào `Host` lẫn `Origin` (hai
+  hàng rào gọi chung một hàm). Hệ quả đo được: trang tấn công khi đó CÙNG NGUỒN với console nên đọc được token
+  phiên mà `_serve_index` nhúng vào HTML rồi gọi `/api/gate/decide`; gateway không có xác thực client nên trang
+  ấy `POST /v1/chat/completions` đốt quota Google thật. Nay quyết bằng `ipaddress.ip_address(...).is_loopback`
+  thay vì tiền tố chuỗi; siết thêm có chủ ý: dạng viết tắt `127.1` bị từ chối (fail-closed). 9 ca test đỏ trước
+  bản vá (4 gateway + 5 console, cả mức đơn vị lẫn request thật qua `guard_middleware`/`_guard`), xanh sau. Khuôn
+  lỗi vào `TRAPS.md` §1 khuôn 6 ("kiểm danh tính bằng tiền tố chuỗi"); đóng mục 1 sổ việc để lại của
+  `docs/reports/2026-09-13-audit.md`.
 - fix(docker): **hub container không còn bake bí mật, không còn mất state, và với tới được gateway** (ADR gốc
   0014, sửa đổi ADR-0013). Năm chỗ hở im lặng do audit 2026-09-13 đọc ra: `.dockerignore` không loại
   `llm.yaml`/`.env` trong khi `Dockerfile` có `COPY . .` (bí mật vào layer image — gitleaks mù lớp này vì file

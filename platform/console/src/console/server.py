@@ -14,6 +14,7 @@ mọi lớp phòng thủ ở dưới là bắt buộc, không phải tuỳ chọ
 from __future__ import annotations
 
 import atexit
+import ipaddress
 import json
 import logging
 import os
@@ -74,9 +75,24 @@ _ROOT_FILES = {"/sw.js": "sw.js", "/manifest.webmanifest": "manifest.webmanifest
 
 
 def is_loopback_host(host: str) -> bool:
-    """Chỉ nhận tên/địa chỉ chắc chắn trỏ về máy này. Không phân giải DNS: tên lạ = không loopback."""
+    """Chỉ nhận địa chỉ CHẮC CHẮN trỏ về máy này. Không phân giải DNS: tên lạ = không loopback.
+
+    Trước 2026-09-13 hàm này kết thúc bằng `startswith("127.")` — một lỗ thật, đo trong audit (mục S1 của
+    `docs/reports/2026-09-13-audit.md`): mọi TÊN MIỀN bắt đầu bằng "127." cũng khớp, nên
+    `127.0.0.1.evil.example` (kẻ tấn công chỉ cần một bản ghi A trỏ về 127.0.0.1, không cần rebinding) đi lọt
+    cả hàng rào `Host` lẫn `Origin`, vì cả hai gọi chung hàm này.
+
+    Nay quyết bằng `ipaddress`: một chuỗi hoặc PHÂN TÍCH ĐƯỢC thành IP loopback (127.0.0.0/8, ::1), hoặc là
+    đúng chữ "localhost", hoặc không phải loopback. Siết chặt hơn ở một chỗ có chủ ý: dạng viết tắt `127.1`
+    nay bị từ chối (`ip_address` đòi đủ bốn octet) — fail-closed, và người gõ tay vẫn còn `127.0.0.1`.
+    """
     h = (host or "").strip().strip("[]").lower()
-    return h in {"localhost", "::1", "0:0:0:0:0:0:0:1"} or h == "127.0.0.1" or h.startswith("127.")
+    if h == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(h).is_loopback
+    except ValueError:
+        return False
 
 
 def host_header_is_loopback(header: str | None) -> bool:

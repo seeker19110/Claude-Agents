@@ -15,7 +15,9 @@ from gateway.server import (
     GatewayServer,
     _error_type,
     error_message,
+    host_header_is_loopback,
     is_loopback_host,
+    origin_is_local,
     upstream_status,
     warn_if_public_host,
 )
@@ -224,6 +226,50 @@ async def test_large_body_accepted_up_to_32mb(manager):
         body = {"model": "m", "messages": [{"role": "user", "content": "x" * (2 * 1024 * 1024)}]}
         r = await tc.post("/v1/chat/completions", json=body)
         assert r.status == 200
+    finally:
+        await tc.close()
+
+
+# --- Tên miền giả loopback (audit 2026-09-13 mục S1) -------------------------
+#
+# Gateway KHÔNG có xác thực client: `Host` + `Origin` là toàn bộ hàng rào giữa pool tài khoản Google và một
+# trang web bất kỳ người dùng đang mở (`guard_middleware`). `is_loopback_host` từng kết thúc bằng
+# `host.startswith("127.")`, nên `http://127.0.0.1.evil.example:1123` — một bản ghi A trỏ về 127.0.0.1, không
+# cần rebinding — đi lọt CẢ HAI: trang đó `POST /v1/chat/completions` đốt quota thật và `POST /auth/login` mở
+# luồng thêm tài khoản. Trái với chính docstring "tên lạ là không loopback, chấm hết".
+GIA_LOOPBACK = ("127.0.0.1.evil.example", "127.evil.example", "127.0.0.1x.evil.example")
+
+
+@pytest.mark.parametrize("ten", GIA_LOOPBACK)
+def test_ten_mien_gia_loopback_khong_duoc_coi_la_loopback(ten):
+    assert is_loopback_host(ten) is False
+    assert host_header_is_loopback(f"{ten}:1123") is False
+    assert origin_is_local(f"http://{ten}:1123") is False
+
+
+def test_ip_loopback_that_va_ten_that_van_qua():
+    """Chiều ngược: siết không được siết nhầm vào thứ vốn hợp lệ (gồm cả `localhost:3000` của trang dev)."""
+    for h in ("127.0.0.1", "127.0.0.2", "127.1.2.3", "localhost", "::1", "[::1]"):
+        assert is_loopback_host(h) is True, h
+    assert host_header_is_loopback("127.0.0.1:1123") is True
+    assert origin_is_local("http://localhost:3000") is True
+
+
+@pytest.mark.asyncio
+async def test_guard_chan_host_va_origin_gia_loopback(manager):
+    """Mức đơn vị chưa đủ: phải chứng minh middleware thật sự chặn request, trên CẢ HAI đường.
+
+    Hai mã khác nhau là cố ý, theo hợp đồng sẵn có của `guard_middleware`: `Host` lạ → 404 (không xác nhận cho
+    kẻ tấn công rằng có server ở đây), `Origin` lạ → 403.
+    """
+    tc = await _client(manager, StubClient())
+    body = {"model": "gemini-2.5-flash", "messages": []}
+    try:
+        r = await tc.post("/v1/chat/completions", json=body, headers={"Host": "127.0.0.1.evil.example:1123"})
+        assert r.status == 404
+        r = await tc.post("/v1/chat/completions", json=body,
+                          headers={"Origin": "http://127.0.0.1.evil.example:1123"})
+        assert r.status == 403
     finally:
         await tc.close()
 
