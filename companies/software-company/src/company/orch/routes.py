@@ -425,3 +425,19 @@ def phase_of_output(agent: str, topic_out: str, payload: dict) -> str | None:
             return SOURCE_PHASE[src]
     phases = {r.phase for r in _ALL_ROUTES if (r.agent, r.topic_out) == (agent, topic_out)}
     return phases.pop() if len(phases) == 1 else None
+
+
+def source_for(r: Route) -> str | None:
+    """Nhãn `source` mà một route `review-results` PHẢI phát — suy từ ROUTE, không hỏi model (ADR-0040).
+
+    Pha `security` luôn là nhãn `security`. Pha `review` mang hai nhãn vì nó chấm hai thứ khác nhau: một
+    TICKET (`pull-requests` → `reviewer`) và cả một RELEASE (`release-events` → `qa`); `delivery.py` đếm hai
+    nhãn ấy vào hai chỗ khác nhau nên không gộp được. Route không phải `review-results` trả `None`.
+    """
+    if r.topic_out != "review-results":
+        return None
+    if r.phase == "security":
+        return SOURCE.SECURITY
+    if r.phase == "review":
+        return SOURCE.QA if r.topic_in == "release-events" else SOURCE.REVIEWER
+    return None

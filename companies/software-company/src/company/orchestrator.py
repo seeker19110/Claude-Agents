@@ -78,14 +78,15 @@ from .orch.routes import (
     phase_for,
 )
 from .orch.routes import SPEC_RUNTIME_REWORKS as SPEC_RUNTIME_REWORKS
-from .orch.routes import phase_of_output as phase_of_output
-from .orch.routes import slot_of as slot_of
 from .orch.routes import THREAT_ROUTE as THREAT_ROUTE
 from .orch.routes import _can_author_tests as _can_author_tests
 from .orch.routes import _has_dispute as _has_dispute
 from .orch.routes import _test_scope_ok as _test_scope_ok
 from .orch.routes import _with_chan_doan as _with_chan_doan
 from .orch.routes import _with_diff as _with_diff
+from .orch.routes import phase_of_output as phase_of_output
+from .orch.routes import slot_of as slot_of
+from .orch.routes import source_for as source_for
 from .orch.routes import spec_runtime_gap as spec_runtime_gap
 from .orch.state import OrchState, install_aliases
 from .orch.ticket_fsm import _cycle as _cycle
@@ -380,6 +381,14 @@ class Orchestrator:
                     self._audit("review.no_tool_evidence", {"agent": agent, "topic": env.topic, "key": env.key},
                                 actor=agent, ticket_id=inp.payload.get("ticket_id"), project_id=self.project_for(env))
                 p = g.payloads[0]
+                if (src := source_for(r)) and p.get("source") != src:
+                    # ADR-0040: nhãn `source` là IDENTITY CỦA LƯỢT, ROUTE biết chắc — cùng nhóm "code điền" với
+                    # `ticket_id` ngay dưới. Đo được lúc gộp `security` vào `qa` (2026-09-13, `make eval-record`
+                    # model thật): 4/18 ca pha `security` khai `reviewer`. `delivery.py` đếm review THEO NHÃN nên
+                    # khai nhầm = ticket rủi ro không bao giờ đủ review, nằm im không ai biết.
+                    self._audit("review.source_overridden", {"claimed": p.get("source"), "source": src, "phase": phase},
+                                actor=agent, ticket_id=p.get("ticket_id"), project_id=self.project_for(env))
+                    p = {**p, "source": src}
                 if r.topic_out == "review-results" and env.topic in {"release-candidates", "release-events"}                         and (rid := env.payload.get("release_id")) and p.get("ticket_id") != rid:
                     # Review trên RELEASE (release-check của security, QA hồi quy trên staging): subject là release_id
                     # của ROUTE, không phải lời khai của model — cùng nguyên tắc với `env`/`release_id` trong
