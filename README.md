@@ -98,6 +98,20 @@ uv run python -m console --with-gateway --allow-decide  # một lệnh: bật ga
 uv run python -m console models          # xem/đổi model từng tier, từng backend bằng CLI
 ```
 
+**Chạy hub bằng Docker trên WSL** (ADR-0013 — cố định môi trường, tránh bẫy PATH của `uv`/`nvm` trong shell WSL
+không tương tác đã đo ở `docs/sessions/2026-09-09-van-hanh-qlkh.md`):
+
+```bash
+cp .env.example .env   # điền GH_TOKEN, GIT_AUTHOR_*, CLIENT_REPO=/mnt/.../repo-khach
+touch companies/software-company/company.sqlite companies/keeper/keeper.sqlite   # bind mount cần file có sẵn
+docker compose up -d --build
+docker compose logs -f hub
+docker compose down     # dừng khẩn — xem docs/TRUC-VA-DUNG-KHAN.md §1 Mức 0
+```
+
+Cần Docker Engine cài sẵn trong WSL và `/var/run/docker.sock` khả dụng (orchestrator tự gọi `docker compose`
+cho khách qua socket này, ADR-0039 — container hub không chạy `dockerd` riêng).
+
 ## Kiến trúc chung của một công ty
 
 ```

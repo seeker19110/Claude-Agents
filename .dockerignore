@@ -1,0 +1,16 @@
+# ADR-0013: state/bí mật không được bake vào image — luôn qua volume mount, không COPY.
+.venv/
+.git/
+.claude/worktrees/
+**/company.sqlite*
+**/keeper.sqlite*
+**/*.artifacts/
+**/.console-token
+**/.engine/
+**/node_modules/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+dist/
+*.log

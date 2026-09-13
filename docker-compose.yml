@@ -1,0 +1,36 @@
+# ADR-0013: hub console+orchestrator trong một container. State qua volume (không bake vào image),
+# repo khách mount ngoài, docker.sock passthrough cho orchestrator gọi `docker compose` deploy khách
+# (ADR-0039) mà không cần dockerd trong container.
+#
+# Cách dùng:
+#   cp .env.example .env        # điền GH_TOKEN, GIT_AUTHOR_*, DELIVER_REMOTE, đường dẫn repo khách
+#   docker compose up -d --build
+#   curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8200/
+#   docker compose logs -f hub
+#   docker compose down          # dừng khẩn — xem docs/TRUC-VA-DUNG-KHAN.md
+services:
+  hub:
+    build: .
+    ports:
+      - "8200:8200"
+    environment:
+      GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-}
+      GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-}
+      DELIVER_REMOTE: ${DELIVER_REMOTE:-}
+      GH_TOKEN: ${GH_TOKEN:-}
+    volumes:
+      # State công ty — không nằm trong image, sống qua rebuild/restart.
+      - ./companies/software-company/company.sqlite:/app/companies/software-company/company.sqlite
+      - company_artifacts:/app/companies/software-company/company.sqlite.artifacts
+      - ./companies/keeper/keeper.sqlite:/app/companies/keeper/keeper.sqlite
+      # Repo khách — đường dẫn thật thay bằng biến CLIENT_REPO trong .env, container ghi worktree/commit
+      # trực tiếp lên đây.
+      - ${CLIENT_REPO:-./docker/client-repo-placeholder}:/client-repo
+      # Docker socket passthrough — orchestrator tự gọi `docker compose` cho khách (ADR-0039 quyết định 7),
+      # không chạy dockerd trong container này.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Git identity/credential của host, chỉ đọc — không bake token vào image (AGENTS.md luật cấm 3).
+      - ${HOME}/.gitconfig:/root/.gitconfig:ro
+
+volumes:
+  company_artifacts:
