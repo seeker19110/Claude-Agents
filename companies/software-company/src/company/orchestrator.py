@@ -322,14 +322,13 @@ class Orchestrator:
         return t.project_id if t else None
 
     def _call(self, agent: str, env: Envelope, r: Route, res: StepResult) -> None:
-        # ADR-0037 PR-5b: `partial` từng khoá theo AGENT không đủ khi một agent gộp (`ops`) có HAI route khác
-        # nhau khớp CÙNG MỘT event (vd. `external-feedback` → ops[docs]→incidents VÀ ops[account]→change-requests):
-        # route thứ hai bị route thứ nhất "nuốt" vì agent đã có trong `partial`, dù `topic_out` khác hẳn. Khoá
-        # thêm theo `topic_out` để hai route của cùng agent trên cùng event chạy độc lập, giữ nguyên ý nghĩa cũ
-        # (agent đã xong route này thì không chạy lại route này) khi agent không gộp (khoá vẫn duy nhất theo agent).
+        # ADR-0037 PR-5b: khoá theo AGENT không đủ khi một agent gộp (`ops`) có HAI route khác nhau khớp CÙNG MỘT
+        # event — route thứ hai bị route thứ nhất "nuốt" dù `topic_out` khác hẳn. Khoá thêm theo `topic_out` để
+        # hai route của cùng agent trên cùng event chạy độc lập, giữ nguyên ý nghĩa cũ khi agent không gộp.
         slot = f"{agent}:{r.topic_out}"
         with self._lock:
-            if slot in self.partial.get(env.event_id, set()): return  # đã chạy xong ở lần xử lý trước (event bị hoãn transient)
+            if slot in self.partial.get(env.event_id, set()):
+                return  # đã chạy xong ở lần xử lý trước (event bị hoãn transient)
         try:
             extra = dict(r.enrich(env, self)) if r.enrich else {}
             if (pid := self.project_for(env)) and not env.payload.get("project_id"): extra["project_id"] = pid

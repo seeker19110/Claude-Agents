@@ -53,7 +53,8 @@ def _take_batch(o: Orchestrator, n: int) -> list[Envelope]:
     """Lấy tối đa n event có target khác nhau từ đầu hàng đợi (giữ thứ tự trong cùng key)."""
     with o._qlock:
         batch = [o.queue.pop(0)]
-        if n <= 1 or not o._parallel_ok(batch[0]): return batch
+        if n <= 1 or not o._parallel_ok(batch[0]):
+            return batch
         keys, i = {target(batch[0])}, 0
         while i < len(o.queue) and len(batch) < n:
             e = o.queue[i]; k = target(e)
@@ -247,7 +248,8 @@ def _audit(o: Orchestrator, action: str, data: dict[str, Any], actor: str = ACTO
            ticket_id: str | None = None, project_id: str | None = None, cost: float = 0.0) -> None:
     if once:
         with o._lock:
-            if once in o.once: return
+            if once in o.once:
+                return
             o.once.add(once)
         o._audit("once", {"key": once})
     a = AuditLog(actor=actor, action=action, tokens=tokens, ticket_id=ticket_id, project_id=project_id,
