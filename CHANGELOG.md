@@ -38,6 +38,11 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   verify,worktree_flow}.py`, `orchestrator.py`, `runner.py`, `subagents.py`, `tools.py`, `web.py`,
   `workspace.py`) — `branch = true` CHƯA bật thật, tiếp tục nhiều PR nhỏ theo cụm file (#278)
 
+- ci: **thêm job `dependency-review`** (`.github/workflows/dependency-review.yml`) — chặn PR thêm phụ thuộc
+  mới có CVE mức `high`+, đo trên diff của chính PR đó (`actions/dependency-review-action@v5`). Bổ sung cho
+  `pip-audit` trong `quality` (soi toàn bộ resolve mỗi lần chạy, không phân biệt PR nào thêm gì), không thay
+  thế. Tham khảo cấu trúc từ repo mẫu `seeker19110/project-template`. Không thuộc required status check —
+  không đổi ruleset `main`.
 - feat(keeper): **nối `git push` + `gh pr create` thật vào keeper (BT8 canary)** — đo được khi thử chạy canary
   thật: `orchestrator.open_pr()` chỉ ghi ý định PR (`pr.intent`), chưa từng gọi `gh`/`git push`. `publish.py`
   mới (`push_branch`, `create_pr`) là capability ghi THỨ BA của bất biến I1 (tạo nhánh, commit, mở PR — hai đầu
