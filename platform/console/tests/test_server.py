@@ -711,6 +711,52 @@ def test_host_header_ipv6_trong_ngoac_vuong() -> None:
     assert srv.host_header_is_loopback("[::1") is True   # thiếu "]" đóng: vẫn cắt được, không ném
 
 
+# --- Tên miền giả loopback (audit 2026-09-13 mục S1) -------------------------
+#
+# `is_loopback_host` từng kết thúc bằng `h.startswith("127.")`, nên MỌI tên miền bắt đầu bằng "127." đi lọt.
+# Kẻ tấn công sở hữu `evil.com` chỉ cần một bản ghi A `127.0.0.1.evil.com → 127.0.0.1`: trang ở
+# `http://127.0.0.1.evil.com:8200` khi đó CÙNG NGUỒN với console, nên nó `fetch("/")` đọc được HTML —
+# mà `_serve_index` nhúng token phiên vào `window.__CONSOLE__` — rồi dùng token gọi `/api/gate/decide`.
+# Không cần DNS rebinding, chỉ cần một bản ghi A. Hai hàng rào `Host` và `Origin` cùng gọi một hàm này nên
+# cùng thủng một lượt.
+GIA_LOOPBACK = ("127.0.0.1.evil.example", "127.evil.example", "127.0.0.1x.evil.example")
+
+
+@pytest.mark.parametrize("ten", GIA_LOOPBACK)
+def test_ten_mien_gia_loopback_khong_duoc_coi_la_loopback(ten: str) -> None:
+    assert srv.is_loopback_host(ten) is False
+    assert srv.host_header_is_loopback(f"{ten}:8200") is False
+
+
+def test_ip_loopback_that_va_ten_that_van_qua() -> None:
+    """Chiều ngược của test trên: siết không được siết nhầm vào thứ vốn hợp lệ."""
+    for h in ("127.0.0.1", "127.0.0.2", "127.1.2.3", "localhost", "::1", "0:0:0:0:0:0:0:1"):
+        assert srv.is_loopback_host(h) is True, h
+    assert srv.host_header_is_loopback("127.0.0.1:8200") is True
+    assert srv.host_header_is_loopback("[::1]:8200") is True
+
+
+def test_host_gia_loopback_bi_tu_choi_o_request_that(make_console, fake_modules) -> None:
+    """Mức đơn vị chưa đủ: phải chứng minh `_guard` thật sự chặn, không chỉ hàm thuần trả False."""
+    c = make_console()
+    status, _ = c.request("GET", "/api/state", headers={"Host": "127.0.0.1.evil.example:8200"})
+    assert status == 404
+    assert fake_modules.calls["collect"] == []
+
+
+def test_origin_gia_loopback_bi_tu_choi_o_request_that(make_console, fake_modules) -> None:
+    """Cùng lỗ, đường khác: `_origin_allowed` gọi lại đúng hàm ấy nên POST cross-origin cũng đi lọt."""
+    c = make_console(readonly=False)
+    status, _ = c.request(
+        "POST", "/api/gate/decide",
+        headers={"Origin": f"http://127.0.0.1.evil.example:{c.port}"},
+        body={"subject_id": "PUB-1", "xuong": "software-company", "decision": "approve", "by": "owner",
+              "reason": "ok"},
+    )
+    assert status == 403
+    assert fake_modules.calls["decide"] == []
+
+
 # --- write_token_file (không phụ thuộc quyền POSIX) --------------------------
 
 def test_write_token_file_tao_va_ghi_de_tren_moi_he_dieu_hanh(tmp_path: Path) -> None:
