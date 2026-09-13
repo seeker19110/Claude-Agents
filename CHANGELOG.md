@@ -6,6 +6,12 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(traps): **bài học gộp agent** vào `TRAPS.md` gốc (3 mục §2: gộp vai để "giảm cổng" không bỏ được cổng
+  nào; quyết lại điều một ADR đã quyết; ba lần vá lòi chỗ mới = kiến trúc sai) và `software-company/TRAPS.md`
+  (3 mục Prompt/eval: `phases:` chỉ cắt SKILL không cắt thân prompt — prompt phình 13× mà `assetbudget` vẫn
+  xanh; một agent hai pha lẫn đúng nhãn phân biệt hai pha; hai route cùng agent+`topic_out` đụng khoá
+  `partial`). Rút từ ADR-0040 đã lùi ở #286. (#<PR>)
+
 - fix(company): **nhãn `source` của `review-results` do CODE điền từ ROUTE**, không do model khai. Đo bằng
   model thật thấy model khai nhầm nhãn 4/18 ca khi prompt mang nhiều vai; `delivery.py` đếm review THEO NHÃN
   nên khai nhầm là ticket rủi ro **không bao giờ đủ review và nằm im** mà `status` không báo gì — cùng họ sự
