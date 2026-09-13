@@ -15,7 +15,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   thay vì tiền tố chuỗi; siết thêm có chủ ý: dạng viết tắt `127.1` bị từ chối (fail-closed). 9 ca test đỏ trước
   bản vá (4 gateway + 5 console, cả mức đơn vị lẫn request thật qua `guard_middleware`/`_guard`), xanh sau. Khuôn
   lỗi vào `TRAPS.md` §1 khuôn 6 ("kiểm danh tính bằng tiền tố chuỗi"); đóng mục 1 sổ việc để lại của
-  `docs/reports/2026-09-13-audit.md`.
+  `docs/reports/2026-09-13-audit.md`. (#288)
 - fix(docker): **hub container không còn bake bí mật, không còn mất state, và với tới được gateway** (ADR gốc
   0014, sửa đổi ADR-0013). Năm chỗ hở im lặng do audit 2026-09-13 đọc ra: `.dockerignore` không loại
   `llm.yaml`/`.env` trong khi `Dockerfile` có `COPY . .` (bí mật vào layer image — gitleaks mù lớp này vì file
