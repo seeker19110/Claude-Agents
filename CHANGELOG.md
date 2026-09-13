@@ -6,6 +6,10 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(keeper): **ghi lại canary BT8 lần hai — chạy pipeline `keeper` thật trên tín hiệu drift `pr-280` có thật**
+  (thiếu dòng CHANGELOG của PR #280), dừng đúng ở cổng ngân sách I3 (PR #246 đang mở chặn PR canary) thay vì tự
+  merge/đóng PR ngoài phạm vi. Ticket + patch + đo hai chiều đỏ/xanh đều chạy thật, chỉ còn thiếu bước `publish`.
+  Cập nhật `docs/reports/2026-09-12-audit.md` mục A7 + `docs/TASK-PACK.md` (#281)
 - test(company): **bật chính thức `branch = true` cho `companies/software-company` — bù xong 3 nhánh bế tắc
   cuối cùng (86/86 nhánh)** — `orchestrator.py:_call`, `orch/scheduler.py:_take_batch`, `orch/scheduler.py:_audit`
   đều có test đúng từ trước nhưng coverage.py không đăng ký được arc `return` một dòng lồng trong `with`; người
