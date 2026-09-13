@@ -21,7 +21,7 @@ from .roles import ROLE
 
 # F16: token của 3 lượt review (mỗi lượt mang system prompt + blackboard) không tính vào ngân sách ticket — delivery-lead
 # ước lượng công của engineer, còn review là chi phí cố định của quy trình; cộng chung thì mọi ticket đều bị cắt.
-REVIEW_ACTORS = frozenset({ROLE.QA, ROLE.SECURITY})
+REVIEW_ACTORS = frozenset({ROLE.QA})
 
 # `Budget`, `DEBT_RE`, `DEBT_HINT`, `debt_ids` và cơ chế đếm nợ (`_count_debt`/`debt_table`) ở
 # `xagents_core.supervisor` từ K3.7; re-export giữ nguyên chỗ nhập của mọi nơi gọi và của test.

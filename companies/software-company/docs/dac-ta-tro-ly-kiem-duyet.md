@@ -235,8 +235,8 @@ Nguồn sự thật là `EXPERTS` trong `src/company/gate_checklists.py` — b�
 
 | kind | gọi |
 |---|---|
-| spec | `sc-product`, `sc-security` |
-| release | `sc-qa`, `sc-security`, `sc-ops`, `sc-product` |
+| spec | `sc-product`, `sc-qa` |
+| release | `sc-qa`, `sc-ops`, `sc-product` |
 | acceptance | `sc-ops` |
 | escalation | `sc-qa`, `sc-builder` |
 

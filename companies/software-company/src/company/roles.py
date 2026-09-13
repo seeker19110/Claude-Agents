@@ -41,9 +41,11 @@ class ROLE:
     # hằng, như `ops` ở PR-5b: `test_hang_role_khop_front_matter_hai_chieu` cấm hai hằng cùng giá trị nên
     # `TEST_AUTHOR` và `REVIEWER` không còn; ba id cũ vào `MIGRATED` trỏ về `"qa"`. Nhãn `source` của
     # `review-results` vẫn là `SOURCE.REVIEWER`/`SOURCE.QA` — hai GÓC NHÌN chấm, không phải hai agent.
+    # ADR-0040 gộp thêm `security` vào đây thành pha thứ ba: `SECURITY` không còn là hằng vai, id cũ
+    # `security` vào `MIGRATED` trỏ về `"qa"`. `SOURCE.SECURITY` thì Ở LẠI — ADR-0040 §3 gộp ranh giới
+    # AGENT chứ không gộp ranh giới BẰNG CHỨNG: ticket rủi ro vẫn phải có một dòng review nhãn `security`
+    # phát ở một lượt gọi model riêng.
     QA: Final = "qa"
-    # → `security` (PR-5a: xong, đổi tên 1:1)
-    SECURITY: Final = "security"
     # → `ops` (PR-5b: xong) — release-engineer (pha `deploy`) + support-docs (pha `docs`) + account-manager
     # (pha `account`) GỘP thành một hằng: khác PR-5a (đổi tên 1:1), đây là gộp 3→1 nên hai hằng cũ
     # (`SUPPORT_DOCS`, `ACCOUNT_MANAGER`) không còn — `test_hang_role_khop_front_matter_hai_chieu` cấm hai hằng

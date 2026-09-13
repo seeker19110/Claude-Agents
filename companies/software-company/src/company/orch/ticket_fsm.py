@@ -176,19 +176,19 @@ def _spec_runtime_missing(o: Orchestrator, env: Envelope, project: str, gap: str
     o._mark(env, res); return res
 
 def _threat_model(o: Orchestrator, env: Envelope, sid: str, res: StepResult) -> bool:
-    """Agent `security` đọc spec đã duyệt: threat model v1 lên blackboard + review-results key=SPEC-*.
+    """Agent `qa` pha `security` (ADR-0040) đọc spec đã duyệt: threat model v1 lên blackboard + review-results key=SPEC-*.
     Verdict block → không lập kế hoạch (người sửa spec rồi publish lại). Trả về True nếu được đi tiếp."""
     prior = o.latest("review-results", sid)
     if prior is not None and prior.payload.get("verdict") != "block":
         return True
     try:
-        g = o.runner.generate(ROLE.SECURITY, env, "review-results")
+        g = o.runner.generate(ROLE.QA, env, "review-results", phase="security")
         p = {**g.payloads[0], "ticket_id": sid, "source": SOURCE.SECURITY}
-        o.runner.publish(ROLE.SECURITY, env, "review-results", p, key=sid, tokens=g.tokens, model=g.model,
+        o.runner.publish(ROLE.QA, env, "review-results", p, key=sid, tokens=g.tokens, model=g.model,
                             context_writes=g.context_writes, generated=g)
         with o._lock: o.stats["runs"] += 1
     except TransientError as e:
-        res.actions.append(f"transient:{ROLE.SECURITY}:{str(e)[:120]}")
+        res.actions.append(f"transient:{ROLE.QA}:{str(e)[:120]}")
         with o._lock: o.stats["transient"] += 1
         return True  # threat model không chặn plan; lần lập kế hoạch sau (nếu có) sẽ thử lại
     except (RunnerError, LLMError) as e:
@@ -197,7 +197,7 @@ def _threat_model(o: Orchestrator, env: Envelope, sid: str, res: StepResult) -> 
         o._audit("threat_model.missing", {"subject_id": sid, "error": str(e)[:300]},
                     project_id=env.payload.get("project_id"))
         with o._lock: o.missing_threat_model.add(sid)
-        res.actions.append(f"error:{ROLE.SECURITY}:{str(e)[:120]}")
+        res.actions.append(f"error:{ROLE.QA}:{str(e)[:120]}")
         with o._lock: o.stats["errors"] += 1
         return True
     if p["verdict"] == "block":

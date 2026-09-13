@@ -75,7 +75,6 @@ Mỗi mục phải xuất hiện trong báo cáo với đúng một kết luận
 ## Trợ lý chuyên môn nên gọi cùng hồ sơ
 
 - sc-qa
-- sc-security
 - sc-ops
 - sc-product
 

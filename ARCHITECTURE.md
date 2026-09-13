@@ -13,7 +13,7 @@ thể: `CODEMAP.md`.
                                                      │
                        ┌─────────────────────────────▼─────────────────────────┐
                        │ companies/software-company/  (package company)                  │
-                       │ 6 agent · 45 skill · 19 topic                        │
+                       │ 5 agent · 45 skill · 19 topic                        │
                        │ 3 human gate + escalation                             │
                        │ code thật trên git worktree của khách                 │
                        └────────────────────────────┬───────────────────────────┘

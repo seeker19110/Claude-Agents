@@ -30,7 +30,7 @@ NAMESPACE_OWNERS: dict[str, set[str]] = {
     # glossary/design, pha `spec` ghi prd, pha `plan` ghi architecture/api-contract).
     "prd": {ROLE.PRODUCT}, "glossary": {ROLE.PRODUCT}, "design": {ROLE.PRODUCT},
     "architecture": {ROLE.PRODUCT}, "api-contract": {ROLE.PRODUCT, ROLE.BUILDER},
-    "schema": {ROLE.BUILDER}, "threat-model": {ROLE.SECURITY}, "infra": {ROLE.BUILDER},
+    "schema": {ROLE.BUILDER}, "threat-model": {ROLE.QA}, "infra": {ROLE.BUILDER},
     "analytics": {ROLE.BUILDER}, "docs": {ROLE.OPS}, "knowledge": {ROLE.SUPERVISOR}, "contract": {ROLE.OPS},
 }
 

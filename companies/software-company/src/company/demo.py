@@ -41,7 +41,7 @@ def run() -> None:
     lead = DeliveryLead(bus, gate)
     bb.write(ROLE.PRODUCT, "architecture", "docs/c4.md", "C4 L1-L2")
     bb.write(ROLE.PRODUCT, "api-contract", "openapi.yaml", "v1")
-    bb.write(ROLE.SECURITY, "threat-model", "docs/threat-model.md", "v1: T-01..T-06")
+    bb.write(ROLE.QA, "threat-model", "docs/threat-model.md", "v1: T-01..T-06")
     bb.write(ROLE.OPS, "contract", "docs/sow.md", "SOW + kịch bản UAT map Must")
     # ADR-0037: người ký gate SPEC; kế hoạch không còn gate — `_check_plan` của orchestrator cho phép giao ticket
     # bằng cách ghi plan_id vào `lead.plans_ok` (ở đây gọi tay vì demo không chạy orchestrator).
@@ -70,7 +70,7 @@ def run() -> None:
     _review(bus, "TCK-2", SOURCE.REVIEWER, ROLE.QA)
     _review(bus, "TCK-2", SOURCE.QA, ROLE.QA)
     state_before_security = lead.state["TCK-2"]
-    _review(bus, "TCK-2", SOURCE.SECURITY, ROLE.SECURITY, metrics={"dast_high": 0, "license_violations": 0})
+    _review(bus, "TCK-2", SOURCE.SECURITY, ROLE.QA, metrics={"dast_high": 0, "license_violations": 0})
     print("TCK-2:", state_before_security, "->", lead.state["TCK-2"], "| required:", sorted(lead.required_reviews("TCK-2")))
 
     rid = lead.releases[0]

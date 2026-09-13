@@ -1,6 +1,6 @@
 # Software Company — Multi-Agent phòng gia công phần mềm
 
-Mô phỏng một công ty gia công phần mềm bằng hệ đa agent event-driven: 6 agent (5 công đoạn + supervisor),
+Mô phỏng một công ty gia công phần mềm bằng hệ đa agent event-driven: 5 agent (4 công đoạn + supervisor),
 mọi trao đổi đi qua topic có key, tri thức chung nằm trên blackboard, con người duyệt ở
 3 điểm cố định (spec, release, nghiệm thu) cộng gate bất thường `escalation`. Nguyên tắc: tính toán xác định,
 guardrail có hạn mức, đo token thật, cô lập workspace theo ticket, prompt là code. Đây là "công ty AI" đầu tiên
@@ -17,20 +17,19 @@ PHẢI/KHÔNG ĐƯỢC đã trả giá của các vai cũ.
 | `research` | `product` | strong | `intake`, `research`, `spec`, `plan` | Yêu cầu thô → 4 mảng nghiên cứu → draft (kèm `risks`) + câu hỏi làm rõ → PRD/Gherkin → C4 + contract + ticket có `stack`/`estimate_tokens`/`risk_tags` |
 | `engineering` | `builder` | strong | `backend`, `frontend`, `mobile`, `database`, `platform`, `data` (= `Task.stack`) | Code / hạ tầng / dữ liệu thật trong worktree `ticket/<id>`, PR mang lint/test thật; KHÔNG ghi được file test |
 | `quality` | `qa` | standard | `author`, `review` | Viết bộ test MÙ từ acceptance (ADR-0028); đọc diff, chấm PR, chẩn đoán nguyên nhân, hồi quy + perf + a11y trên staging |
-| `quality` | `security` | strong | (không pha) | Threat model STRIDE trên spec đã duyệt, review PR có `risk_tags`, DAST/license/PII trên release-candidate |
 | `operations` | `ops` | standard | `deploy`, `docs`, `account` | Staging → gate release → production, tag + `company/release`; tài liệu Diátaxis, incident; SOW/UAT, change request |
 | `supervisor` | `supervisor` | light | (không pha) | Watchdog, ngân sách token, knowledge base, version prompt — **code**, không phải công đoạn |
 | (con người) | human gate | — | — | Duyệt spec, release; khách ký nghiệm thu; gate `escalation` khi kẹt (kế hoạch do `_check_plan` kiểm bằng code, ADR-0037) |
 
-`load_agents()` trả **6** — ADR-0037 nói "5 agent" vì `supervisor` không phải một công đoạn của dây chuyền.
+`load_agents()` trả **5** — ADR-0040 nói "4 agent" vì `supervisor` không phải một công đoạn của dây chuyền.
 
 ## Luồng chính
 
 ```
 research-requests → product[intake] → product[research] → product[spec] ⇄ product[intake] (câu hỏi làm rõ)
-      → approved-specs → GATE spec → security (threat model) → product[plan] → _check_plan → tasks (depends_on/priority)
+      → approved-specs → GATE spec → qa[security] (threat model) → product[plan] → _check_plan → tasks (depends_on/priority)
       → qa[author] (khi bật --test-author) → builder[stack] → pull-requests
-      → review-results (qa[review] + security khi risk_tags) → release-candidates
+      → review-results (qa[review] + qa[security] khi risk_tags) → release-candidates
       → ops[deploy] staging → review-results (qa[review] hồi quy) → GATE release → ops[deploy] production
       → acceptance-results (khách ký ở GATE acceptance) → closed
       → incidents (root_cause_class) → tasks | research-requests;  change-requests → product[plan] | product[intake]
@@ -41,7 +40,7 @@ research-requests → product[intake] → product[research] → product[spec] �
 
 ```
 docs/          kiến trúc, tiêu chuẩn, ADR (0001–0039); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
-agents/        system prompt 6 agent (có version), nhóm theo khối; agent nhiều việc khai `phases:` — skill của pha
+agents/        system prompt 5 agent (có version), nhóm theo khối; agent nhiều việc khai `phases:` — skill của pha
                chỉ nạp ở lượt chạy pha đó (ADR-0037), thân bài có tiểu mục `### Pha <tên>` / `### Stack <tên>`
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
@@ -57,17 +56,17 @@ src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, g
                nào), web (tool web cho `product` pha research), guard (chống injection), assetscan (quét tài sản prompt), context (hạn mức ngữ cảnh),
                metrics (từ audit-log), sổ Ruling `rulings` (quyết định agent tự đưa ra — ADR-0030), evals (ghi/phát lại), stacks (lint/test theo stack — ADR-0013), smoke (khởi động sản phẩm theo `runtime` của spec, bằng chứng cho `deployed` — ADR-0029; `runtime` là điều kiện cần của Gate 1 — ADR-0031),
                deploy (dựng compose file **của khách** cho `staging`/`production`, `deployed` = `up -d` + `ps` running + smoke, thiếu một phần thì `down` — ADR-0039; chưa nối vào vòng đời release),
-               subagents (sinh 10 trợ lý kiểm duyệt chỉ-đọc `.claude/agents/sc-*.md` từ agents/ + gates/checklists.md — `make subagents`),
+               subagents (sinh 9 trợ lý kiểm duyệt chỉ-đọc `.claude/agents/sc-*.md` từ agents/ + gates/checklists.md — `make subagents`),
                gate_checklists (parser checklists.md + bảng nguồn bằng chứng §5 đặc tả), gate_brief (hồ sơ bằng chứng chỉ đọc
                cho nửa "người tự kiểm" của một gate — `make gate-brief SUBJECT=…`), demo, graph (cần `uv sync --extra graph`, không tính coverage)
 examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--relay/--resume/--auto-escalate), relay_client.py
                yeu-cau-mau-web-app.json (yêu cầu mẫu để publish vào `research-requests`: đủ mục tiêu, người dùng,
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng pha `intake` cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
-evals/         ca eval prompt theo agent (YAML) — đủ 6 agent, mỗi agent ≥ 2 ca (agent nhiều pha: ≥ 2 ca mỗi pha); recordings/ = phản hồi model đã ghi
-tests/         pytest 1152 ca / 71 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+evals/         ca eval prompt theo agent (YAML) — đủ 5 agent, mỗi agent ≥ 2 ca (agent nhiều pha: ≥ 2 ca mỗi pha); recordings/ = phản hồi model đã ghi
+tests/         pytest 1225 ca / 72 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, release tự dừng → gate, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
-               guard/blackboard, schema consistency, golden 6 agent + 4 hồ sơ gate, bộ sinh subagent, hồ sơ gate, deploy compose (runner tiêm được), rà soát bảo mật);
+               guard/blackboard, schema consistency, golden 5 agent + 4 hồ sơ gate, bộ sinh subagent, hồ sơ gate, deploy compose (runner tiêm được), rà soát bảo mật);
                coverage fail_under=100 (phủ 100% dòng)
 ```
 
@@ -148,7 +147,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 
 ## Quy ước bắt buộc
 - Ticket phải có `estimate_tokens` trước dispatch; `budget_tokens ≥ estimate × 1.5` (code từ chối nếu không).
-- Ticket chạm auth/payment/pii/crypto/upload/admin/external-api gắn `risk_tags` → cần thêm review của security.
+- Ticket chạm auth/payment/pii/crypto/upload/admin/external-api gắn `risk_tags` → cần thêm review nhãn `security` (lượt `qa` pha `security`).
 - Sửa prompt/skill → tăng `version`, đi qua PR, có eval (ADR-0004). Golden test (`tests/golden/`) đỏ nếu prompt đổi mà version không tăng; cập nhật bằng `make golden`.
   Rồi `make eval-record AGENT=<id>` bằng model thật và commit `evals/recordings/<id>.json`; CI phát lại và đỏ nếu bản ghi lệch prompt (ADR-0010).
 - PR của khối kỹ thuật chỉ có bằng chứng khi chạy với `--repo`: `local_checks.verified_by=workspace` do code điền từ lint/test thật; không có repo thì `{"unverified": true}`.
@@ -159,7 +158,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-08)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0039; 6 system prompt có version (5 công đoạn + supervisor, ADR-0037); 45 skill có version; 14 template; checklist 3 gate + escalation.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0040; 5 system prompt có version (4 công đoạn + supervisor, ADR-0040); 45 skill có version; 14 template; checklist 3 gate + escalation.
 - 19 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   `delivery.py` (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate release → production → nghiệm thu;
@@ -180,7 +179,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 - **Workspace theo ticket** (`workspace.py`): git worktree `ticket/<id>`, chạy ruff/pytest thật, trả `local_checks`.
 - **Eval prompt** (`evals/*.yaml`, `evals.py`): ca đầu vào + tiêu chí chấm; chạy với provider bất kỳ.
 - **Orchestrator** (`orchestrator.py`, ADR-0007): vòng lặp tự động theo bảng ROUTES khớp front matter; agent ghi blackboard
-  qua `context_writes`; security làm threat model từ spec đã duyệt trước khi `product` pha plan sinh ticket (C4 + contract
+  qua `context_writes`; `qa` pha `security` làm threat model từ spec đã duyệt trước khi `product` pha plan sinh ticket (C4 + contract
   lên blackboard) → `_check_plan` → dispatch NGAY (ADR-0037: không còn gate plan); hết câu hỏi làm rõ thì pha spec đi thẳng ra
   `approved-specs`; change request: `product` pha plan ước
   lượng impact → người `decide-change` → accepted đi lập kế hoạch (hoặc pha intake nếu đổi requirement); nghiệm thu conditional
@@ -194,10 +193,10 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   `ticket/<id>` (`--repo`); bảng tool tên cố định, không shell, allowlist lệnh, đường dẫn khoá trong worktree, lọc secret;
   tool-use trung lập provider (Anthropic, OpenAI-compatible, Fake). Vòng lặp dừng khi hết lượt hoặc vượt ngân sách token.
 - **Bằng chứng PR do code điền**: sau vòng tool, runner chạy lint/test thật, commit, ghi đè `branch`/`pr_ref`/
-  `local_checks` (`verified_by: workspace`)/`impact.files`; worktree không đổi → PR bị từ chối. Reviewer/security đọc
+  `local_checks` (`verified_by: workspace`)/`impact.files`; worktree không đổi → PR bị từ chối. Reviewer/pha `security` đọc
   `diff` thật; QA có tool chỉ đọc để tự chạy test (trên worktree ticket khi review PR, trên worktree tích hợp khi hồi quy
   staging; có tool mà không chạy gì → audit `review.no_tool_evidence`). Lint/test thật đỏ → PR không publish, ticket
-  retry+1 với hint là đầu ra test (`pr.rejected_local_checks`), không tốn lượt qa/security. Không có `--repo` → `local_checks = {"unverified": true}` + audit.
+  retry+1 với hint là đầu ra test (`pr.rejected_local_checks`), không tốn lượt qa. Không có `--repo` → `local_checks = {"unverified": true}` + audit.
 - **Eval ghi / phát lại** (`--record` / `--replay`): CI job `eval-replay` chạy từ `evals/recordings/`, đỏ khi bản ghi
   lệch prompt — cổng "đổi prompt phải chạy eval" của ADR-0004 được máy cưỡng chế.
 - **Nhánh tích hợp** (ADR-0011): ticket rẽ từ `company/integration` (worktree `.worktrees/_integration`, rẽ từ `--base`
@@ -239,7 +238,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   worktree, code chạy lint/test, PR dưới tên người thay PR của agent, review làm lại). Event `tasks` còn trong hàng đợi
   mà ticket không còn `dispatched` (đã `in_review` vì PR của người, hoặc approved/blocked) bị bỏ với audit
   `task.superseded` — không giao backend chạy lại trên worktree đã commit rồi "không sửa gì" ×3 → blocked.
-- **Ngân sách review tách khỏi ngân sách ticket** (F16, commit e26139b): token của qa/security
+- **Ngân sách review tách khỏi ngân sách ticket** (F16, commit e26139b): token của qa
   (`Supervisor.REVIEW_ACTORS`) ghi vào `Budget.review_used`, có trong `sprint_report`/lesson (`review_tokens`), không kích
   hoạt warn/cut của engineer. **Replay dựng RC từ log** (F19): `delivery.py` subscribe `release-candidates`, mở lại bus thì
   `releases`/`release_tickets`/`versions` dựng từ event thật; không tạo lại RC khi `replaying`.
@@ -247,7 +246,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   research → ticket → code → review → release → nghiệm thu bằng client giả, model thật (`--real`) hoặc relay qua file
   (`--relay DIR`, `examples/relay_client.py`: một phiên Claude Code khác trả lời `<n>.req.json`); `--resume` chạy tiếp.
   Phát hiện F13–F19 từ mô phỏng đều đã sửa (bảng trong báo cáo).
-- Test: 1152 ca pytest gồm golden 6 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
+- Test: 1225 ca pytest gồm golden 5 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
   vòng tool, orchestrator với repo git thật, eval ghi/phát lại, adapter tool-use (server HTTP giả), guard, cắt ngữ cảnh,
   artifact store, retry, bảng giá, tool web (fetcher giả), song song, metrics, comment/takeover, routing nhiều backend,
   release flow và replay; ruff + mypy sạch, coverage 100% (`fail_under = 100`; `graph.py` không tính).
@@ -262,7 +261,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   nhắc ở 12h, four-eyes, và quá hạn thì supervisor escalate chứ không im lặng. Kế hoạch KHÔNG có gate (ADR-0037):
   `_check_plan` chặn bằng code rồi giao ticket ngay; có `problems` thì `plan_rejected` + gate `escalation`.
 - **Cắt blackboard theo vai trò + trần prompt theo agent** (ADR-0020): `context_namespace_read` / `max_input_chars` trong
-  front matter; runner cắt payload/blackboard theo `context.py` nên qa/security không còn nhận toàn văn blackboard.
+  front matter; runner cắt payload/blackboard theo `context.py` nên qa không còn nhận toàn văn blackboard.
 - **Lỗi tạm thời của provider** (429, 5xx, đứt mạng) được thử lại có backoff; `Refused` và 4xx thì không. Anthropic
   có timeout nên một request treo không giữ luôn cả orchestrator.
 - **Trợ lý kiểm duyệt có hồ sơ bằng chứng** (`docs/dac-ta-tro-ly-kiem-duyet.md`, đủ 6 PR): 10 subagent Claude Code chỉ đọc
@@ -301,7 +300,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Thứ tự triển khai khuyến nghị
 
 1. `product` pha plan + `builder` (stack backend) + `qa` pha review + human gate (vòng lõi)
-2. `security` (threat model) ngay khi có ticket auth/payment/pii; `ops` pha account ngay khi có khách thật
+2. `qa` pha `security` (threat model) ngay khi có ticket auth/payment/pii; `ops` pha account ngay khi có khách thật
 3. Bật đủ chuỗi nghiên cứu của `product` (intake → research → spec) khi yêu cầu đầu vào hay mơ hồ
 4. `builder` stack platform + `ops` pha deploy/docs khi cần deploy thật; stack data khi cần analytics
 5. Bật supervisor ngay khi chi phí token vượt dự tính

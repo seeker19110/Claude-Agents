@@ -78,6 +78,8 @@ from .orch.routes import (
     phase_for,
 )
 from .orch.routes import SPEC_RUNTIME_REWORKS as SPEC_RUNTIME_REWORKS
+from .orch.routes import phase_of_output as phase_of_output
+from .orch.routes import slot_of as slot_of
 from .orch.routes import THREAT_ROUTE as THREAT_ROUTE
 from .orch.routes import _can_author_tests as _can_author_tests
 from .orch.routes import _has_dispute as _has_dispute
@@ -325,7 +327,9 @@ class Orchestrator:
         # ADR-0037 PR-5b: khoá theo AGENT không đủ khi một agent gộp (`ops`) có HAI route khác nhau khớp CÙNG MỘT
         # event — route thứ hai bị route thứ nhất "nuốt" dù `topic_out` khác hẳn. Khoá thêm theo `topic_out` để
         # hai route của cùng agent trên cùng event chạy độc lập, giữ nguyên ý nghĩa cũ khi agent không gộp.
-        slot = f"{agent}:{r.topic_out}"
+        # ADR-0040 đẩy tiếp một bậc: `qa[review]` và `qa[security]` trùng CẢ agent lẫn `topic_out` trên cùng
+        # event `pull-requests`, nên `slot_of` thêm pha cho đúng những cặp nhập nhằng ấy (và chỉ chúng).
+        slot = slot_of(agent, r.topic_out, r.phase)
         with self._lock:
             if slot in self.partial.get(env.event_id, set()):
                 return  # đã chạy xong ở lần xử lý trước (event bị hoãn transient)

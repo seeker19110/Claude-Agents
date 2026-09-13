@@ -17,10 +17,7 @@ product:
   cases: 16
 qa:
   min_pass_ratio: 0.95
-  cases: 8
-security:
-  min_pass_ratio: 0.95
-  cases: 10
+  cases: 18
 supervisor:
   min_pass_ratio: 0.95
   cases: 3
