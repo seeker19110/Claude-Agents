@@ -68,7 +68,7 @@ evals/         ca eval prompt theo agent (YAML) — đủ 6 agent, mỗi agent �
 tests/         pytest 1232 ca / 73 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, release tự dừng → gate, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
                guard/blackboard, schema consistency, golden 6 agent + 4 hồ sơ gate, bộ sinh subagent, hồ sơ gate, deploy compose (runner tiêm được), rà soát bảo mật);
-               coverage fail_under=100 (phủ 100% dòng)
+               coverage fail_under=100 (phủ 100% dòng VÀ 100% nhánh, `branch = true` từ 2026-09-13)
 ```
 
 ## Chạy
@@ -83,7 +83,7 @@ uv run python examples/donghanhcungban_demo.py --out sim-out   # mô phỏng c�
                                           # --real: gọi model thật theo tier (llm.yaml / COMPANY_*); --relay DIR: model là một
                                           # phiên Claude Code khác trả lời qua file; --resume: chạy tiếp từ sim-out; --auto-escalate
 uv run ruff check src tests && uv run mypy src/company --ignore-missing-imports   # make lint (make fix = ruff --fix; make types = mypy)
-uv run pytest -q --cov --cov-report=term  # make cov — ngưỡng fail_under = 100 (phủ 100% dòng)
+uv run pytest -q --cov --cov-report=term  # make cov — ngưỡng fail_under = 100 (phủ 100% dòng VÀ 100% nhánh)
 
 # Chạy model thật (provider bất kỳ). Cấu hình: cp llm.example.yaml llm.yaml rồi sửa, hoặc biến môi trường:
 #   COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=http://localhost:11434/v1 COMPANY_MODEL_STRONG=qwen2.5-coder:32b
