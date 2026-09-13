@@ -2,6 +2,10 @@
 # repo khách mount ngoài, docker.sock passthrough cho orchestrator gọi `docker compose` deploy khách
 # (ADR-0039) mà không cần dockerd trong container.
 #
+# ADR-0014 sửa bốn chỗ hở đo được trong audit 2026-09-13: bí mật ra khỏi ngữ cảnh build (`.dockerignore`),
+# `llm.yaml` vào bằng volume chứ không bằng image, đường tới gateway trên host, và state mount theo THƯ MỤC
+# vì bus chạy WAL. Cổng canh: `platform/console/tests/test_cong_docker.py`.
+#
 # Cách dùng:
 #   cp .env.example .env        # điền GH_TOKEN, GIT_AUTHOR_*, DELIVER_REMOTE, đường dẫn repo khách
 #   docker compose up -d --build
@@ -13,16 +17,29 @@ services:
     build: .
     ports:
       - "8200:8200"
+    # Gateway (`platform/gateway`) là tiến trình trên HOST — nó cần trình duyệt thật để `gateway login`, nên
+    # không chạy trong container này. Trong container `127.0.0.1:1123` trỏ về chính container, nên `llm.yaml`
+    # của bản container phải khai `base_url: http://host.docker.internal:1123/v1` (ADR-0014 quyết định 3).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-}
       GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-}
       DELIVER_REMOTE: ${DELIVER_REMOTE:-}
       GH_TOKEN: ${GH_TOKEN:-}
     volumes:
-      # State công ty — không nằm trong image, sống qua rebuild/restart.
-      - ./companies/software-company/company.sqlite:/app/companies/software-company/company.sqlite
-      - company_artifacts:/app/companies/software-company/company.sqlite.artifacts
-      - ./companies/keeper/keeper.sqlite:/app/companies/keeper/keeper.sqlite
+      # State công ty — mount THƯ MỤC `var/`, không mount file `.sqlite` lẻ: bus chạy `journal_mode=WAL`
+      # (`xagents_core/sqlite_bus.py`) nên SQLite sinh `company.sqlite-wal` và `-shm` CẠNH file DB; mount file
+      # lẻ để hai file ấy rơi vào layer container (mất khi `down`). Cùng thư mục này còn giữ
+      # `company.artifacts/` của blackboard (`runner.artifact_store` = `<db>.with_suffix('.artifacts')`) —
+      # đường dẫn mà bản trước mount trượt (`company.sqlite.artifacts`, không phải tên code sinh ra).
+      # Đường dẫn DB trong container do entrypoint truyền bằng `--company-db`/`--keeper-db`.
+      - ./companies/software-company/var:/app/companies/software-company/var
+      - ./companies/keeper/var:/app/companies/keeper/var
+      # Cấu hình model: vào bằng volume, KHÔNG bằng image (`.dockerignore` loại `llm.yaml` khỏi ngữ cảnh
+      # build). Chỉ đọc — đổi model thì sửa file trên host, hoặc dùng màn "Cài đặt model" của console với
+      # bản mount ghi được (bỏ `:ro`).
+      - ./companies/software-company/llm.yaml:/app/companies/software-company/llm.yaml:ro
       # Repo khách — đường dẫn thật thay bằng biến CLIENT_REPO trong .env, container ghi worktree/commit
       # trực tiếp lên đây.
       - ${CLIENT_REPO:-./docker/client-repo-placeholder}:/client-repo
@@ -31,6 +48,3 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Git identity/credential của host, chỉ đọc — không bake token vào image (AGENTS.md luật cấm 3).
       - ${HOME}/.gitconfig:/root/.gitconfig:ro
-
-volumes:
-  company_artifacts:

@@ -25,6 +25,15 @@ docker compose down          # dừng console + orchestrator đang chạy trong 
 docker compose ps            # xác nhận không còn service nào "running"
 ```
 
+**State của bản container nằm ở `companies/<công ty>/var/`** (ADR-0014), KHÁC chỗ bản chạy trần
+(`companies/software-company/company.sqlite`). Đọc bus bằng CLI trên host trong lúc hub chạy trong container thì
+phải trỏ đúng chỗ, nếu không sẽ đọc một bus rỗng và tưởng công ty đứng im:
+
+```bash
+cd companies/software-company
+uv run python -m company.orchestrator --db var/company.sqlite status
+```
+
 `down` KHÔNG đụng tới container sản phẩm của khách (Mức 4) — chúng là compose project khác, đứng độc lập vì
 `docker.sock` chỉ được **mount qua** cho orchestrator gọi, không phải orchestrator chạy `dockerd` trong hub.
 Trạng thái công ty (`company.sqlite`, `.artifacts`) nằm ở volume, `down` không xoá dữ liệu; `docker compose up

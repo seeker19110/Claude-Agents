@@ -6,6 +6,18 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(docker): **hub container không còn bake bí mật, không còn mất state, và với tới được gateway** (ADR gốc
+  0014, sửa đổi ADR-0013). Năm chỗ hở im lặng do audit 2026-09-13 đọc ra: `.dockerignore` không loại
+  `llm.yaml`/`.env` trong khi `Dockerfile` có `COPY . .` (bí mật vào layer image — gitleaks mù lớp này vì file
+  chưa từng vào git); không volume nào mang `llm.yaml` vào container; không có đường tới gateway trên host
+  (`127.0.0.1:1123` trong container là chính container); bind-mount FILE `.sqlite` trong khi bus chạy WAL nên
+  `-wal`/`-shm` rơi vào layer container; volume artifacts mount trượt tên (`company.sqlite.artifacts` trong khi
+  `runner.artifact_store` sinh `company.artifacts`) nên blackboard chưa bao giờ persist. Vá: bí mật ra khỏi
+  ngữ cảnh build, `llm.yaml` vào bằng mount `:ro`, `extra_hosts: host.docker.internal`, state mount theo THƯ MỤC
+  `var/` (đóng cả hai lỗi state bằng một quyết định). Không đổi một dòng mã: `--company-db`/`--keeper-db` đã có
+  sẵn, entrypoint chỉ truyền đường dẫn. Cổng cứng mới `platform/console/tests/test_cong_docker.py` 6 ca, viết
+  trước bản vá — đo hai chiều: tắt vá 6/6 đỏ, bật vá 6/6 xanh.
+
 - docs(audit): **audit toàn dự án 2026-09-13 — tám phép đo A1–A8 + rà bề mặt HTTP**
   (`docs/reports/2026-09-13-audit.md`). Mọi cổng máy chạy lại và xanh (2852 test, 100% coverage cả năm package,
   ruff/mypy sạch, eval phát lại, `subagents check`, `assetscan`, `keeper drift`). Sáu dòng tài liệu lệch đã sửa
