@@ -20,13 +20,37 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .llm import ClaudeCodeClient, LLMConfig, LLMError, load_config
+from .llm import CORE, ClaudeCodeClient, LLMConfig, LLMError, explain_config, load_config, may_config_file
 from .tools import ToolBox, ToolSpec
 
 PROBE_TOOL = "probe_ping"
 PROBE_SCHEMA: dict[str, Any] = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
 PROBE_PROMPT = (f"Gọi tool `{PROBE_TOOL}` đúng một lần với note=\"probe\", rồi trả về JSON {{\"ok\": true}}. "
                 "Không làm gì khác.")
+
+
+def _in_nguon_cau_hinh(path: Path | None, *, json_ra: bool) -> int:
+    """`--explain`: mỗi khoá cấu hình đến từ tầng nào (ADR-0016 bắt buộc kèm lệnh này).
+
+    Cố ý KHÔNG gọi CLI: người ta gõ `--explain` đúng lúc cấu hình đang hỏng, và lúc đó CLI thường là thứ chưa
+    chạy được. Một lệnh chẩn đoán mà tự phụ thuộc vào thứ đang hỏng thì vô dụng đúng lúc cần nhất.
+    """
+    try:
+        nguon = explain_config(CORE, path, cls=LLMConfig)
+    except LLMError as e:               # cấu hình hỏng là ĐÚNG lý do người ta gõ lệnh này — nói, đừng ném stack
+        print(str(e), file=sys.stderr)
+        return 2
+    if json_ra:
+        print(json.dumps(nguon, ensure_ascii=False, indent=2))
+        return 0
+    print("=" * 72)
+    print("  CẤU HÌNH LLM — khoá nào đến từ đâu (ADR-0016)")
+    print("=" * 72)
+    for khoa in sorted(nguon):
+        print(f"  {khoa:<20} {nguon[khoa]}")
+    print("-" * 72)
+    print(f"  tầng máy: {may_config_file()}" + ("" if may_config_file().exists() else "  (CHƯA CÓ)"))
+    return 0
 
 
 def probe_toolbox() -> tuple[ToolBox, list[str]]:
@@ -113,7 +137,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model", default="", help="model cho lượt thử (mặc định: tier light của backend)")
     ap.add_argument("--timeout", type=float, default=300.0)
     ap.add_argument("--json", action="store_true", help="in JSON thay vì bảng")
+    ap.add_argument("--explain", action="store_true",
+                    help="chỉ in NGUỒN của từng khoá cấu hình (ADR-0016), không gọi CLI")
     a = ap.parse_args(argv)
+
+    if a.explain:
+        return _in_nguon_cau_hinh(a.config, json_ra=a.json)
 
     if a.binary:
         cfg = LLMConfig(provider="claude-code", binary=a.binary, config_dir=a.config_dir,

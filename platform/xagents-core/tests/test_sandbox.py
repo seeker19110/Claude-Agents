@@ -256,3 +256,14 @@ def test_container_spawn_khi_popen_khong_mo_duoc_stdin(tmp_path):
         RunSpec(argv=["x"], cwd=tmp_path, env={"LANG": "vi"}))
 
     assert h.poll() is None                 # vẫn trả handle dùng được, không nổ
+
+
+def test_clean_env_bo_con_tro_tang_may_cua_adr0016(monkeypatch):
+    """`XAGENTS_LLM_CONFIG` trỏ vào file tầng máy — nơi giữ `config_dir`, `base_url`, có thể cả `api_key`.
+
+    Cùng họ với `CLAUDE_CONFIG_DIR`/`CODEX_HOME` đã bị lọc sẵn: không phải bí mật, mà là **đường đến** bí mật,
+    và lệnh con (test của khách, ffmpeg, TTS) không có lý do gì cần biết đường đó. ADR-0016 ghi thẳng ở mục hệ
+    quả rằng nó mở đường đọc bí mật thứ hai trên máy nên `clean_env`/sandbox phải được rà lại cùng họ
+    (`AGENTS.md` luật bắt buộc 5)."""
+    monkeypatch.setenv("XAGENTS_LLM_CONFIG", "/nha/toi/.config/xagents/llm.yaml")
+    assert "XAGENTS_LLM_CONFIG" not in clean_env()

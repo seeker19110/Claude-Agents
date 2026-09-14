@@ -10,7 +10,10 @@ Ngày: 2026-09-09 (viết) · 2026-09-14 (đánh số lại và đo lại khi po
 > adapter `claude-code` 878 → 923, `config.py:65` và hai chỗ gọi vẫn đúng; (3) con số cốt lõi, đo lại ở phần
 > Bối cảnh. Dòng `Studio-creators` trong bảng đã **bỏ** — công ty đó bị gộp đi bởi chính ADR-0011; giai thoại
 > `make eval-record` cho studio ở dưới giữ nguyên vì nó là chuyện đã xảy ra thật và vẫn là bằng chứng hợp lệ.
-> **Quyết định chưa được cài đặt**: ADR ghi quyết định, mã chưa có (`git grep XAGENTS_LLM_CONFIG` ra rỗng).
+> **Đã cài đặt** (2026-09-15, PR #<n>): `may_config_file`/`_gop_tang`/`explain_config` ở
+> `platform/xagents-core/src/xagents_core/llm.py`, lệnh `python -m company.probe --explain`, và
+> `XAGENTS_LLM_CONFIG` đã vào `SECRET_ENV` của `sandbox.py`. Câu "chưa cài đặt" của bản port 09-14 nay sai,
+> đã sửa tại chỗ thay vì để ADR nói một đằng mã chạy một nẻo.
 
 ## Bối cảnh
 

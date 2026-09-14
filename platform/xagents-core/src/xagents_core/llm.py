@@ -31,7 +31,9 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import dataclass, field
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, ClassVar, Protocol, Self, TypeVar, cast
 
@@ -407,17 +409,130 @@ class LLMConfig:
         return cfg
 
 
-def load_config(core: CoreConfig, path: Path | None = None, *, cls: type[C]) -> C:
-    """`llm.yaml` của công ty rồi biến môi trường đè lên. `cls` là lớp cấu hình của công ty — bắt buộc, không có
-    mặc định: một `load_config` lỡ trả `LLMConfig` trần cho company thì mất im lặng cả `prices` lẫn `sandbox`,
-    và mypy không cứu được vì lớp con vẫn là `LLMConfig`."""
+MAY_CONFIG_ENV = "XAGENTS_LLM_CONFIG"   # ADR-0016: đè đường dẫn tầng máy (test, máy cắm cấu hình chỗ khác)
+
+
+def may_config_file(env: Mapping[str, str] | None = None) -> Path:
+    """Tầng MÁY của cấu hình model (ADR-0016) — nằm ngoài repo, mặc định `~/.config/xagents/llm.yaml`.
+
+    Vì sao ngoài repo: `llm.yaml` bị `.gitignore` (luật cấm §3, gitleaks quét cả lịch sử) còn `AGENTS.md` cấm §2
+    bắt mỗi phiên agent một `git worktree` riêng. Hai luật đều đúng, nhưng giao nhau thì file gitignored không đi
+    theo `git worktree add` — đo 2026-09-14: **0/4 worktree**, kể cả checkout chính, có một `llm.yaml` nào.
+    Tầng này giữ thứ phụ thuộc *máy này đang đăng nhập tài khoản nào* (`backends`: tên, provider, `config_dir`,
+    `base_url`); `<package>/llm.yaml` giữ thứ khác nhau thật giữa các công ty (`routing`, ngân sách, `prices`).
+    """
+    e = os.environ if env is None else env
+    chi_dinh = e.get(MAY_CONFIG_ENV)
+    return Path(chi_dinh).expanduser() if chi_dinh else Path.home() / ".config" / "xagents" / "llm.yaml"
+
+
+def _doc_yaml(p: Path) -> dict[str, Any]:
+    return dict(yaml.safe_load(p.read_text(encoding="utf-8")) or {})
+
+
+def _tang_may(env: Mapping[str, str]) -> dict[str, Any] | None:
+    """Đọc tầng máy, hoặc `None` khi không có. Chỉ đích danh mà file vắng thì HỎNG TO, không chạy tạm.
+
+    Bỏ qua im lặng nghĩa là `provider` rơi về mặc định `fake`: mọi lượt gọi model thành giả mà không ai biết —
+    đúng khuôn "chế độ hỏng không tự khai báo" mà ADR-0016 lấy làm lý do tồn tại. Ngược lại, KHÔNG chỉ đích danh
+    thì vắng tầng máy là bình thường: test và `evals --replay` chạy offline, không được bắt chúng dựng file
+    ngoài repo.
+    """
+    p = may_config_file(env)
+    if p.exists(): return _doc_yaml(p)
+    if env.get(MAY_CONFIG_ENV):
+        raise LLMError(f"{MAY_CONFIG_ENV} trỏ `{p}` nhưng không có file đó. Tầng máy của ADR-0016 giữ `backends` "
+                       f"(tài khoản, config_dir, base_url); thiếu nó thì provider rơi về `fake` và mọi lượt gọi "
+                       f"model là giả. Tạo file đó, hoặc bỏ {MAY_CONFIG_ENV} để dùng mặc định "
+                       f"`~/.config/xagents/llm.yaml`.")
+    return None
+
+
+def _gop_tang(may: dict[str, Any] | None, goi: dict[str, Any] | None) -> dict[str, Any]:
+    """Gộp hai tầng theo TỪNG KHOÁ GỐC, tầng package đè tầng máy.
+
+    Gộp ở tầng *dữ liệu* chứ không gọi `apply_yaml` hai lần, vì `apply_yaml` gán đè chứ không cộng dồn:
+    `self.backends = [... data.get("backends") or [] ...]` nghĩa là một `llm.yaml` package không khai `backends:`
+    sẽ **xoá trắng** `backends` của tầng máy — đúng thứ ADR-0016 sinh ra để tránh.
+
+    Cố ý KHÔNG gộp sâu vào trong `models`/`routing`/từng phần tử `backends`: package nào khai `routing:` thì sở
+    hữu trọn khoá đó. Gộp nửa vời làm câu hỏi "nửa này đến từ đâu" không trả lời được, mà trả lời được câu đó
+    chính là ràng buộc bắt buộc của ADR này.
+    """
+    return {**(may or {}), **(goi or {})}
+
+
+def load_config(core: CoreConfig, path: Path | None = None, *, cls: type[C],
+                env: Mapping[str, str] | None = None) -> C:
+    """Tầng máy → `llm.yaml` của công ty → biến môi trường, mỗi tầng đè lên tầng dưới (ADR-0016).
+
+    `cls` là lớp cấu hình của công ty — bắt buộc, không có mặc định: một `load_config` lỡ trả `LLMConfig` trần
+    cho company thì mất im lặng cả `prices` lẫn `sandbox`, và mypy không cứu được vì lớp con vẫn là `LLMConfig`.
+    """
+    e = os.environ if env is None else env
     cfg = cls()
     p = path or core.config_file
-    if p.exists():
-        cfg.apply_yaml(yaml.safe_load(p.read_text(encoding="utf-8")) or {})
-    cfg.apply_env(os.environ, core)
-    cfg.select_backends(os.environ, core)
+    cfg.apply_yaml(_gop_tang(_tang_may(e), _doc_yaml(p) if p.exists() else None))
+    cfg.apply_env(e, core)
+    cfg.select_backends(e, core)
     return cfg
+
+
+def explain_config(core: CoreConfig, path: Path | None = None, *, cls: type[C],
+                   env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Mỗi khoá cấu hình đến từ ĐÂU — `{tên khoá: nguồn}` (ADR-0016, mục "phải trả").
+
+    Thêm một tầng là thêm câu hỏi "giá trị này đến từ đâu"; không trả lời được thì tầng nền thành chỗ để cấu
+    hình lặng lẽ khác với thứ người đọc thấy trong file package. Cách đo: dựng lại cấu hình theo từng tầng rồi
+    so ảnh chụp — không phải gắn vết vào `apply_*`, để một công ty ghi đè ba móc ấy vẫn được giải thích đúng
+    mà không phải nhớ báo cáo nguồn.
+    """
+    e = os.environ if env is None else env
+    p = path or core.config_file
+    may = _tang_may(e)
+
+    # `deepcopy` chứ không `dict(...)`: `apply_env` sửa `models`/`effort`/`extra` TẠI CHỖ (`self.models[t] = …`),
+    # nên ảnh chụp nông giữ đúng cùng một object — hai mốc bằng nhau và khoá đổi bị báo là "mặc định".
+    cfg = cls()
+
+    def chup() -> dict[str, Any]:
+        return deepcopy(cfg.__dict__)
+
+    moc = [("mặc định", chup())]
+    if may is not None:
+        cfg.apply_yaml(may); moc.append((f"tầng máy: {may_config_file(e)}", chup()))
+    if p.exists():
+        cfg.apply_yaml(_gop_tang(may, _doc_yaml(p))); moc.append((f"llm.yaml: {p}", chup()))
+    cfg.apply_env(e, core); cfg.select_backends(e, core)
+    moc.append(("biến môi trường", chup()))
+
+    nguon = {k: moc[0][0] for k in moc[0][1]}
+    for (_, truoc), (ten, sau) in pairwise(moc):
+        for k, v in sau.items():
+            if k not in truoc or truoc[k] != v:
+                nguon[k] = _ten_bien(k, core, e) if ten == "biến môi trường" else ten
+    return nguon
+
+
+# Khoá nào đọc từ biến nào — chỉ để `explain_config` gọi đúng TÊN biến thay vì nói chung chung "biến môi
+# trường"; người sửa cấu hình cần biết gõ `unset` cái gì.
+# `models` đọc từ NHIỀU biến (một biến mỗi tier) nên giá trị là danh sách, không phải một tên.
+_BIEN_THEO_KHOA: dict[str, tuple[str, ...]] = {
+    "provider": ("LLM_PROVIDER",), "base_url": ("LLM_BASE_URL",), "api_key": ("LLM_API_KEY",),
+    "max_input_chars": ("MAX_INPUT_CHARS",), "cache_ttl": ("CACHE_TTL",),
+    "models": tuple(f"MODEL_{t.upper()}" for t in TIERS),
+}
+
+
+def _ten_bien(khoa: str, core: CoreConfig, env: Mapping[str, str]) -> str:
+    """Gọi đúng TÊN biến đang đặt, hoặc chịu nói chung chung — không bao giờ gọi tên một biến KHÔNG được đặt.
+
+    Vế "chung chung" có thật chứ không phải phòng xa: `<PREFIX>_LLM_PROVIDER` xoá sạch `backends` (một provider
+    chỉ đích danh thì bỏ danh sách), nên khoá `backends` đổi vì biến ấy chứ không vì `<PREFIX>_LLM_BACKENDS` —
+    chỉ vào biến sau là chỉ sai chỗ người ta cần `unset`.
+    """
+    ten = [core.env_name(b) for b in _BIEN_THEO_KHOA.get(khoa, ()) if env.get(core.env_name(b))]
+    return "biến môi trường: " + ", ".join(ten) if ten else "biến môi trường"
 
 # ---------- adapter CLI (claude / codex): phần không phụ thuộc công ty ----------
 

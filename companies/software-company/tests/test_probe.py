@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from company import probe
 from company.bus import InMemoryBus
 from company.llm import ClaudeCodeClient, LLMConfig, LLMError
 from company.mcp_bridge import SERVER_NAME, ProxyServer
@@ -232,3 +233,53 @@ def test_audit_mode_is_loop_for_api_providers(tmp_path):
         "builder", _task_env(), "pull-requests", tools=WorkspaceTools(ws).toolbox())
     ev = json.loads(next(iter(bus.replay(topic="audit-log"))).payload["evidence"])
     assert ev["mode"] == "loop" and ev["turns"] == 2
+
+
+# ---------- ADR-0016: `--explain` nói mỗi khoá đến từ đâu ----------
+
+
+def test_explain_in_nguon_tung_khoa_va_khong_goi_cli(tmp_path, capsys, monkeypatch):
+    """Ràng buộc bắt buộc của ADR-0016: thêm một tầng cấu hình thì phải có lệnh trả lời "giá trị này đến từ
+    đâu", nếu không tầng nền thành chỗ cấu hình lặng lẽ khác thứ người đọc thấy trong file package.
+
+    Hai điều kiện, không chỉ một: (1) in ra nguồn của từng khoá; (2) KHÔNG gọi CLI thật — `--explain` là câu
+    hỏi về cấu hình, người ta gõ nó đúng lúc cấu hình đang hỏng và CLI có thể chưa chạy được."""
+    may = tmp_path / "may.yaml"; may.write_text("provider: anthropic\n", encoding="utf-8")
+    goi = tmp_path / "llm.yaml"; goi.write_text("max_tokens: 111\n", encoding="utf-8")
+    monkeypatch.setenv("XAGENTS_LLM_CONFIG", str(may))
+    monkeypatch.setattr(probe, "probe_backend", _khong_duoc_goi)
+
+    assert probe.main(["--explain", "--config", str(goi)]) == 0
+    ra = capsys.readouterr().out
+    assert "provider" in ra and str(may) in ra, "khoá lấy từ tầng máy phải chỉ đúng file tầng máy"
+    assert str(goi) in ra, "khoá lấy từ llm.yaml phải chỉ đúng file package"
+
+
+def test_explain_json_doc_duoc_bang_may(tmp_path, capsys, monkeypatch):
+    """`--explain --json` để script/CI đọc được: cấu hình là thứ người ta cần so sánh giữa hai máy, mà so bằng
+    mắt trên bảng kẻ thì không so được."""
+    goi = tmp_path / "llm.yaml"; goi.write_text("max_tokens: 111\n", encoding="utf-8")
+    monkeypatch.delenv("XAGENTS_LLM_CONFIG", raising=False)
+    monkeypatch.setattr(probe, "probe_backend", _khong_duoc_goi)
+
+    assert probe.main(["--explain", "--json", "--config", str(goi)]) == 0
+    nguon = json.loads(capsys.readouterr().out)
+    assert nguon["max_tokens"] == f"llm.yaml: {goi}"
+    assert nguon["cache_ttl"] == "mặc định"
+
+
+def _khong_duoc_goi(*args, **kwargs):
+    raise AssertionError("`--explain` không được gọi CLI thật")
+
+
+def test_explain_cau_hinh_hong_thi_noi_tu_te_chu_khong_phun_traceback(tmp_path, capsys, monkeypatch):
+    """`--explain` là lệnh người ta gõ ĐÚNG LÚC cấu hình đang hỏng. Ném traceback ra là bắt họ đọc stack của
+    mình để tìm một câu tiếng Việt đã viết sẵn ở trong đó — và exit code của traceback là 1 lẫn với mọi lỗi
+    khác. Phải in thông điệp ra stderr và trả mã riêng."""
+    monkeypatch.setenv("XAGENTS_LLM_CONFIG", str(tmp_path / "khong-co.yaml"))
+    monkeypatch.setattr(probe, "probe_backend", _khong_duoc_goi)
+
+    assert probe.main(["--explain"]) == 2
+    loi = capsys.readouterr().err
+    assert "XAGENTS_LLM_CONFIG" in loi and "không có file đó" in loi
+    assert "Traceback" not in loi

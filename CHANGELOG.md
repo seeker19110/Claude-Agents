@@ -6,6 +6,18 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(core): **cài đặt ADR-0016 — cấu hình model ba tầng: máy → package → biến môi trường.** Tầng máy
+  (`~/.config/xagents/llm.yaml`, đè bằng `$XAGENTS_LLM_CONFIG`) nằm NGOÀI repo nên không bốc hơi theo
+  `git worktree add` — đo 2026-09-14: **0/4 worktree**, kể cả checkout chính, có một `llm.yaml` nào, tức không
+  phiên agent nào chạy được model thật cho tới khi có người dựng tay. Ba chỗ đáng chú ý, mỗi chỗ một ca test đo
+  hai chiều: (1) gộp hai tầng ở tầng **dữ liệu** chứ không gọi `apply_yaml` hai lần — `apply_yaml` gán đè nên
+  một `llm.yaml` package không khai `backends:` sẽ **xoá trắng** `backends` của tầng máy, đúng thứ ADR sinh ra
+  để tránh; (2) `$XAGENTS_LLM_CONFIG` trỏ file không có ⇒ **fail-closed nói rõ thiếu gì**, không lặng lẽ rơi về
+  `provider: fake` (không chỉ đích danh thì vắng tầng máy vẫn bình thường — test và `evals --replay` chạy
+  offline); (3) `XAGENTS_LLM_CONFIG` vào `SECRET_ENV` của `sandbox.py` cùng họ `CLAUDE_CONFIG_DIR` — không phải
+  bí mật, mà là **đường đến** bí mật (`AGENTS.md` luật bắt buộc 5). Kèm ràng buộc bắt buộc của ADR:
+  `python -m company.probe --explain [--json]` in **nguồn của từng khoá**, không gọi CLI (lệnh chẩn đoán không
+  được phụ thuộc vào thứ đang hỏng) và báo lỗi cấu hình tử tế bằng exit 2 thay vì traceback. (#<n>)
 - docs(adr): **ADR-0016 — cấu hình model ở tầng cấp máy**, `llm.yaml` của package chỉ giữ phần khác nhau. Câu
   hỏi khởi nguồn *"sao không tích hợp `llm.yaml` trong core, gọi model qua gateway"* bị chính phép đo lật cả
   hai vế: `llm.yaml` **đã** ở core từ K3.3 (`load_config` là chỗ duy nhất đọc), còn gateway **không** thay thế
