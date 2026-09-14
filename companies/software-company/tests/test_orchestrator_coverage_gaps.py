@@ -141,6 +141,50 @@ def test_merge_ticket_noop_khi_sha_khong_doi(tmp_path, monkeypatch):
     assert noop
 
 
+def test_integration_noop_chi_ghi_mot_lan_cho_moi_ticket(tmp_path, monkeypatch):
+    """Cùng bẫy đã vá cho `integration.skipped` (test_integration_branch.py) nhưng bỏ sót ở nhánh noop liền kề:
+    sha không đổi thì `_merge_ticket` KHÔNG thêm `tid` vào `orch.integrated`, nên mỗi nhịp watch gọi lại đi đúng
+    lại nhánh này và ghi thêm một bản ghi `integration.noop` y hệt — không có khoá `once`.
+
+    Đo trên `company.sqlite` thật của QLKH (2026-09-14): TCK-033 (PR không đổi file nào) để lại 1319/2165 bản ghi
+    audit-log (61%) đều là `integration.noop` lặp lại mỗi 3 giây watch — orchestrator quay vòng vô hạn không
+    tiến triển, `metrics`/`console` đọc sổ này nên số liệu bị pha loãng cùng kiểu `integration.skipped` từng bị.
+
+    Đo hai chiều: bỏ `once=` khỏi `_audit` trong nhánh noop của `worktree_flow.merge_ticket` thì ca này đỏ
+    với 5 bản ghi."""
+    orch = _orch()
+
+    class FakeWs:
+        path = tmp_path
+        branch = "ticket/T1"
+
+        def __init__(self):
+            self.path.mkdir(exist_ok=True)
+
+    class FakeMerge:
+        ok = True
+        sha = "same-sha"
+        conflicts = None
+
+    class FakeIntegration:
+        branch = "integration"
+
+        def sha(self):
+            return "same-sha"
+
+        def merge(self, branch, msg):
+            return FakeMerge()
+
+    orch.integration = FakeIntegration()
+    monkeypatch.setattr(orch, "workspace", lambda tid: FakeWs())
+    for _ in range(5):
+        res = StepResult("e1", "release-candidates", "R1")
+        assert orch._merge_ticket("T1", res, release_id="R1") is True
+
+    ghi = [e.payload for e in orch.bus.replay(topic="audit-log") if e.payload["action"] == "integration.noop"]
+    assert len(ghi) == 1, f"5 nhịp phải để lại đúng 1 bản ghi, nhận được {len(ghi)}"
+
+
 # ---------- _merge_ticket: xung đột → ws.fresh()/lead.request_changes lỗi (ValueError/WorkspaceError) ----------
 
 def test_merge_ticket_conflict_va_fresh_loi(tmp_path, monkeypatch):
