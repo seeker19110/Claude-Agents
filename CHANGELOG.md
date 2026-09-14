@@ -12,7 +12,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   vô thời hạn. Đo trên `company.sqlite` thật của QLKH (TCK-033): 1319/2165 bản ghi audit-log (61%) là bản sao
   của cùng một sự kiện — `metrics`/`console` đọc sổ này nên số liệu bị pha loãng, và orchestrator quay vòng
   không tiến triển. TDD: `test_integration_noop_chi_ghi_mot_lan_cho_moi_ticket` đỏ trước (5 bản ghi), xanh sau
-  khi thêm `once=f"integration.noop:{release_id}:{tid}:{before}"`.
+  khi thêm `once=f"integration.noop:{release_id}:{tid}:{before}"`. (#291)
 - fix(company): **agent `ops` không còn tự ý lùi `status=pending_human` khi đã có runbook cụ thể** cho deploy
   staging. Nguyên nhân gốc thật của 5+ release QLKH kẹt vĩnh viễn (REL-001/005/006/007/008/009): `ops` hiểu
   nhầm `status=deployed` là lời khai "tôi đã tự chạy deploy" (nó không có tool chạy trực tiếp) nên luôn lùi về
