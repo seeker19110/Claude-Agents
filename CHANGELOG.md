@@ -17,7 +17,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   offline); (3) `XAGENTS_LLM_CONFIG` vào `SECRET_ENV` của `sandbox.py` cùng họ `CLAUDE_CONFIG_DIR` — không phải
   bí mật, mà là **đường đến** bí mật (`AGENTS.md` luật bắt buộc 5). Kèm ràng buộc bắt buộc của ADR:
   `python -m company.probe --explain [--json]` in **nguồn của từng khoá**, không gọi CLI (lệnh chẩn đoán không
-  được phụ thuộc vào thứ đang hỏng) và báo lỗi cấu hình tử tế bằng exit 2 thay vì traceback. (#<n>)
+  được phụ thuộc vào thứ đang hỏng) và báo lỗi cấu hình tử tế bằng exit 2 thay vì traceback. (#303)
 - docs(adr): **ADR-0016 — cấu hình model ở tầng cấp máy**, `llm.yaml` của package chỉ giữ phần khác nhau. Câu
   hỏi khởi nguồn *"sao không tích hợp `llm.yaml` trong core, gọi model qua gateway"* bị chính phép đo lật cả
   hai vế: `llm.yaml` **đã** ở core từ K3.3 (`load_config` là chỗ duy nhất đọc), còn gateway **không** thay thế
