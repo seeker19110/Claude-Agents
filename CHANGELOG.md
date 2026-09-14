@@ -37,7 +37,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   nên mọi `local_checks` của builder đều `lint=false tests=false` và không ticket nào mở nổi PR (đo thật trên
   QLKH-034, 2026-09-14). Đường `--env-file -` (giá trị không lộ trong danh sách tiến trình) giữ nguyên cho
   Linux/macOS; Windows dùng cùng đánh đổi đã có của ca `stdin`, và tên sandbox mang `:env-argv` để audit thấy.
-  `env_via_stdin=None` tự chọn theo `os.name`, đặt tường minh trong test để không phụ thuộc máy chạy. (#TBD)
+  `env_via_stdin=None` tự chọn theo `os.name`, đặt tường minh trong test để không phụ thuộc máy chạy.
 - fix(company): **`merge_ticket` không còn gọi lại `git merge` vô ích mỗi nhịp watch cho ticket đã tích hợp
   xong (noop)** — lớp thứ ba của cùng họ bug `integration.noop`/`integration.skipped`: khoá `once` (#291) chỉ
   chặn được BẢN GHI audit-log trùng, không chặn việc `_merge_ticket` bị gọi lại — nhánh noop không thêm `tid`
