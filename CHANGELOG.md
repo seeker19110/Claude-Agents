@@ -15,7 +15,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   đúng MỘT lần cho mỗi ticket/dự án **có** trần tiền (không đặt trần thì `unpriced` chỉ là thông tin);
   `unpriced_warned` dựng lại được từ bus như `ticket_warned` nên `replay` không lệch. Đo hai chiều: bỏ
   `self._check_unpriced(a)` → 2 ca đỏ, bật lại → xanh. Port từ phát hiện 3 của audit 2026-09-09, việc nằm
-  ngoài mọi PR suốt 5 ngày trong một worktree bám layout trước ADR-0011. (#<n>)
+  ngoài mọi PR suốt 5 ngày trong một worktree bám layout trước ADR-0011. (#301)
 - docs(traps): **bài học gộp agent** vào `TRAPS.md` gốc (3 mục §2: gộp vai để "giảm cổng" không bỏ được cổng
   nào; quyết lại điều một ADR đã quyết; ba lần vá lòi chỗ mới = kiến trúc sai) và `software-company/TRAPS.md`
   (3 mục Prompt/eval: `phases:` chỉ cắt SKILL không cắt thân prompt — prompt phình 13× mà `assetbudget` vẫn
