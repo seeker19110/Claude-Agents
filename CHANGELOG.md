@@ -6,6 +6,17 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(khung): **kế hoạch thi hành `pt` — năm cơ chế lấy từ `DietrichGebert/ponytail`.** Đo hiện trạng bằng
+  4 subagent `Explore` chỉ đọc tìm ra **ba lỗi đang tồn tại**, không phải ba chỗ "có thể cải thiện": 4 file luật
+  harness đã trôi khỏi `AGENTS.md:34` (thiếu "khoá/token, dữ liệu khách thật"); `evals/thresholds.yaml:15` ghi
+  `ops: cases: 8` trong khi `ops.yaml` có 9 ca nên cổng chống thu nhỏ bộ ca đang hở; và ≥ 6 ca eval có `expect:`
+  lỏng tới mức output sai vẫn PASS. Lỗi thứ tư lộ ra trong lúc commit chính PR này:
+  `pre-commit-gate.sh:17` lấy `ROOT` = `CLAUDE_PROJECT_DIR` = checkout chính, nên trong phiên worktree (thứ
+  `CLAUDE.md` luật 2 **bắt buộc**) phép kiểm nhánh chặn oan mọi commit, còn ba phép kiểm còn lại đọc index rỗng
+  nên không bao giờ bắn — hàng rào vừa cản người đúng luật vừa buông người sai luật. Hai mục của ponytail bị loại **sau khi đo**: `--rescore` (repo đã có dưới tên
+  `make eval-replay`) và judge LLM (repo chấm tất định). 9 mã / 5 hạng mục ở `docs/thi-hanh/pt.md`, thi hành bằng
+  `/thi-hanh pt`.
+
 - feat(core): **cài đặt ADR-0016 — cấu hình model ba tầng: máy → package → biến môi trường.** Tầng máy
   (`~/.config/xagents/llm.yaml`, đè bằng `$XAGENTS_LLM_CONFIG`) nằm NGOÀI repo nên không bốc hơi theo
   `git worktree add` — đo 2026-09-14: **0/4 worktree**, kể cả checkout chính, có một `llm.yaml` nào, tức không
