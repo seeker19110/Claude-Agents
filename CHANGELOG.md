@@ -13,7 +13,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   (2026-09-14, sau khi #291 đã merge): orchestrator vẫn đứng yên ở TCK-033, mỗi release-candidate mới tham
   chiếu ticket đó lại gọi `git merge` lần nữa. Thêm `o.integrated.add(tid)` vào nhánh noop. TDD:
   `test_merge_ticket_noop_them_tid_vao_integrated_khong_goi_lai_git_merge` đỏ trước (5 lần gọi `merge()`), xanh
-  sau. CI đầy đủ: ruff/mypy xanh, pytest -n auto --cov → 1250 passed, 1 skipped, 100% dòng + nhánh.
+  sau. CI đầy đủ: ruff/mypy xanh, pytest -n auto --cov → 1250 passed, 1 skipped, 100% dòng + nhánh. (#293)
 - feat(company): **`smoke()`/`regression_run()` bỏ qua chạy trần khi spec đã khai `runtime.deploy`** (ADR-0041,
   nối tiếp ADR-0029/0039/0040). Đo thật trên QLKH: 6+ release liên tục fail ở `smoke()` (`npm run dev`,
   `exit_code=127`) TRƯỚC KHI kịp chạm `deploy_process.sh` — `runtime.command` chạy trần bằng subprocess của
