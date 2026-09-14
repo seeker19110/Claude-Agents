@@ -6,6 +6,12 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(core): **`ContainerSandbox` chạy được trên Windows — env ra `-e` thay vì `--env-file -`** — docker CLI
+  trên Windows coi `-` là TÊN FILE (`docker: --env-file: open -: The system cannot find the file specified`),
+  nên mọi `local_checks` của builder đều `lint=false tests=false` và không ticket nào mở nổi PR (đo thật trên
+  QLKH-034, 2026-09-14). Đường `--env-file -` (giá trị không lộ trong danh sách tiến trình) giữ nguyên cho
+  Linux/macOS; Windows dùng cùng đánh đổi đã có của ca `stdin`, và tên sandbox mang `:env-argv` để audit thấy.
+  `env_via_stdin=None` tự chọn theo `os.name`, đặt tường minh trong test để không phụ thuộc máy chạy.
 - feat(khung): **hàng rào thi hành luật cấm — `scripts/dev-task.sh` + ba hook Claude Code**, lấy từ
   `seeker19110/project-template` và thích ứng cho workspace năm package. Trước bản này, 8 luật cấm của
   `AGENTS.md` (không commit/push `main`, không commit `llm.yaml`/`*.sqlite*`, không hạ `fail_under`) chỉ được
@@ -32,12 +38,6 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   `subagents check`, `assetscan scan`, dòng đo-hai-chiều của luật 4, ô CHANGELOG+session log của luật 10) —
   bước 4 của luật cấm 8 trước nay chỉ tồn tại trong đầu, không có vật thể để người sau kiểm. Không thêm code,
   không thêm cổng CI, không thêm file luật. (#295)
-- fix(core): **`ContainerSandbox` chạy được trên Windows — env ra `-e` thay vì `--env-file -`** — docker CLI
-  trên Windows coi `-` là TÊN FILE (`docker: --env-file: open -: The system cannot find the file specified`),
-  nên mọi `local_checks` của builder đều `lint=false tests=false` và không ticket nào mở nổi PR (đo thật trên
-  QLKH-034, 2026-09-14). Đường `--env-file -` (giá trị không lộ trong danh sách tiến trình) giữ nguyên cho
-  Linux/macOS; Windows dùng cùng đánh đổi đã có của ca `stdin`, và tên sandbox mang `:env-argv` để audit thấy.
-  `env_via_stdin=None` tự chọn theo `os.name`, đặt tường minh trong test để không phụ thuộc máy chạy.
 - fix(company): **`merge_ticket` không còn gọi lại `git merge` vô ích mỗi nhịp watch cho ticket đã tích hợp
   xong (noop)** — lớp thứ ba của cùng họ bug `integration.noop`/`integration.skipped`: khoá `once` (#291) chỉ
   chặn được BẢN GHI audit-log trùng, không chặn việc `_merge_ticket` bị gọi lại — nhánh noop không thêm `tid`
