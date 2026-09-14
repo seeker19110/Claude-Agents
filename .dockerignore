@@ -1,0 +1,26 @@
+# ADR-0013 + ADR-0014: state/bí mật không được bake vào image — luôn qua volume mount, không COPY.
+#
+# Ba dòng bí mật dưới đây là mặt kia của `COPY . .` trong Dockerfile: `.gitignore` giữ chúng ngoài git, nhưng
+# ngữ cảnh build KHÔNG đọc `.gitignore`. Máy vận hành đã cấu hình xong (có `llm.yaml` thật, có `.env` mang
+# `GH_TOKEN`) mà chạy `docker compose up -d --build` là bake khoá vào layer image — gitleaks không bắt lớp
+# này vì file chưa từng vào git. Cổng canh: `platform/console/tests/test_cong_docker.py`.
+**/llm.yaml
+**/media.yaml
+.env
+**/.env
+
+.venv/
+.git/
+.claude/worktrees/
+**/company.sqlite*
+**/keeper.sqlite*
+**/*.artifacts/
+**/.console-token
+**/.engine/
+**/node_modules/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+dist/
+*.log

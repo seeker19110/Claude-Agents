@@ -45,7 +45,7 @@ Cài đặt chỉ hoạt động ở ngữ cảnh an toàn, tức `127.0.0.1`/`l
 
 **Tìm và lọc.** Ô tìm chung (phím `/`) lọc gate, ticket, PR, review và audit-log cùng lúc, gấp dấu
 tiếng Việt. Bảng ticket có chip lọc theo trạng thái; các bảng sắp xếp được bằng cách bấm tiêu đề cột.
-Phím tắt: `/` tìm, `1`–`7` nhảy màn (theo thứ tự ở thanh bên), `g` về Trực ban, `Esc` đóng.
+Phím tắt: `/` tìm, `1`–`8` nhảy màn (theo thứ tự ở thanh bên), `g` về Trực ban, `Esc` đóng.
 
 ## Chạy nhanh
 

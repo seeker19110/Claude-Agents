@@ -6,7 +6,7 @@ sửa lỗi lạ: phần lớn lỗi mới là một thể hiện khác của kh
 Cách dùng: gặp triệu chứng → tìm khuôn ở §1 → xem cách rà → mới đi sửa. Sửa xong → thêm mục mới ở đây nếu là bẫy mới,
 hoặc thêm ngày/PR vào mục cũ nếu là lần tái phát.
 
-## 1. Năm khuôn lỗi lặp lại (16 lỗi phiên 2026-09-04, 0 lỗi nghiệp vụ; khuôn 5 thêm 2026-09-06)
+## 1. Sáu khuôn lỗi lặp lại (16 lỗi phiên 2026-09-04, 0 lỗi nghiệp vụ; khuôn 5 thêm 2026-09-06, khuôn 6 thêm 2026-09-13)
 
 **Khuôn 1 — chế độ hỏng không tự khai báo.** Một tình huống riêng bị gói vào thông điệp chung, nên người và hệ
 thống đều xử lý sai: timeout 120s báo `HTTP 500` thân rỗng; hết hạn mức đầu ra báo "không phải JSON"; structured
@@ -52,6 +52,20 @@ thấy `tasks retry=2` TRƯỚC lỗi gây ra nó (PR sau #104). *Cách rà*: m�
 phụ là **thứ tự ghi vào bus** (`seq`) — bus đã `ORDER BY seq`, dùng nó. `trace.py` (#99) làm đúng vì nó duyệt
 `bus.replay()` và không sắp xếp lại. *Dấu hiệu nhận ra*: test chỉ đỏ 1 trong vài lần chạy, chạy lại thì xanh — đừng
 chạy lại cho qua, đó là non-determinism thật.
+
+**Khuôn 6 — kiểm danh tính bằng tiền tố chuỗi, tưởng là kiểm giá trị.** `is_loopback_host` ở CẢ
+`platform/console/src/console/server.py` và `platform/gateway/src/gateway/server.py` kết thúc bằng
+`startswith("127.")`, nên mọi TÊN MIỀN bắt đầu bằng "127." cũng khớp: `127.0.0.1.evil.example` (kẻ tấn công chỉ
+cần một bản ghi A trỏ về 127.0.0.1 — không cần DNS rebinding) đi lọt cả `Host` lẫn `Origin`, vì hai hàng rào
+gọi chung một hàm. Console khi đó cùng nguồn với trang tấn công ⇒ nó đọc được token phiên nhúng trong HTML rồi
+gọi `/api/gate/decide`; gateway không có xác thực client nên trang ấy đốt quota thật. Audit 2026-09-13 mục S1,
+vá ở PR sau #287. *Cách rà*: mọi lần một QUYẾT ĐỊNH BẢO MẬT đọc chuỗi bằng `startswith`/`endswith`/`in` —
+hỏi "chuỗi này có cấu trúc riêng không?" IP thì parse bằng `ipaddress`, đường dẫn thì `resolve()`, host thì so
+sau khi tách cổng. `keeper/patcher.py:99` đã học đúng bài này cho đường dẫn (`a/../llm.yaml`), server HTTP thì
+chưa. *Dấu hiệu nhận ra*: **docstring khẳng định chắc nịt thứ mà mã không làm** — hai file đều viết "KHÔNG
+phân giải DNS, tên lạ là không loopback, chấm hết" ngay trên đúng dòng cho tên lạ đi qua. Rà cả họ (2026-09-13):
+chỉ hai file này nhận `Host`/`Origin` từ ngoài, `mcp_bridge.py` dùng "127.0.0.1" làm địa chỉ BIND chứ không
+làm điều kiện, không dính.
 
 Nguyên tắc rút ra: *không đường nào được kết thúc trong im lặng, và không đường nào được lặp mãi trong im lặng.*
 Cơ chế cứu thường ĐÃ CÓ, chỉ là điều kiện kích hoạt quá hẹp (`_stall` chỉ lo `RESEARCH_TOPICS`, `_rework_after_error`

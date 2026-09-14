@@ -65,10 +65,10 @@ examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--rela
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng pha `intake` cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 6 agent, mỗi agent ≥ 2 ca (agent nhiều pha: ≥ 2 ca mỗi pha); recordings/ = phản hồi model đã ghi
-tests/         pytest 1152 ca / 71 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+tests/         pytest 1246 ca / 74 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, release tự dừng → gate, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
                guard/blackboard, schema consistency, golden 6 agent + 4 hồ sơ gate, bộ sinh subagent, hồ sơ gate, deploy compose (runner tiêm được), rà soát bảo mật);
-               coverage fail_under=100 (phủ 100% dòng)
+               coverage fail_under=100 (phủ 100% dòng VÀ 100% nhánh, `branch = true` từ 2026-09-13)
 ```
 
 ## Chạy
@@ -83,7 +83,7 @@ uv run python examples/donghanhcungban_demo.py --out sim-out   # mô phỏng c�
                                           # --real: gọi model thật theo tier (llm.yaml / COMPANY_*); --relay DIR: model là một
                                           # phiên Claude Code khác trả lời qua file; --resume: chạy tiếp từ sim-out; --auto-escalate
 uv run ruff check src tests && uv run mypy src/company --ignore-missing-imports   # make lint (make fix = ruff --fix; make types = mypy)
-uv run pytest -q --cov --cov-report=term  # make cov — ngưỡng fail_under = 100 (phủ 100% dòng)
+uv run pytest -q --cov --cov-report=term  # make cov — ngưỡng fail_under = 100 (phủ 100% dòng VÀ 100% nhánh)
 
 # Chạy model thật (provider bất kỳ). Cấu hình: cp llm.example.yaml llm.yaml rồi sửa, hoặc biến môi trường:
 #   COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=http://localhost:11434/v1 COMPANY_MODEL_STRONG=qwen2.5-coder:32b
@@ -159,7 +159,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-08)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0039; 6 system prompt có version (5 công đoạn + supervisor, ADR-0037); 45 skill có version; 14 template; checklist 3 gate + escalation.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0040; 6 system prompt có version (5 công đoạn + supervisor, ADR-0037); 45 skill có version; 14 template; checklist 3 gate + escalation.
 - 19 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   `delivery.py` (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate release → production → nghiệm thu;
@@ -247,7 +247,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   research → ticket → code → review → release → nghiệm thu bằng client giả, model thật (`--real`) hoặc relay qua file
   (`--relay DIR`, `examples/relay_client.py`: một phiên Claude Code khác trả lời `<n>.req.json`); `--resume` chạy tiếp.
   Phát hiện F13–F19 từ mô phỏng đều đã sửa (bảng trong báo cáo).
-- Test: 1152 ca pytest gồm golden 6 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
+- Test: 1232 ca pytest gồm golden 6 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
   vòng tool, orchestrator với repo git thật, eval ghi/phát lại, adapter tool-use (server HTTP giả), guard, cắt ngữ cảnh,
   artifact store, retry, bảng giá, tool web (fetcher giả), song song, metrics, comment/takeover, routing nhiều backend,
   release flow và replay; ruff + mypy sạch, coverage 100% (`fail_under = 100`; `graph.py` không tính).

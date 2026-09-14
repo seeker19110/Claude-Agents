@@ -14,6 +14,31 @@
 | **2. Cả dự án** | Nhiều ticket cùng hỏng, hoặc chưa biết ticket nào | Như trên nhưng `--key <project_id>` và `project_id` trong payload | cùng cơ chế |
 | **3. Toàn hệ thống** | Nghi ngờ nghiêm trọng (rò rỉ, agent chạm thứ không được phép) | **Dừng tiến trình `orchestrator run`** (Ctrl-C hoặc kill PID) | tức thì |
 
+### Mức 0 — dừng chính HUB (container console+orchestrator, ADR-0013)
+
+Chỉ áp dụng khi hub chạy bằng `docker compose up -d` (gốc repo) theo ADR-0013 — **khác hẳn** Mức 4 dưới đây
+(Mức 4 là container *sản phẩm của khách*, đặt tên `company-<project_id>-<env>`; hub luôn tên project mặc định
+lấy theo tên thư mục, service `hub`).
+
+```bash
+docker compose down          # dừng console + orchestrator đang chạy trong container hub
+docker compose ps            # xác nhận không còn service nào "running"
+```
+
+**State của bản container nằm ở `companies/<công ty>/var/`** (ADR-0014), KHÁC chỗ bản chạy trần
+(`companies/software-company/company.sqlite`). Đọc bus bằng CLI trên host trong lúc hub chạy trong container thì
+phải trỏ đúng chỗ, nếu không sẽ đọc một bus rỗng và tưởng công ty đứng im:
+
+```bash
+cd companies/software-company
+uv run python -m company.orchestrator --db var/company.sqlite status
+```
+
+`down` KHÔNG đụng tới container sản phẩm của khách (Mức 4) — chúng là compose project khác, đứng độc lập vì
+`docker.sock` chỉ được **mount qua** cho orchestrator gọi, không phải orchestrator chạy `dockerd` trong hub.
+Trạng thái công ty (`company.sqlite`, `.artifacts`) nằm ở volume, `down` không xoá dữ liệu; `docker compose up
+-d --build` chạy lại là tiếp tục đúng chỗ (bus SQLite, giống Mức 3 dưới).
+
 ### Mức 1 — dừng một ticket
 
 ```bash

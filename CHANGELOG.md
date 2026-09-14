@@ -6,6 +6,63 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(company): **`COMPANY_DEPLOY=process` — deploy được khách không dùng Docker** (ADR-0040, nối tiếp
+  ADR-0039). Ca gốc: 5 `release-events` của QLKH (REL-001/005/006/007/008) kẹt ở gate `escalation` vì
+  `deploy.py` chỉ biết `docker compose`, còn staging QLKH chạy tiến trình Python trần trên WSL. Thêm mode thứ
+  hai: `runtime.deploy` của spec giờ có thể trỏ tới một script hỗ trợ hai lệnh con `up`/`down` (không dò tên
+  mặc định như compose); `deployed` là hai phần — script `up` thoát 0 **và** smoke vào `rt.port` đã khai trong
+  spec (không có `ps` như compose để tự đọc cổng). Runner mặc định là một argv PREFIX bắc cầu qua WSL từ hub
+  chạy trên Windows native (`wsl.exe --cd . bash`, `.` được thay bằng `repo_root`, đã đo thật bằng `wsl.exe
+  --cd <đường dẫn Windows> bash -lc pwd`); máy Linux/CI đặt `COMPANY_DEPLOY_RUNTIME=bash` để bỏ qua cầu nối. TDD
+  14 ca đỏ trước ở `tests/test_deploy_process.py` (đường hạnh phúc không `down`, `up`/`smoke` hỏng đều `down`,
+  thiếu cổng, không khai/không có script → `skipped` không đoán tên, fail-closed thiếu binary → raise, argv/
+  prefix do code ghép), CI đầy đủ xanh (ruff, mypy --strict, pytest 100% dòng+nhánh, 1247 pass). (#289)
+- fix(platform): **`is_loopback_host` không còn nhận tên miền giả loopback** ở CẢ `platform/console` và
+  `platform/gateway`. Cả hai kết thúc bằng `startswith("127.")`, nên `127.0.0.1.evil.example` — kẻ tấn công chỉ
+  cần một bản ghi A trỏ về 127.0.0.1, không cần DNS rebinding — đi lọt cả hàng rào `Host` lẫn `Origin` (hai
+  hàng rào gọi chung một hàm). Hệ quả đo được: trang tấn công khi đó CÙNG NGUỒN với console nên đọc được token
+  phiên mà `_serve_index` nhúng vào HTML rồi gọi `/api/gate/decide`; gateway không có xác thực client nên trang
+  ấy `POST /v1/chat/completions` đốt quota Google thật. Nay quyết bằng `ipaddress.ip_address(...).is_loopback`
+  thay vì tiền tố chuỗi; siết thêm có chủ ý: dạng viết tắt `127.1` bị từ chối (fail-closed). 9 ca test đỏ trước
+  bản vá (4 gateway + 5 console, cả mức đơn vị lẫn request thật qua `guard_middleware`/`_guard`), xanh sau. Khuôn
+  lỗi vào `TRAPS.md` §1 khuôn 6 ("kiểm danh tính bằng tiền tố chuỗi"); đóng mục 1 sổ việc để lại của
+  `docs/reports/2026-09-13-audit.md`. (#288)
+- fix(docker): **hub container không còn bake bí mật, không còn mất state, và với tới được gateway** (ADR gốc
+  0014, sửa đổi ADR-0013). Năm chỗ hở im lặng do audit 2026-09-13 đọc ra: `.dockerignore` không loại
+  `llm.yaml`/`.env` trong khi `Dockerfile` có `COPY . .` (bí mật vào layer image — gitleaks mù lớp này vì file
+  chưa từng vào git); không volume nào mang `llm.yaml` vào container; không có đường tới gateway trên host
+  (`127.0.0.1:1123` trong container là chính container); bind-mount FILE `.sqlite` trong khi bus chạy WAL nên
+  `-wal`/`-shm` rơi vào layer container; volume artifacts mount trượt tên (`company.sqlite.artifacts` trong khi
+  `runner.artifact_store` sinh `company.artifacts`) nên blackboard chưa bao giờ persist. Vá: bí mật ra khỏi
+  ngữ cảnh build, `llm.yaml` vào bằng mount `:ro`, `extra_hosts: host.docker.internal`, state mount theo THƯ MỤC
+  `var/` (đóng cả hai lỗi state bằng một quyết định). Không đổi một dòng mã: `--company-db`/`--keeper-db` đã có
+  sẵn, entrypoint chỉ truyền đường dẫn. Cổng cứng mới `platform/console/tests/test_cong_docker.py` 6 ca, viết
+  trước bản vá — đo hai chiều: tắt vá 6/6 đỏ, bật vá 6/6 xanh. (#287)
+
+- docs(audit): **audit toàn dự án 2026-09-13 — tám phép đo A1–A8 + rà bề mặt HTTP**
+  (`docs/reports/2026-09-13-audit.md`). Mọi cổng máy chạy lại và xanh (2852 test, 100% coverage cả năm package,
+  ruff/mypy sạch, eval phát lại, `subagents check`, `assetscan`, `keeper drift`). Sáu dòng tài liệu lệch đã sửa
+  trong chính PR này: số màn console (6 → 8, `1`–`7` → `1`–`8`), bốn câu coverage nói "100% dòng" sau khi ba
+  package đã bật `branch = true`, ba comment `pyproject.toml` còn đếm "bốn"/"sáu" package. Bảy việc để lại,
+  trong đó ba cái mới: `is_loopback_host` nhận mọi tên miền bắt đầu bằng `127.` ở CẢ console và gateway (trái
+  với chính docstring chống-DNS-rebinding của chúng); `pragma: no branch` là lối thoát thứ năm khỏi
+  `fail_under = 100` mà sổ trần chưa đếm; luật "lý do duyệt gate ≥ 20 ký tự" không có chốt mã nào. (#287)
+
+- fix(company): **nhãn `source` của `review-results` do CODE điền từ ROUTE**, không do model khai. Đo bằng
+  model thật thấy model khai nhầm nhãn 4/18 ca khi prompt mang nhiều vai; `delivery.py` đếm review THEO NHÃN
+  nên khai nhầm là ticket rủi ro **không bao giờ đủ review và nằm im** mà `status` không báo gì — cùng họ sự
+  cố QLKH-001 (13 ticket chờ vô hạn). `review_source.source_for`/`enforce_source` (module `orch/` riêng để
+  giữ hai trần của `test_orch_khuon_loi`), vết ghi đè ở audit `review.source_overridden`. (#286)
+- refactor(company): **`GateRiskContext` mang thêm `created_by` và `seq`** — mở đường cho hàng `RISK_RULES`
+  đầu tiên (cổng tự qua khi rủi ro thấp) mà không bịa trường: `created_by` phân biệt `escalation` do
+  supervisor/ops/delivery-lead mở, `seq` là thế hệ gate — thứ duy nhất diễn đạt được "chỉ tự động lần đầu".
+  **Không thêm luật, không đổi hành vi**: `RISK_RULES` vẫn rỗng, mọi gate vẫn chờ người. (#286)
+
+- feat(platform): container hoá hub console+orchestrator để chạy trên WSL — ADR-0013, Dockerfile+
+  docker-compose.yml+entrypoint ở gốc repo, state qua volume (không bake `company.sqlite`/secret vào image),
+  socket `docker.sock` passthrough cho orchestrator gọi `docker compose` deploy khách (ADR-0039) mà không cần
+  `dockerd` trong container; thêm Mức 0 vào `docs/TRUC-VA-DUNG-KHAN.md` (#285)
+- docs(sessions): ghi lại phiên vận hành QLKH 2026-09-13 (#284)
 - fix(company): **`product` bắt buộc gọi tool đọc repo khách trước khi kết luận `data.codebase`, và bắt buộc
   ghi `architecture`+`api-contract` lên blackboard ngay trong lượt planning** — vận hành thật dự án QLKH lộ ra
   research chưa từng gọi tool đọc repo (5/5 lượt `tool_calls: 0`) nên `_check_plan` từ chối cả kế hoạch hợp lệ

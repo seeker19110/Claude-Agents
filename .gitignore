@@ -14,6 +14,8 @@ htmlcov/
 
 # software-company: dữ liệu chạy và cấu hình model cá nhân
 companies/software-company/company.sqlite*
+# state của hub chạy trong container (ADR-0014): DB + WAL + artifacts nằm trong var/
+companies/software-company/var/
 companies/software-company/company.artifacts/
 companies/software-company/.worktrees/
 companies/software-company/llm.yaml
