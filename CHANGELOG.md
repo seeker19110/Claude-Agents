@@ -26,6 +26,17 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   đọc JSON bằng Python), và `.sh` CRLF làm bash Linux vỡ mà không đỏ ở đâu (`*.sh text eol=lf` + test
   `git check-attr` canh). Đo hai chiều: chưa có script/hook → 50/51 test đỏ, có rồi → 73/73 xanh; cổng console
   408 passed, coverage 100.00%. (#294)
+- test(console): **trần `branch = true` cho độ sâu coverage (A6), và quyết định KHÔNG xây "arch-health-radar"**
+  (ADR-0015). Phiên này dựng xong `keeper.radar` ba phép ratchet (đủ test, 100% dòng + nhánh, cổng keeper
+  xanh) thì `make test` đỏ ở `test_cong_repo.py::test_skip_xfail_khong_vuot_tran` — và đọc file đó mới thấy
+  **hai trong ba phép đã có cổng từ 2026-09-12**, mạnh hơn bản đang viết: sổ `TRAN_PRAGMA`/`TRAN_SKIP`/
+  `TRAN_OMIT` so **bằng đúng** (bớt cũng đỏ) và tách theo từng package, còn `test_quality_needs_phu_moi_job_con`
+  đã làm đúng phép A8 bằng cùng thuật toán. Radar bị xoá thay vì sửa cho sống chung: hai bộ đếm cùng một thứ
+  với hai baseline khớp tay là một nguồn lệch mới. Giữ lại đúng phép còn thiếu thật —
+  `test_branch_coverage_dung_so_chua_phu_nhanh` + sổ `CHUA_PHU_NHANH = {gateway, console}`: `fail_under = 100`
+  trên DÒNG vẫn để lọt nhánh, và tới giờ không cổng nào canh việc một package lặng lẽ tắt `branch`. Đo hai
+  chiều: tắt `branch` ở keeper → đỏ; bật ở gateway mà quên hạ sổ → cũng đỏ. Cổng đầy đủ: ruff+mypy sạch cả
+  năm package, `make test` → 2889 passed, 0 failed. (#<n>)
 - docs: **đối chiếu `seeker19110/projects-template` theo PROMPT-SHEET §H + khuôn Báo cáo xác thực cho luật
   cấm 8**. Báo cáo `docs/reports/2026-09-14-doi-chieu-projects-template.md`: trên ~25 hạng mục của bộ khung
   kia, 13/15 hạng mục đối chiếu chính repo này đã sâu hơn (gate là máy trạng thái chạy thật chứ không phải
