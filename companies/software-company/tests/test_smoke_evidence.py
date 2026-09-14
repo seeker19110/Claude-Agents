@@ -146,6 +146,33 @@ def test_deployed_bi_ghi_de_failed_khi_san_pham_khong_chay(tmp_path):
     assert g.kind != "release", "không có deployed thật thì QA hồi quy không chạy, Gate 3 không mở"
 
 
+def test_runtime_deploy_khai_thi_smoke_bo_qua_khong_fail(tmp_path):
+    """ADR-0041: `runtime.command` không có cách nào spawn được một app cần cài dependency riêng trước khi
+    chạy (đo thật trên QLKH: `python serve.py` chạy bằng venv của chính orchestrator, không có gói của khách,
+    exit_code=127/3 bất kể nội dung lệnh) — nhưng khi spec đã khai `runtime.deploy` (ADR-0039/0040), bằng
+    chứng thật đến từ `deploy_process.sh`/`compose` chạy NGAY SAU, không phải từ `smoke()` chạy trần.
+
+    Cố ý dùng `SERVER_DIE` (lệnh CHẮC CHẮN fail nếu bị spawn thật) để chứng minh smoke() không hề chạy nó —
+    nếu vẫn chạy, status sẽ bị ghi đè `failed` giống `test_deployed_bi_ghi_de_failed_khi_san_pham_khong_chay`.
+
+    Đo hai chiều: bỏ điều kiện `rt.deploy` mới thêm trong `verify.smoke()` → test này đỏ (status thành `failed`,
+    `release.smoke_failed` xuất hiện)."""
+    repo = _repo(tmp_path, SERVER_DIE)
+    bus, orch = _orch(tmp_path, repo, {"command": "python serve.py", "port": 0, "timeout_s": 2,
+                                       "deploy": "docker-compose.yml"})
+    orch.run()
+    st = _staging(bus)
+    assert st and st[-1]["status"] == "deployed", "runtime.deploy đã khai — không để smoke trần hạ status"
+    sm = st[-1]["smoke"]
+    assert sm["unverified"] is True and "runtime.deploy" in sm["reason"]
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "release.smoke_failed" not in acts and "release.smoke_blocked" not in acts
+    assert "release.smoke" not in acts, "run_smoke() không được gọi — không có bằng chứng chạy trần nào để ghi"
+    g = orch.gate.pending.get("REL-001")
+    assert g is None or g.kind != "escalation", (
+        "không mở escalation ở bước smoke/regression — pipeline đi tiếp bình thường tới Gate 3 (release)")
+
+
 def test_smoke_fail_lan_hai_gate_da_pending_khong_mo_gate_trung(tmp_path):
     """verify.py 91->94: RC đã escalate vì smoke fail lần đầu (gate `REL-001` đang pending) → smoke fail LẦN NỮA
     cho cùng release không mở thêm gate escalation, chỉ ghi audit + hạ status."""
