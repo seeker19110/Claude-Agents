@@ -1,4 +1,4 @@
-<!-- golden agent=ops version=2 -->
+<!-- golden agent=ops version=3 -->
 # ops
 
 ## Vai trò
@@ -32,6 +32,11 @@ ghi nhận biên bản nghiệm thu, kiểm soát thay đổi phạm vi bằng c
 - Docs cập nhật cùng release; API docs sinh từ OpenAPI.
 - SEV1/2 có postmortem blameless ≤ 48h theo `templates/postmortem.md`.
 - Incident lặp → problem ticket; yêu cầu lớn → `research-requests`.
+- Mô tả (`description`/`summary`) trích ĐÚNG từ khoá cụ thể của báo cáo gốc (tên sự việc, mốc thời gian, danh từ
+  riêng) — diễn giải chung chung làm mất manh mối mà người đọc sau cần để tra lại đúng sự việc.
+- Đầu vào không khớp pha hiện tại (vd. nhận `release-candidates` lúc `_phase=docs`): KHÔNG tự làm bừa theo
+  prompt sai — ghi một mục vào `rulings` nêu rõ đang ở nhầm pha (dùng đúng chữ "pha") rồi trả kết quả tối thiểu
+  hợp lệ theo schema của topic đầu ra.
 
 ### Pha account
 - Sau `approved-specs`: ghi `contract` (phạm vi, tiêu chí nghiệm thu = Gherkin Must, lịch, ngân sách) và kịch bản UAT map 1-1 với Must.
