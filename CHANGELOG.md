@@ -36,7 +36,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   `test_branch_coverage_dung_so_chua_phu_nhanh` + sổ `CHUA_PHU_NHANH = {gateway, console}`: `fail_under = 100`
   trên DÒNG vẫn để lọt nhánh, và tới giờ không cổng nào canh việc một package lặng lẽ tắt `branch`. Đo hai
   chiều: tắt `branch` ở keeper → đỏ; bật ở gateway mà quên hạ sổ → cũng đỏ. Cổng đầy đủ: ruff+mypy sạch cả
-  năm package, `make test` → 2889 passed, 0 failed. (#<n>)
+  năm package, `make test` → 2889 passed, 0 failed. (#297)
 - docs: **đối chiếu `seeker19110/projects-template` theo PROMPT-SHEET §H + khuôn Báo cáo xác thực cho luật
   cấm 8**. Báo cáo `docs/reports/2026-09-14-doi-chieu-projects-template.md`: trên ~25 hạng mục của bộ khung
   kia, 13/15 hạng mục đối chiếu chính repo này đã sâu hơn (gate là máy trạng thái chạy thật chứ không phải
