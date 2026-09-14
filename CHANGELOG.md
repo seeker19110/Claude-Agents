@@ -6,6 +6,14 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(console): **`test_cong_khung.py` chạy được trên Windows — chọn bash bằng phép thử, không lấy cái đầu
+  PATH** — `shutil.which("bash")` trên máy có WSL trả stub `AppData/Local/Microsoft/WindowsApps/bash.exe`;
+  stub chuyển tiếp vào WSL, nơi `C:\Users\x\a.sh` bị nuốt hết dấu `\` thành `C:Usersxa.sh` → exit 127 cho mọi
+  ca gọi script. Hệ quả: **51/73 ca đỏ** trên máy phát triển trong khi CI ubuntu xanh — hàng rào mới port ở
+  #294 không chạy được ở đúng chỗ nó phải chặn, và vì phụ thuộc thứ tự PATH nên đỏ *chập chờn*. Nay `_tim_bash()`
+  thử THẬT từng ứng viên (chạy một script ở thư mục tạm bằng đường dẫn hệ điều hành) và lấy cái đầu tiên chạy
+  được; vị trí Git Bash suy từ `git --exec-path` chứ không đoán `C:\Program Files`. Đo hai chiều: tắt bản sửa
+  → 52 failed, bật → 74 passed. (#299)
 - docs(sessions): **nhật ký phiên dọn tồn 2026-09-14** — merge nốt PR mở duy nhất (#297, kẹt `DIRTY` dù
   auto-merge đã bật: rebase + giải 2 xung đột nhật ký, cổng `console` 423 passed, CI 30/30) và dọn **11**
   worktree cũ theo bằng chứng đã-merge (tra số PR trong commit riêng của từng worktree, hoặc tra sản phẩm của
