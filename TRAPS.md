@@ -96,6 +96,15 @@ commit 1 viết dòng CHANGELOG **kết thúc không có số**; sau `gh pr crea
 PR đó. Muốn NHẮC TỚI một placeholder trong văn xuôi (kể lại một bug, trích luật) thì bọc backtick — phép (d)
 bỏ qua code span, đúng để tài liệu mô tả được nó mà không tự làm mình đỏ.
 
+**`sed 's/(#<n>)/(#N)/'` để điền số PR sửa nhầm lịch sử CHANGELOG.** Mắc **hai lần trong cùng một ngày**
+(2026-09-14, PR #295 rồi #297 — lần thứ hai dù vừa sửa lần thứ nhất xong). Chuỗi `(#<n>)` xuất hiện ở HAI loại
+chỗ trong `CHANGELOG.md`: chỗ cần điền (dòng của PR đang mở) và chỗ **trích dẫn nó làm ví dụ** — dòng của #157
+kể lại chính luật bắt buộc 10. `sed` không phân biệt được hai loại, nên một lệnh thay-thế-hàng-loạt sửa cả
+dòng lịch sử của một PR đã merge.
+Cách rà: sau khi điền số, `grep -n '(#<n>)\|(#N)' CHANGELOG.md` và `git diff --stat` — dòng CHANGELOG của PR
+đang mở chỉ được đụng ĐÚNG MỘT dòng. Khuôn tổng quát: **thay-thế-hàng-loạt trên file lịch sử thì phải đọc lại
+toàn bộ chỗ khớp trước khi commit**, hoặc neo lệnh theo số dòng thay vì theo chuỗi.
+
 **`quality` đỏ với 0 failure — run đã bị thay thế, không phải lỗi.** Mắc ba lần trong phiên 2026-09-08 (#172,
 #173, #174). Luật 10 bắt điền `(#<n>)` vào chính PR đó, mà số PR chỉ có sau khi tạo PR — nên luôn có commit thứ
 hai đẩy sau commit thứ nhất vài chục giây. `concurrency: cancel-in-progress` cắt run đầu, và `quality` **cố ý**

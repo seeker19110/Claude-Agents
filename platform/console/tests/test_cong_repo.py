@@ -120,6 +120,13 @@ TRAN_SKIP = {                        # skip/xfail trong tests/ của từng pack
 }
 TRAN_OMIT = 2                        # dòng `omit` trong pyproject.toml của các package
 
+# Lối thoát thứ tư, và là lối duy nhất KHÔNG phải một dòng người ta thêm vào: `fail_under = 100` trên **dòng**
+# vẫn để lọt nhánh chưa đi (`docs/TASK-PACK.md` A6). Package nào chưa `branch = true` thì con số "phủ 100%"
+# của nó nông hơn ba package kia, mà không chỗ nào nói ra. Sổ này nói ra. Đo 2026-09-14; lý do `gateway` và
+# `console` còn ở đây: `companies/keeper/pyproject.toml` ghi "keeper đi trước vì khoảng cách nhỏ nhất (3)".
+# Bật xong một package ⇒ test đỏ tới khi bỏ nó khỏi sổ — sổ chỉ có giá trị khi khớp chính xác hai chiều.
+CHUA_PHU_NHANH = {"platform/gateway", "platform/console"}
+
 _PRAGMA = re.compile(r"#\s*pragma:\s*no cover")
 _SKIP = re.compile(r"(?:@pytest\.mark\.|pytest\.)(?:skip|xfail)")
 _TU_NO = "test_cong_repo.py"         # chính file này chứa các mẫu trên dưới dạng chuỗi — không tự đếm mình
@@ -146,6 +153,18 @@ def test_skip_xfail_khong_vuot_tran(pkg: str) -> None:
     assert that == TRAN_SKIP[pkg], (
         f"{pkg}: đếm được {that} skip/xfail, sổ ghi {TRAN_SKIP[pkg]}. Ca bị bỏ im lặng không hiện trong "
         f"`pytest -q` — đó là cách 'xanh vì rỗng' sống sót.")
+
+
+def test_branch_coverage_dung_so_chua_phu_nhanh() -> None:
+    """`fail_under = 100` trên dòng vẫn để lọt nhánh (A6). Package nào chưa `branch = true` phải nằm đúng
+    trong `CHUA_PHU_NHANH` — không cổng nào canh việc một package lặng lẽ tắt `branch`, và "phủ 100%" của nó
+    khi ấy nông hơn hẳn ba package còn lại mà tài liệu vẫn nói chung một câu."""
+    that = {p for p in _packages()
+            if (ROOT / p / "pyproject.toml").is_file()
+            and "branch = true" not in (ROOT / p / "pyproject.toml").read_text(encoding="utf-8")}
+    assert that == CHUA_PHU_NHANH, (
+        f"package chưa `branch = true`: đếm được {sorted(that)}, sổ ghi {sorted(CHUA_PHU_NHANH)}. "
+        f"Bật thêm một package thì hạ sổ trong CÙNG PR; tắt đi thì phải nói lý do ở đây (đi qua review).")
 
 
 def test_omit_khong_vuot_tran() -> None:
