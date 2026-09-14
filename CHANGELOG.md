@@ -6,18 +6,6 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- docs: **đối chiếu `seeker19110/projects-template` theo PROMPT-SHEET §H + khuôn Báo cáo xác thực cho luật
-  cấm 8**. Báo cáo `docs/reports/2026-09-14-doi-chieu-projects-template.md`: trên ~25 hạng mục của bộ khung
-  kia, 13/15 hạng mục đối chiếu chính repo này đã sâu hơn (gate là máy trạng thái chạy thật chứ không phải
-  tài liệu; `keeper` thay cho một script bảo trì; `stacks.detect()` thay cho bảng tra cổng theo loại dự án;
-  TDD cứng + `fail_under = 100` thay cho khuyến nghị), 1 thứ đáng lấy, phần còn lại xếp "chưa cần" kèm lý do
-  — `/grill` bị loại vì **ngược** luật "Khi bối rối". Hai ứng viên ban đầu bị chính đối chiếu loại bớt một:
-  vòng hội tụ audit đã có đủ ở `docs/TASK-PACK.md` §"Việc để lại đang treo" + ô kiểm mục 2 của gói việc audit,
-  nên không sửa file đó. Thay đổi duy nhất lên luật: `AGENTS.md` luật cấm 8 thêm khối BÁO CÁO XÁC THỰC
-  điền-vào-chỗ-trống (lệnh thật của repo: `make lint`/`test`/`cov`, `evals --replay --strict`,
-  `subagents check`, `assetscan scan`, dòng đo-hai-chiều của luật 4, ô CHANGELOG+session log của luật 10) —
-  bước 4 của luật cấm 8 trước nay chỉ tồn tại trong đầu, không có vật thể để người sau kiểm. Không thêm code,
-  không thêm cổng CI, không thêm file luật. (#295)
 - feat(khung): **hàng rào thi hành luật cấm — `scripts/dev-task.sh` + ba hook Claude Code**, lấy từ
   `seeker19110/project-template` và thích ứng cho workspace năm package. Trước bản này, 8 luật cấm của
   `AGENTS.md` (không commit/push `main`, không commit `llm.yaml`/`*.sqlite*`, không hạ `fail_under`) chỉ được
@@ -32,6 +20,18 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   đọc JSON bằng Python), và `.sh` CRLF làm bash Linux vỡ mà không đỏ ở đâu (`*.sh text eol=lf` + test
   `git check-attr` canh). Đo hai chiều: chưa có script/hook → 50/51 test đỏ, có rồi → 73/73 xanh; cổng console
   408 passed, coverage 100.00%. (#294)
+- docs: **đối chiếu `seeker19110/projects-template` theo PROMPT-SHEET §H + khuôn Báo cáo xác thực cho luật
+  cấm 8**. Báo cáo `docs/reports/2026-09-14-doi-chieu-projects-template.md`: trên ~25 hạng mục của bộ khung
+  kia, 13/15 hạng mục đối chiếu chính repo này đã sâu hơn (gate là máy trạng thái chạy thật chứ không phải
+  tài liệu; `keeper` thay cho một script bảo trì; `stacks.detect()` thay cho bảng tra cổng theo loại dự án;
+  TDD cứng + `fail_under = 100` thay cho khuyến nghị), 1 thứ đáng lấy, phần còn lại xếp "chưa cần" kèm lý do
+  — `/grill` bị loại vì **ngược** luật "Khi bối rối". Hai ứng viên ban đầu bị chính đối chiếu loại bớt một:
+  vòng hội tụ audit đã có đủ ở `docs/TASK-PACK.md` §"Việc để lại đang treo" + ô kiểm mục 2 của gói việc audit,
+  nên không sửa file đó. Thay đổi duy nhất lên luật: `AGENTS.md` luật cấm 8 thêm khối BÁO CÁO XÁC THỰC
+  điền-vào-chỗ-trống (lệnh thật của repo: `make lint`/`test`/`cov`, `evals --replay --strict`,
+  `subagents check`, `assetscan scan`, dòng đo-hai-chiều của luật 4, ô CHANGELOG+session log của luật 10) —
+  bước 4 của luật cấm 8 trước nay chỉ tồn tại trong đầu, không có vật thể để người sau kiểm. Không thêm code,
+  không thêm cổng CI, không thêm file luật. (#295)
 - fix(company): **`merge_ticket` không còn gọi lại `git merge` vô ích mỗi nhịp watch cho ticket đã tích hợp
   xong (noop)** — lớp thứ ba của cùng họ bug `integration.noop`/`integration.skipped`: khoá `once` (#291) chỉ
   chặn được BẢN GHI audit-log trùng, không chặn việc `_merge_ticket` bị gọi lại — nhánh noop không thêm `tid`
