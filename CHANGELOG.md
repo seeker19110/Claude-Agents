@@ -6,6 +6,17 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(company): **`COMPANY_DEPLOY=process` — deploy được khách không dùng Docker** (ADR-0040, nối tiếp
+  ADR-0039). Ca gốc: 5 `release-events` của QLKH (REL-001/005/006/007/008) kẹt ở gate `escalation` vì
+  `deploy.py` chỉ biết `docker compose`, còn staging QLKH chạy tiến trình Python trần trên WSL. Thêm mode thứ
+  hai: `runtime.deploy` của spec giờ có thể trỏ tới một script hỗ trợ hai lệnh con `up`/`down` (không dò tên
+  mặc định như compose); `deployed` là hai phần — script `up` thoát 0 **và** smoke vào `rt.port` đã khai trong
+  spec (không có `ps` như compose để tự đọc cổng). Runner mặc định là một argv PREFIX bắc cầu qua WSL từ hub
+  chạy trên Windows native (`wsl.exe --cd . bash`, `.` được thay bằng `repo_root`, đã đo thật bằng `wsl.exe
+  --cd <đường dẫn Windows> bash -lc pwd`); máy Linux/CI đặt `COMPANY_DEPLOY_RUNTIME=bash` để bỏ qua cầu nối. TDD
+  14 ca đỏ trước ở `tests/test_deploy_process.py` (đường hạnh phúc không `down`, `up`/`smoke` hỏng đều `down`,
+  thiếu cổng, không khai/không có script → `skipped` không đoán tên, fail-closed thiếu binary → raise, argv/
+  prefix do code ghép), CI đầy đủ xanh (ruff, mypy --strict, pytest 100% dòng+nhánh, 1247 pass). (#289)
 - fix(platform): **`is_loopback_host` không còn nhận tên miền giả loopback** ở CẢ `platform/console` và
   `platform/gateway`. Cả hai kết thúc bằng `startswith("127.")`, nên `127.0.0.1.evil.example` — kẻ tấn công chỉ
   cần một bản ghi A trỏ về 127.0.0.1, không cần DNS rebinding — đi lọt cả hàng rào `Host` lẫn `Origin` (hai

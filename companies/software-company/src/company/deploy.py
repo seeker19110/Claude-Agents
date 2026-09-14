@@ -22,11 +22,17 @@ khai kèm lý do trong `tests/test_sandbox_noi_vao_cong_ty.py`.
 Fail-closed theo đúng khuôn `sandbox_from_settings` (ADR-0035): `COMPANY_DEPLOY=compose` khai đích danh mà thiếu
 binary là **lỗi**, không phải "coi như xong"; `auto` thiếu binary thì nói thiếu kèm tên biến người vận hành phải
 đặt, và "chưa deploy" không bao giờ được đọc thành "đã deploy".
+
+ADR-0040 thêm mode `process` cho khách không dùng Docker (QLKH: tiến trình trần trên WSL, xem
+`docs/adr/0040-deploy-process-wsl.md`). Cùng ba ràng buộc trên, khác ở chỗ không có `ps` để đọc trạng thái —
+`deployed` là hai phần (script `up` thoát 0 **và** smoke vào `rt.port` đã khai trong spec), và runner mặc định
+là một **argv prefix** bắc cầu qua WSL từ hub chạy trên Windows native, không phải một binary đơn.
 """
 from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import time
@@ -43,11 +49,17 @@ from .smoke import _probe as http_probe  # cùng probe với smoke: "đang chạ
 ENV_MODE = "COMPANY_DEPLOY"
 ENV_RUNTIME = "COMPANY_DEPLOY_RUNTIME"
 DEFAULT_RUNTIME = "docker"
-MODES = ("auto", "compose", "off")
+# ADR-0040: mặc định của mode `process` là một PREFIX (nhiều token), không phải một binary đơn — cầu nối WSL từ
+# hub Windows. `.` được thay bằng `repo_root` lúc ghép argv (`_process_prefix`), `wsl.exe --cd` tự dịch đường dẫn
+# Windows sang `/mnt/<ổ>/...` (đã đo thật). Máy Linux/macOS (CI, hub tự chạy trong WSL) đặt
+# `COMPANY_DEPLOY_RUNTIME=bash` để bỏ qua cầu nối.
+DEFAULT_RUNTIME_PROCESS = "wsl.exe --cd . bash"
+MODES = ("auto", "compose", "process", "off")
 # Dò mặc định khi spec không khai `runtime.deploy` (ADR-0039 §1). Cố ý ngắn: đoán thêm tên file là đoán thay khách.
 COMPOSE_NAMES = ("docker-compose.yml", "compose.yaml")
 ENVS = ("staging", "production")
 CMD_SUB = ("up", "ps", "logs", "down")   # ADR-0039 §6: bốn lệnh con, không hơn
+PROCESS_SUB = ("up", "down")   # ADR-0040 §2: chỉ hai lệnh con — script tự chờ tới khi sống mới thoát 0
 UP_TIMEOUT_S = 300
 CMD_TIMEOUT_S = 60
 LOGS_TAIL = 50
@@ -100,9 +112,11 @@ def project_name(project_id: str, env: str) -> str:
 
 def deploy_settings() -> tuple[str, str]:
     """`(mode, binary)` từ môi trường. Company đọc env, core thì không — cùng lý do với `sandbox_from_config`:
-    tên biến là của công ty, không phải của lõi."""
-    return (os.environ.get(ENV_MODE, "auto").strip().lower() or "auto",
-            os.environ.get(ENV_RUNTIME, DEFAULT_RUNTIME).strip() or DEFAULT_RUNTIME)
+    tên biến là của công ty, không phải của lõi. Mặc định `binary` phụ thuộc mode (ADR-0040): `process` bắc cầu
+    qua WSL, hai mode còn lại giữ nguyên `docker` (ADR-0039) — đọc mode trước để chọn đúng mặc định."""
+    mode = os.environ.get(ENV_MODE, "auto").strip().lower() or "auto"
+    default = DEFAULT_RUNTIME_PROCESS if mode == "process" else DEFAULT_RUNTIME
+    return mode, (os.environ.get(ENV_RUNTIME, "").strip() or default)
 
 
 def compose_file(repo_root: Path, rt: Runtime) -> str:
@@ -112,6 +126,41 @@ def compose_file(repo_root: Path, rt: Runtime) -> str:
     if named:
         return named if (repo_root / named).is_file() else ""
     return next((n for n in COMPOSE_NAMES if (repo_root / n).is_file()), "")
+
+
+def deploy_script(repo_root: Path, rt: Runtime) -> str:
+    """Đường dẫn script deploy `process` tương đối trong repo khách, "" nếu không có (ADR-0040 §1). Khác
+    `compose_file`: không dò tên mặc định — mỗi khách viết script khác nhau, đoán tên là đoán thay khách."""
+    named = rt.deploy.strip()
+    return named if named and (repo_root / named).is_file() else ""
+
+
+def _process_prefix(binary: str, repo_root: Path) -> list[str]:
+    """Tách `binary` (chuỗi shlex, có thể nhiều token) thành argv prefix; token `.` được thay bằng `repo_root`
+    (ADR-0040 §4) — `wsl.exe --cd <đường dẫn Windows>` tự dịch sang `/mnt/<ổ>/...`."""
+    return [str(repo_root) if tok == "." else tok for tok in shlex.split(binary)]
+
+
+def _process_argv(prefix: list[str], script: str, sub: str) -> list[str]:
+    """argv do CODE ghép (ADR-0040 §5): chỉ `script` đến từ spec, và `deploy_script` đã xác nhận nó là file có
+    thật trong repo khách. Lệnh con ngoài `up`/`down` là lỗi lập trình, không phải cấu hình — ném ngay."""
+    if sub not in PROCESS_SUB:
+        raise DeployError(f"lệnh không được phép: {sub!r} (chỉ {' | '.join(PROCESS_SUB)})")
+    return [*prefix, script, sub]
+
+
+def _process_cmd(run: Any, prefix: list[str], repo: Path, script: str, sub: str, *,
+                  timeout: int) -> tuple[bool, str]:
+    """Một lệnh con `process` (`up` hoặc `down`); không ném — (ok, stdout) hoặc (False, lý do rút gọn)."""
+    argv = _process_argv(prefix, script, sub)
+    try:
+        r = run(argv, cwd=str(repo), capture_output=True, text=True, encoding="utf-8", env=clean_env(),
+                timeout=timeout)
+    except FileNotFoundError:
+        return False, f"{prefix[0] if prefix else ''}: không có trên máy (đặt {ENV_RUNTIME} hoặc {ENV_MODE}=off)"
+    except subprocess.TimeoutExpired:
+        return False, f"{' '.join(prefix)} {script} {sub}: quá {timeout}s"
+    return (True, (r.stdout or "").strip()) if r.returncode == 0 else (False, ((r.stderr or "") or (r.stdout or "")).strip()[-600:])
 
 
 def _argv(binary: str, project: str, cfile: str, *args: str) -> list[str]:
@@ -212,17 +261,41 @@ def deploy(repo_root: Path, project_id: str, env: str, rt: Runtime, *,
         raise DeployError(f"{ENV_MODE} không hợp lệ: {mode!r} ({' | '.join(MODES)})")
     if mode == "off":
         return rec(skipped=f"{ENV_MODE}=off")
-    if not which(binary):
-        if mode == "compose":
-            raise DeployError(f"{ENV_MODE}=compose nhưng không tìm thấy `{binary}` trên PATH; cài runtime, đặt "
+    check_bin = (shlex.split(binary) or [binary])[0] if mode == "process" else binary
+    if not which(check_bin):
+        if mode in ("compose", "process"):
+            raise DeployError(f"{ENV_MODE}={mode} nhưng không tìm thấy `{check_bin}` trên PATH; cài runtime, đặt "
                               f"{ENV_RUNTIME}=<binary> hoặc {ENV_MODE}=off (không tự tụt hạng bảo vệ)")
-        return rec(skipped=f"không có `{binary}` trên PATH; đặt {ENV_RUNTIME} nếu runtime tên khác, hoặc "
+        return rec(skipped=f"không có `{check_bin}` trên PATH; đặt {ENV_RUNTIME} nếu runtime tên khác, hoặc "
                            f"{ENV_MODE}=off để tắt hẳn")
+
+    started_at = datetime.now(UTC).isoformat()
+    if mode == "process":
+        script = deploy_script(repo_root, rt)
+        if not script:
+            return rec(skipped="không khai `runtime.deploy` (đường dẫn script) hoặc script không tồn tại trong repo")
+        prefix = _process_prefix(binary, repo_root)
+        def teardown_process(**kw: Any) -> DeployRecord:
+            """Nhánh hỏng: `down` — không bỏ lại tiến trình nửa sống (ADR-0040 §3, cùng vai trò compose §3)."""
+            _process_cmd(run, prefix, repo_root, script, "down", timeout=CMD_TIMEOUT_S)
+            return rec(started_at=started_at, compose_file=script, **kw)
+
+        ok, out = _process_cmd(run, prefix, repo_root, script, "up", timeout=UP_TIMEOUT_S)
+        if not ok:
+            return teardown_process(error=f"up: {out}")
+        if not rt.port:
+            return teardown_process(error="spec không khai cổng cố định (`runtime.port`) — process mode cần "
+                                          "biết trước cổng để probe, không có `ps` như compose")
+        smoke = _smoke_running(rt, rt.port)
+        if not smoke["ok"]:
+            return teardown_process(port=rt.port, smoke=smoke,
+                                    error="smoke: cổng không trả đúng `expect_status`")
+        return rec(ok=True, port=rt.port, started_at=started_at, smoke=smoke, compose_file=script)
+
     cfile = compose_file(repo_root, rt)
     if not cfile:
         return rec(skipped=f"không khai `runtime.deploy` và không dò ra {' / '.join(COMPOSE_NAMES)} trong repo")
 
-    started_at = datetime.now(UTC).isoformat()
     def teardown(**kw: Any) -> DeployRecord:
         """Nhánh hỏng: lấy đuôi log làm bằng chứng RỒI `down` — không bỏ lại container nửa sống (ADR-0039 §3)."""
         ok_logs, logs = _compose(run, binary, repo_root, project, cfile, "logs", "--tail", str(LOGS_TAIL))
