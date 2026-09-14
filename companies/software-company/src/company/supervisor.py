@@ -47,6 +47,7 @@ class Supervisor(SupervisorBase):
         self.project_granted: dict[str, float] = defaultdict(float)  # mốc chi phí lúc người cho chạy tiếp
         self.ticket_warned: set[str] = set(); self.ticket_cut: set[str] = set()  # mỗi ticket một lần, tới khi cấp thêm
         self.unpriced = 0
+        self.unpriced_warned: set[str] = set()   # mỗi (dự án | ticket) báo một lần, xem `_check_unpriced`
         self.last_seen: dict[str, datetime] = {}
         self.error_signatures: dict[str, list[str]] = defaultdict(list)
         self.actions: list[SupervisorAction] = []
@@ -112,6 +113,7 @@ class Supervisor(SupervisorBase):
             a = AuditLog.model_validate(env.payload)
             if a.action.startswith("produced:") and '"unpriced": true' in (a.evidence or ""):
                 self.unpriced += 1
+                self._check_unpriced(a)
             if a.ticket_id and a.action == "budget.extended":  # người cấp thêm ngân sách: ngưỡng được báo lại từ đầu
                 self.ticket_warned.discard(a.ticket_id); self.ticket_cut.discard(a.ticket_id)
             if a.ticket_id and a.ticket_id in self.budgets:
@@ -144,6 +146,30 @@ class Supervisor(SupervisorBase):
             self.ticket_warned.add(tid); self._act(tid, "warn", f"đã dùng {b.ratio:.0%} ngân sách token")
         elif tid not in self.ticket_warned and b.limit_usd and b.ratio_usd >= self.WARN_AT:
             self.ticket_warned.add(tid); self._act(tid, "warn", f"đã dùng {b.ratio_usd:.0%} ngân sách tiền ({b.cost_usd:.2f} USD)")
+
+    def _check_unpriced(self, a: AuditLog) -> None:
+        """Trần TIỀN được đặt nhưng lời gọi không có giá → nói ra, đúng một lần cho mỗi đơn vị.
+
+        `Pricing` trả `cost_usd = 0.0` khi tên model không khớp bảng `prices` trong `llm.yaml`, và đánh dấu
+        `unpriced` để "không ai tưởng là miễn phí". Nhưng trước 2026-09-09 dấu ấy chỉ được ĐẾM
+        (`self.unpriced`) rồi in trong báo cáo — không có hành động nào. Nghĩa là ai đặt `budget_usd` hoặc
+        `project_budget_usd` mà đi một backend không có giá thì `_check_ticket`/`_check_project` cộng dồn
+        `0.0` mãi mãi: trần không bao giờ chạm, `budget_cut` và `pause` không bao giờ nổ. Guardrail ngân sách
+        tiền thành no-op **im lặng** — đúng khuôn "chế độ hỏng không tự khai báo".
+
+        Đo trên dữ liệu chạy thật (QLKH, 2026-09-09): 137 318 818 token, tổng chi phí ghi nhận **0,0000 USD**.
+
+        Chỉ báo khi CÓ trần tiền: không đặt trần thì `unpriced` chỉ là thông tin, không phải chế độ hỏng."""
+        tid = a.ticket_id
+        if tid and (b := self.budgets.get(tid)) is not None and b.limit_usd and tid not in self.unpriced_warned:
+            self.unpriced_warned.add(tid)
+            self._act(tid, "escalate", f"trần {b.limit_usd:.2f} USD không đo được: model không có giá trong "
+                                       "`prices` của llm.yaml nên mọi lời gọi tính 0 USD")
+        pid = a.project_id
+        if pid and self.project_budget_usd and pid not in self.unpriced_warned:
+            self.unpriced_warned.add(pid)
+            self._act(pid, "escalate", f"trần dự án {self.project_budget_usd:.2f} USD không đo được: model "
+                                       "không có giá trong `prices` của llm.yaml nên mọi lời gọi tính 0 USD")
 
     def _check_project(self, pid: str) -> None:
         if not self.project_budget_usd: return
