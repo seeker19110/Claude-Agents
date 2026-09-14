@@ -15,7 +15,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   xuống `fail` vì lý do không liên quan chất lượng PR — bằng chứng thật đến từ `deploy_release()` chạy ngay
   sau, tự chờ `/healthz` trước khi kết luận. TDD: `test_runtime_deploy_khai_thi_smoke_bo_qua_khong_fail` (dùng
   lệnh CHẮC CHẮN fail nếu bị spawn thật để chứng minh không hề chạy) đỏ trước, xanh sau. CI đầy đủ:
-  ruff/mypy/pytest -n auto --cov → 1249 passed, 1 skipped, 100% dòng + nhánh.
+  ruff/mypy/pytest -n auto --cov → 1249 passed, 1 skipped, 100% dòng + nhánh. (#292)
 - fix(company): **`merge_ticket` không còn ghi lặp `integration.noop` mỗi nhịp watch** — sửa cùng bẫy đã vá
   cho `integration.skipped` (thiếu khoá `once`) nhưng bị bỏ sót ở nhánh liền kề: ticket không có commit mới so
   với nhánh tích hợp (PR no-op) không đổi trạng thái gì, nên orchestrator ghi lại y hệt một bản ghi mỗi 3 giây
