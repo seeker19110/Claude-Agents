@@ -6,6 +6,16 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(adr): **ADR-0016 — cấu hình model ở tầng cấp máy**, `llm.yaml` của package chỉ giữ phần khác nhau. Câu
+  hỏi khởi nguồn *"sao không tích hợp `llm.yaml` trong core, gọi model qua gateway"* bị chính phép đo lật cả
+  hai vế: `llm.yaml` **đã** ở core từ K3.3 (`load_config` là chỗ duy nhất đọc), còn gateway **không** thay thế
+  được vì đường `provider: claude-code` là tiến trình CLI chứ không phải HTTP. Vấn đề thật nằm chỗ khác:
+  `llm.yaml` gitignored + luật mỗi phiên một worktree ⇒ cấu hình model bốc hơi đúng chỗ agent làm việc — đo
+  09-09 **14/16 worktree** không có file nào, đo lại 09-14 **0/4**, kể cả checkout chính. Quyết định: tầng máy
+  ngoài repo (`~/.config/xagents/llm.yaml`, đè bằng `$XAGENTS_LLM_CONFIG`) giữ `backends`; package giữ
+  `routing`/ngân sách/`prices`. **ADR ghi quyết định, mã chưa có.** Port từ worktree mồ côi 5 ngày; số cũ 0010
+  đã bị `domain-allowlist-mang-sandbox` chiếm nên đánh lại 0016, và mọi số dòng/đường dẫn được trích đã kiểm
+  lại theo cây mã hiện tại. (#<n>)
 - fix(company): **trần TIỀN đặt mà model không có giá thì phải kêu, không im** — `Pricing` trả `cost_usd = 0.0`
   cho model không khớp bảng `prices` trong `llm.yaml` và đánh dấu `unpriced` "để không ai tưởng là miễn phí",
   nhưng dấu ấy chỉ được ĐẾM rồi in trong `sprint_report`. Hệ quả: ai đặt `budget_usd`/`project_budget_usd` mà
