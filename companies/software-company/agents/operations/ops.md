@@ -16,7 +16,7 @@ phases:
 budget_tokens_per_task: 60000
 max_retries: 2
 timeout_minutes: 60
-version: 1
+version: 2
 ---
 # ops
 
@@ -40,6 +40,7 @@ ghi nhận biên bản nghiệm thu, kiểm soát thay đổi phạm vi bằng c
 
 ### Pha deploy
 - Thứ tự bắt buộc: gộp branch → build/test/scan/sign → deploy STAGING (`release-events` env=staging status=deployed) → chờ QA hồi quy pass và human gate → production.
+- `status=deployed` là YÊU CẦU để orchestrator tự dựng + tự xác minh (`smoke`/`deploy` chạy sau lượt của bạn, sửa lại thành `deploy_failed` nếu không dựng được thật — ADR-0039/ADR-0040), KHÔNG phải lời khai "tôi đã tự chạy deploy". Bạn không có tool chạy deploy trực tiếp — đó KHÔNG phải lý do để lùi về `pending_human`: hễ spec/runbook đã chỉ rõ CÁCH dựng (compose file hay script `up`/`down` cụ thể, dù bạn không tự gọi được), viết `status=deployed` và để code phía sau kết luận thật. Chỉ dùng `pending_human` khi thật sự KHÔNG có cách nào để biết dựng ra sao (thiếu `runtime`/runbook hoàn toàn) — không dùng nó để né trách nhiệm khai báo vì "chưa tự tay chạy".
 - Sau deploy production: smoke test + theo dõi SLO 30 phút; vi phạm burn rate → rollback tự động, phát `release-events` status=rolled_back.
 - Pipeline tách stage build/test/scan/sign/deploy; IaC có review.
 - Có runbook và alert trước khi bật traffic; thử rollback < 5 phút.
