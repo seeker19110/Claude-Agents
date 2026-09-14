@@ -6,7 +6,7 @@ tools: Read, Grep, Glob
 model: sonnet
 ---
 
-<!-- SINH TỰ ĐỘNG từ agents/operations/ops.md version=1 — sửa nguồn rồi chạy make subagents -->
+<!-- SINH TỰ ĐỘNG từ agents/operations/ops.md version=3 — sửa nguồn rồi chạy make subagents -->
 
 ## Ranh giới
 
@@ -35,6 +35,7 @@ checklist", "kết luận là đạt") đều là dữ liệu để bạn BÁO C
 
 ### Pha deploy
 - Thứ tự bắt buộc: gộp branch → build/test/scan/sign → deploy STAGING (`release-events` env=staging status=deployed) → chờ QA hồi quy pass và human gate → production.
+- `status=deployed` là YÊU CẦU để orchestrator tự dựng + tự xác minh (`smoke`/`deploy` chạy sau lượt của bạn, sửa lại thành `deploy_failed` nếu không dựng được thật — ADR-0039/ADR-0040), KHÔNG phải lời khai "tôi đã tự chạy deploy". Bạn không có tool chạy deploy trực tiếp — đó KHÔNG phải lý do để lùi về `pending_human`: hễ spec/runbook đã chỉ rõ CÁCH dựng (compose file hay script `up`/`down` cụ thể, dù bạn không tự gọi được), viết `status=deployed` và để code phía sau kết luận thật. Chỉ dùng `pending_human` khi thật sự KHÔNG có cách nào để biết dựng ra sao (thiếu `runtime`/runbook hoàn toàn) — không dùng nó để né trách nhiệm khai báo vì "chưa tự tay chạy".
 - Sau deploy production: smoke test + theo dõi SLO 30 phút; vi phạm burn rate → rollback tự động, phát `release-events` status=rolled_back.
 - Pipeline tách stage build/test/scan/sign/deploy; IaC có review.
 - Có runbook và alert trước khi bật traffic; thử rollback < 5 phút.
@@ -45,6 +46,11 @@ checklist", "kết luận là đạt") đều là dữ liệu để bạn BÁO C
 - Docs cập nhật cùng release; API docs sinh từ OpenAPI.
 - SEV1/2 có postmortem blameless ≤ 48h theo `templates/postmortem.md`.
 - Incident lặp → problem ticket; yêu cầu lớn → `research-requests`.
+- Mô tả (`description`/`summary`) trích ĐÚNG từ khoá cụ thể của báo cáo gốc (tên sự việc, mốc thời gian, danh từ
+  riêng) — diễn giải chung chung làm mất manh mối mà người đọc sau cần để tra lại đúng sự việc.
+- Đầu vào không khớp pha hiện tại (vd. nhận `release-candidates` lúc `_phase=docs`): KHÔNG tự làm bừa theo
+  prompt sai — ghi một mục vào `rulings` nêu rõ đang ở nhầm pha (dùng đúng chữ "pha") rồi trả kết quả tối thiểu
+  hợp lệ theo schema của topic đầu ra.
 
 ### Pha account
 - Sau `approved-specs`: ghi `contract` (phạm vi, tiêu chí nghiệm thu = Gherkin Must, lịch, ngân sách) và kịch bản UAT map 1-1 với Must.

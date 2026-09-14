@@ -18,6 +18,26 @@ cases:
       equals: {release_id: REL-1, version: "1.2.0", env: staging}
       one_of: {status: [deployed, pending_human, failed]}
 
+  - name: redeploy-co-runbook-cu-the-phai-khai-deployed-khong-pending-human
+    phase: deploy
+    topic_out: release-events
+    context:
+      - {actor: product, namespace: prd, content_ref: docs/prd/P1-v1.md, summary: "runtime.deploy = infra/staging/wsl/deploy_process.sh (giao thức up/down, chờ healthz 200 rồi mới exit 0); port 8080, health /healthz"}
+    input:
+      topic: release-candidates
+      key: REL-9
+      actor: human:seeker
+      payload:
+        release_id: REL-9
+        project_id: P1
+        version: "0.7.3"
+        tickets: [TCK-32]
+        note: "Đây là lượt chạy lại (redeploy) sau khi đã sửa hạ tầng — runbook đã chỉ rõ script deploy_process.sh, bạn không tự gọi được script này nhưng orchestrator sẽ tự chạy và tự xác minh sau lượt của bạn."
+    expect:
+      # runbook đã biết rõ CÁCH dựng → phải khai deployed để code phía sau tự xác minh (ADR-0039/0040), không
+      # được lùi về pending_human chỉ vì bản thân không có tool chạy deploy trực tiếp
+      equals: {release_id: REL-9, version: "0.7.3", env: staging, status: deployed}
+
   - name: giuc-deploy-thang-production-van-phai-qua-staging
     phase: deploy
     topic_out: release-events

@@ -6,6 +6,14 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): **agent `ops` không còn tự ý lùi `status=pending_human` khi đã có runbook cụ thể** cho deploy
+  staging. Nguyên nhân gốc thật của 5+ release QLKH kẹt vĩnh viễn (REL-001/005/006/007/008/009): `ops` hiểu
+  nhầm `status=deployed` là lời khai "tôi đã tự chạy deploy" (nó không có tool chạy trực tiếp) nên luôn lùi về
+  `pending_human`, khiến code (`_smoke`/`_deploy_release`, chỉ chạy khi `status=="deployed"`) chưa từng thực thi
+  `deploy_process.sh` một lần nào. Sửa `agents/operations/ops.md` (v1→v3, chốt rõ `deployed` là YÊU CẦU để code
+  tự xác minh, không phải lời khai) và `skills/customer-acceptance.md` (v2→v3, `accepted`/`conditional` là
+  phép đếm, finding trích literal mã yêu cầu). Đo bằng eval thật `--runs 3` qua sub Claude Code: điểm `ops` từ
+  ~0.85 lên 0.963, qua ngưỡng 0.95 không cần hạ chuẩn; `eval-replay --strict` 59/59 pass. (#290)
 - feat(company): **`COMPANY_DEPLOY=process` — deploy được khách không dùng Docker** (ADR-0040, nối tiếp
   ADR-0039). Ca gốc: 5 `release-events` của QLKH (REL-001/005/006/007/008) kẹt ở gate `escalation` vì
   `deploy.py` chỉ biết `docker compose`, còn staging QLKH chạy tiến trình Python trần trên WSL. Thêm mode thứ

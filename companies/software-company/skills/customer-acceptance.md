@@ -1,6 +1,6 @@
 ---
 name: customer-acceptance
-version: 2
+version: 3
 standards: [ISO/IEC/IEEE 29119-1 (acceptance testing), PMBOK 7 (scope/change control), ISO 21502, IEEE 730 (biên bản)]
 ---
 # Skill: customer-acceptance
@@ -32,6 +32,8 @@ Kịch bản UAT phải tồn tại TRƯỚC khi code, không viết lúc sắp 
 - Mọi yêu cầu ngoài spec là change request: mô tả, lý do, ảnh hưởng (ngày, token, chi phí, rủi ro), phương án thay thế, quyết định của khách — rồi mới thành requirement và ticket.
 - Change request bị từ chối cũng lưu, kèm lý do; đây là hồ sơ bảo vệ cả hai bên.
 - Biên bản ghi rõ một trong ba: `accepted`; `conditional` kèm danh sách việc còn lại, người chịu trách nhiệm và hạn; `rejected` kèm lý do truy vết về requirement_id.
+- Quyết định `accepted` vs `conditional` là PHÉP ĐẾM, không phải cảm tính: mọi Must đạt + 0 finding mức `block` + 0 finding còn treo (mức `warn` cần việc làm thêm) + đã có chữ ký → **accepted**, không tự hạ xuống `conditional` "cho chắc". Hạ xuống `conditional` mà không có ít nhất một finding hay một việc còn lại cụ thể trong biên bản là bịa ra rủi ro không có thật — ngược lại tinh thần "không đoán số liệu".
+- Finding LUÔN trích literal `requirement_id` (dạng `REQ-<n>`) ngay trong câu `text` của nó — schema `acceptance-results.findings` không có trường `requirement_id` riêng, nên "truy vết được về requirement_id" (checklist) chỉ đọc được nếu chuỗi đó nằm trong `text`, không phải suy luận từ ngữ cảnh.
 - Người ký nghiệm thu là người có thẩm quyền của khách; công ty không tự ký thay, agent không ký thay người.
 - Sau nghiệm thu: chuyển trạng thái bảo hành/hỗ trợ rõ ràng (thời hạn, kênh, SLA), và ghi các phát hiện lặp lại vào `knowledge`.
 
