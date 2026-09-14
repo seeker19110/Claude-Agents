@@ -67,7 +67,7 @@ def _fake_runner(record: list[dict[str, Any]], code: int = 0, out: str = "OUT", 
 
 def _backends(record: list[dict[str, Any]], **kw: Any) -> list[Any]:
     return [SubprocessSandbox(runner=_fake_runner(record, **kw)),
-            ContainerSandbox("docker", "python:3.12-slim", runner=_fake_runner(record, **kw))]
+            ContainerSandbox("docker", "python:3.12-slim", runner=_fake_runner(record, **kw), env_via_stdin=True)]
 
 
 @pytest.mark.parametrize("i", [0, 1])
@@ -112,7 +112,7 @@ def test_sanitize_env_loc_lai_du_noi_goi_da_ban_env_ban(monkeypatch):
 
 def test_container_argv_mount_rw_mang_tat_va_env_qua_stdin(tmp_path):
     rec: list[dict[str, Any]] = []
-    sb = ContainerSandbox("podman", "img:1", cpus="1", memory="1g", runner=_fake_runner(rec))
+    sb = ContainerSandbox("podman", "img:1", cpus="1", memory="1g", runner=_fake_runner(rec), env_via_stdin=True)
     sb.run(RunSpec(argv=["ffmpeg", "-version"], cwd=tmp_path, env={"LANG": "vi"}))
     argv = rec[0]["argv"]
     assert argv[:3] == ["podman", "run", "--rm"] and "--pids-limit" in argv
@@ -135,21 +135,40 @@ def test_container_mount_chi_doc_cho_qc_va_mo_cong_khi_can_mang(tmp_path):
 def test_container_khi_can_stdin_thi_env_buoc_phai_ra_dong_lenh(tmp_path):
     """`--env-file -` chiếm stdin, mà CommandTTS cần stdin cho văn bản → env quay về `-e` (đánh đổi có chủ ý)."""
     rec: list[dict[str, Any]] = []
-    ContainerSandbox("docker", "img:1", runner=_fake_runner(rec)).run(
+    ContainerSandbox("docker", "img:1", runner=_fake_runner(rec), env_via_stdin=True).run(
         RunSpec(argv=["tts"], cwd=tmp_path, env={"LANG": "vi"}, stdin="xin chào"))
     argv = rec[0]["argv"]
     assert "--env-file" not in argv and "-i" in argv and "LANG=vi" in argv
     assert rec[0]["input"] == "xin chào"
 
 
+def test_container_tren_windows_env_qua_dong_lenh_va_noi_thang_trong_ten(tmp_path):
+    """docker CLI trên Windows coi `-` của `--env-file` là TÊN FILE ("open -: The system cannot find the file
+    specified") → không có đường stdin; env buộc quay về `-e` như ca stdin, và tên sandbox phải nói thẳng đánh đổi."""
+    rec: list[dict[str, Any]] = []
+    sb = ContainerSandbox("docker", "img:1", runner=_fake_runner(rec), env_via_stdin=False)
+    sb.run(RunSpec(argv=["pytest"], cwd=tmp_path, env={"LANG": "vi"}))
+    argv = rec[0]["argv"]
+    assert "--env-file" not in argv and "LANG=vi" in argv and argv[argv.index("LANG=vi") - 1] == "-e"
+    assert rec[0]["input"] == ""                       # không đẩy KEY=VALUE vào stdin của một lệnh không đọc nó
+    assert sb.name == "container:img:1:env-argv" or sb.name == "container:img:1:no-uid:env-argv"
+
+
+def test_container_mac_dinh_chon_duong_env_theo_he_dieu_hanh(monkeypatch):
+    monkeypatch.setattr(os, "name", "nt")
+    assert ContainerSandbox("docker", "img:1").env_via_stdin is False
+    monkeypatch.setattr(os, "name", "posix")
+    assert ContainerSandbox("docker", "img:1").env_via_stdin is True
+
+
 def test_container_khong_co_getuid_thi_noi_thang_trong_ten_sandbox(monkeypatch):
     monkeypatch.delattr(os, "getuid", raising=False)
     monkeypatch.delattr(os, "getgid", raising=False)
-    sb = ContainerSandbox("docker", "img:1")
+    sb = ContainerSandbox("docker", "img:1", env_via_stdin=True)
     assert sb.name == "container:img:1:no-uid" and "-u" not in sb._argv(RunSpec(argv=["x"], cwd=Path(".")))
     monkeypatch.setattr(os, "getuid", lambda: 1000, raising=False)
     monkeypatch.setattr(os, "getgid", lambda: 1000, raising=False)
-    sb2 = ContainerSandbox("docker", "img:1")
+    sb2 = ContainerSandbox("docker", "img:1", env_via_stdin=True)
     assert sb2.name == "container:img:1" and "1000:1000" in sb2._argv(RunSpec(argv=["x"], cwd=Path(".")))
 
 
@@ -178,7 +197,7 @@ def test_spawn_tra_handle_poll_kill_stderr_cho_ca_hai_backend(tmp_path):
             self.stdin = type("S", (), {"write": lambda s, t: self.written.append(t), "close": lambda s: None})()
 
     p2 = _P()
-    ContainerSandbox("docker", "img:1", popen=lambda *a, **k: p2).spawn(
+    ContainerSandbox("docker", "img:1", popen=lambda *a, **k: p2, env_via_stdin=True).spawn(
         RunSpec(argv=["x"], cwd=tmp_path, env={"LANG": "vi"}))
     assert p2.written == ["LANG=vi\nPYTHONDONTWRITEBYTECODE=1"]
 
