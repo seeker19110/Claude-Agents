@@ -15,7 +15,10 @@ từng package ở `<pkg>/CODEMAP.md`.
 | Thêm bẫy đã mắc | `TRAPS.md` (hub) hoặc `<pkg>/TRAPS.md` | — |
 | Ghi việc đã đổi | `CHANGELOG.md` | — |
 | Cấu hình dev server cho browser pane | `.claude/launch.json` | — |
-| Thêm slash command cho Claude Code | `.claude/commands/<tên>.md` | — |
+| Thêm slash command cho Claude Code | `.claude/commands/<tên>.md` | `platform/console/tests/test_cong_khung.py` (canh frontmatter + đường dẫn) |
+| Đổi lệnh cổng cục bộ | `scripts/dev-task.sh` — phải khớp đúng `.github/workflows/ci.yml`, lệch là cổng cục bộ khác cổng CI | `uv run pytest tests/test_cong_khung.py` (console) |
+| Đổi/thêm hàng rào chặn lệnh | `.claude/hooks/*.sh` + nối trong `.claude/settings.json` | `test_cong_khung.py` — hook không có test là cổng không ai biết còn sống không |
+| Luật cho agent KHÔNG phải Claude Code | `GEMINI.md` (bản đầy đủ) + `.cursorrules`/`.windsurfrules`/`.clinerules` | — |
 | Trợ lý kiểm duyệt `sc-*` | **không sửa tay** — `companies/software-company/agents/`, `skills/`, `gates/checklists.md` → `make subagents` | commit `.claude/agents/` |
 
 ## software-company (`company`) — tóm tắt; đầy đủ ở `companies/software-company/CODEMAP.md`

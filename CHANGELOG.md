@@ -6,6 +6,20 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(khung): **hàng rào thi hành luật cấm — `scripts/dev-task.sh` + ba hook Claude Code**, lấy từ
+  `seeker19110/project-template` và thích ứng cho workspace năm package. Trước bản này, 8 luật cấm của
+  `AGENTS.md` (không commit/push `main`, không commit `llm.yaml`/`*.sqlite*`, không hạ `fail_under`) chỉ được
+  canh bằng trí nhớ của agent; CI bắt sau khi đã push, và gitleaks quét cả lịch sử nên commit rồi xoá vẫn đỏ
+  vĩnh viễn. Nay: `pre-commit-gate.sh` chặn commit khi đứng trên `main` / staged có file cấm / diff hạ
+  `fail_under` / cổng đỏ (chạy **hẹp** theo gói bị đụng — cổng cả năm gói mất nhiều phút thì agent sẽ né);
+  `block-dangerous-git.sh` chặn push–force-push `main`, `reset --hard`, `*--abort`; `auto-format.sh` format
+  file vừa sửa. `dev-task.sh gate [gói]` là một điểm vào cho lệnh CI (khớp đúng `ci.yml`: `--cov` cả năm gói,
+  `-n auto` riêng software-company). Thêm `/gate`, `/debug`, `/adr`; `GEMINI.md`/`.cursorrules`/
+  `.windsurfrules`/`.clinerules` trỏ về `AGENTS.md` cho agent khác Claude Code. Hai lỗi của bản gốc đã sửa
+  trong port: máy phát triển **không có `jq`** nên hook bản template fail-open im lặng cả phiên (thêm đường
+  đọc JSON bằng Python), và `.sh` CRLF làm bash Linux vỡ mà không đỏ ở đâu (`*.sh text eol=lf` + test
+  `git check-attr` canh). Đo hai chiều: chưa có script/hook → 50/51 test đỏ, có rồi → 73/73 xanh; cổng console
+  408 passed, coverage 100.00%. (#294)
 - docs: **đối chiếu `seeker19110/projects-template` theo PROMPT-SHEET §H + khuôn Báo cáo xác thực cho luật
   cấm 8**. Báo cáo `docs/reports/2026-09-14-doi-chieu-projects-template.md`: trên ~25 hạng mục của bộ khung
   kia, 13/15 hạng mục đối chiếu chính repo này đã sâu hơn (gate là máy trạng thái chạy thật chứ không phải

@@ -79,8 +79,11 @@ hạn mức; self-hosted, resume được; trung lập provider.
    golden + recordings + `.claude/agents/`. Bỏ một bước là CI đỏ có chủ đích.
 2. **Thay đổi kiến trúc → ADR trước** (`<công ty>/docs/adr/`), link trong PR. Sửa lỗi nhỏ, chỉnh prompt, sửa tài
    liệu thì không cần.
-3. **Chạy đúng lệnh CI trước khi push**: `uv run ruff check src tests` + `uv run mypy src/<pkg> --ignore-missing-imports`
-   + `uv run pytest -q` (software-company: `-n auto --cov`). Windows thiếu 2 dòng POSIX trong coverage là bình thường.
+3. **Chạy đúng lệnh CI trước khi push** — một lệnh, không phải ba: `scripts/dev-task.sh gate <gói>`
+   (`gói`: `company|gateway|console|core|keeper|all`; bỏ trống = `all`). Script giữ lệnh khớp đúng `ci.yml`
+   (`ruff check src tests` → `mypy src/<module> --ignore-missing-imports` → `pytest -q --cov`, riêng
+   software-company thêm `-n auto`) nên không phải nhớ biến thể của từng package; `DEV_TASK_DRY_RUN=1` để xem
+   trước lệnh sẽ chạy. Windows thiếu 2 dòng POSIX trong coverage là bình thường.
 4. **TDD là quy trình mặc định cho MỌI code, không chỉ khi sửa lỗi: viết test trước, thấy nó đỏ, rồi mới viết code
    để nó xanh.** Luật cứng:
    ```
@@ -119,6 +122,24 @@ hạn mức; self-hosted, resume được; trung lập provider.
 11. **Trước khi mở PR, tìm PR/issue trùng — đóng hay mở đều tính.** `gh pr list --state all --search "<từ khoá>"`
    và `gh issue list --state all --search "<từ khoá>"`. Có PR cũ từng đóng vì cùng vấn đề → đọc lý do đóng, nói
    rõ trong PR mới cái gì khác đi khiến lần này nên qua; không lặng lẽ mở PR thứ hai cho cùng một việc.
+
+## Hàng rào thi hành (không phải lời nhắc)
+
+Luật cấm 1, 3, 6 và luật bắt buộc 3 ở trên **có cơ chế chặn**, không chỉ là chữ. Claude Code nạp
+`.claude/hooks/` qua `.claude/settings.json`:
+
+| Hook | Chặn gì |
+|---|---|
+| `block-dangerous-git.sh` | `git push` (kể cả force) vào `main`/`master`; `reset --hard`; `merge\|rebase\|cherry-pick --abort` |
+| `pre-commit-gate.sh` | commit khi: đang đứng trên `main` · staged có `llm.yaml`/`media.yaml`/`*.sqlite*`/`company.artifacts/` · diff hạ `fail_under` · cổng của gói bị đụng đỏ |
+| `auto-format.sh` | (không chặn) format file vừa sửa qua `dev-task.sh format-file` |
+
+Đường thoát tường minh: `ALLOW_DANGEROUS_GIT=1`, hoặc `--no-verify` trong lệnh commit — dùng thì **phải nói rõ
+lý do cho người dùng**, không lặng lẽ lách. Hook chặn oan → sửa hook kèm test, đừng tắt nó.
+
+**Agent không phải Claude Code không có hook** (Codex, Cursor, Gemini/Antigravity…): bốn phép kiểm trên phải tự
+làm bằng tay như luật cứng — xem `GEMINI.md`, và luật ở `.cursorrules`/`.windsurfrules`/`.clinerules` cùng trỏ
+về file này.
 
 ## Chạy cái gì ở đâu
 

@@ -1,0 +1,13 @@
+# Luật cho agent trong repo này
+
+Nguồn sự thật duy nhất: `AGENTS.md` ở gốc repo — đọc nó TRƯỚC KHI chạm vào bất kỳ file nào.
+File này cố ý không chép lại luật (hai bản luật sẽ lệch nhau, và lúc lệch thì agent chọn bản tiện hơn).
+
+Bạn không phải Claude Code, nên `.claude/hooks/` KHÔNG chạy cho bạn — bốn phép kiểm sau phải tự làm bằng tay
+(bản đầy đủ: `GEMINI.md`, mục "Ba thứ Claude Code có mà bạn không có"):
+
+- Trước `git commit`: không đứng trên `main`; staged không có `llm.yaml` / `media.yaml` / `*.sqlite*` /
+  `company.artifacts/`; diff không hạ `fail_under`; `scripts/dev-task.sh gate <gói>` phải xanh.
+- Không `git push` vào `main`. Không `git reset --hard`. Không `merge|rebase --abort` để né giải xung đột.
+- Lệnh cổng: `scripts/dev-task.sh gate [company|gateway|console|core|keeper|all]` — đừng đoán lệnh từng package.
+- `.claude/agents/sc-*.md` là bản sinh tự động (`make subagents`), không sửa tay.

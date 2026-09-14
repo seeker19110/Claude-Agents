@@ -21,12 +21,23 @@ Luật đầy đủ nằm ở `AGENTS.md` (nhập ở dòng đầu). Dưới đ�
 5. **TDD cho mọi code, không riêng bugfix**: viết test đỏ trước → code tối thiểu cho xanh → refactor. Không có
    test đỏ đi trước thì chưa được viết code sản xuất (`AGENTS.md` luật bắt buộc 4). Vá 3 lần liên tiếp vẫn lòi
    vấn đề mới chỗ khác → dừng, hỏi người, đừng vá lần 4 một mình (luật bắt buộc 6).
-6. "Xong" phải có output lệnh vừa chạy trong chính lượt này. Không có thì chưa xong.
+6. "Xong" phải có output lệnh vừa chạy trong chính lượt này. Không có thì chưa xong. Một lệnh cho cổng:
+   `scripts/dev-task.sh gate <gói>` (`company|gateway|console|core|keeper|all`) — nó khớp đúng `ci.yml`, đừng
+   tự gõ `ruff`/`mypy`/`pytest` rời rồi nhớ nhầm biến thể của package.
 7. Trước khi sửa lỗi lạ: đọc `TRAPS.md` — 80% khả năng nó đã có tên ở đó, kể cả câu bạn đang định tự biện hộ
    (`TRAPS.md` §6).
 
+## Hàng rào tự động (chỉ Claude Code có)
+
+`.claude/settings.json` nối ba hook ở `.claude/hooks/` — bảng đầy đủ ở `AGENTS.md` §"Hàng rào thi hành". Tóm
+tắt: `block-dangerous-git.sh` chặn mọi thứ ghi vào `main` + `reset --hard` + `*--abort`; `pre-commit-gate.sh`
+chặn commit khi đứng trên `main`, staged có file cấm, diff hạ `fail_under`, hoặc cổng của gói bị đụng đỏ;
+`auto-format.sh` format file vừa sửa. Bị chặn → **sửa cho đúng luật**, đừng lách bằng `--no-verify`/
+`ALLOW_DANGEROUS_GIT=1` rồi im lặng; hook chặn oan thì sửa hook kèm test trong `test_cong_khung.py`.
+
 ## Skill và trợ lý có sẵn trong repo
 
+- `/gate` — cổng trước commit/PR; `/debug` — vòng chẩn đoán bug khó; `/adr` — viết ADR đúng khuôn repo.
 - `/gate-brief <subject>` — hồ sơ bằng chứng chỉ đọc cho một human gate của software-company; không ký thay người.
 - `/thi-hanh <mã> [đề bài]` — thi hành một đề bài từ đặc tả tới mọi PR merge theo `docs/KHUON-THI-HANH.md`: phiên chính
   điều phối, subagent thực thi theo mức C1/C2/C3, người ra lệnh một lần. Trạng thái ở `docs/thi-hanh/<mã>.md`.
