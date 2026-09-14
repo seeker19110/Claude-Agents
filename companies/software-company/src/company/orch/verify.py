@@ -80,6 +80,17 @@ def smoke(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[str, Any]
             request_gate(o.gate, GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
                                           checklist=["root_cause", "decision:redeploy|close", "hint"]))
         return {**p, "status": "failed", "smoke": smoke}
+    if rt.deploy:
+        # ADR-0041: `runtime.command` chạy TRẦN bằng subprocess của chính orchestrator — không hợp với app cần
+        # cài dependency riêng (venv/bắc cầu WSL) trước khi chạy được, đo thật trên QLKH: mọi lệnh đều fail cùng
+        # lý do bất kể nội dung. Spec đã khai `runtime.deploy` (ADR-0039/0040) thì bằng chứng thật đến từ
+        # `deploy_release()` chạy NGAY SAU (nó tự cài đặt trước khi start) — không chạy smoke trần chồng lấn,
+        # không mở gate ở đây (mở cả hai bước là hỏi người hai lần cho cùng một lượt).
+        smoke = unverified("runtime.deploy đã khai (ADR-0039/0040) — bằng chứng thật do deploy() cung cấp, "
+                           "không chạy smoke trần")
+        o._audit("release.smoke_unverified", {"release_id": rid, "reason": smoke["reason"], "spec_kind": kind},
+                    project_id=pid, once=f"smoke.unverified:{rid}:{rc.event_id}")
+        return {**p, "smoke": smoke}
     smoke = run_smoke(integ.path, rt, sandbox=o.sandbox)
     o._audit("release.smoke", {"release_id": rid, **smoke}, actor=agent, project_id=pid)
     if smoke.get("ok"):
@@ -174,6 +185,13 @@ def regression_run(o: Orchestrator, env: Envelope) -> dict[str, Any]:
         run = {**unverified("spec không khai `runtime` (lệnh khởi động, cổng, đường health)"), "spec_kind": kind}
     elif integ is None or not integ.path.exists():
         run = {**unverified("không có worktree tích hợp (dự án chạy không repo)"), "spec_kind": kind}
+    elif rt.deploy:
+        # ADR-0041: cùng lý do với `smoke()` — `runtime.command` chạy trần không hợp với app cần cài dependency
+        # riêng; spec đã khai `runtime.deploy` thì bằng chứng thật đến từ `deploy_release()`, không phải hồi quy
+        # smoke trần ở đây. `deploy_declared=True` để `verdict_with_run` không hạ verdict QA xuống `fail` vì lý
+        # do không liên quan tới chất lượng PR.
+        run = {**unverified("runtime.deploy đã khai (ADR-0039/0040) — bằng chứng thật do deploy() cung cấp, "
+                           "không chạy smoke trần"), "spec_kind": kind, "deploy_declared": True}
     else:
         run = {**run_smoke(integ.path, rt, sandbox=o.sandbox), "sha": o.release_sha.get(rid) or integ.sha(), "spec_kind": kind}
         o._audit("regression.run", {"release_id": rid, **run}, project_id=pid)
@@ -197,7 +215,7 @@ def verdict_with_run(o: Orchestrator, agent: str, env: Envelope, p: dict[str, An
     if run.get("ok"):
         return p
     if run.get("unverified"):
-        if run.get("spec_kind") != "application":
+        if run.get("spec_kind") != "application" or run.get("deploy_declared"):
             return p
         reason = f"spec khai kind=application nhưng không smoke được: {run.get('reason')} — RC không đi tiếp cho tới khi spec khai `runtime`"
     else:

@@ -6,6 +6,16 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(company): **`smoke()`/`regression_run()` bỏ qua chạy trần khi spec đã khai `runtime.deploy`** (ADR-0041,
+  nối tiếp ADR-0029/0039/0040). Đo thật trên QLKH: 6+ release liên tục fail ở `smoke()` (`npm run dev`,
+  `exit_code=127`) TRƯỚC KHI kịp chạm `deploy_process.sh` — `runtime.command` chạy trần bằng subprocess của
+  chính orchestrator, không hợp với app cần cài dependency riêng (venv/bắc cầu WSL); cờ `legacy` không giải
+  được vì chỉ tác dụng khi hoàn toàn không khai `runtime.command`, còn QLKH có khai (dù sai). Khi spec đã khai
+  `runtime.deploy`, `smoke()` giờ trả `unverified` (không đổi status) và `regression_run()` không hạ verdict QA
+  xuống `fail` vì lý do không liên quan chất lượng PR — bằng chứng thật đến từ `deploy_release()` chạy ngay
+  sau, tự chờ `/healthz` trước khi kết luận. TDD: `test_runtime_deploy_khai_thi_smoke_bo_qua_khong_fail` (dùng
+  lệnh CHẮC CHẮN fail nếu bị spawn thật để chứng minh không hề chạy) đỏ trước, xanh sau. CI đầy đủ:
+  ruff/mypy/pytest -n auto --cov → 1249 passed, 1 skipped, 100% dòng + nhánh. (#292)
 - fix(company): **`merge_ticket` không còn ghi lặp `integration.noop` mỗi nhịp watch** — sửa cùng bẫy đã vá
   cho `integration.skipped` (thiếu khoá `once`) nhưng bị bỏ sót ở nhánh liền kề: ticket không có commit mới so
   với nhánh tích hợp (PR no-op) không đổi trạng thái gì, nên orchestrator ghi lại y hệt một bản ghi mỗi 3 giây
