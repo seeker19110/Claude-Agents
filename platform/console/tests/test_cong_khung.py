@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -357,6 +358,32 @@ def test_moi_script_sh_duoc_chot_eol_lf() -> None:
     )
     hong = [d for d in kq.stdout.splitlines() if not d.endswith(": eol: lf")]
     assert not hong, f".gitattributes chưa chốt eol=lf cho: {hong}"
+
+
+# --- .claude/commands/ ------------------------------------------------------
+
+LENH = ROOT / ".claude" / "commands"
+_DUONG_DAN = re.compile(r"`((?:scripts|docs|platform|companies)/[\w./-]+)`")
+
+
+@pytest.mark.parametrize("f", sorted(LENH.glob("*.md")), ids=lambda p: p.name)
+def test_moi_slash_command_co_description(f: Path) -> None:
+    """Không có `description:` thì lệnh không hiện trong danh sách — viết xong mà không ai gọi được."""
+    than = f.read_text(encoding="utf-8")
+    assert than.startswith("---"), f"{f.name} thiếu frontmatter"
+    assert "description:" in than.split("---")[1], f"{f.name} thiếu description"
+
+
+@pytest.mark.parametrize("f", sorted(LENH.glob("*.md")), ids=lambda p: p.name)
+def test_slash_command_khong_tro_vao_duong_dan_khong_ton_tai(f: Path) -> None:
+    """Lệnh bảo agent chạy một script không tồn tại = agent đi bịa lệnh thay thế."""
+    hong = [dd for dd in _DUONG_DAN.findall(f.read_text(encoding="utf-8")) if not (ROOT / dd).exists()]
+    assert not hong, f"{f.name} trỏ vào đường dẫn không tồn tại: {hong}"
+
+
+@pytest.mark.parametrize("ten", ["gate", "debug", "adr"])
+def test_co_du_ba_lenh_lay_tu_template(ten: str) -> None:
+    assert (LENH / f"{ten}.md").is_file(), f"thiếu /{ten}"
 
 
 # --- luật phát cho mọi harness ----------------------------------------------
