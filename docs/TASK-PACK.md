@@ -131,6 +131,9 @@ và `*/tests/test_readme*.py` (những gì CI đã canh); `.github/workflows/ci.
 **A1. Số liệu tài liệu gốc.** Số test đếm bằng `pytest --collect-only -q` (số **ca** thu được, không đếm
 `def test_`). Agent/skill/topic/template/ADR đếm file trên đĩa. Coverage đọc `fail_under` trong `pyproject.toml`,
 không đọc badge.
+Từ 2026-09-15, **số test trong bảng của `README.md` gốc đã có cổng** (`test_so_test_trong_readme_khop_dia` —
+nó tự chạy `--collect-only` cho từng package README có khai số). Nên phép này còn lại đúng phần chưa ai canh:
+mọi con số KHÁC trong tài liệu (số màn console, số job CI, số dòng trùng, số ca eval) và các README con (A2).
 
 **A2. README gốc so với README con.** Mỗi package tự mô tả mình ở README riêng; README gốc mô tả lại. Hai bản
 phải khớp. Không cổng nào so chúng với nhau, nên đây là chỗ "sửa bản con, quên bản gốc" trú ngụ.
@@ -152,13 +155,18 @@ Phép này chậm và không tự động hoá được; nếu hết giờ thì 
 `grep -rn "^omit" --include="pyproject.toml" .` ·
 `cat companies/software-company/assetscan-waivers.txt` ·
 `grep -rn "skipif\|@pytest.mark.skip\|xfail" --include="*.py" companies platform`.
-Chỉ `assetscan-waivers.txt` tự dọn được (báo `waiver-unused`); ba cái còn lại không có hạn đáo, không có trần —
-số của chúng chỉ tăng nếu không ai đếm. Tăng so với lần trước mà không có lý do mới ⇒ ghi vào "Việc để lại".
+Chỉ `assetscan-waivers.txt` tự dọn được (báo `waiver-unused`). Ba cái còn lại **đã có trần từ 2026-09-12**:
+`platform/console/tests/test_cong_repo.py` giữ sổ `TRAN_PRAGMA`/`TRAN_SKIP` (tách theo từng package) và
+`TRAN_OMIT`, so **BẰNG ĐÚNG** — thêm một lối thoát thì đỏ, mà **bớt** một cái cũng đỏ tới khi hạ sổ, nên sổ
+không bao giờ nói quá. Vậy phép này KHÔNG còn là "đếm xem có ai lén thêm không" (cổng làm rồi), mà là phần cổng
+không làm được: **đọc lý do ghi lúc thêm và hỏi nó còn đúng không**. Con số thay đổi ⇒ đã đi qua review; lý do
+hết đúng thì không cổng nào biết.
 
-**A6. Độ sâu phép đo, không chỉ con số.** `fail_under = 100` trên **dòng** vẫn để lọt nhánh chưa đi. Ghi rõ
-package nào đã `branch = true` và package nào chưa:
-`grep -rn "^branch = true" --include="pyproject.toml" .`. Câu "phủ 100%" trong tài liệu phải nói rõ *100% dòng*
-hay *100% dòng và nhánh* — nói trống là một dòng lệch.
+**A6. Độ sâu phép đo, không chỉ con số.** `fail_under = 100` trên **dòng** vẫn để lọt nhánh chưa đi. Package nào
+chưa `branch = true` **đã có cổng canh từ 2026-09-15** (`test_branch_coverage_dung_so_chua_phu_nhanh`, sổ
+`CHUA_PHU_NHANH`, so bằng đúng), nên phép này còn đúng một việc cổng không làm: hỏi **bao giờ hạ nốt sổ** và
+bật `branch` cho package còn lại. Câu "phủ 100%" trong tài liệu vẫn phải nói rõ *100% dòng* hay *100% dòng và
+nhánh* — nói trống là một dòng lệch, và phần "dòng lệch" ấy thì chưa cổng nào canh.
 
 **A7. Hạn dùng của bằng chứng.** Bằng chứng có ngày, và ngày cũ đi thì bằng chứng nhạt đi kể cả khi không cổng
 nào đỏ: ngày ghi eval recordings (`companies/*/evals/recordings/REQUIRED.txt` + `git log -1 --format=%ad` trên
