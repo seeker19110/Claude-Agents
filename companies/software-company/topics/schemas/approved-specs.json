@@ -100,7 +100,7 @@
             },
             "deploy": {
               "type": "string",
-              "description": "ADR-0039: đường dẫn file docker compose TRONG repo khách để orchestrator deploy thật (vd. `docker-compose.yml`, `deploy/compose.yaml`). Thiếu trường này thì orchestrator dò `docker-compose.yml` / `compose.yaml`; không có file nào → deploy `skipped` kèm lý do, KHÔNG phải deploy thành công"
+              "description": "ADR-0039 (mode `compose`): đường dẫn file docker compose TRONG repo khách để orchestrator deploy thật (vd. `docker-compose.yml`, `deploy/compose.yaml`). Thiếu trường này thì orchestrator dò `docker-compose.yml` / `compose.yaml`; không có file nào → deploy `skipped` kèm lý do, KHÔNG phải deploy thành công. ADR-0040 (mode `process`, khách không dùng Docker): CÙNG trường này đổi nghĩa thành đường dẫn script deploy hỗ trợ hai lệnh con `up`/`down`; không dò tên mặc định — thiếu khai báo là `skipped`"
             },
             "dependencies": {
               "type": "array",
