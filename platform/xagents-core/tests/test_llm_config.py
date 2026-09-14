@@ -24,7 +24,7 @@ from typing import Any, ClassVar
 import pytest
 
 from xagents_core import CoreConfig
-from xagents_core.llm import LLMConfig, LLMError, load_config
+from xagents_core.llm import MAY_CONFIG_ENV, LLMConfig, LLMError, explain_config, load_config, may_config_file
 
 
 def _core(root: Path) -> CoreConfig:
@@ -203,3 +203,91 @@ def test_cache_ttl_sai_gia_tri_hong_to(tmp_path: Path):
     p = _yaml(tmp_path, "provider: anthropic\ncache_ttl: 1 hour\n")
     with pytest.raises(LLMError, match="cache_ttl"):
         load_config(_core(tmp_path), p, cls=LLMConfig)
+
+
+# ---------- ADR-0016: tầng máy làm nền cho `llm.yaml` của package ----------
+
+
+def test_may_config_file_mac_dinh_va_de_bang_bien_moi_truong(tmp_path: Path) -> None:
+    """Tầng máy nằm NGOÀI repo — đó là cả điểm của nó: `llm.yaml` gitignored + luật mỗi phiên một worktree
+    (`AGENTS.md` cấm §2) cộng lại làm cấu hình model bốc hơi đúng chỗ agent làm việc (đo 2026-09-14: 0/4
+    worktree có file nào). Mặc định `~/.config/xagents/llm.yaml`, đè được để test và để máy khác cắm chỗ khác."""
+    assert may_config_file({}) == Path.home() / ".config" / "xagents" / "llm.yaml"
+    assert may_config_file({MAY_CONFIG_ENV: str(tmp_path / "may.yaml")}) == tmp_path / "may.yaml"
+
+
+def test_tang_may_lam_nen_package_de_len_tren(tmp_path: Path) -> None:
+    """Thứ tự ba tầng: máy → package → biến môi trường. Tầng máy giữ thứ phụ thuộc MÁY NÀY đang đăng nhập tài
+    khoản nào (`backends`); package giữ thứ khác nhau giữa các công ty (`routing`, trần, ngân sách)."""
+    may = tmp_path / "may.yaml"
+    may.write_text("provider: anthropic\nmax_tokens: 999\nbackends:\n  - name: tk1\n    provider: claude-code\n",
+                   encoding="utf-8")
+    goi = tmp_path / "llm.yaml"
+    goi.write_text("max_tokens: 111\nrouting:\n  cooldown_s: 7\n", encoding="utf-8")
+
+    cfg = load_config(_core(tmp_path), goi, cls=ConCty, env={MAY_CONFIG_ENV: str(may)})
+    assert [b["name"] for b in cfg.backends] == ["tk1"], "backends của tầng máy phải sống sót qua tầng package"
+    assert cfg.provider == "anthropic", "khoá package không khai thì giữ giá trị tầng máy"
+    assert cfg.max_tokens == 111, "package khai thì package thắng"
+    assert cfg.routing == {"cooldown_s": 7}
+
+
+def test_tro_file_nen_khong_co_thi_fail_closed_chu_khong_im(tmp_path: Path) -> None:
+    """Chỉ đích danh một file nền rồi file đó không có = cấu hình sai, không phải "chạy tạm".
+
+    Nếu bỏ qua, `provider` rơi về mặc định `fake` và mọi lượt gọi model thành giả mà không ai biết — đúng khuôn
+    "chế độ hỏng không tự khai báo" mà ADR-0016 lấy làm lý do tồn tại. Lỗi phải NÓI RÕ THIẾU GÌ."""
+    thieu = tmp_path / "khong-co" / "may.yaml"
+    with pytest.raises(LLMError) as e:
+        load_config(_core(tmp_path), None, cls=ConCty, env={MAY_CONFIG_ENV: str(thieu)})
+    assert str(thieu) in str(e.value) and MAY_CONFIG_ENV in str(e.value)
+
+
+def test_thieu_file_nen_mac_dinh_thi_khong_phai_loi(tmp_path: Path) -> None:
+    """Vế còn lại của cùng một quyết định: KHÔNG chỉ đích danh thì vắng tầng máy là bình thường — test và
+    `evals --replay` chạy offline với `provider: fake`, không được bắt chúng dựng file ngoài repo."""
+    cfg = load_config(_core(tmp_path), None, cls=ConCty, env={})
+    assert cfg.provider == "fake"
+
+
+def test_explain_noi_tung_khoa_den_tu_dau(tmp_path: Path) -> None:
+    """Thêm một tầng là thêm câu hỏi "giá trị này đến từ đâu" — ADR-0016 bắt buộc kèm lệnh trả lời được nó,
+    nếu không tầng nền thành chỗ cấu hình lặng lẽ khác với thứ người đọc thấy trong file package."""
+    may = tmp_path / "may.yaml"; may.write_text("provider: anthropic\nmax_tokens: 999\n", encoding="utf-8")
+    goi = tmp_path / "llm.yaml"; goi.write_text("max_tokens: 111\n", encoding="utf-8")
+    env = {MAY_CONFIG_ENV: str(may), "DEMO_MAX_INPUT_CHARS": "5000"}
+
+    nguon = explain_config(_core(tmp_path), goi, cls=ConCty, env=env)
+    assert nguon["provider"] == f"tầng máy: {may}"
+    assert nguon["max_tokens"] == f"llm.yaml: {goi}"
+    assert nguon["max_input_chars"] == "biến môi trường: DEMO_MAX_INPUT_CHARS"
+    assert nguon["cache_ttl"] == "mặc định"
+
+
+def test_explain_khong_co_tang_nao_thi_moi_khoa_la_mac_dinh(tmp_path: Path) -> None:
+    """Không tầng máy, không `llm.yaml`, không biến nào — lệnh vẫn phải trả lời được, và trả lời "mặc định".
+    Đây là trạng thái của một worktree vừa tạo: người đọc cần thấy NGAY là chưa có cấu hình nào, thay vì một
+    bảng rỗng để họ tự đoán."""
+    nguon = explain_config(_core(tmp_path), tmp_path / "khong-co.yaml", cls=ConCty, env={})
+    assert set(nguon.values()) == {"mặc định"}
+    assert nguon["backends"] == "mặc định"
+
+
+def test_explain_goi_dung_ten_bien_moi_truong_cho_models(tmp_path: Path) -> None:
+    """`models` đọc từ NHIỀU biến (một biến mỗi tier) nên không tra được bằng bảng một-một. Người sửa cấu hình
+    cần biết gõ `unset` cái gì, nên phải kể đúng biến nào đang đặt — nói chung chung "biến môi trường" thì họ
+    phải đi dò ba tên."""
+    nguon = explain_config(_core(tmp_path), tmp_path / "khong-co.yaml", cls=ConCty,
+                           env={"DEMO_MODEL_STRONG": "m-a", "DEMO_MODEL_LIGHT": "m-b"})
+    assert nguon["models"] == "biến môi trường: DEMO_MODEL_STRONG, DEMO_MODEL_LIGHT"
+
+
+def test_explain_khoa_doi_gian_tiep_vi_bien_khac_thi_noi_chung(tmp_path: Path) -> None:
+    """`DEMO_LLM_PROVIDER` xoá sạch `backends` (một provider chỉ đích danh thì bỏ danh sách). Khoá `backends`
+    đổi vì biến ấy chứ không vì `DEMO_LLM_BACKENDS`, nên không được gọi tên một biến KHÔNG hề được đặt — nói
+    "biến môi trường" là đúng mức chắc chắn đang có."""
+    goi = tmp_path / "llm.yaml"
+    goi.write_text("backends:\n  - name: tk1\n    provider: claude-code\n", encoding="utf-8")
+    nguon = explain_config(_core(tmp_path), goi, cls=ConCty, env={"DEMO_LLM_PROVIDER": "anthropic"})
+    assert nguon["provider"] == "biến môi trường: DEMO_LLM_PROVIDER"
+    assert nguon["backends"] == "biến môi trường"

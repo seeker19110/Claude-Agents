@@ -2,7 +2,13 @@
 # hoặc dùng biến môi trường `KEEPER_*`. Công ty bảo trì trung lập provider: đổi model ở đây, không đổi code
 # hay prompt (ADR-0003).
 #
-# anthropic | openai (mọi server OpenAI-compatible: OpenAI, OpenRouter, Ollama, Groq, vLLM...)
+# BA TẦNG, tầng dưới làm nền cho tầng trên (ADR-0016 — `docs/adr/0016-cau-hinh-model-cap-may.md`):
+#   1. tầng MÁY   ~/.config/xagents/llm.yaml  (đè bằng $XAGENTS_LLM_CONFIG) — `backends`: tài khoản,
+#                 config_dir, base_url. Nằm NGOÀI repo nên không bốc hơi theo `git worktree add`.
+#   2. file này   thứ khác nhau thật giữa các công ty: routing, ngân sách, prices, trần ký tự.
+#   3. biến KEEPER_* thắng cả hai.
+# Trỏ $XAGENTS_LLM_CONFIG vào file không có = LỖI NGAY, không lặng lẽ rơi về `provider: fake`.
+## anthropic | openai (mọi server OpenAI-compatible: OpenAI, OpenRouter, Ollama, Groq, vLLM...)
 # | claude-code (CLI `claude -p` đã đăng nhập trên máy, KHÔNG cần API key) | codex | fake
 provider: fake
 

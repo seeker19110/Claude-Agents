@@ -1,5 +1,14 @@
 # Cấu hình model cho runner/eval. Sao chép thành `llm.yaml` (bị gitignore) hoặc dùng biến môi trường COMPANY_*.
 # Framework trung lập provider: đổi model/provider ở đây, không đổi code hay prompt.
+#
+# BA TẦNG, tầng dưới làm nền cho tầng trên (ADR-0016 — `docs/adr/0016-cau-hinh-model-cap-may.md`):
+#   1. tầng MÁY   ~/.config/xagents/llm.yaml  (đè bằng $XAGENTS_LLM_CONFIG) — thứ phụ thuộc máy này đang đăng
+#                 nhập tài khoản nào: `backends` (tên, provider, config_dir, base_url). Nằm NGOÀI repo nên
+#                 không bốc hơi theo `git worktree add`, và không bao giờ lọt vào git.
+#   2. file này   thứ khác nhau thật giữa các công ty: routing, ngân sách, prices, sandbox, max_input_chars.
+#   3. biến COMPANY_* thắng cả hai.
+# Khoá nào đến từ tầng nào: `uv run python -m company.probe --explain` (thêm `--json` để so giữa hai máy).
+# Trỏ $XAGENTS_LLM_CONFIG vào file không có = LỖI NGAY, không lặng lẽ rơi về `provider: fake`.
 
 # anthropic | openai (mọi server OpenAI-compatible) | claude-code (CLI `claude -p`, gói Claude) | codex (CLI `codex exec`, gói ChatGPT) | fake
 provider: openai

@@ -64,8 +64,10 @@ from xagents_core.llm import check_argv as check_argv
 from xagents_core.llm import cli_effort_args as cli_effort_args
 from xagents_core.llm import cli_env as cli_env
 from xagents_core.llm import cli_exit_error as cli_exit_error
+from xagents_core.llm import explain_config as explain_config
 from xagents_core.llm import find_codex_binary as find_codex_binary
 from xagents_core.llm import load_config as core_load_config
+from xagents_core.llm import may_config_file as may_config_file
 from xagents_core.llm import neutral_messages as neutral_messages
 from xagents_core.llm import object_before_trailing_junk as object_before_trailing_junk
 from xagents_core.llm import object_in_prose as object_in_prose
