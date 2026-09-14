@@ -49,7 +49,7 @@
       "observability"
     ],
     "timeout_minutes": 60,
-    "version": 1,
+    "version": 3,
     "writes": [
       "release-events",
       "incidents",
