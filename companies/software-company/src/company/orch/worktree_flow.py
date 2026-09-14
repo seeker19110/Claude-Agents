@@ -119,12 +119,14 @@ def merge_ticket_locked(o: Orchestrator, tid: str, res: StepResult, release_id: 
     before = integration.sha()
     m = integration.merge(ws.branch, f"merge({tid}): {t.title if t else tid}" + (f"\n\nrelease: {release_id}" if release_id else ""))
     if m.ok and m.sha == before:
-        # Branch không có gì mới so với nhánh tích hợp (vd. vừa `fresh()` sau xung đột, chưa có PR mới): không phải
-        # "đã tích hợp" — đánh dấu thế là mất code của lần làm lại về sau.
-        # Khoá `once`: nhánh này cũng KHÔNG đổi trạng thái gì (không thêm `tid` vào `o.integrated`), nên mỗi nhịp
-        # watch gọi lại `merge_ticket` cho cùng ticket đi đúng lại đây — cùng bẫy đã vá cho `integration.skipped`
-        # ở trên, bỏ sót ở nhánh liền kề này. Đo trên QLKH thật: 1319/2165 bản ghi audit-log (61%) là bản sao của
-        # đúng một sự kiện, orchestrator quay vòng vô hạn không tiến triển (`test_integration_noop_chi_ghi_mot_lan_cho_moi_ticket`).
+        # Branch không có gì mới so với nhánh tích hợp (vd. vừa `fresh()` sau xung đột, chưa có PR mới) — nhưng
+        # `tid` ĐANG NẰM TRÊN nhánh tích hợp đúng như merge thật sẽ để lại, không có gì mất khi coi là "đã tích
+        # hợp": thêm vào `o.integrated` để nhịp watch SAU đi qua short-circuit ở đầu hàm
+        # (`already and not _branch_ahead`), không gọi lại `integration.merge()` (lệnh git thật) vô ích mỗi 3
+        # giây. Trước bản vá này: khoá `once` (PR #291) chỉ chặn được BẢN GHI audit-log trùng, không chặn việc
+        # gọi lại — đo trên QLKH thật, orchestrator vẫn đứng yên ở TCK-033 sau khi vá #291
+        # (`test_merge_ticket_noop_them_tid_vao_integrated_khong_goi_lai_git_merge`).
+        with o._lock: o.integrated.add(tid)
         o._audit("integration.noop", {"release_id": release_id, "ticket_id": tid, "sha": before}, ticket_id=tid,
                  once=f"integration.noop:{release_id}:{tid}:{before}")
         res.actions.append(f"integration_noop:{tid}"); return True

@@ -175,6 +175,9 @@ def test_integration_noop_chi_ghi_mot_lan_cho_moi_ticket(tmp_path, monkeypatch):
         def merge(self, branch, msg):
             return FakeMerge()
 
+        def rev_list_count(self, branch):
+            return 0  # không có gì mới trên branch ticket so với nhánh tích hợp — khớp đúng ca noop
+
     orch.integration = FakeIntegration()
     monkeypatch.setattr(orch, "workspace", lambda tid: FakeWs())
     for _ in range(5):
@@ -183,6 +186,53 @@ def test_integration_noop_chi_ghi_mot_lan_cho_moi_ticket(tmp_path, monkeypatch):
 
     ghi = [e.payload for e in orch.bus.replay(topic="audit-log") if e.payload["action"] == "integration.noop"]
     assert len(ghi) == 1, f"5 nhịp phải để lại đúng 1 bản ghi, nhận được {len(ghi)}"
+
+
+def test_merge_ticket_noop_them_tid_vao_integrated_khong_goi_lai_git_merge(tmp_path, monkeypatch):
+    """Khoá `once` (test trên) chỉ chặn được BẢN GHI audit-log trùng, không chặn việc `_merge_ticket` bị GỌI LẠI
+    mỗi nhịp watch — nó vẫn chạy `integration.merge()` (lệnh git thật) năm lần cho một ticket đã ở trên nhánh
+    tích hợp rồi, không có gì mới. Đo trên QLKH thật (2026-09-14, sau khi vá `once`): orchestrator vẫn đứng yên
+    ở TCK-033 — mỗi release-candidate mới tham chiếu ticket đó lại gọi `_merge_ticket` lần nữa vì nhánh noop
+    KHÔNG thêm `tid` vào `o.integrated`, nên short-circuit đầu hàm (`already and not _branch_ahead`) không bao
+    giờ có tác dụng cho ticket này.
+
+    Đo hai chiều: bỏ `o.integrated.add(tid)` khỏi nhánh noop → test này đỏ (5 lần gọi `merge()`, không phải 1)."""
+    orch = _orch()
+
+    class FakeWs:
+        path = tmp_path
+        branch = "ticket/T1"
+
+        def __init__(self):
+            self.path.mkdir(exist_ok=True)
+
+    class FakeMerge:
+        ok = True
+        sha = "same-sha"
+        conflicts = None
+
+    class FakeIntegration:
+        branch = "integration"
+        merge_calls = 0
+
+        def sha(self):
+            return "same-sha"
+
+        def merge(self, branch, msg):
+            self.merge_calls += 1
+            return FakeMerge()
+
+    fake_integ = FakeIntegration()
+    orch.integration = fake_integ
+    monkeypatch.setattr(orch, "workspace", lambda tid: FakeWs())
+    monkeypatch.setattr(orch, "_branch_ahead", lambda tid: False)
+    for _ in range(5):
+        res = StepResult("e1", "release-candidates", "R1")
+        assert orch._merge_ticket("T1", res, release_id="R1") is True
+
+    assert "T1" in orch.integrated, "ticket đã ở trên nhánh tích hợp (noop) — không có lý do gì để coi là chưa"
+    assert fake_integ.merge_calls == 1, (
+        f"5 nhịp phải chỉ gọi git merge đúng 1 lần (short-circuit từ lần 2), nhận được {fake_integ.merge_calls}")
 
 
 # ---------- _merge_ticket: xung đột → ws.fresh()/lead.request_changes lỗi (ValueError/WorkspaceError) ----------
