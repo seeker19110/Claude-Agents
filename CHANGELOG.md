@@ -11,7 +11,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   worktree cũ theo bằng chứng đã-merge (tra số PR trong commit riêng của từng worktree, hoặc tra sản phẩm của
   nó trong `main` khi worktree không gắn PR nào). Ghi lại 4 worktree cố ý giữ — hai cái (`-wt-usd`,
   `-wt-llmcfg`) mang việc **chưa merge, chưa có PR** và bám layout trước ADR-0011 — cùng ba thao tác bị
-  classifier chặn, để phiên sau không dọn nhầm và không thử lại vô ích. (#<n>)
+  classifier chặn, để phiên sau không dọn nhầm và không thử lại vô ích. (#298)
 - fix(core): **`ContainerSandbox` chạy được trên Windows — env ra `-e` thay vì `--env-file -`** — docker CLI
   trên Windows coi `-` là TÊN FILE (`docker: --env-file: open -: The system cannot find the file specified`),
   nên mọi `local_checks` của builder đều `lint=false tests=false` và không ticket nào mở nổi PR (đo thật trên
