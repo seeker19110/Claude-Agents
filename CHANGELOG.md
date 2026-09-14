@@ -15,7 +15,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   `CLAUDE.md` luật 2 **bắt buộc**) phép kiểm nhánh chặn oan mọi commit, còn ba phép kiểm còn lại đọc index rỗng
   nên không bao giờ bắn — hàng rào vừa cản người đúng luật vừa buông người sai luật. Hai mục của ponytail bị loại **sau khi đo**: `--rescore` (repo đã có dưới tên
   `make eval-replay`) và judge LLM (repo chấm tất định). 9 mã / 5 hạng mục ở `docs/thi-hanh/pt.md`, thi hành bằng
-  `/thi-hanh pt`.
+  `/thi-hanh pt`. (#305)
 
 - feat(core): **cài đặt ADR-0016 — cấu hình model ba tầng: máy → package → biến môi trường.** Tầng máy
   (`~/.config/xagents/llm.yaml`, đè bằng `$XAGENTS_LLM_CONFIG`) nằm NGOÀI repo nên không bốc hơi theo
