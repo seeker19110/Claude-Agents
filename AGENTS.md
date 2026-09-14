@@ -51,6 +51,27 @@ hạn mức; self-hosted, resume được; trung lập provider.
    5. Chỉ sau bước 4 mới được nói câu đó — và nói kèm bằng chứng, không nói suông.
    Bỏ một bước ở trên = nói dối, không phải "gần đúng".
 
+   Bước 4 là bước hay bị bỏ nhất vì nó chỉ diễn ra trong đầu — không có vật thể nào để người sau kiểm. Khi
+   câu định nói là "xong / sẵn sàng merge", viết bước 4 ra thành khối này, **điền bằng output vừa chạy trong
+   lượt hiện tại**, không chép lại từ lượt trước:
+
+   ```
+   BÁO CÁO XÁC THỰC — <nhánh> @ <sha>
+   make lint ✅/❌ (ruff: .. | mypy: .. file)
+   make test ✅/❌ (X passed, Y failed, Z skipped)
+   make cov  ✅/❌ (fail_under = 100 — đạt/thiếu <n> dòng ở <file>)
+   evals --replay --strict ✅/❌/n-a   | subagents check ✅/❌/n-a   | assetscan scan ✅/❌/n-a
+   Test đỏ TRƯỚC khi sửa (luật bắt buộc 4, đo hai chiều) ✅/❌/n-a — tên ca: <..>
+   Bảy bước CONTRIBUTING §3 (nếu chạm agents/ hoặc skills/) ✅/n-a
+   CHANGELOG + docs/sessions/<ngày>.md trong CHÍNH PR này (luật 10) ✅/❌
+   KẾT LUẬN: Sẵn sàng  /  Cần xử lý: <..>
+   ```
+
+   `n-a` chỉ hợp lệ khi PR không chạm phần đó (vd PR thuần tài liệu không đụng agent → `evals`/`subagents`/
+   `assetscan` là `n-a`); `n-a` không phải cách viết khác của "chưa chạy". Bất kỳ ❌ nào ⇒ **chưa được nói
+   "xong", chưa bật auto-merge** — sửa, chạy lại toàn bộ, điền lại khối. Khối này không thay cổng CI; nó là
+   cách biến bước 4 thành việc cơ học thay vì một phán đoán tự chấm.
+
 ## Luật bắt buộc
 
 1. **Sửa `agents/` hoặc `skills/` → checklist 7 bước** ở `CONTRIBUTING.md` §3: tăng `version` → `make golden` →
