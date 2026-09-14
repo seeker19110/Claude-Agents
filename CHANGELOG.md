@@ -15,7 +15,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   ngoài repo (`~/.config/xagents/llm.yaml`, đè bằng `$XAGENTS_LLM_CONFIG`) giữ `backends`; package giữ
   `routing`/ngân sách/`prices`. **ADR ghi quyết định, mã chưa có.** Port từ worktree mồ côi 5 ngày; số cũ 0010
   đã bị `domain-allowlist-mang-sandbox` chiếm nên đánh lại 0016, và mọi số dòng/đường dẫn được trích đã kiểm
-  lại theo cây mã hiện tại. (#<n>)
+  lại theo cây mã hiện tại. (#302)
 - fix(company): **trần TIỀN đặt mà model không có giá thì phải kêu, không im** — `Pricing` trả `cost_usd = 0.0`
   cho model không khớp bảng `prices` trong `llm.yaml` và đánh dấu `unpriced` "để không ai tưởng là miễn phí",
   nhưng dấu ấy chỉ được ĐẾM rồi in trong `sprint_report`. Hệ quả: ai đặt `budget_usd`/`project_budget_usd` mà
