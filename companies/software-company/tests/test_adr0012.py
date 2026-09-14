@@ -271,6 +271,47 @@ def test_unpriced_calls_are_counted_not_hidden():
     assert a["cost_usd"] == 0.0 and json.loads(a["evidence"])["unpriced"] is True and sup.unpriced == 1
 
 
+def test_tran_usd_dat_ma_model_khong_co_gia_thi_phai_bao():
+    """Đặt trần TIỀN mà backend không có giá → guardrail là no-op; supervisor phải nói ra, không im.
+
+    `Pricing` trả 0.0 cho model không khớp bảng `prices` và đánh dấu `unpriced` "để không ai tưởng là miễn
+    phí" — nhưng trước 2026-09-09 dấu ấy chỉ được ĐẾM. Ai đặt `budget_usd`/`project_budget_usd` mà đi backend
+    không có giá thì `_check_ticket`/`_check_project` cộng dồn 0.0 mãi: trần không bao giờ chạm, `budget_cut`
+    và `pause` không bao giờ nổ. Đo trên QLKH thật: 137 318 818 token, tổng 0,0000 USD.
+
+    Đo hai chiều: bỏ `self._check_unpriced(a)` khỏi `Supervisor._on` thì ca này đỏ (không có action nào)."""
+    bus = InMemoryBus(); sup = Supervisor(bus, project_budget_usd=5.0)
+    t = Task(ticket_id="T1", project_id="P", requirement_id="R", assignee="builder", title="x", acceptance=["a"],
+             budget_usd=1.0)
+    env = Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=t.model_dump()); bus.publish(env)
+    AgentRunner(bus, FakeClient(handler=lambda s, u: {"ticket_id": "T1", "branch": "ticket/T1", "pr_ref": "#1",
+                                                      "local_checks": {"lint": True}})).run("builder", env, "pull-requests")
+
+    keu = [a for a in sup.actions if a.action == "escalate" and "không đo được" in a.reason]
+    assert {a.target for a in keu} == {"T1", "P"}, "cả trần ticket lẫn trần dự án đều phải được báo"
+    assert sup.unpriced == 1
+
+
+def test_tran_usd_khong_do_duoc_chi_bao_mot_lan_va_chi_khi_co_tran():
+    """Hai vế của cùng một quyết định: không đặt trần thì `unpriced` chỉ là thông tin, không phải chế độ hỏng;
+    có đặt trần thì báo ĐÚNG MỘT LẦN, không mỗi lời gọi một lần (gate escalation mở đi mở lại)."""
+    bus = InMemoryBus(); khong_tran = Supervisor(bus)
+    t = Task(ticket_id="T1", project_id="P", requirement_id="R", assignee="builder", title="x", acceptance=["a"])
+    env = Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=t.model_dump()); bus.publish(env)
+    for _ in range(3):
+        AgentRunner(bus, FakeClient(handler=lambda s, u: {"ticket_id": "T1", "branch": "ticket/T1", "pr_ref": "#1",
+                                                          "local_checks": {"lint": True}})).run("builder", env, "pull-requests")
+    assert khong_tran.unpriced == 3
+    assert not [a for a in khong_tran.actions if "không đo được" in a.reason], "không có trần thì không có gì hỏng"
+
+    bus2 = InMemoryBus(); co_tran = Supervisor(bus2, project_budget_usd=5.0)
+    bus2.publish(env)
+    for _ in range(3):
+        AgentRunner(bus2, FakeClient(handler=lambda s, u: {"ticket_id": "T1", "branch": "ticket/T1", "pr_ref": "#1",
+                                                           "local_checks": {"lint": True}})).run("builder", env, "pull-requests")
+    assert len([a for a in co_tran.actions if "không đo được" in a.reason]) == 1, "ba lời gọi, một lần báo"
+
+
 def test_orchestrator_pauses_whole_project_when_budget_exhausted():
     client = FakeClient(handler=handler); client.pricing = Pricing({"fake-": {"input": 1_000.0, "output": 1_000.0}})  # 1.3 USD / lượt
     bus = InMemoryBus(); orch = Orchestrator(bus, client, project_budget_usd=2.0)

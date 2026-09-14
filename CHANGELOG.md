@@ -6,6 +6,16 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): **trần TIỀN đặt mà model không có giá thì phải kêu, không im** — `Pricing` trả `cost_usd = 0.0`
+  cho model không khớp bảng `prices` trong `llm.yaml` và đánh dấu `unpriced` "để không ai tưởng là miễn phí",
+  nhưng dấu ấy chỉ được ĐẾM rồi in trong `sprint_report`. Hệ quả: ai đặt `budget_usd`/`project_budget_usd` mà
+  đi backend không có giá thì `_check_ticket`/`_check_project` cộng dồn `0.0` mãi — trần không bao giờ chạm,
+  `budget_cut` và `pause` không bao giờ nổ; guardrail ngân sách tiền là no-op **im lặng**. Đo trên QLKH thật:
+  137 318 818 token, tổng chi phí ghi nhận **0,0000 USD**. Nay `Supervisor._check_unpriced` sinh `escalate`
+  đúng MỘT lần cho mỗi ticket/dự án **có** trần tiền (không đặt trần thì `unpriced` chỉ là thông tin);
+  `unpriced_warned` dựng lại được từ bus như `ticket_warned` nên `replay` không lệch. Đo hai chiều: bỏ
+  `self._check_unpriced(a)` → 2 ca đỏ, bật lại → xanh. Port từ phát hiện 3 của audit 2026-09-09, việc nằm
+  ngoài mọi PR suốt 5 ngày trong một worktree bám layout trước ADR-0011. (#<n>)
 - docs(traps): **bài học gộp agent** vào `TRAPS.md` gốc (3 mục §2: gộp vai để "giảm cổng" không bỏ được cổng
   nào; quyết lại điều một ADR đã quyết; ba lần vá lòi chỗ mới = kiến trúc sai) và `software-company/TRAPS.md`
   (3 mục Prompt/eval: `phases:` chỉ cắt SKILL không cắt thân prompt — prompt phình 13× mà `assetbudget` vẫn
