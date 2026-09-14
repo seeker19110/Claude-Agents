@@ -18,7 +18,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   `docs/TASK-PACK.md` A1/A5/A6 nói đúng hiện trạng cổng: A5 còn viết ba lối thoát "không có trần, không ai đếm"
   trong khi `TRAN_PRAGMA`/`TRAN_SKIP`/`TRAN_OMIT` so bằng đúng từ 2026-09-12, A6 còn bảo đi grep tay trong khi
   `CHUA_PHU_NHANH` đã canh từ #297 — gói việc thường trực chỉ sai chỗ nào cổng đã làm rồi thì người audit tiêu
-  giờ vào việc máy làm xong, và bỏ qua đúng phần máy không làm được. (#<n>)
+  giờ vào việc máy làm xong, và bỏ qua đúng phần máy không làm được. (#304)
 - feat(core): **cài đặt ADR-0016 — cấu hình model ba tầng: máy → package → biến môi trường.** Tầng máy
   (`~/.config/xagents/llm.yaml`, đè bằng `$XAGENTS_LLM_CONFIG`) nằm NGOÀI repo nên không bốc hơi theo
   `git worktree add` — đo 2026-09-14: **0/4 worktree**, kể cả checkout chính, có một `llm.yaml` nào, tức không
