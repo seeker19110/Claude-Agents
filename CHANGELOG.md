@@ -6,6 +6,17 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(khung): **kế hoạch thi hành `pt` — năm cơ chế lấy từ `DietrichGebert/ponytail`.** Đo hiện trạng bằng
+  4 subagent `Explore` chỉ đọc tìm ra **ba lỗi đang tồn tại**, không phải ba chỗ "có thể cải thiện": 4 file luật
+  harness đã trôi khỏi `AGENTS.md:34` (thiếu "khoá/token, dữ liệu khách thật"); `evals/thresholds.yaml:15` ghi
+  `ops: cases: 8` trong khi `ops.yaml` có 9 ca nên cổng chống thu nhỏ bộ ca đang hở; và ≥ 6 ca eval có `expect:`
+  lỏng tới mức output sai vẫn PASS. Lỗi thứ tư lộ ra trong lúc commit chính PR này:
+  `pre-commit-gate.sh:17` lấy `ROOT` = `CLAUDE_PROJECT_DIR` = checkout chính, nên trong phiên worktree (thứ
+  `CLAUDE.md` luật 2 **bắt buộc**) phép kiểm nhánh chặn oan mọi commit, còn ba phép kiểm còn lại đọc index rỗng
+  nên không bao giờ bắn — hàng rào vừa cản người đúng luật vừa buông người sai luật. Hai mục của ponytail bị loại **sau khi đo**: `--rescore` (repo đã có dưới tên
+  `make eval-replay`) và judge LLM (repo chấm tất định). 9 mã / 5 hạng mục ở `docs/thi-hanh/pt.md`, thi hành bằng
+  `/thi-hanh pt`. (#305)
+
 - fix(console): **số test trong `README.md` gốc thôi trôi — có cổng canh, không chỉ sửa một lần.** Ba dòng bảng
   "Quy mô" đều lệch và **đều lệch một chiều "nói ít hơn thật"**: company 1249→**1256**, gateway 251→**256**,
   core 479→**488**. Đúng khuôn bản tự kiểm 2026-09-07 từng bắt (5/10 dòng số liệu README lệch, tất cả cùng một
