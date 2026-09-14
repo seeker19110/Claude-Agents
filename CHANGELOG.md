@@ -6,6 +6,11 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(traps): **bài học gộp agent** vào `TRAPS.md` gốc (3 mục §2: gộp vai để "giảm cổng" không bỏ được cổng
+  nào; quyết lại điều một ADR đã quyết; ba lần vá lòi chỗ mới = kiến trúc sai) và `software-company/TRAPS.md`
+  (3 mục Prompt/eval: `phases:` chỉ cắt SKILL không cắt thân prompt — prompt phình 13× mà `assetbudget` vẫn
+  xanh; một agent hai pha lẫn đúng nhãn phân biệt hai pha; hai route cùng agent+`topic_out` đụng khoá
+  `partial`). Rút từ ADR-0040 đã lùi ở #286. (#300)
 - fix(console): **`test_cong_khung.py` chạy được trên Windows — chọn bash bằng phép thử, không lấy cái đầu
   PATH** — `shutil.which("bash")` trên máy có WSL trả stub `AppData/Local/Microsoft/WindowsApps/bash.exe`;
   stub chuyển tiếp vào WSL, nơi `C:\Users\x\a.sh` bị nuốt hết dấu `\` thành `C:Usersxa.sh` → exit 127 cho mọi
