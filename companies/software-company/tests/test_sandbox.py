@@ -106,7 +106,7 @@ def test_hop_dong_cat_max_output(tmp_path, idx):
 @pytest.mark.parametrize("idx", [0, 1])
 def test_hop_dong_env_da_qua_clean_env(tmp_path, idx, monkeypatch):
     runner = FakeRunner()
-    sb = [SubprocessSandbox(runner=runner), ContainerSandbox("docker", "img", runner=runner)][idx]
+    sb = [SubprocessSandbox(runner=runner), ContainerSandbox("docker", "img", runner=runner, env_via_stdin=True)][idx]
     dirty = {"PATH": "/usr/bin", "ANTHROPIC_API_KEY": "sk-secret", "DATABASE_URL": "postgres://u:p@h/db",
              "GITHUB_TOKEN": "ghp_x", "SSH_AUTH_SOCK": "/tmp/s"}
     sb.run(RunSpec(argv=["a"], cwd=tmp_path, env=dirty))
@@ -159,7 +159,7 @@ def test_container_argv_mac_dinh_khong_mang(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "getuid", lambda: 1000, raising=False)
     monkeypatch.setattr(os, "getgid", lambda: 1000, raising=False)
     runner = FakeRunner()
-    sb = ContainerSandbox("docker", "python:3.12-slim", runner=runner)
+    sb = ContainerSandbox("docker", "python:3.12-slim", runner=runner, env_via_stdin=True)
     sb.run(spec(tmp_path))
     assert runner.calls[0]["argv"] == [
         "docker", "run", "--rm", "--pids-limit", "256", "--cpus", "2", "--memory", "2g",
@@ -187,7 +187,7 @@ def test_container_windows_khong_co_getuid_van_chay(tmp_path, monkeypatch):
     monkeypatch.delattr(os, "getuid", raising=False)
     monkeypatch.delattr(os, "getgid", raising=False)
     runner = FakeRunner()
-    sb = ContainerSandbox("docker", "img", runner=runner)
+    sb = ContainerSandbox("docker", "img", runner=runner, env_via_stdin=True)
     sb.run(spec(tmp_path))
     assert "-u" not in runner.calls[0]["argv"]
     assert sb.name == "container:img:no-uid"
@@ -196,12 +196,12 @@ def test_container_windows_khong_co_getuid_van_chay(tmp_path, monkeypatch):
 def test_container_thieu_getgid_cung_coi_la_no_uid(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "getuid", lambda: 1000, raising=False)
     monkeypatch.delattr(os, "getgid", raising=False)
-    assert ContainerSandbox("docker", "img", runner=FakeRunner()).name == "container:img:no-uid"
+    assert ContainerSandbox("docker", "img", runner=FakeRunner(), env_via_stdin=True).name == "container:img:no-uid"
 
 
 def test_container_env_file_bo_gia_tri_nhieu_dong(tmp_path):
     runner = FakeRunner()
-    ContainerSandbox("docker", "img", runner=runner).run(
+    ContainerSandbox("docker", "img", runner=runner, env_via_stdin=True).run(
         RunSpec(argv=["a"], cwd=tmp_path, env={"OK": "1", "MULTI": "a\nb"}))
     assert "OK=1" in runner.calls[0]["input"] and "MULTI" not in runner.calls[0]["input"]
 
@@ -209,7 +209,7 @@ def test_container_env_file_bo_gia_tri_nhieu_dong(tmp_path):
 def test_container_spawn_ghi_env_vao_stdin(tmp_path):
     proc = FakeProc()
     popen = FakePopen(proc)
-    ContainerSandbox("docker", "img", popen=popen).spawn(RunSpec(argv=["a"], cwd=tmp_path, env={"OK": "1"}))
+    ContainerSandbox("docker", "img", popen=popen, env_via_stdin=True).spawn(RunSpec(argv=["a"], cwd=tmp_path, env={"OK": "1"}))
     assert "OK=1" in proc.stdin.text and proc.stdin.closed is True
 
 

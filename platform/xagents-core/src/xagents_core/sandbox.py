@@ -152,10 +152,17 @@ class ContainerSandbox:
     Ngoại lệ: `RunSpec.stdin` cần chính stdin đó, lúc ấy env buộc phải quay về `-e` (xem docstring module)."""
 
     def __init__(self, runtime: str, image: str, cpus: str = "2", memory: str = "2g",
-                 runner: Any = subprocess.run, popen: Any = subprocess.Popen):
+                 runner: Any = subprocess.run, popen: Any = subprocess.Popen,
+                 env_via_stdin: bool | None = None):
         self.runtime, self.image, self.cpus, self.memory = runtime, image, cpus, memory
         self._runner, self._popen = runner, popen
-        self.name = f"container:{image}" + ("" if self._uid() else ":no-uid")
+        # Windows: docker CLI coi `-` của `--env-file` là TÊN FILE (đo 2026-09-14: "open -: The system cannot find
+        # the file specified") — mọi lệnh chết trước khi chạy. Env ra `-e` như ca stdin (cùng đánh đổi, xem docstring
+        # module); `None` = tự chọn theo hệ điều hành, đặt tường minh để test không phụ thuộc máy chạy. Tên mang
+        # `:env-argv` cùng khuôn `:no-uid`: audit đọc tên là biết cách ly còn gì.
+        self.env_via_stdin = (os.name != "nt") if env_via_stdin is None else env_via_stdin
+        self.name = (f"container:{image}" + ("" if self._uid() else ":no-uid")
+                     + ("" if self.env_via_stdin else ":env-argv"))
 
     @staticmethod
     def _uid() -> str | None:
@@ -171,21 +178,22 @@ class ContainerSandbox:
         uid = self._uid()
         if uid: base += ["-u", uid]
         base += ["-v", f"{spec.cwd}:/w:{'ro' if spec.read_only else 'rw'}", "-w", "/w"]
-        if spec.stdin is None:
+        if spec.stdin is None and self.env_via_stdin:
             base += ["--env-file", "-"]
         else:
-            base += ["-i"]
+            if spec.stdin is not None: base += ["-i"]
             for k, v in sanitize_env(spec.env).items():
                 base += ["-e", f"{k}={v}"]
         base += (["--network", "bridge", "-p", f"127.0.0.1:{spec.port}:{spec.port}"] if spec.network
                  else ["--network", "none"])
         return [*base, self.image, *spec.argv]
 
-    @staticmethod
-    def _input(spec: RunSpec) -> str:
+    def _input(self, spec: RunSpec) -> str:
         # `--env-file -` đọc từng dòng KEY=VALUE trên stdin; giá trị nhiều dòng không hợp lệ nên bỏ.
         if spec.stdin is not None:
             return spec.stdin
+        if not self.env_via_stdin:
+            return ""   # env đã ra `-e`; không đẩy KEY=VALUE vào stdin của một lệnh không đọc nó
         return "\n".join(f"{k}={v}" for k, v in sanitize_env(spec.env).items() if "\n" not in v)
 
     def run(self, spec: RunSpec) -> Result:
