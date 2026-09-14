@@ -17,6 +17,19 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   `make eval-replay`) và judge LLM (repo chấm tất định). 9 mã / 5 hạng mục ở `docs/thi-hanh/pt.md`, thi hành bằng
   `/thi-hanh pt`. (#305)
 
+- fix(console): **số test trong `README.md` gốc thôi trôi — có cổng canh, không chỉ sửa một lần.** Ba dòng bảng
+  "Quy mô" đều lệch và **đều lệch một chiều "nói ít hơn thật"**: company 1249→**1256**, gateway 251→**256**,
+  core 479→**488**. Đúng khuôn bản tự kiểm 2026-09-07 từng bắt (5/10 dòng số liệu README lệch, tất cả cùng một
+  chiều, tất cả ở đúng những dòng KHÔNG có test CI canh) — sửa số một lần thì vài tháng sau lệch lại, nên phần
+  chính của PR này là `test_so_test_trong_readme_khop_dia`: đọc số từ chính bảng README rồi chạy
+  `uv run --directory <pkg> pytest --collect-only` để so với đĩa. Dùng `uv run --directory` chứ không
+  `sys.executable -m pytest`: mỗi package có nhóm dev riêng, chạy pytest của console trong thư mục gateway thì
+  10 file lỗi thu thập vì thiếu `pytest-asyncio` — một cổng "đếm được 0" là cổng nói dối chứ không phải cổng đỏ.
+  Đo ba chiều: trả README về số cũ → đỏ; sửa đúng → xanh; thêm một ca test mới ở core → đỏ ngay. Kèm
+  `docs/TASK-PACK.md` A1/A5/A6 nói đúng hiện trạng cổng: A5 còn viết ba lối thoát "không có trần, không ai đếm"
+  trong khi `TRAN_PRAGMA`/`TRAN_SKIP`/`TRAN_OMIT` so bằng đúng từ 2026-09-12, A6 còn bảo đi grep tay trong khi
+  `CHUA_PHU_NHANH` đã canh từ #297 — gói việc thường trực chỉ sai chỗ nào cổng đã làm rồi thì người audit tiêu
+  giờ vào việc máy làm xong, và bỏ qua đúng phần máy không làm được. (#304)
 - feat(core): **cài đặt ADR-0016 — cấu hình model ba tầng: máy → package → biến môi trường.** Tầng máy
   (`~/.config/xagents/llm.yaml`, đè bằng `$XAGENTS_LLM_CONFIG`) nằm NGOÀI repo nên không bốc hơi theo
   `git worktree add` — đo 2026-09-14: **0/4 worktree**, kể cả checkout chính, có một `llm.yaml` nào, tức không
