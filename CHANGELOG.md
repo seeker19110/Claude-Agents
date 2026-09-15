@@ -6,6 +6,14 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(sessions): **kết phiên 2026-09-15 + ghi lại phép dọn nhánh theo bằng chứng** — `git branch --merged`
+  NÓI DỐI ở repo này vì mọi PR đều squash-merge (107 nhánh local, chỉ **15** báo đã merge): tin cờ đó thì giữ
+  lại 92 nhánh rác, tin ngược lại thì xoá nhầm việc thật. Ba phép thay thế, dọn 108 → **4** nhánh: khớp
+  `headRefName` với PR đã merge (76), `git rev-list --count main..<b>` = 0 (12), và tra số PR dẫn trong chính
+  commit message / grep sản phẩm của nhánh trong `main` (16). Hai ca suýt kết luận ngược được ghi nguyên: nhóm
+  `worktree-hm1..hm7` trông như chưa merge vì squash xoá cả sha lẫn tiêu đề — **số PR viết trong commit là sợi
+  dây duy nhất còn lại**; và `fix/ops-staging-deployed-vong-khoa` có văn bản không nằm trong `main` nhưng đã
+  được #290 giải cùng vấn đề bằng cách khác, tức superseded chứ không phải bỏ sót. (#<n>)
 - refactor(company): **tách `orch/routes.py` (400 dòng, sát trần) thành ba module theo đúng ba việc nó đang
   làm** — `guards.py` (vị từ "event này có đi đường này không", 181 dòng), `enrich.py` (làm giàu payload trước
   khi giao agent, 72 dòng), `routes.py` (bảng + `Route` + `check_routes`, 234 dòng). Nhập **một chiều**:
