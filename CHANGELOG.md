@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- docs(sessions): **xoá worktree là xoá luôn state của công ty; engine treo im lặng khi chạy nền** (#<n>).
+- docs(sessions): **xoá worktree là xoá luôn state của công ty; engine treo im lặng khi chạy nền** (#315).
   State QLKH (`company.sqlite`) mất cùng worktree bị dọn ở #298 vì phép dọn tra "commit đã merge chưa" mà
   file state thì không theo dõi. Dựng lại dự án từ yêu cầu mới trên đúng code khách còn nguyên. Ghi cả khuôn
   chưa giải: `run` chạy nền sống + giữ lock + `status` xanh nhưng 0 lượt model, foreground thì chạy ngay —
