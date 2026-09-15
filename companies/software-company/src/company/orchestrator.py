@@ -63,6 +63,12 @@ from .gates import gate_approvers
 from .llm import LLMError, ModelClient, TransientError
 from .orch import fsm, gates_flow, rehydrate, release_fsm, scheduler, ticket_fsm, verify, worktree_flow
 from .orch.cli import main, source_fingerprint
+from .orch.enrich import _with_chan_doan as _with_chan_doan
+from .orch.enrich import _with_diff as _with_diff
+from .orch.guards import _can_author_tests as _can_author_tests
+from .orch.guards import _dict_of
+from .orch.guards import _has_dispute as _has_dispute
+from .orch.guards import _test_scope_ok as _test_scope_ok
 from .orch.review_source import enforce_source as enforce_source
 
 # Không dùng trong file này nhưng là hợp đồng công khai của module (gate_brief.py, test) — giữ re-export tường
@@ -73,18 +79,12 @@ from .orch.routes import PLAN_INPUTS as PLAN_INPUTS
 from .orch.routes import (
     ROUTES,
     Route,
-    _dict_of,
     check_routes,
     key_for,
     phase_for,
 )
 from .orch.routes import SPEC_RUNTIME_REWORKS as SPEC_RUNTIME_REWORKS
 from .orch.routes import THREAT_ROUTE as THREAT_ROUTE
-from .orch.routes import _can_author_tests as _can_author_tests
-from .orch.routes import _has_dispute as _has_dispute
-from .orch.routes import _test_scope_ok as _test_scope_ok
-from .orch.routes import _with_chan_doan as _with_chan_doan
-from .orch.routes import _with_diff as _with_diff
 from .orch.routes import spec_runtime_gap as spec_runtime_gap
 from .orch.state import OrchState, install_aliases
 from .orch.ticket_fsm import _cycle as _cycle

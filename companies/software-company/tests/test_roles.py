@@ -63,8 +63,9 @@ MIGRATED: dict[str, str] = {
 # Chuỗi trùng tên vai nhưng KHÔNG phải vai. Miễn theo (file, đúng nguyên dòng): đổi dòng là phải xét lại lý do,
 # không có chuyện dòng khác trong cùng file "thừa hưởng" miễn trừ.
 EXEMPT_LINES: dict[tuple[str, str], str] = {
-    ("orch/routes.py", 'return {FINDING_KIND.INTAKE: found[-1].payload.get("data")} if found and found[-1].payload.get("data") else {}'):
-        "`data` là TRƯỜNG của research-findings (schema bắt buộc `kind` + `data`), không phải agent `data`",
+    ("orch/enrich.py", 'return {FINDING_KIND.INTAKE: found[-1].payload.get("data")} if found and found[-1].payload.get("data") else {}'):
+        "`data` là TRƯỜNG của research-findings (schema bắt buộc `kind` + `data`), không phải agent `data`. "
+        "Khoá đổi routes.py → enrich.py khi tách module (không đổi dòng, nên lý do giữ nguyên)",
     ("orch/routes.py", '"incidents": _field("root_cause_class", "code", "ops", "design"),'):
         "`\"ops\"` ở đây là GIÁ TRỊ enum `root_cause_class` của incidents.json (code/ops/design/…), không phải "
         "id agent — trùng chữ tình cờ từ PR-5b (`ROLE.OPS` mới là `\"ops\"`)",
