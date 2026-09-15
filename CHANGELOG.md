@@ -6,6 +6,14 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(khung): **quy ước nợ kỹ thuật `no-ky-thuat` và lệnh thu hoạch** (`pt.2`, `pt.3`). `TRAPS.md` ghi bẫy
+  *đã mắc*; repo không có chỗ nào ghi thứ ngược lại — **nợ cố ý tạo ra**: một đơn giản hoá hôm nay không sai
+  nhưng có trần đã biết, và cái trần đó chỉ nằm trong đầu một người rồi mất cùng phiên của họ. Nay có mục
+  "Nợ kỹ thuật cố ý" trong `AGENTS.md` (khuôn một dòng `# no-ky-thuat: <trần>, <điều kiện quay lại>`, ranh giới
+  rõ với `TRAPS.md` và với TODO thường) và `/no-ky-thuat` thu mọi marker thành bảng, **gắn cờ `no-trigger` cho
+  chính những marker sẽ mục** — marker không nêu điều kiện quay lại. Lệnh chỉ đọc, không sửa gì; cổng khung
+  bắt buộc nó tồn tại.
+
 - test(khung): **cổng chặn 4 file luật harness trôi khỏi `AGENTS.md`** (`pt.1`). `.cursorrules`,
   `.windsurfrules`, `.clinerules` và `GEMINI.md` tự khai "cố ý không chép lại luật" nhưng thực tế có chép hai
   danh sách — file cấm commit và tên gói — và **đã trôi**: cả bốn thiếu "khoá/token, dữ liệu khách thật" của

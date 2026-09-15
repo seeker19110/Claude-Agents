@@ -489,8 +489,8 @@ def test_slash_command_khong_tro_vao_duong_dan_khong_ton_tai(f: Path) -> None:
     assert not hong, f"{f.name} trỏ vào đường dẫn không tồn tại: {hong}"
 
 
-@pytest.mark.parametrize("ten", ["gate", "debug", "adr"])
-def test_co_du_ba_lenh_lay_tu_template(ten: str) -> None:
+@pytest.mark.parametrize("ten", ["gate", "debug", "adr", "no-ky-thuat"])
+def test_co_du_cac_lenh_bat_buoc(ten: str) -> None:
     assert (LENH / f"{ten}.md").is_file(), f"thiếu /{ten}"
 
 

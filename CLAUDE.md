@@ -38,6 +38,8 @@ chặn commit khi đứng trên `main`, staged có file cấm, diff hạ `fail_u
 ## Skill và trợ lý có sẵn trong repo
 
 - `/gate` — cổng trước commit/PR; `/debug` — vòng chẩn đoán bug khó; `/adr` — viết ADR đúng khuôn repo.
+- `/no-ky-thuat` — sổ nợ kỹ thuật cố ý: thu mọi marker `no-ky-thuat:` thành bảng, gắn cờ marker
+  không nêu điều kiện quay lại (quy ước ở `AGENTS.md` mục "Nợ kỹ thuật cố ý").
 - `/gate-brief <subject>` — hồ sơ bằng chứng chỉ đọc cho một human gate của software-company; không ký thay người.
 - `/thi-hanh <mã> [đề bài]` — thi hành một đề bài từ đặc tả tới mọi PR merge theo `docs/KHUON-THI-HANH.md`: phiên chính
   điều phối, subagent thực thi theo mức C1/C2/C3, người ra lệnh một lần. Trạng thái ở `docs/thi-hanh/<mã>.md`.
