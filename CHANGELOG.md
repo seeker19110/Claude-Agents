@@ -13,7 +13,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   commit message / grep sản phẩm của nhánh trong `main` (16). Hai ca suýt kết luận ngược được ghi nguyên: nhóm
   `worktree-hm1..hm7` trông như chưa merge vì squash xoá cả sha lẫn tiêu đề — **số PR viết trong commit là sợi
   dây duy nhất còn lại**; và `fix/ops-staging-deployed-vong-khoa` có văn bản không nằm trong `main` nhưng đã
-  được #290 giải cùng vấn đề bằng cách khác, tức superseded chứ không phải bỏ sót. (#<n>)
+  được #290 giải cùng vấn đề bằng cách khác, tức superseded chứ không phải bỏ sót. (#309)
 - refactor(company): **tách `orch/routes.py` (400 dòng, sát trần) thành ba module theo đúng ba việc nó đang
   làm** — `guards.py` (vị từ "event này có đi đường này không", 181 dòng), `enrich.py` (làm giàu payload trước
   khi giao agent, 72 dòng), `routes.py` (bảng + `Route` + `check_routes`, 234 dòng). Nhập **một chiều**:
