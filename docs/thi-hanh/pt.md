@@ -78,7 +78,7 @@ File này dùng cho phiên thi hành `/thi-hanh pt`; đọc trước khi chạm 
 | `pt.6` | ADR-0042 (software-company): scorer eval phải tự chứng minh bắt được lỗi — vì sao `--replay --strict` chưa đủ (A2 #13), phương án đã loại | docs | **H4** `selftest-eval` | C3 `xhigh` | Đổi cách đo agent là đổi kiến trúc (luật bắt buộc 2) | Một vòng PR chỉ có tài liệu | xong (nhánh `claude/thi-hanh-pt-myo60e`) |
 | `pt.7` | `--selftest`: mỗi ca thêm khối `bad:`, chạy `check()` với `bad:` của chính ca đó, **không gọi model**; ca cho `bad` qua ⇒ đỏ; ca thiếu `bad:` ⇒ cảnh báo `chua-chung-minh`; nối `ci.yml` | core+company | **H4** | C3 `high` | Đúng chỗ bộ nhớ đã ghi: "CI không bắt được bản ghi tụt điểm" | Kỳ vọng đỏ diện rộng lần chạy đầu — là phát hiện, không phải sự cố | xong (nhánh `claude/thi-hanh-pt-myo60e`) |
 | `pt.9` | Sửa `thresholds.yaml` `ops: cases: 8` → `9` cho khớp bộ ca thật (A2 #14) | company | **H4** | C1 | Bịt hở cổng chống thu nhỏ bộ ca | Không | xong (nhánh `claude/thi-hanh-pt-myo60e`) |
-| `pt.8` | Bốn câu chống over-engineering vào `builder.md` + đối chứng prompt rẻ + đủ bảy bước `CONTRIBUTING.md` §3 (**`RUNS=3`** để bản ghi có `score`, vá A2 #19) | company | **H5** `builder-luoi` | C3 `high` | Trả lời câu chưa ai đặt: prompt dài có hơn một câu không? | Kích `eval-record` model thật, tốn tiền | **chờ người**: cần duyệt chi tiêu API (model thật, 3 arm) |
+| `pt.8` | Bốn câu chống over-engineering vào `builder.md` + đối chứng prompt rẻ + đủ bảy bước `CONTRIBUTING.md` §3 (**`RUNS=3`** để bản ghi có `score`, vá A2 #19) | company | **H5** `builder-luoi` | C3 `high` | Trả lời câu chưa ai đặt: prompt dài có hơn một câu không? | Kích `eval-record` model thật, tốn tiền | **chờ người**: đã đo bằng subscription (`provider: claude-code`) — arm A (bản gốc) 7/13, arm B (+4 câu) 3/13, cả hai dưới xa ngưỡng 0.95; client này không có đường cho `builder` dùng tool trong eval (`run()` không truyền `tools=`, khác `generate_in_workspace()`), nên không phải lỗi cấu hình. Chi tiết ở `docs/sessions/2026-09-15.md`. Không commit bản ghi điểm thấp (luật cấm 6 tinh thần). |
 
 ### Cố ý không làm
 
@@ -555,7 +555,11 @@ Trước khi gõ:
    - `pt.4` nếu kết luận `SubagentStart` **không** có (hoặc không xác định được hợp đồng output) → cả H3 thành
      `chờ người: sự kiện hook không dùng được`. Không tự chế cơ chế thay thế.
    - `pt.8` cần **duyệt chi tiêu API** (`make eval-record AGENT=builder RUNS=3`, model thật, × 3 arm đối chứng)
-     → `chờ người` tới khi được gật.
+     → `chờ người` tới khi được gật. **Cập nhật 2026-09-15**: đã thử bằng subscription (`provider: claude-code`,
+     đúng đường ADR-0019) — cả arm A (7/13) và arm B (3/13) đều dưới xa ngưỡng `min_pass_ratio: 0.95`, và client
+     này không có đường cho `builder` dùng tool trong chế độ eval (`run()` không truyền `tools=`). Cần một
+     backend có tool thật (hoặc sửa harness để `run_eval` truyền `ToolBox`, việc lớn hơn phạm vi `pt.8`) trước
+     khi ghi lại được một bản đạt ngưỡng. Xem `docs/sessions/2026-09-15.md`.
 4. Worktree `port-khung-template` của phiên khác đang mở — không đụng vào (`git worktree list` để kiểm).
 5. Ba lỗi **đang tồn tại** mà đo hiện trạng tìm ra (A2 #3, #14, và A2 #11 chưa vào `TRAPS.md`) nằm trong
    `pt.1`/`pt.9`/`pt.5`. Nếu vì lý do gì mà bỏ ba gói đó, ba lỗi này vẫn phải được vá — chúng không phải
