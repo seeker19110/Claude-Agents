@@ -621,7 +621,13 @@ def test_run_eval_ops_offline():
         p = _input_payload(user)
         ph = _ops_phase_of(system)
         if ph == "deploy":
-            return {"release_id": p["release_id"], "version": p["version"], "env": "staging", "status": "deployed"}
+            # `rollback_plan` + `rulings`: từ ADR-0042, `expect:` của hai ca deploy không còn chấp nhận một
+            # bản khai ba trường định danh — phải có kế hoạch lùi viết ra được và ruling ghi lại quyết định.
+            return {"release_id": p["release_id"], "version": p["version"], "env": "staging", "status": "deployed",
+                    "rollback_plan": "Lùi bằng cách redeploy artifact của bản trước (tag đã ký), migration tương thích ngược nên không lùi schema",
+                    "rulings": [{"decision": "Deploy staging trước, không lên thẳng production",
+                                 "why": "trình tự bắt buộc: staging → QA hồi quy → human gate → production",
+                                 "cost_if_wrong": "nếu sai thì mất một vòng deploy lại, đội vận hành chịu"}]}
         if ph == "account":
             if "uat_log" in p:
                 fail = "fail" in p["uat_log"]
@@ -632,7 +638,14 @@ def test_run_eval_ops_offline():
                     "affects_requirements": [], "impact": {"estimate_days": 1.5, "estimate_tokens": 40_000}, "decision": "pending"}
         # ph == "docs"
         if "incident_id" in p:
-            return {"project_id": p["project_id"], "description": f"nghiên cứu lại từ {p['incident_id']}: lịch nghỉ lễ chưa có trong spec"}
+            return {"project_id": p["project_id"],
+                    "description": (f"nghiên cứu lại từ {p['incident_id']}: lịch nghỉ lễ chưa có trong spec. "
+                                    "root_cause_class=requirement nên sửa ở tầng đặc tả, không vá code: cần khảo sát "
+                                    "nguồn lịch nghỉ lễ chính thức, quy tắc bù trừ ngày làm việc, và cách cập nhật "
+                                    "hằng năm mà không phải sửa code mỗi lần."),
+                    "rulings": [{"decision": "Mở yêu cầu nghiên cứu thay vì hard-code danh sách ngày lễ",
+                                 "why": "vá code chỉ giấu lỗi tới lần lễ sau; gốc nằm ở đặc tả thiếu",
+                                 "cost_if_wrong": "sai thì tốn một vòng nghiên cứu, chưa đụng tới code"}]}
         if "text" in p:
             # `evals.run()` không truyền `many=True` (khác `_call` lúc chạy thật, xem `orch/routes.py`), nên ở đây
             # trả MỘT object phẳng đúng schema `incidents` — bọc "items" chỉ đúng khi orchestrator tự gọi many=True.

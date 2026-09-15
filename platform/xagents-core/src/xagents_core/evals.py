@@ -89,6 +89,27 @@ def check(payload: dict[str, Any], expect: dict[str, Any]) -> list[str]:
     return fails
 
 
+CHUA_CHUNG_MINH = "chua-chung-minh"
+KHONG_BAT_DUOC = "khong-bat-duoc"
+
+
+def selftest_case(case: dict[str, Any]) -> str | None:
+    """`None` = scorer của ca này bác được bản `bad:` của chính nó. Chuỗi = lý do hỏng.
+
+    `expect:` tả output ĐÚNG; `bad:` tả một output SAI thật mà ca đó sinh ra để bắt. Nếu `check()` cho `bad:`
+    đi qua thì `expect:` không đo gì cả — ca ấy xanh vĩnh viễn và vẫn được đếm vào mẫu số `min_pass_ratio`,
+    tức nó làm điểm đẹp lên bằng một phép đo rỗng (ADR-0042).
+
+    Dùng lại đúng `check()` đang chấm thật, không so khớp bằng cách thứ hai: một thước thứ hai thì lại phải tự
+    kiểm lần nữa, không có đáy.
+    """
+    if "bad" not in case:
+        return CHUA_CHUNG_MINH
+    if not check(case.get("bad") or {}, case.get("expect") or {}):
+        return KHONG_BAT_DUOC
+    return None
+
+
 @dataclass
 class CaseResult:
     name: str
@@ -271,6 +292,19 @@ class EvalSuite:
     def load_cases(self, agent_id: str) -> list[dict[str, Any]]:
         p = self.evals_dir / f"{agent_id}.yaml"
         return (yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("cases", []) if p.exists() else []
+
+    def selftest(self, agent_id: str) -> list[tuple[str, str]]:
+        """[(tên ca, lý do)] cho mọi ca KHÔNG tự chứng minh được. Rỗng = cả bộ ca của agent này đạt.
+
+        Phép kiểm tĩnh trên yaml: không gọi model, không đọc bản ghi — chạy được ở mọi máy, mọi lúc, không
+        tốn đồng nào (ADR-0042 quyết định 4).
+        """
+        hong: list[tuple[str, str]] = []
+        for i, case in enumerate(self.load_cases(agent_id)):
+            ly_do = selftest_case(case)
+            if ly_do is not None:
+                hong.append((str(case.get("name") or f"ca-{i}"), ly_do))
+        return hong
 
     # ---------- cổng bản ghi ----------
 

@@ -139,3 +139,57 @@ def test_summary_bo_qua_agent_khong_chay_ca_nao(monkeypatch, tmp_path) -> None:
     _stub(monkeypatch, ["a0"], load_cases=lambda aid: [])
     assert evals.main(["all", "--replay"]) == 0
     assert not f.exists(), "không có gì để chấm thì không dựng bảng rỗng"
+
+
+# ---------- `--selftest`: cổng cho CHÍNH CÁI THƯỚC (ADR-0042) ----------
+
+
+def test_selftest_khong_goi_model_va_khong_doc_ban_ghi(monkeypatch, capsys) -> None:
+    """`--selftest` là phép kiểm TĨNH trên yaml. Gọi model ở đây là tốn tiền cho một việc không cần model,
+    và làm cổng chỉ chạy được trên máy có key — tức là lại thành cửa hẹp một người."""
+    goi: list[str] = []
+    _stub(monkeypatch, ["a0", "a1"],
+          ReplayClient=lambda aid: goi.append(f"replay:{aid}"),
+          run_eval=lambda *a: goi.append("run_eval"))
+    monkeypatch.setattr(evals, "load_cases", lambda aid: [{"expect": {"equals": {"x": 1}}, "bad": {"x": 2}}])
+    monkeypatch.setattr(evals, "selftest", lambda aid: [])
+    assert evals.main(["all", "--selftest"]) == 0
+    assert goi == [], f"--selftest đã chạm đường gọi model/bản ghi: {goi}"
+    assert "2/2 ca tự chứng minh được" in capsys.readouterr().out
+
+
+def test_ma_thoat_1_khi_co_ca_khong_bat_duoc(monkeypatch, capsys) -> None:
+    """Ca mà `expect:` cho `bad:` đi qua là ca xanh vĩnh viễn — phải đỏ, không phải một dòng CHÚ Ý."""
+    _stub(monkeypatch, ["a0"])
+    monkeypatch.setattr(evals, "load_cases", lambda aid: [{}, {}])
+    monkeypatch.setattr(evals, "selftest", lambda aid: [("ca-long", evals.KHONG_BAT_DUOC)])
+    assert evals.main(["a0", "--selftest"]) == 1
+    out = capsys.readouterr().out
+    assert "FAIL a0/ca-long" in out and "ĐỪNG nới `bad:`" in out, out
+
+
+def test_ca_thieu_bad_cung_do_khong_chi_canh_bao(monkeypatch, capsys) -> None:
+    """Chỉ cảnh báo thì ca mới viết lỏng lại lọt đúng con đường cũ, và ADR-0042 thành tài liệu."""
+    _stub(monkeypatch, ["a0"])
+    monkeypatch.setattr(evals, "load_cases", lambda aid: [{}])
+    monkeypatch.setattr(evals, "selftest", lambda aid: [("ca-thieu", "chua-chung-minh")])
+    assert evals.main(["a0", "--selftest"]) == 1
+    assert "chua-chung-minh" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("co", ["--record", "--replay"])
+def test_selftest_loai_tru_voi_record_va_replay(co: str) -> None:
+    """`--selftest` không phải một chế độ CHẠY model, nên nó nằm cùng nhóm loại trừ với `--record`/`--replay`
+    — ghép hai cờ là hai ý định khác nhau trong một lệnh, argparse phải chặn thay vì chọn hộ."""
+    with pytest.raises(SystemExit) as e:
+        evals.main(["all", "--selftest", co])
+    assert e.value.code == 2
+
+
+def test_selftest_chay_tren_bo_ca_that_cua_repo() -> None:
+    """Hàm bọc `evals.selftest` phải đi tới `EvalSuite` thật, không chỉ tồn tại cho test monkeypatch.
+
+    Và bộ ca của repo phải sạch: một ca `khong-bat-duoc` ở đây nghĩa là `expect:` của nó đang cho bản `bad:`
+    của chính nó đi qua — ca xanh vĩnh viễn (ADR-0042). CI có cổng riêng, ca này là lưới bắt sớm tại chỗ.
+    """
+    assert evals.selftest("builder") == [], "bộ ca builder có ca không tự chứng minh được"

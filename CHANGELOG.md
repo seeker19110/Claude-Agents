@@ -6,6 +6,16 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- test(company): **`--selftest` — mỗi ca eval phải bác được bản `bad:` của chính nó** (`pt.6`, `pt.7`, `pt.9`,
+  ADR-0042). Repo có cổng cho *đầu vào* của phép đo eval (`--replay --strict`) và cho *kết quả* của nó
+  (`thresholds.yaml`), nhưng không có cổng nào hỏi **"thước này có bao giờ chỉ sai không?"**. Đo ra: **13/59 ca**
+  có `expect:` cho một output sai thật đi qua — mỗi ca như vậy xanh vĩnh viễn mà vẫn tính vào mẫu số
+  `min_pass_ratio`, tức làm điểm đẹp lên bằng một phép đo rỗng. Nay cả 59 ca mang một khối `bad:`, `check()`
+  phải bác được nó; ca thiếu `bad:` cũng đỏ; chạy **không gọi model, không đọc bản ghi** nên vào được CI cạnh
+  `--replay --strict`. 13 `expect:` lỏng đã siết theo đúng một chiều (siết `expect:`, không nới `bad:`), và
+  `--replay --strict` vẫn 59/59. Kèm `pt.9`: `thresholds.yaml` ghi `ops: cases: 8` trong khi `ops.yaml` có 9 ca
+  — cổng chống thu nhỏ bộ ca đang hở một ca, nay có ca test canh cho cả sáu agent.
+
 - feat(khung): **quy ước nợ kỹ thuật `no-ky-thuat` và lệnh thu hoạch** (`pt.2`, `pt.3`). `TRAPS.md` ghi bẫy
   *đã mắc*; repo không có chỗ nào ghi thứ ngược lại — **nợ cố ý tạo ra**: một đơn giản hoá hôm nay không sai
   nhưng có trần đã biết, và cái trần đó chỉ nằm trong đầu một người rồi mất cùng phiên của họ. Nay có mục
