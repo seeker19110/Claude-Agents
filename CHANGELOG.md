@@ -13,7 +13,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   chứng minh nó đúng trong đúng ô môi trường CI đứng**; một ca đỏ "chỉ trên máy tôi" thường là phép thử đang
   nói thật về một ô CI không phủ, và lần thứ ba trong phiên nó hoá ra là lỗi **sản phẩm** chứ không phải máy
   bận. Mục "Kết phiên" giữa phiên được giữ nguyên chứ không sửa cho khớp hiện tại — sửa một bản ghi quá khứ
-  cho khớp hiện tại là đúng thứ nhật ký phiên tồn tại để chống. (#<n>)
+  cho khớp hiện tại là đúng thứ nhật ký phiên tồn tại để chống. (#312)
 - fix(core): **span đo được khoảng ngắn — `observe` đổi từ `time.monotonic_ns` sang `time.perf_counter_ns`.**
   Cả hai đều `monotonic=True`, nhưng trên Windows + CPython **≤ 3.12** `time.monotonic` là `GetTickCount64()`
   phân giải **15,625 ms**: mọi span ngắn hơn một tick báo `duration_ms = 0.0` — module sinh ra để đo thời gian
