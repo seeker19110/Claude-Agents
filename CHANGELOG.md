@@ -16,7 +16,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   Hai cổng bắt đúng việc của chúng trong lúc tách: sổ miễn trừ `EXEMPT_LINES` khoá theo `(file, nguyên dòng)`
   nên dòng dời file là stale ngay (`test_moi_dong_mien_tru_van_ton_tai`), phải đổi khoá kèm lý do; và
   `verify.py`/`orchestrator.py` nhập tên riêng từ `routes` được trỏ thẳng sang module mới thay vì dựng lớp
-  chuyển tiếp giả. Kèm một dòng `CODEMAP.md`: muốn thêm guard/enrich thì sửa ở đâu. (#<n>)
+  chuyển tiếp giả. Kèm một dòng `CODEMAP.md`: muốn thêm guard/enrich thì sửa ở đâu. (#308)
 - test(company): **`--selftest` — mỗi ca eval phải bác được bản `bad:` của chính nó** (`pt.6`, `pt.7`, `pt.9`,
   ADR-0042). Repo có cổng cho *đầu vào* của phép đo eval (`--replay --strict`) và cho *kết quả* của nó
   (`thresholds.yaml`), nhưng không có cổng nào hỏi **"thước này có bao giờ chỉ sai không?"**. Đo ra: **13/59 ca**
