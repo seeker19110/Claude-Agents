@@ -15,7 +15,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   `claude-code` nên probe không còn "không có backend" để báo). Khuôn lỗi nguy đúng chỗ khó đoán: xanh trên CI
   (máy sạch) và xanh ở máy chưa làm theo ADR, **đỏ đúng lúc người phát triển làm theo ADR** — cổng phạt người
   làm đúng. Vá ở `conftest.py` của cả hai gói (`autouse`, `Path.home()` trỏ tmp riêng) chứ không vá từng ca,
-  vì đây là một HỌ chứ không phải ba chỗ. Đo hai chiều: tắt fixture → 3 đỏ, bật → xanh. (#<n>)
+  vì đây là một HỌ chứ không phải ba chỗ. Đo hai chiều: tắt fixture → 3 đỏ, bật → xanh. (#310)
 - docs(sessions): **kết phiên 2026-09-15 + ghi lại phép dọn nhánh theo bằng chứng** — `git branch --merged`
   NÓI DỐI ở repo này vì mọi PR đều squash-merge (107 nhánh local, chỉ **15** báo đã merge): tin cờ đó thì giữ
   lại 92 nhánh rác, tin ngược lại thì xoá nhầm việc thật. Ba phép thay thế, dọn 108 → **4** nhánh: khớp
