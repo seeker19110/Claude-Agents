@@ -18,7 +18,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   thay vì bằng `sleep` — phép thử dựa trên `sleep` chính là phép thử chập chờn vừa phải vá. Kèm sửa một ca
   **xanh rỗng**: `test_sink_none_la_no_op_that_su` vá `observe.time.monotonic_ns` nên sau khi đổi đồng hồ nó
   vẫn xanh mà không còn chứng minh gì; nay vá đúng `observe._now_ns`. Đo hai chiều dưới Python 3.11: tắt bản
-  sửa → 3/3/2/2 đỏ qua bốn lần chạy, bật → 17 xanh bốn lần liền. (#<n>)
+  sửa → 3/3/2/2 đỏ qua bốn lần chạy, bật → 17 xanh bốn lần liền. (#311)
 - fix(tests): **bộ test không còn đọc cấu hình model THẬT của máy đang chạy nó** — từ ADR-0016, `load_config()`
   đọc tầng máy `~/.config/xagents/llm.yaml` **dù có truyền `path` hay không**, nên mọi ca chạm
   `load_config`/`explain_config` mà không tự đặt `XAGENTS_LLM_CONFIG` đều lệ thuộc vào việc máy có file ấy hay
