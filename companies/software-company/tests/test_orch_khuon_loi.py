@@ -11,7 +11,7 @@ from pathlib import Path
 from company.bus import InMemoryBus
 from company.events import Envelope
 from company.llm import FakeClient
-from company.orch.routes import _can_author_tests
+from company.orch.guards import _can_author_tests
 from company.orchestrator import Orchestrator
 from test_orchestrator import T1, handler
 from test_tools_and_agentic import _init_repo

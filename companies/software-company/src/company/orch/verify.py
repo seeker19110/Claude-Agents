@@ -14,7 +14,7 @@ from ..gates import GateRequest
 from ..roles import ROLE
 from ..smoke import VERIFIED_BY, parse_runtime, run_smoke, unverified
 from ..workspace import Integration
-from .routes import _dict_of
+from .guards import _dict_of
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator

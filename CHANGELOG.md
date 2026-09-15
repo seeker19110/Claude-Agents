@@ -6,6 +6,17 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(company): **tách `orch/routes.py` (400 dòng, sát trần) thành ba module theo đúng ba việc nó đang
+  làm** — `guards.py` (vị từ "event này có đi đường này không", 181 dòng), `enrich.py` (làm giàu payload trước
+  khi giao agent, 72 dòng), `routes.py` (bảng + `Route` + `check_routes`, 234 dòng). Nhập **một chiều**:
+  `routes.py` → `guards.py`/`enrich.py`, không có chiều ngược — nên thêm một guard không phải sửa bảng và
+  ngược lại. Lý do tách là cổng chứ không phải khẩu vị: `test_kich_thuoc_module_orch_duoi_400_dong` đã đỏ ở
+  #307 và chỉ lách qua được bằng cách nén bình luận; PR sau thêm một route là đỏ lại. **Dời thuần, chứng minh
+  bằng máy**: so `ast.dump` từng định nghĩa trước/sau — 29/29 giống hệt, không thiếu, không đổi, không thêm.
+  Hai cổng bắt đúng việc của chúng trong lúc tách: sổ miễn trừ `EXEMPT_LINES` khoá theo `(file, nguyên dòng)`
+  nên dòng dời file là stale ngay (`test_moi_dong_mien_tru_van_ton_tai`), phải đổi khoá kèm lý do; và
+  `verify.py`/`orchestrator.py` nhập tên riêng từ `routes` được trỏ thẳng sang module mới thay vì dựng lớp
+  chuyển tiếp giả. Kèm một dòng `CODEMAP.md`: muốn thêm guard/enrich thì sửa ở đâu. (#<n>)
 - test(company): **`--selftest` — mỗi ca eval phải bác được bản `bad:` của chính nó** (`pt.6`, `pt.7`, `pt.9`,
   ADR-0042). Repo có cổng cho *đầu vào* của phép đo eval (`--replay --strict`) và cho *kết quả* của nó
   (`thresholds.yaml`), nhưng không có cổng nào hỏi **"thước này có bao giờ chỉ sai không?"**. Đo ra: **13/59 ca**

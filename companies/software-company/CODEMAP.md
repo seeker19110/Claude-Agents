@@ -84,5 +84,6 @@
 |---|---|
 | Thêm file test / ADR | `README.md` mục "Cấu trúc" (số ca/file test, `ADR (0001–00xx)`) — `tests/test_review_fixes_2026_09.py::test_readme_khop_so_lieu_that` |
 | Thêm route / agent | bảng Consumer `docs/architecture.md` — `tests/test_security_review_fixes.py` |
+| Thêm guard / enrich cho một route | `orch/guards.py` (vị từ "event này có đi đường này không") hoặc `orch/enrich.py` (làm giàu payload) — KHÔNG thêm vào `orch/routes.py`: nó chỉ giữ bảng + `Route` và nhập một chiều từ hai module kia, nên thêm guard không phải sửa bảng và ngược lại. Cả ba dưới trần 400 dòng của `tests/test_orch_khuon_loi.py` |
 | Đổi kiến trúc | `docs/adr/00xx-*.md` + link trong PR |
 | Sự cố vận hành đáng kể | `docs/reports/<ngày>-<slug>.md` + mục trong `TRAPS.md` |
