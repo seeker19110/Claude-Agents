@@ -6,6 +6,16 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(tests): **bộ test không còn đọc cấu hình model THẬT của máy đang chạy nó** — từ ADR-0016, `load_config()`
+  đọc tầng máy `~/.config/xagents/llm.yaml` **dù có truyền `path` hay không**, nên mọi ca chạm
+  `load_config`/`explain_config` mà không tự đặt `XAGENTS_LLM_CONFIG` đều lệ thuộc vào việc máy có file ấy hay
+  không. Đo ngay sau khi tạo file theo đúng ADR: **3 ca đỏ** — 2 ở `xagents-core` (một trong đó,
+  `test_khong_co_file_thi_van_ra_cau_hinh_mac_dinh`, có từ **trước** ADR-0016: bản vá #303 làm hỏng phép thử cũ
+  mà CI không thấy) và `test_probe_cli_exits_nonzero_when_no_claude_backend` (tầng máy cấp sẵn backend
+  `claude-code` nên probe không còn "không có backend" để báo). Khuôn lỗi nguy đúng chỗ khó đoán: xanh trên CI
+  (máy sạch) và xanh ở máy chưa làm theo ADR, **đỏ đúng lúc người phát triển làm theo ADR** — cổng phạt người
+  làm đúng. Vá ở `conftest.py` của cả hai gói (`autouse`, `Path.home()` trỏ tmp riêng) chứ không vá từng ca,
+  vì đây là một HỌ chứ không phải ba chỗ. Đo hai chiều: tắt fixture → 3 đỏ, bật → xanh. (#<n>)
 - docs(sessions): **kết phiên 2026-09-15 + ghi lại phép dọn nhánh theo bằng chứng** — `git branch --merged`
   NÓI DỐI ở repo này vì mọi PR đều squash-merge (107 nhánh local, chỉ **15** báo đã merge): tin cờ đó thì giữ
   lại 92 nhánh rác, tin ngược lại thì xoá nhầm việc thật. Ba phép thay thế, dọn 108 → **4** nhánh: khớp
