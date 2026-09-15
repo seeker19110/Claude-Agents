@@ -245,14 +245,29 @@ def _test_scope_ok(o: Orchestrator, tid: str) -> bool:
     return bool(ws.stack().test_globs)
 
 
+def _da_co_bo_test(e: Envelope, o: Orchestrator, tid: str) -> bool:
+    """Đã có `test-suites` từ TRƯỚC lượt này chưa — hỏi BUS, không hỏi worktree. Lọc `causation_id` chứ KHÔNG
+    lọc `ts`: hai route của `tasks` đánh giá tuần tự trong cùng event, nên "bus có bộ test không" lật ngay sau
+    khi qa phát và ticket đi cả hai đường. Đo: `test_test_author.py::test_rework_khi_da_co_bo_test_*`."""
+    return any(x.causation_id != e.event_id for x in o.bus.replay(topic="test-suites", key=tid))
+
+
 def _can_author_tests(e: Envelope, o: Orchestrator) -> bool:
     if not o.test_author: return False
     tid = str(e.payload.get("ticket_id") or e.key)
-    if _test_scope_ok(o, tid): return True
-    # Khoá mang thế hệ = số lần rework của TICKET (khuôn 3, TRAPS.md §1): thiếu nó, ticket rework lần 2 vẫn
-    # không phân vùng được vùng test nhưng audit không ghi lần hai — người đọc `tests_authored_by_assignee`
-    # tưởng chỉ xảy ra một lần trong khi nó lặp lại mỗi lần dispatch.
+    # Khoá `once` của CẢ HAI lối thoát dưới đây mang thế hệ = số lần rework của TICKET (khuôn 3, TRAPS.md §1):
+    # thiếu nó, ticket rework lần 2 vẫn rơi vào cùng nhánh nhưng audit không ghi lần hai — người đọc tưởng
+    # chuyện chỉ xảy ra một lần trong khi nó lặp mỗi lần dispatch.
     retry = o.lead.tickets[tid].retry if tid in o.lead.tickets else 0
+    if _da_co_bo_test(e, o, tid):
+        # Rework phát lại `tasks`; bộ test lượt trước đã commit nên test-author đúng đắn KHÔNG ghi gì → "không
+        # viết file test nào" → escalation → duyệt → phát lại → lặp (đo 2026-09-14 QLKH: bốn vòng). Re-author
+        # còn đúng một đường khác: tranh chấp test (`_has_dispute`), nơi agent được xem diff.
+        o._audit("test_author_bo_qua", {"ticket_id": tid, "reason": "bộ test cho ticket này đã có trên bus"},
+                 ticket_id=tid, project_id=e.payload.get("project_id"),
+                 once=f"test-author-bo-qua:{tid}:{retry}")
+        return False
+    if _test_scope_ok(o, tid): return True
     o._audit("tests_authored_by_assignee", {"ticket_id": tid, "reason": "không phân vùng được vùng test của stack"},
              ticket_id=tid, project_id=e.payload.get("project_id"), once=f"no-test-author:{tid}:{retry}")
     return False

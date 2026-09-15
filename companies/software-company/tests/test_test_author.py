@@ -372,3 +372,80 @@ def test_review_route_khong_co_thi_gay_to() -> None:
     assert review_route("qa").phase == "review"
     with pytest.raises(KeyError, match="không có route chấm pull-requests"):
         review_route("builder")
+
+
+def _rework(orch, tid: str, hint: str) -> None:
+    """Đưa ticket về đúng trạng thái rework thật: PR bị lint/test thật từ chối → `retry+1` → phát lại `tasks`.
+
+    Đặt `in_progress` trước vì `_drive_to_plan` chạy trọn vòng tới `merged`; `rework()` chỉ nhận
+    dispatched/in_progress. Không mô phỏng lại `_retry` bằng tay — gọi đúng API mà `delivery.py` dùng, nếu
+    không phép thử đo cái mô phỏng chứ không đo hệ.
+    """
+    orch.lead.state[tid] = "in_progress"
+    orch.lead.rework(tid, hint)
+
+
+def test_rework_khi_da_co_bo_test_thi_khong_quay_lai_pha_author(tmp_path: Path) -> None:
+    """Ticket rework mà bộ test ĐÃ có → không được đẩy lại qua pha `author`.
+
+    Vòng lặp đo được khi vận hành QLKH 2026-09-14, bốn vòng liền: `tasks` phát lại (retry+1) → `qa` pha
+    `author` mở worktree, thấy bộ test đã commit từ lượt trước nên đúng đắn là không ghi gì → `author_tests`
+    thấy `ws.dirty()` False, không WIP → ném "không viết file test nào" → `agent_error_unhandled` → escalation
+    → người duyệt → `tasks` phát lại → `qa`… Thoát ra chỉ bằng cách khởi động lại engine KHÔNG `--test-author`.
+
+    Lỗi ở **guard**, không ở agent: `_can_author_tests` hỏi "có bật cờ không" và "stack phân vùng được không",
+    chưa bao giờ hỏi **"bộ test cho ticket này đã có chưa"**. Agent làm đúng; cơ chế bắt nó làm lại một việc đã
+    xong rồi phạt nó vì không làm. Re-author có đường riêng và chỉ một đường: tranh chấp test
+    (`_has_dispute`, route `pull-requests` → qa), nơi agent được xem diff.
+
+    Đo bằng **vai nào nhận event**, không bằng "có PR mới không": agent giả ở đây ghi lại đúng byte cũ nên
+    builder báo "không sửa file nào so với lần trước" — đó là giới hạn của giả lập, không phải của bản vá
+    (rework thật thì builder ghi code khác). Đếm PR ở đây sẽ đo nhầm cái giả lập.
+    """
+    bus, orch = _orch(tmp_path, test_author=True)
+    _drive_to_plan(bus, orch); orch.run()
+    assert len(list(bus.replay(topic="test-suites"))) == 1, "tiền đề: lượt đầu sinh đúng một bộ test"
+
+    _rework(orch, "T1", "lint đỏ: E501 ở feature.py")
+    ev_id = orch.queue[0].event_id
+    orch.run()
+
+    # Lọc đúng T1: kế hoạch giả sinh nhiều ticket, và agent giả ghi CÙNG một đường dẫn/nội dung test cho mọi
+    # ticket — nên T2 dựng worktree sau khi T1 merge thì đã sẵn file ấy và "không viết gì" vì lý do khác hẳn.
+    # Đó là giả tạo của harness (agent thật viết test riêng cho từng ticket), không phải ca này đang đo. Không
+    # lọc thì phép thử xanh/đỏ theo thứ tự merge — đỏ trên CI, xanh ở máy, đúng khuôn test chập chờn.
+    hong = [a for a in bus.replay(topic="audit-log")
+            if a.payload.get("action") in {"invalid_output", "agent_error_unhandled"}
+            and "file test" in str(a.payload.get("evidence") or "")
+            and (a.payload.get("ticket_id") == "T1" or "ticket/T1" in str(a.payload.get("evidence") or ""))]
+    assert not hong, f"không được phạt agent vì bộ test đã có sẵn: {[a.payload.get('evidence') for a in hong]}"
+
+    lam = [json.loads(a.payload["evidence"])["actions"] for a in bus.replay(topic="audit-log")
+           if a.payload.get("action") == "orchestrated" and ev_id in str(a.payload.get("evidence"))]
+    assert lam and lam[0], "event rework phải được giao cho ai đó, không rơi vào im lặng"
+    assert all("qa" not in x.split(":")[1] for x in lam[0] if ":" in x), f"không được quay lại qa: {lam[0]}"
+    assert any("builder" in x for x in lam[0]), f"rework phải tới thẳng builder: {lam[0]}"
+    assert len(list(bus.replay(topic="test-suites"))) == 1, "không sinh thêm bộ test cho lượt rework"
+
+
+def test_bo_qua_pha_author_phai_noi_ra_chu_khong_im(tmp_path: Path) -> None:
+    """Bỏ một pha là đổi hành vi, nên phải có vết: người đọc audit thấy vì sao lượt này không có bộ test mới.
+
+    Khoá `once` mang **thế hệ retry** (khuôn 3, `TRAPS.md` §1): thiếu nó thì ticket rework lần hai ghi đè lần
+    một, người đọc tưởng chuyện chỉ xảy ra một lần trong khi nó lặp mỗi lần dispatch.
+    """
+    bus, orch = _orch(tmp_path, test_author=True)
+    _drive_to_plan(bus, orch); orch.run()
+    _rework(orch, "T1", "lint đỏ")
+    orch.run()
+
+    vet = [a for a in bus.replay(topic="audit-log")
+           if a.payload.get("action") == "test_author_bo_qua" and a.payload.get("ticket_id") == "T1"]
+    assert vet, "bỏ pha author mà không để lại vết thì người đọc audit không biết vì sao lượt này không có test"
+
+    khoa = [json.loads(a.payload["evidence"])["key"] for a in bus.replay(topic="audit-log")
+            if a.payload.get("action") == "once" and "test-author-bo-qua:T1:" in str(a.payload.get("evidence"))]
+    assert khoa, "phải đi qua khoá `once`, không thì mỗi lần dispatch một dòng audit giống hệt"
+    assert len(khoa) == len(set(khoa)), f"khoá `once` phải mang thế hệ retry nên không được trùng: {khoa}"
+    assert len(khoa) == len(vet), "một vết cho mỗi thế hệ, không hơn"
+    assert all(k.startswith("test-author-bo-qua:T1:") for k in khoa), khoa
