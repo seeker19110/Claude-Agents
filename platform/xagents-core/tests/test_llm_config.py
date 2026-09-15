@@ -208,6 +208,7 @@ def test_cache_ttl_sai_gia_tri_hong_to(tmp_path: Path):
 # ---------- ADR-0016: tầng máy làm nền cho `llm.yaml` của package ----------
 
 
+
 def test_may_config_file_mac_dinh_va_de_bang_bien_moi_truong(tmp_path: Path) -> None:
     """Tầng máy nằm NGOÀI repo — đó là cả điểm của nó: `llm.yaml` gitignored + luật mỗi phiên một worktree
     (`AGENTS.md` cấm §2) cộng lại làm cấu hình model bốc hơi đúng chỗ agent làm việc (đo 2026-09-14: 0/4
