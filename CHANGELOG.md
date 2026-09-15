@@ -14,6 +14,15 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   (việc kiến trúc, ngoài phạm vi `pt.8`) trước khi ghi lại được. `pt.4`/`pt.5` vẫn chờ người (đo `SubagentStart`
   bị classifier auto-mode chặn tự sửa cấu hình).
 
+- docs(sessions): **đo nốt backend `chatgpt-sub` (codex), khép mục treo cuối của phiên 2026-09-15** — `probe`
+  theo thiết kế chỉ dò backend `claude-code`, nên đo bằng một lượt `complete` tối thiểu qua chính adapter:
+  **chạy được** (7,0 s, `gpt-5.6-terra`, 14.198 token), rồi lượt ngay sau **hết hạn mức gói**. Hết hạn mức
+  KHÔNG phải hỏng cấu hình — `routing.is_quota_error` khớp đúng chuỗi đó (thử bằng thông điệp thật → `True`),
+  nên backend nghỉ `cooldown_s` và lượt đó tự đi backend kế, đúng ADR-0019. **Không tool-use**:
+  `xagents_core/llm.py:783` ném thẳng, là thiết kế adapter chứ không phải thứ dò ra được. Ghi kèm một nghi ngờ
+  **đã tự bác bỏ**: tôi tưởng quota bị ném thành `LLMError` (thay vì `TransientError`) sẽ làm routing không
+  failover — tức guardrail ADR-0019 thành no-op; đo ra thì routing phân loại theo **thông điệp** chứ không theo
+  lớp ngoại lệ. Không đổi một dòng mã nào. (#313)
 - docs(sessions): **chốt phiên 2026-09-15** — sáu PR (#304, #307, #308, #309, #310, #311) và một sợi chỉ xuyên
   suốt đáng đọc trước khi làm tiếp: bốn lỗi khác nhau trong phiên (#299, #307, #310, #311) **cùng một khuôn** —
   *phép thử lệ thuộc môi trường ở chỗ không ai nghĩ tới* (máy có WSL · thứ tự merge · `$HOME` có `llm.yaml` ·
