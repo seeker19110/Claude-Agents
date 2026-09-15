@@ -40,6 +40,19 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   trạng thái git. Bốn ca mới dựng worktree thật, ba ca đỏ trước khi sửa. Đã rà cả họ lỗi: `block-dangerous-git.sh`
   (không đọc trạng thái git) và `auto-format.sh` (chỉ dùng `$ROOT` để tìm script) an toàn, không phải sửa. (#306)
 
+- fix(company): **rework không còn quay lại pha `author` khi bộ test đã có** — vòng lặp `tasks`→`qa` đo được
+  khi vận hành QLKH 2026-09-14, bốn vòng liền: ticket rework (`retry+1` vì lint/test đỏ) phát lại `tasks` →
+  `qa` pha `author` mở worktree, thấy bộ test đã commit từ lượt trước nên **đúng đắn là không ghi gì** →
+  `author_tests` thấy worktree sạch và ném "không viết file test nào" → `agent_error_unhandled` → escalation →
+  người duyệt → phát lại → lặp; thoát ra chỉ bằng cách khởi động lại engine **bỏ** `--test-author`. Lỗi ở
+  **guard** chứ không ở agent: `_can_author_tests` hỏi "có bật cờ không" và "stack phân vùng được không", chưa
+  bao giờ hỏi "bộ test cho ticket này đã có chưa". Nay có `_da_co_bo_test`, và nó lọc theo **`causation_id`**
+  chứ không theo `ts` — hai route của `tasks` (qa author, builder qua `_no_test_author`) được đánh giá **tuần
+  tự trong cùng một event**, nên hỏi trống "bus có bộ test không" thì guard của builder lật ngay sau khi qa
+  phát và ticket đi CẢ HAI đường (`tests_authored_by` thành `assignee` ở đúng lượt vừa có test độc lập — bản vá
+  đầu mắc đúng lỗi này, ca luồng cũ bắt được). Bỏ pha có **vết audit** `test_author_bo_qua` với khoá `once`
+  mang thế hệ retry, không bỏ im. Đường re-author hợp lệ duy nhất (tranh chấp test, `_has_dispute`) không bị
+  đụng. Kèm: gộp hai chỗ tra `retry` trùng nhau trong cùng hàm. (#<n>)
 - docs(khung): **kế hoạch thi hành `pt` — năm cơ chế lấy từ `DietrichGebert/ponytail`.** Đo hiện trạng bằng
   4 subagent `Explore` chỉ đọc tìm ra **ba lỗi đang tồn tại**, không phải ba chỗ "có thể cải thiện": 4 file luật
   harness đã trôi khỏi `AGENTS.md:34` (thiếu "khoá/token, dữ liệu khách thật"); `evals/thresholds.yaml:15` ghi
