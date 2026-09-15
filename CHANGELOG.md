@@ -14,7 +14,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   `xagents_core/llm.py:783` ném thẳng, là thiết kế adapter chứ không phải thứ dò ra được. Ghi kèm một nghi ngờ
   **đã tự bác bỏ**: tôi tưởng quota bị ném thành `LLMError` (thay vì `TransientError`) sẽ làm routing không
   failover — tức guardrail ADR-0019 thành no-op; đo ra thì routing phân loại theo **thông điệp** chứ không theo
-  lớp ngoại lệ. Không đổi một dòng mã nào. (#<n>)
+  lớp ngoại lệ. Không đổi một dòng mã nào. (#313)
 - docs(sessions): **chốt phiên 2026-09-15** — sáu PR (#304, #307, #308, #309, #310, #311) và một sợi chỉ xuyên
   suốt đáng đọc trước khi làm tiếp: bốn lỗi khác nhau trong phiên (#299, #307, #310, #311) **cùng một khuôn** —
   *phép thử lệ thuộc môi trường ở chỗ không ai nghĩ tới* (máy có WSL · thứ tự merge · `$HOME` có `llm.yaml` ·
