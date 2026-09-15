@@ -6,6 +6,19 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(core): **span đo được khoảng ngắn — `observe` đổi từ `time.monotonic_ns` sang `time.perf_counter_ns`.**
+  Cả hai đều `monotonic=True`, nhưng trên Windows + CPython **≤ 3.12** `time.monotonic` là `GetTickCount64()`
+  phân giải **15,625 ms**: mọi span ngắn hơn một tick báo `duration_ms = 0.0` — module sinh ra để đo thời gian
+  lại mù đúng khoảng ngắn. `perf_counter` là `QueryPerformanceCounter()`, phân giải **1e-7 s** trên cùng máy,
+  và chính là đồng hồ `company/runner.py:473` đã dùng cho `duration_ms` của lượt model — nên bản vá làm
+  `observe` khớp lại với lựa chọn sẵn có của repo chứ không đặt ra lựa chọn mới. Triệu chứng là hai ca
+  `test_observe` đỏ **chập chờn** (`sleep(0.002)` chỉ vượt tick khoảng 13% số lần) và chỉ trên máy chạy Python
+  ≤ 3.12: CI không bao giờ thấy vì Linux dùng `clock_gettime` phân giải ns, còn job Windows chạy 3.13 (CPython
+  đổi sang QPC từ 3.13). Cổng mới `test_span_dung_dong_ho_du_min_de_do_span_ngan` đo bằng `get_clock_info`
+  thay vì bằng `sleep` — phép thử dựa trên `sleep` chính là phép thử chập chờn vừa phải vá. Kèm sửa một ca
+  **xanh rỗng**: `test_sink_none_la_no_op_that_su` vá `observe.time.monotonic_ns` nên sau khi đổi đồng hồ nó
+  vẫn xanh mà không còn chứng minh gì; nay vá đúng `observe._now_ns`. Đo hai chiều dưới Python 3.11: tắt bản
+  sửa → 3/3/2/2 đỏ qua bốn lần chạy, bật → 17 xanh bốn lần liền. (#311)
 - fix(tests): **bộ test không còn đọc cấu hình model THẬT của máy đang chạy nó** — từ ADR-0016, `load_config()`
   đọc tầng máy `~/.config/xagents/llm.yaml` **dù có truyền `path` hay không**, nên mọi ca chạm
   `load_config`/`explain_config` mà không tự đặt `XAGENTS_LLM_CONFIG` đều lệ thuộc vào việc máy có file ấy hay
