@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from xagents_core.evals import KHONG_BAT_DUOC as KHONG_BAT_DUOC
 from xagents_core.evals import CaseResult as CaseResult
 from xagents_core.evals import EvalSuite
 from xagents_core.evals import RecordingClient as CoreRecordingClient
@@ -38,6 +39,7 @@ from xagents_core.evals import check as check
 from xagents_core.evals import check_thresholds as check_thresholds
 from xagents_core.evals import load_thresholds as _core_load_thresholds
 from xagents_core.evals import prompt_key as prompt_key
+from xagents_core.evals import selftest_case as selftest_case
 
 from .blackboard import Blackboard
 from .bus import InMemoryBus
@@ -93,6 +95,7 @@ SUITE = Suite(CORE.root)
 def recording_path(agent_id: str) -> Path: return SUITE.recording_path(agent_id)
 def load_recording(agent_id: str) -> dict[str, Any] | None: return SUITE.load_recording(agent_id)
 def load_cases(agent_id: str) -> list[dict[str, Any]]: return EvalSuite.load_cases(SUITE, agent_id)
+def selftest(agent_id: str) -> list[tuple[str, str]]: return EvalSuite.selftest(SUITE, agent_id)
 def required_agents() -> list[str]: return SUITE.required_agents()
 def outdated_versions(ids: list[str] | None = None) -> dict[str, str]: return SUITE.outdated_versions(ids)
 def stale_recordings(ids: list[str] | None = None) -> dict[str, list[str]]: return SUITE.stale_recordings(ids)
@@ -183,12 +186,34 @@ def _summary(outcomes: list[_AgentOutcome], th: dict[str, Threshold] | None = No
         pass
 
 
+def _chay_selftest(ids: list[str]) -> int:
+    """`--selftest`: mỗi ca phải bác được bản `bad:` của chính nó (ADR-0042).
+
+    Hai nhãn, **cả hai đều đỏ**: `khong-bat-duoc` = `expect:` cho `bad:` đi qua, tức ca ấy xanh vĩnh viễn;
+    `chua-chung-minh` = ca chưa có `bad:` nên chưa chứng minh được gì. Chỉ cảnh báo nhãn thứ hai thì ca mới
+    viết lỏng lại lọt đúng con đường cũ, và ADR-0042 thành tài liệu.
+    """
+    tong = hong = 0
+    for aid in ids:
+        tong += len(load_cases(aid))
+        for ten, ly_do in selftest(aid):
+            hong += 1
+            print(f"FAIL {aid}/{ten}: {ly_do} — "
+                  + ("`expect:` cho `bad:` của chính ca này đi qua; siết `expect:`, ĐỪNG nới `bad:`"
+                     if ly_do == KHONG_BAT_DUOC else "ca chưa có khối `bad:` (ADR-0042 quyết định 3)"))
+    print(f"selftest: {tong - hong}/{tong} ca tự chứng minh được (không gọi model, không đọc bản ghi)")
+    return 1 if hong else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Chạy eval prompt của agent: model thật, ghi lại (--record) hoặc phát lại (--replay)")
     ap.add_argument("agent", help="id agent, hoặc `all`")
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--record", action="store_true", help="chạy model thật và lưu evals/recordings/<agent>.json")
     mode.add_argument("--replay", action="store_true", help="chạy từ bản ghi, không gọi model (CI)")
+    mode.add_argument("--selftest", action="store_true",
+                      help="kiểm CHÍNH CÁI THƯỚC: mỗi ca phải bác được bản `bad:` của nó (ADR-0042). "
+                           "Không gọi model, không đọc bản ghi — nên nằm cùng nhóm loại trừ với --record/--replay")
     ap.add_argument("--fail-on-score", action="store_true",
                     help="đỏ cả khi ca eval không đạt (mặc định chỉ bản ghi thiếu/lệch mới đỏ — CONTRIBUTING §3)")
     ap.add_argument("--strict", action="store_true",
@@ -213,6 +238,8 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8")  # Windows console cp1252
     agents = load_agents()
     ids = sorted(agents) if ns.agent == "all" else [ns.agent]
+    if ns.selftest:
+        return _chay_selftest(ids)
     # Hai loại kết quả, cố ý tách: `gate_ok` là bản ghi có đủ và đúng phiên bản prompt hay không —
     # đó là thứ duy nhất làm CI đỏ (ADR-0010). `cases_ok` là điểm chấm, một tín hiệu chất lượng cho
     # vòng sau; nó chỉ đổi mã thoát khi chạy với model thật ở máy, không đổi khi CI phát lại.

@@ -123,6 +123,38 @@ hạn mức; self-hosted, resume được; trung lập provider.
    và `gh issue list --state all --search "<từ khoá>"`. Có PR cũ từng đóng vì cùng vấn đề → đọc lý do đóng, nói
    rõ trong PR mới cái gì khác đi khiến lần này nên qua; không lặng lẽ mở PR thứ hai cho cùng một việc.
 
+## Nợ kỹ thuật cố ý
+
+`TRAPS.md` ghi **bẫy đã mắc** — thứ đã cắn rồi, viết lại để lần sau đừng cắn nữa. Repo không có chỗ nào ghi thứ
+ngược lại: **nợ cố ý tạo ra** — một đơn giản hoá hôm nay *không sai*, nhưng có **trần đã biết**, và sẽ sai khi
+vượt trần đó. Nó không phải bẫy (chưa ai vấp), không phải TODO (TODO không nói vượt cái gì thì phải quay lại).
+Không ghi thành hình thì cái trần chỉ nằm trong đầu một người, và mất cùng phiên của người đó.
+
+Khuôn: **một dòng, ngay tại chỗ cắt góc**, không phải ở file kế hoạch nào khác.
+
+```
+# no-ky-thuat: <trần đã biết>, <điều kiện quay lại>
+// no-ky-thuat: <trần đã biết>, <điều kiện quay lại>
+```
+
+Ví dụ đúng khuôn:
+
+```python
+# no-ky-thuat: quét tuyến tính cả bảng, ổn tới ~2k ticket, quay lại khi company.sqlite vượt 2k dòng ticket
+```
+
+Ba luật của marker:
+
+1. **Phải có dấu phẩy.** Trước phẩy là trần (đo được), sau phẩy là điều kiện quay lại (kiểm được). Thiếu vế sau
+   thì marker tự mục — `/no-ky-thuat` gắn cờ `no-trigger` cho đúng những dòng đó.
+2. **Chỉ cho cắt góc có trần đã biết**, không phải mọi TODO. "Chưa làm" dùng TODO; "đã làm, biết nó gãy ở đâu"
+   mới dùng marker này.
+3. **Tên không dấu** để `grep` được trên mọi shell (Windows `PYTHONIOENCODING`, `CLAUDE.md`). Regex thu hoạch:
+   `(#|//) ?no-ky-thuat:`.
+
+Đọc sổ: `/no-ky-thuat` (`.claude/commands/no-ky-thuat.md`) — chỉ đọc, không sửa gì. Sổ rỗng nghĩa là **0
+marker**, không phải 0 nợ.
+
 ## Hàng rào thi hành (không phải lời nhắc)
 
 Luật cấm 1, 3, 6 và luật bắt buộc 3 ở trên **có cơ chế chặn**, không chỉ là chữ. Claude Code nạp

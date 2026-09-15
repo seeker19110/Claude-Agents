@@ -27,7 +27,20 @@ cases:
           - "Given đơn hàng ORD-9 không tồn tại, When GET /orders/ORD-9, Then trả 404 theo RFC 9457"
     expect:
       equals: {ticket_id: TCK-1, assignee: builder}
-      min_len: {acceptance_covered: 2, files: 1}
+      # `min_len` chỉ ĐẾM (ADR-0042): hai phần tử rỗng cũng đủ hai. Nên đòi luôn HÌNH DẠNG của từng phần tử —
+      # mỗi acceptance phải chỉ ra được ca test cụ thể nào phủ nó, đúng nghĩa "mỗi acceptance phải có test".
+      min_len:
+        acceptance_covered: 2
+        files: 1
+        "acceptance_covered.0.tests": 1
+        "acceptance_covered.1.tests": 1
+    bad:
+      # `min_len` chỉ ĐẾM: hai phần tử vô nghĩa và một file rỗng đủ qua, dù không phủ ca 404 nào
+      ticket_id: TCK-1
+      assignee: builder
+      acceptance_covered: ["", "n/a"]
+      files: ["tests/test_placeholder.py"]
+      notes: ["chưa viết ca nào, để sau"]
 
   - name: tranh-chap-test-phai-tra-loi-co-ly-do
     phase: author
@@ -49,6 +62,11 @@ cases:
     expect:
       equals: {ticket_id: TCK-2}
       min_len: {notes: 1}
+    bad:
+      # Tranh chấp test bị bỏ qua: không ghi một dòng lý do nào, `notes` rỗng
+      ticket_id: TCK-2
+      notes: []
+      files: ["tests/test_orders.py"]
 
   - name: pr-sach-phai-pass
     phase: review
@@ -68,6 +86,12 @@ cases:
         local_checks: {lint: true, tests: true, coverage: 0.91}
     expect:
       equals: {ticket_id: TCK-1, source: reviewer, verdict: pass}
+    bad:
+      # PR sạch, test xanh, có Problem Details — vẫn block cho có, QA fail mọi thứ cũng vô dụng như pass mọi thứ
+      ticket_id: TCK-1
+      source: reviewer
+      verdict: block
+      findings: ["nên đặt tên hàm khác cho dễ đọc"]
 
   - name: pr-hardcode-secret-phai-block
     phase: review
@@ -87,6 +111,12 @@ cases:
       equals: {ticket_id: TCK-2, source: reviewer, verdict: block}
       min_len: {findings: 1}
       one_of: {findings.0.level: [block]}
+    bad:
+      # API key `sk_live_...` nằm thẳng trong code và test đỏ, vẫn cho pass vì "lint xanh"
+      ticket_id: TCK-2
+      source: reviewer
+      verdict: pass
+      findings: []
 
   - name: test-local-fail-khong-cho-di-tiep-va-co-root-cause
     phase: review
@@ -109,6 +139,13 @@ cases:
       equals: {ticket_id: TCK-3, source: reviewer}
       one_of: {verdict: [fail, block]}
       min_len: {root_cause: 10}
+    bad:
+      # Chặn đúng, nhưng `root_cause` chỉ chép lại triệu chứng bằng hai chữ — không nói ra chỗ tranh chấp dict toàn cục
+      ticket_id: TCK-3
+      source: reviewer
+      verdict: fail
+      root_cause: "flaky"
+      findings: ["test_concurrent_reads đỏ"]
 
   - name: test-xanh-va-phu-ca-bien-thi-phai-pass
     phase: review
@@ -127,6 +164,12 @@ cases:
     expect:
       # QA fail mọi thứ cũng vô dụng như QA pass mọi thứ: PR đã phủ ca biên thì phải được đi tiếp
       equals: {ticket_id: TCK-4, source: reviewer, verdict: pass}
+    bad:
+      # Đã phủ ca biên 0/23/24/25 giờ và property test, vẫn fail vì "coverage chưa 100%" — chặn PR tốt
+      ticket_id: TCK-4
+      source: reviewer
+      verdict: fail
+      findings: ["coverage 0.93 chưa đạt 1.0"]
 
   - name: hoi-quy-staging-phai-dan-bang-chung-may-chay-va-khai-source-qa
     phase: review
@@ -151,6 +194,13 @@ cases:
       equals: {ticket_id: REL-1, source: qa}
       one_of: {verdict: [fail, block]}
       min_len: {findings: 1}
+    bad:
+      # `evidence.run.ok=false` do MÁY sinh mà vẫn khai staging sạch, findings rỗng — tin lời thay vì đọc bằng chứng
+      ticket_id: REL-1
+      source: qa
+      verdict: pass
+      findings: []
+      summary: "hồi quy staging không phát hiện vấn đề"
 
   - name: nham-pha-author-gui-voi-phase-review-phai-tu-nhan-sai-pha
     # ADR-0037 §11: đầu vào thật của pha `author` (ticket mới, chưa có code) nhưng ca CỐ Ý khai `phase: review` —
@@ -180,3 +230,10 @@ cases:
       equals: {ticket_id: TCK-9}
       min_len: {findings: 1}
       contains: {findings.0.text: "tasks"}
+    bad:
+      # Chấm bừa như một lượt review PR: không hề nói ra đầu vào là `tasks`, không thuộc pha đang mang
+      ticket_id: TCK-9
+      source: reviewer
+      verdict: fail
+      findings:
+        - {level: block, text: "chưa có test cho acceptance 201"}

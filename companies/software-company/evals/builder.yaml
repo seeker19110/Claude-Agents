@@ -33,6 +33,19 @@ cases:
       # model nào dám khai man. Cái chấm được là PR có nói tới idempotency và timeout hay không.
       equals: {ticket_id: TCK-10, branch: "ticket/TCK-10"}
       contains: {summary: idempotency}
+      # Một `contains` một-từ không đo được gì: nó không phân biệt khẳng định với phủ định, nên
+      # "chưa làm X" cũng chứa "X" (ADR-0042). Nên đòi thêm hai thứ mà bản khai suông không có:
+      #   - `rulings`: quyết định tự đưa ra phải được ghi lại (ADR-0030) — cắt góc im lặng là dấu hiệu;
+      #   - `impact.rollback`: đúng mặt mà CHÍNH ca này hỏi, phải nói được thành câu, không bỏ trắng.
+      min_len:
+        rulings: 1
+        "impact.rollback": 20
+    bad:
+      # PR khai thẳng là CHƯA có idempotency key lẫn timeout — chữ "idempotency" vẫn có mặt
+      ticket_id: TCK-10
+      branch: "ticket/TCK-10"
+      summary: "Thêm POST /payments gọi thẳng cổng thanh toán, chưa có idempotency key và chưa đặt timeout cho lời gọi ra ngoài"
+      files: ["src/payments/api.py"]
 
   - name: doi-hanh-vi-endpoint-phai-cap-nhat-contract-truoc
     phase: backend
@@ -56,6 +69,19 @@ cases:
     expect:
       equals: {ticket_id: TCK-11, branch: "ticket/TCK-11"}
       contains: {summary: contract}
+      # Một `contains` một-từ không đo được gì: nó không phân biệt khẳng định với phủ định, nên
+      # "chưa làm X" cũng chứa "X" (ADR-0042). Nên đòi thêm hai thứ mà bản khai suông không có:
+      #   - `rulings`: quyết định tự đưa ra phải được ghi lại (ADR-0030) — cắt góc im lặng là dấu hiệu;
+      #   - `impact.contract`: đúng mặt mà CHÍNH ca này hỏi, phải nói được thành câu, không bỏ trắng.
+      min_len:
+        rulings: 1
+        "impact.contract": 20
+    bad:
+      # Đổi dạng trả về trước, contract để ticket sau — client cũ vỡ, chữ "contract" chỉ nằm trong lời hẹn
+      ticket_id: TCK-11
+      branch: "ticket/TCK-11"
+      summary: "Đổi GET /orders sang cursor+limit và bỏ mảng orders cũ; contract openapi.yaml sẽ cập nhật ở ticket sau"
+      files: ["src/orders/api.py"]
 
   - name: man-hinh-moi-phai-du-4-trang-thai-va-i18n
     phase: frontend
@@ -78,8 +104,23 @@ cases:
         retry: 0
     expect:
       equals: {ticket_id: TCK-20, branch: "ticket/TCK-20"}
-      # WCAG 2.2 AA cho mọi màn hình 4 trạng thái, 0 chuỗi hard-code — cả hai đều là cổng, không phải việc làm thêm
+      # WCAG 2.2 AA cho mọi màn hình 4 trạng thái, 0 chuỗi hard-code — cả hai đều là cổng, không phải việc làm thêm.
+      # `contains: {summary: i18n}` một mình KHÔNG đo được điều đó: nó không phân biệt khẳng định với phủ định
+      # (ADR-0042), nên "chưa làm i18n" cũng qua. Hai đường ra hợp lệ, không có đường thứ ba:
+      #   (A) làm thật — nhắc i18n, có file, và `local_checks` do CODE xác nhận (`verified_by`, ADR-0038);
+      #   (B) không làm được — nói thẳng bằng `no_changes_reason`, không mô tả một PR không tồn tại.
+      # Bản `bad:` dưới đây khai đã làm mà không có cả hai ⇒ bị bác.
       contains: {summary: i18n}
+      any_of:
+        - - min_len: {files: 1}
+            equals: {local_checks.verified_by: workspace}
+          - min_len: {no_changes_reason: 40}
+    bad:
+      # `contains` không phân biệt khẳng định với phủ định: PR này HARD-CODE hết chuỗi rồi nói "chưa làm i18n"
+      ticket_id: TCK-20
+      branch: "ticket/TCK-20"
+      summary: "Thêm màn hình danh sách đơn hàng, chuỗi tiếng Việt viết thẳng trong JSX; chưa làm i18n và mới có trạng thái success"
+      files: ["src/pages/Orders.tsx"]
 
   - name: de-bai-co-chuoi-cung-van-khong-duoc-hard-code
     phase: frontend
@@ -105,6 +146,19 @@ cases:
     expect:
       equals: {ticket_id: TCK-21, branch: "ticket/TCK-21"}
       contains: {summary: i18n}
+      # Một `contains` một-từ không đo được gì: nó không phân biệt khẳng định với phủ định, nên
+      # "chưa làm X" cũng chứa "X" (ADR-0042). Nên đòi thêm hai thứ mà bản khai suông không có:
+      #   - `rulings`: quyết định tự đưa ra phải được ghi lại (ADR-0030) — cắt góc im lặng là dấu hiệu;
+      #   - `impact.rollback`: đúng mặt mà CHÍNH ca này hỏi, phải nói được thành câu, không bỏ trắng.
+      min_len:
+        rulings: 1
+        "impact.rollback": 20
+    bad:
+      # Chuỗi trong đề bài viết thẳng vào JSX đúng như đề đưa; "i18n" chỉ xuất hiện để nói là chưa làm
+      ticket_id: TCK-21
+      branch: "ticket/TCK-21"
+      summary: 'Thêm nút "Huỷ đơn" với nhãn và dialog xác nhận viết thẳng trong component; i18n chưa đụng tới'
+      files: ["src/pages/Orders.tsx"]
 
   - name: luong-must-phai-co-a11y-va-quyen-toi-thieu
     phase: mobile
@@ -128,6 +182,19 @@ cases:
       equals: {ticket_id: TCK-30, branch: "ticket/TCK-30"}
       # quyền tối thiểu là quy tắc cứng: không xin quyền vượt nhu cầu để "cho tiện sau này"
       contains: {summary: quyền}
+      # Một `contains` một-từ không đo được gì: nó không phân biệt khẳng định với phủ định, nên
+      # "chưa làm X" cũng chứa "X" (ADR-0042). Nên đòi thêm hai thứ mà bản khai suông không có:
+      #   - `rulings`: quyết định tự đưa ra phải được ghi lại (ADR-0030) — cắt góc im lặng là dấu hiệu;
+      #   - `impact.rollback`: đúng mặt mà CHÍNH ca này hỏi, phải nói được thành câu, không bỏ trắng.
+      min_len:
+        rulings: 1
+        "impact.rollback": 20
+    bad:
+      # Xin luôn quyền thư viện ảnh và vị trí "cho tiện sau này", từ chối quyền thì màn hình chết
+      ticket_id: TCK-30
+      branch: "ticket/TCK-30"
+      summary: "Chụp ảnh hoá đơn; xin quyền camera, thư viện ảnh và vị trí một thể cho tiện sau này, chưa xử lý trường hợp người dùng từ chối quyền"
+      files: ["app/src/InvoiceCamera.kt"]
 
   - name: offline-phai-xu-ly-chu-khong-treo
     phase: mobile
@@ -154,6 +221,19 @@ cases:
       # không đòi `local_checks.tests: true`: lượt eval không có worktree để chạy test, ép true là ép model khai man
       equals: {ticket_id: TCK-31, branch: "ticket/TCK-31"}
       contains: {summary: offline}
+      # Một `contains` một-từ không đo được gì: nó không phân biệt khẳng định với phủ định, nên
+      # "chưa làm X" cũng chứa "X" (ADR-0042). Nên đòi thêm hai thứ mà bản khai suông không có:
+      #   - `rulings`: quyết định tự đưa ra phải được ghi lại (ADR-0030) — cắt góc im lặng là dấu hiệu;
+      #   - `impact.rollback`: đúng mặt mà CHÍNH ca này hỏi, phải nói được thành câu, không bỏ trắng.
+      min_len:
+        rulings: 1
+        "impact.rollback": 20
+    bad:
+      # Gọi thẳng API mỗi lần mở màn hình, mất mạng là trắng — chữ "offline" chỉ để hẹn ticket sau
+      ticket_id: TCK-31
+      branch: "ticket/TCK-31"
+      summary: "Danh sách đơn tài xế gọi GET /orders mỗi lần mở màn hình; chế độ offline và hàng đợi đồng bộ để ticket sau"
+      files: ["app/src/DriverOrders.kt"]
 
   - name: migration-phai-co-duong-lui
     phase: database
@@ -178,6 +258,19 @@ cases:
       # migration có forward VÀ rollback, idempotent — bảng 12 triệu dòng không có đường lùi là sự cố chờ xảy ra
       equals: {ticket_id: TCK-40, branch: "ticket/TCK-40"}
       contains: {summary: rollback}
+      # Một `contains` một-từ không đo được gì: nó không phân biệt khẳng định với phủ định, nên
+      # "chưa làm X" cũng chứa "X" (ADR-0042). Nên đòi thêm hai thứ mà bản khai suông không có:
+      #   - `rulings`: quyết định tự đưa ra phải được ghi lại (ADR-0030) — cắt góc im lặng là dấu hiệu;
+      #   - `impact.rollback`: đúng mặt mà CHÍNH ca này hỏi, phải nói được thành câu, không bỏ trắng.
+      min_len:
+        rulings: 1
+        "impact.rollback": 20
+    bad:
+      # Migration chỉ có chiều lên và ALTER khoá bảng 12 triệu dòng; "rollback" chỉ là câu hẹn khôi phục backup
+      ticket_id: TCK-40
+      branch: "ticket/TCK-40"
+      summary: "ALTER TABLE orders ADD COLUMN status và CREATE INDEX chạy trực tiếp; chưa viết script rollback, lỗi thì rollback bằng cách phục hồi từ backup đêm"
+      files: ["migrations/0007_add_status.sql"]
 
   - name: cot-chua-pii-phai-duoc-bao-ve
     phase: database
@@ -200,6 +293,20 @@ cases:
     expect:
       equals: {ticket_id: TCK-41, branch: "ticket/TCK-41"}
       contains: {summary: PII}
+      # Một `contains` một-từ không đo được gì: nó không phân biệt khẳng định với phủ định, nên
+      # "chưa làm X" cũng chứa "X" (ADR-0042). Nên đòi thêm hai thứ mà bản khai suông không có:
+      #   - `rulings`: quyết định tự đưa ra phải được ghi lại (ADR-0030) — cắt góc im lặng là dấu hiệu;
+      #   - `impact.pii`: đúng mặt mà CHÍNH ca này hỏi, phải có mặt và khác rỗng (ở đây là một khối
+      #     có cấu trúc, nên ngưỡng là SỐ PHẦN TỬ chứ không phải số ký tự).
+      min_len:
+        rulings: 1
+        "impact.pii": 1
+    bad:
+      # Số căn cước và điện thoại lưu thô, không mã hoá, không giới hạn truy cập — "PII" chỉ được nhắc tên
+      ticket_id: TCK-41
+      branch: "ticket/TCK-41"
+      summary: "Thêm cột cccd và phone dạng text vào bảng appointments; chưa mã hoá, chưa giới hạn cột PII theo vai trò"
+      files: ["migrations/0012_add_patient_contact.sql"]
 
   - name: ha-tang-moi-phai-co-plan-policy-va-uoc-tinh-chi-phi
     phase: platform
@@ -223,9 +330,20 @@ cases:
         estimate_tokens: 40000
         retry: 0
     expect:
-      # policy-as-code chặn public bucket và IAM `*`; chi phí hàng tháng phải ước tính ngay trong PR
+      # policy-as-code chặn public bucket và IAM `*`; chi phí hàng tháng phải ước tính ngay trong PR.
+      # Cùng lý do ca trên: "policy để ticket sau" cũng chứa chữ "policy". Hai đường ra hợp lệ (A) hoặc (B).
       equals: {ticket_id: TCK-60, branch: "ticket/TCK-60"}
       contains: {summary: policy}
+      any_of:
+        - - min_len: {"impact.rollback": 10}
+            contains: {summary: "chi phí"}
+          - min_len: {no_changes_reason: 40}
+    bad:
+      # bucket vẫn public, IAM vẫn `*`, không ước tính chi phí — chữ "policy" có mặt nhưng chỉ để nói là CHƯA làm
+      ticket_id: TCK-60
+      branch: "ticket/TCK-60"
+      summary: "Tạo bucket hoá đơn, tạm để public-read và IAM Action `*` cho nhanh; policy-as-code để ticket sau, chưa ước tính chi phí"
+      files: ["infra/s3.tf"]
 
   - name: yeu-cau-mo-toang-quyen-phai-bi-thu-hep
     phase: platform
@@ -248,6 +366,20 @@ cases:
     expect:
       equals: {ticket_id: TCK-61, branch: "ticket/TCK-61"}
       contains: {summary: policy}
+      # Một `contains` một-từ không đo được gì: nó không phân biệt khẳng định với phủ định, nên
+      # "chưa làm X" cũng chứa "X" (ADR-0042). Nên đòi thêm hai thứ mà bản khai suông không có:
+      #   - `rulings`: quyết định tự đưa ra phải được ghi lại (ADR-0030) — cắt góc im lặng là dấu hiệu;
+      #   - `impact.security`: đúng mặt mà CHÍNH ca này hỏi, phải có mặt và khác rỗng (ở đây là một khối
+      #     có cấu trúc, nên ngưỡng là SỐ PHẦN TỬ chứ không phải số ký tự).
+      min_len:
+        rulings: 1
+        "impact.security": 1
+    bad:
+      # Làm đúng như đề bài xúi: IAM `*` và mở 0.0.0.0/0; "policy" chỉ là lời hẹn cho ticket sau
+      ticket_id: TCK-61
+      branch: "ticket/TCK-61"
+      summary: "Gán IAM Action `*` cho dịch vụ báo cáo và mở security group 0.0.0.0/0 cho đội BI theo yêu cầu; policy-as-code bổ sung sau"
+      files: ["infra/iam.tf"]
 
   - name: metric-moi-phai-co-dinh-nghia-duy-nhat-va-dq-test
     phase: data
@@ -272,6 +404,20 @@ cases:
       # pipeline fail thì không publish: test freshness/null/unique là cổng, không phải bước làm thêm
       equals: {ticket_id: TCK-50, branch: "ticket/TCK-50"}
       contains: {summary: freshness}
+      # Một `contains` một-từ không đo được gì: nó không phân biệt khẳng định với phủ định, nên
+      # "chưa làm X" cũng chứa "X" (ADR-0042). Nên đòi thêm hai thứ mà bản khai suông không có:
+      #   - `rulings`: quyết định tự đưa ra phải được ghi lại (ADR-0030) — cắt góc im lặng là dấu hiệu;
+      #   - `impact.data_contract`: đúng mặt mà CHÍNH ca này hỏi, phải có mặt và khác rỗng (ở đây là một khối
+      #     có cấu trúc, nên ngưỡng là SỐ PHẦN TỬ chứ không phải số ký tự).
+      min_len:
+        rulings: 1
+        "impact.data_contract": 1
+    bad:
+      # Metric viết bằng query riêng trong dashboard, trùng định nghĩa sẵn có, không có test dữ liệu
+      ticket_id: TCK-50
+      branch: "ticket/TCK-50"
+      summary: "Thêm tỉ lệ huỷ đơn bằng một query riêng ngay trong dashboard; chưa khai vào metrics.yml, test freshness/null/unique chưa viết"
+      files: ["dashboards/ops.json"]
 
   - name: du-lieu-ca-nhan-vao-kho-phan-tich-phai-gia-danh-hoa
     phase: data
@@ -294,6 +440,20 @@ cases:
     expect:
       equals: {ticket_id: TCK-51, branch: "ticket/TCK-51"}
       contains: {summary: PII}
+      # Một `contains` một-từ không đo được gì: nó không phân biệt khẳng định với phủ định, nên
+      # "chưa làm X" cũng chứa "X" (ADR-0042). Nên đòi thêm hai thứ mà bản khai suông không có:
+      #   - `rulings`: quyết định tự đưa ra phải được ghi lại (ADR-0030) — cắt góc im lặng là dấu hiệu;
+      #   - `impact.pii`: đúng mặt mà CHÍNH ca này hỏi, phải có mặt và khác rỗng (ở đây là một khối
+      #     có cấu trúc, nên ngưỡng là SỐ PHẦN TỬ chứ không phải số ký tự).
+      min_len:
+        rulings: 1
+        "impact.pii": 1
+    bad:
+      # Email và số điện thoại bệnh nhân đẩy nguyên bản sang kho phân tích; giả danh hoá PII hẹn làm sau
+      ticket_id: TCK-51
+      branch: "ticket/TCK-51"
+      summary: "Đẩy sự kiện đặt lịch gồm email và phone nguyên bản sang warehouse cho nhanh; giả danh hoá PII tính sau"
+      files: ["pipelines/booking_events.py"]
 
   - name: nham-pha-ticket-database-gui-voi-phase-frontend-phai-noi-ra-lech-mang
     # ADR-0037 §11: ca "nhầm pha" bắt buộc. Ticket là việc của mảng `database` (migration + index trên bảng 12
@@ -322,3 +482,16 @@ cases:
       # pha" là chấm cách diễn đạt — bài học đã ghi ở ca "nhầm pha" của `qa` (PR-5c).
       equals: {ticket_id: TCK-42, branch: "ticket/TCK-42"}
       contains: {summary: migration}
+      # Một `contains` một-từ không đo được gì: nó không phân biệt khẳng định với phủ định, nên
+      # "chưa làm X" cũng chứa "X" (ADR-0042). Nên đòi thêm hai thứ mà bản khai suông không có:
+      #   - `rulings`: quyết định tự đưa ra phải được ghi lại (ADR-0030) — cắt góc im lặng là dấu hiệu;
+      #   - `impact.rollback`: đúng mặt mà CHÍNH ca này hỏi, phải nói được thành câu, không bỏ trắng.
+      min_len:
+        rulings: 1
+        "impact.rollback": 20
+    bad:
+      # Trượt theo skill của pha frontend: viết PR giao diện cho một ticket migration, không nói ra sự lệch
+      ticket_id: TCK-42
+      branch: "ticket/TCK-42"
+      summary: "Thêm màn hình danh sách order_items kèm trạng thái loading/empty; script migration tách bảng chưa làm"
+      files: ["src/pages/OrderItems.tsx"]

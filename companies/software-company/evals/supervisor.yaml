@@ -18,6 +18,11 @@ cases:
       equals: {target: backend}
       one_of: {action: [budget_cut, escalate, pause]}
       min_len: {reason: 10}
+    bad:
+      # Vượt 142% ngân sách và retry lần 3 cùng lỗi, chỉ `warn` — để lỗ hổng ngân sách chảy tiếp
+      target: backend
+      action: warn
+      reason: "backend đang dùng nhiều token hơn dự kiến, theo dõi thêm vòng sau"
 
   - name: no-kien-truc-treo-da-dem-san-phai-escalate-dung-du-an
     topic_out: supervisor-actions
@@ -35,10 +40,18 @@ cases:
           - {project_id: P1, debt_id: DEF-01, mentions: 3, consecutive: 3, tickets: [QLKH-004, QLKH-007, QLKH-012], sources: [security], escalated: 1, threshold: 3}
           - {project_id: P1, debt_id: SD-2, mentions: 1, consecutive: 1, tickets: [QLKH-012], sources: [reviewer], escalated: 0, threshold: 3}
     expect:
-      # bảng đã đếm sẵn (ADR-0032): escalate đúng DỰ ÁN, không phải một agent hay ticket; reason phải nhắc mã nợ
+      # bảng đã đếm sẵn (ADR-0032): escalate đúng DỰ ÁN, không phải một agent hay ticket; reason phải nhắc mã nợ.
+      # `contains` + `min_len` không đọc được NGHĨA: một `reason` dài, có "DEF-01", mà nói "chưa cần người"
+      # vẫn qua (ADR-0042). Nên đòi bằng chứng dẫn từ audit-log và một ruling — model khai thì code phải chứng.
       equals: {target: P1, action: escalate}
-      contains: {reason: DEF-01}
-      min_len: {reason: 20}
+      contains: {reason: DEF-01, evidence: DEF-01}
+      min_len: {reason: 20, evidence: 40, rulings: 1}
+    bad:
+      # Đúng `target`/`action`, `reason` có "DEF-01" và dài hơn 20 ký tự — mà nội dung là NGƯỢC lại: bảng đã
+      # đếm đủ ngưỡng, đây vẫn nói chưa cần người. `contains` + `min_len` không đọc được nghĩa.
+      target: P1
+      action: escalate
+      reason: "DEF-01 mới chỉ ghi nhận, chưa tới mức cần người quyết định, cứ để vòng sau xem lại"
 
   - name: review-qua-han-phai-canh-bao-dung-nguon-thieu
     topic_out: supervisor-actions
@@ -56,3 +69,8 @@ cases:
     expect:
       one_of: {target: [qa-debugger, qa], action: [warn, escalate]}
       min_len: {reason: 10}
+    bad:
+      # Cảnh báo nhắm vào nguồn ĐÃ review (reviewer) thay vì nguồn còn thiếu (qa) — TCK-11 vẫn treo
+      target: reviewer
+      action: warn
+      reason: "reviewer nên nhắc lại ticket TCK-11 đang quá hạn ở in_review"

@@ -233,3 +233,89 @@ def test_moi_duong_dan_trong_codeowners_ton_tai() -> None:
         if not (ROOT / mau.strip("/")).exists():
             hong.append(mau)
     assert not hong, f".github/CODEOWNERS trỏ vào đường dẫn không tồn tại: {hong}"
+
+
+# --- bản sao luật cho harness khác (`pt.1`) ---------------------------------
+#
+# Bốn file này tự khai "cố ý không chép lại luật" (`.cursorrules:4`) nhưng thực tế CÓ chép hai danh sách —
+# file cấm commit và tên gói — và đã trôi khỏi `AGENTS.md`. Agent không phải Claude Code không có hook nào
+# canh, nó đọc đúng bản trôi đó. Cổng này trích danh sách **từ nguồn** rồi soi mọi bản sao; chốt cứng danh
+# sách ở đây sẽ tự biến test thành bản sao thứ năm, trôi tiếp.
+
+BAN_SAO_LUAT = (".cursorrules", ".windsurfrules", ".clinerules", "GEMINI.md")
+AGENTS_MD = ROOT / "AGENTS.md"
+
+# Mục luật bắt đầu bằng "<số>. " và chạy tới mục kế (hoặc hết phần). Phải DOTALL + non-greedy: phần in đậm mở
+# đầu của luật bắt buộc 4 trải HAI dòng, regex một dòng sẽ sót đúng mục đó.
+_MUC = re.compile(r"^(\d+)\.[ ](.+?)(?=^\d+\.[ ]|\Z)", re.MULTILINE | re.DOTALL)
+
+
+def _than_phan(phan: str) -> str:
+    """Thân của một phần `## <phan>` trong `AGENTS.md`, cắt trước tiêu đề `##` kế tiếp."""
+    van = AGENTS_MD.read_text(encoding="utf-8")
+    m = re.search(rf"^## {re.escape(phan)}\n(.*?)(?=^## )", van, re.MULTILINE | re.DOTALL)
+    assert m, f"AGENTS.md không còn phần '## {phan}' — cổng này canh nhầm file hay luật đã đổi khung?"
+    return m.group(1)
+
+
+def _cac_muc(phan: str) -> dict[int, str]:
+    return {int(so): than for so, than in _MUC.findall(_than_phan(phan))}
+
+
+def _muc_luat(phan: str, so: int) -> str:
+    muc = _cac_muc(phan)
+    assert so in muc, f"AGENTS.md '{phan}' không có mục {so} (có: {sorted(muc)})"
+    return muc[so]
+
+
+def _phan_tu(van: str) -> tuple[str, ...]:
+    """Các phần tử của một danh sách liệt kê bằng dấu phẩy, bỏ backtick và nhấn mạnh markdown."""
+    ra = []
+    for tho in van.split(","):
+        sach = tho.replace("`", "").replace("**", "").strip().rstrip(".")
+        if sach:
+            ra.append(sach)
+    return tuple(ra)
+
+
+def _danh_sach_file_cam() -> tuple[str, ...]:
+    """Luật cấm 3: mọi thứ liệt kê sau "Không commit", tới hết câu."""
+    than = _muc_luat("Luật cấm", 3)
+    m = re.search(r"\*\*Không commit\*\*(.+?)\.\s", than, re.DOTALL)
+    assert m, "luật cấm 3 đổi cách viết — sửa cổng, đừng sửa luật cho vừa cổng"
+    return _phan_tu(m.group(1).replace("\n", " "))
+
+
+def _danh_sach_goi() -> tuple[str, ...]:
+    """Luật bắt buộc 3: tên năm gói + `all` của `dev-task.sh`."""
+    than = _muc_luat("Luật bắt buộc", 3)
+    m = re.search(r"`gói`:\s*`([^`]+)`", than)
+    assert m, "luật bắt buộc 3 đổi cách viết danh sách gói — sửa cổng, đừng sửa luật"
+    return tuple(p.strip() for p in m.group(1).split("|") if p.strip())
+
+
+def test_trich_du_moi_muc_luat_cua_agents_md() -> None:
+    """Regex sót một mục = cổng dưới canh thiếu một luật mà không ai biết.
+
+    Bẫy thật: phần in đậm mở đầu luật bắt buộc 4 trải hai dòng, regex `^\\d+\\. \\*\\*(.+?)\\*\\*` một dòng
+    sót đúng mục đó.
+    """
+    cam, bat_buoc = _cac_muc("Luật cấm"), _cac_muc("Luật bắt buộc")
+    assert sorted(cam) == list(range(1, 9)), f"đếm được {sorted(cam)} mục ở Luật cấm, mong 1..8"
+    assert sorted(bat_buoc) == list(range(1, 12)), f"đếm được {sorted(bat_buoc)} mục ở Luật bắt buộc, mong 1..11"
+
+
+@pytest.mark.parametrize("ten", BAN_SAO_LUAT)
+def test_ban_sao_luat_khong_thieu_phan_tu_danh_sach(ten: str) -> None:
+    """Bản sao thiếu một phần tử ⇒ agent đọc nó tin mình đúng luật trong khi đang phá luật.
+
+    Ví dụ đã xảy ra: cả bốn file thiếu "khoá/token, dữ liệu khách thật" của luật cấm 3 — agent commit khoá
+    mà không thấy mình sai, và gitleaks quét cả lịch sử nên xoá sau cũng không cứu được.
+    """
+    f = ROOT / ten
+    assert f.is_file(), f"{ten} biến mất — sửa BAN_SAO_LUAT hay khôi phục file?"
+    van = f.read_text(encoding="utf-8").replace("`", "")
+    thieu = [p for p in _danh_sach_file_cam() + _danh_sach_goi() if p not in van]
+    assert not thieu, (
+        f"{ten} chép lại danh sách của AGENTS.md nhưng thiếu: {thieu}. Bản sao trôi là bản sao nguy hiểm — "
+        f"thêm cho đủ, hoặc bỏ hẳn bản chép và chỉ trỏ về AGENTS.md.")

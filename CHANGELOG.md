@@ -6,6 +6,40 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- test(company): **`--selftest` — mỗi ca eval phải bác được bản `bad:` của chính nó** (`pt.6`, `pt.7`, `pt.9`,
+  ADR-0042). Repo có cổng cho *đầu vào* của phép đo eval (`--replay --strict`) và cho *kết quả* của nó
+  (`thresholds.yaml`), nhưng không có cổng nào hỏi **"thước này có bao giờ chỉ sai không?"**. Đo ra: **13/59 ca**
+  có `expect:` cho một output sai thật đi qua — mỗi ca như vậy xanh vĩnh viễn mà vẫn tính vào mẫu số
+  `min_pass_ratio`, tức làm điểm đẹp lên bằng một phép đo rỗng. Nay cả 59 ca mang một khối `bad:`, `check()`
+  phải bác được nó; ca thiếu `bad:` cũng đỏ; chạy **không gọi model, không đọc bản ghi** nên vào được CI cạnh
+  `--replay --strict`. 13 `expect:` lỏng đã siết theo đúng một chiều (siết `expect:`, không nới `bad:`), và
+  `--replay --strict` vẫn 59/59. Kèm `pt.9`: `thresholds.yaml` ghi `ops: cases: 8` trong khi `ops.yaml` có 9 ca
+  — cổng chống thu nhỏ bộ ca đang hở một ca, nay có ca test canh cho cả sáu agent. (#306)
+
+- feat(khung): **quy ước nợ kỹ thuật `no-ky-thuat` và lệnh thu hoạch** (`pt.2`, `pt.3`). `TRAPS.md` ghi bẫy
+  *đã mắc*; repo không có chỗ nào ghi thứ ngược lại — **nợ cố ý tạo ra**: một đơn giản hoá hôm nay không sai
+  nhưng có trần đã biết, và cái trần đó chỉ nằm trong đầu một người rồi mất cùng phiên của họ. Nay có mục
+  "Nợ kỹ thuật cố ý" trong `AGENTS.md` (khuôn một dòng `# no-ky-thuat: <trần>, <điều kiện quay lại>`, ranh giới
+  rõ với `TRAPS.md` và với TODO thường) và `/no-ky-thuat` thu mọi marker thành bảng, **gắn cờ `no-trigger` cho
+  chính những marker sẽ mục** — marker không nêu điều kiện quay lại. Lệnh chỉ đọc, không sửa gì; cổng khung
+  bắt buộc nó tồn tại. (#306)
+
+- test(khung): **cổng chặn 4 file luật harness trôi khỏi `AGENTS.md`** (`pt.1`). `.cursorrules`,
+  `.windsurfrules`, `.clinerules` và `GEMINI.md` tự khai "cố ý không chép lại luật" nhưng thực tế có chép hai
+  danh sách — file cấm commit và tên gói — và **đã trôi**: cả bốn thiếu "khoá/token, dữ liệu khách thật" của
+  luật cấm 3, tức agent không phải Claude Code (không có hook nào canh) đọc bản thiếu đó rồi commit khoá mà
+  không biết mình sai. Cổng mới ở `test_cong_repo.py` **trích danh sách từ chính `AGENTS.md`** (chốt cứng ở
+  test chỉ tạo bản sao thứ năm) và soi cả bốn bản sao; kèm một ca đếm đủ 8 mục cấm + 11 mục bắt buộc để regex
+  trích không sót mục in đậm trải hai dòng. Bốn file đã được sửa cho đủ. (#306)
+
+- fix(khung): **`pre-commit-gate.sh` canh cây đang commit, không phải checkout chính** (`pt.10`). `CLAUDE.md`
+  luật 2 bắt mỗi phiên một `git worktree`, nhưng hook đọc `git -C "$CLAUDE_PROJECT_DIR"` — checkout chính. Hỏng
+  hai chiều cùng lúc: phép 1 thấy nhánh `main` của checkout chính nên **chặn oan mọi commit đúng luật**, phép
+  2–4 đọc index rỗng nên **file cấm, hạ `fail_under` và cổng gói không được canh gì**. Tách hai nghĩa: `$ROOT`
+  chỉ để tìm `scripts/dev-task.sh`, `$CAY` (`git rev-parse --show-toplevel`, lùi về `$ROOT`) cho mọi phép đọc
+  trạng thái git. Bốn ca mới dựng worktree thật, ba ca đỏ trước khi sửa. Đã rà cả họ lỗi: `block-dangerous-git.sh`
+  (không đọc trạng thái git) và `auto-format.sh` (chỉ dùng `$ROOT` để tìm script) an toàn, không phải sửa. (#306)
+
 - docs(khung): **kế hoạch thi hành `pt` — năm cơ chế lấy từ `DietrichGebert/ponytail`.** Đo hiện trạng bằng
   4 subagent `Explore` chỉ đọc tìm ra **ba lỗi đang tồn tại**, không phải ba chỗ "có thể cải thiện": 4 file luật
   harness đã trôi khỏi `AGENTS.md:34` (thiếu "khoá/token, dữ liệu khách thật"); `evals/thresholds.yaml:15` ghi

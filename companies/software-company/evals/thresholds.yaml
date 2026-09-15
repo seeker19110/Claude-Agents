@@ -11,7 +11,7 @@ builder:
   cases: 13
 ops:
   min_pass_ratio: 0.95
-  cases: 8
+  cases: 9
 product:
   min_pass_ratio: 0.95
   cases: 16

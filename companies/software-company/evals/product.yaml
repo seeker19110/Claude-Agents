@@ -23,6 +23,15 @@ cases:
       equals: {project_id: P1, kind: intake}
       min_len: {data.constraints: 3, data.questions: 2}
       contains: {data.constraints: "13/2023"}
+    bad:
+      # bỏ sót ràng buộc pháp lý và ngân sách, chỉ chép lại một ý dễ thấy nhất của đề bài
+      project_id: P1
+      kind: intake
+      data:
+        goal: "Làm cổng đặt lịch khám online cho phòng khám"
+        users: ["bệnh nhân", "lễ tân"]
+        constraints: ["dùng được trên điện thoại", "giao diện tiếng Việt"]
+        questions: ["Khi nào bắt đầu dự án?"]
 
   - name: change-request-da-duyet-phai-truy-ve-change-id
     phase: intake
@@ -43,6 +52,16 @@ cases:
       equals: {project_id: P1, kind: intake, data.change_id: CHG-1}
       contains: {data.goals.0.text: "thanh toán"}
       min_len: {data.questions: 2, data.constraints: 1}
+    bad:
+      # giữ đúng change_id nhưng mục tiêu viết chung chung, không nói ra việc thanh toán mà CHG-1 yêu cầu
+      project_id: P1
+      kind: intake
+      data:
+        change_id: CHG-1
+        goals:
+          - {id: G-1, text: "Cải thiện trải nghiệm đặt lịch để bệnh nhân đến khám đầy đủ hơn"}
+        constraints: ["giữ nguyên quy trình lễ tân hiện tại"]
+        questions: ["Có cần đổi giao diện không?"]
 
   - name: yeu-cau-mo-ho-phai-thanh-cau-hoi-co-lua-chon-va-mac-dinh
     phase: intake
@@ -65,6 +84,13 @@ cases:
       equals: {project_id: P1, round: 1}
       min_len: {questions: 2, questions.0.options: 2, questions.0.default: 1}
       max_len: {questions: 10, questions.0.options: 4}
+    bad:
+      # hỏi đúng chỗ mơ hồ nhưng là câu hỏi mở: không có lựa chọn, không có mặc định để đi tiếp khi khách im lặng
+      project_id: P1
+      round: 1
+      questions:
+        - {id: Q-1, text: "Nhắc lịch qua kênh nào?", options: [], default: ""}
+        - {id: Q-2, text: "'Nhanh' nghĩa là bao nhiêu giây?", options: [], default: ""}
 
   - name: draft-ro-rang-thi-hoi-it-khong-hoi-lay-le
     phase: intake
@@ -84,6 +110,16 @@ cases:
     expect:
       equals: {project_id: P2, round: 1}
       max_len: {questions: 3}
+    bad:
+      # draft đã rõ số đo và nguồn, vẫn hỏi lấy lệ 5 câu — hỏi thừa làm khách mất niềm tin vào bản draft
+      project_id: P2
+      round: 1
+      questions:
+        - {id: Q-1, text: "Xuất CSV có cần cột nào đặc biệt không?", options: ["có", "không"], default: "không"}
+        - {id: Q-2, text: "Mã hoá UTF-8 có kèm BOM không?", options: ["có", "không"], default: "không"}
+        - {id: Q-3, text: "Máy chạy là 2 vCPU đúng chứ?", options: ["đúng", "khác"], default: "đúng"}
+        - {id: Q-4, text: "Có cần xuất Excel không?", options: ["có", "không"], default: "không"}
+        - {id: Q-5, text: "Ai là người dùng chính?", options: ["kế toán", "vận hành"], default: "kế toán"}
 
   # ---------- pha research (researcher.md) ----------
   - name: de-bai-day-du-phai-ra-4-muc-co-nguon
@@ -113,6 +149,22 @@ cases:
       any_of:
         - - min_len: {data.domain.glossary: 3}
           - min_len: {data.domain.glossary_ref: 1}
+    bad:
+      # nghiên cứu hời hợt: một persona, thuật ngữ nghiệp vụ sơ sài và không trỏ artifact, phần pháp lý nói chung chung
+      project_id: P1
+      kind: researcher
+      sources: ["họp kickoff 2026-09-01"]
+      data:
+        domain:
+          glossary: ["lịch hẹn", "bệnh nhân"]
+          regulations: ["tuân thủ pháp luật Việt Nam về dữ liệu cá nhân"]
+        ux:
+          personas: ["bệnh nhân"]
+          flows: ["đặt lịch → xác nhận"]
+        codebase: "không áp dụng — sản phẩm mới"
+        tech:
+          options: ["web app + Zalo OA API"]
+          ai_risks: []
 
   - name: khong-co-codebase-phai-ghi-khong-ap-dung-khong-bia
     phase: research
@@ -133,6 +185,18 @@ cases:
       equals: {project_id: P2, kind: researcher}
       contains: {data.codebase: "không áp dụng"}
       min_len: {data.tech.ai_risks: 1, data.tech.options: 1}
+    bad:
+      # bịa ra một codebase không tồn tại và bỏ trắng rủi ro AI dù sản phẩm dựa hẳn vào LLM
+      project_id: P2
+      kind: researcher
+      sources: ["brief khách"]
+      data:
+        codebase: "repo hiện tại dùng React Native, module ghi âm đã có sẵn"
+        domain: {glossary: ["ghi chú", "chuyến đi"]}
+        ux: {personas: ["tài xế xe tải"], flows: ["ghi âm → tóm tắt"]}
+        tech:
+          options: ["React Native + Whisper on-device"]
+          ai_risks: []
 
   # ---------- pha spec (synthesizer.md + spec-writer.md + risk.md) ----------
   - name: du-bao-cao-phai-ra-yeu-cau-co-source-va-nfr-do-duoc
@@ -173,6 +237,15 @@ cases:
       # 100% requirement có source; NFR có số đo — "phải nhanh" không phải một yêu cầu
       equals: {project_id: P1, kind: draft}
       min_len: {requirements: 3, requirements.0.source: 3}
+    bad:
+      # gom ba mục tiêu thành hai yêu cầu và bỏ trắng nguồn — không truy được câu nào của khách đẻ ra yêu cầu này
+      project_id: P1
+      kind: draft
+      requirements:
+        - {id: R-1, type: FR, text: "Bệnh nhân đặt lịch khám online", source: "", priority: must}
+        - {id: R-2, type: NFR, text: "Hệ thống phải nhanh và ổn định", source: "", priority: should}
+      risks: [{id: RISK-1, req_id: R-1, category: privacy, severity: high, mitigation: "mã hoá dữ liệu", owner: security}]
+      conflicts: []
 
   - name: thieu-muc-nghien-cuu-phai-tra-rong-khong-duoc-bia
     phase: spec
@@ -195,6 +268,15 @@ cases:
       equals: {project_id: P2, kind: draft}
       max_len: {requirements: 0}
       min_len: {conflicts: 1}
+    bad:
+      # thiếu ux và codebase trong báo cáo nhưng vẫn bịa ra yêu cầu, và không nêu mâu thuẫn nào
+      project_id: P2
+      kind: draft
+      requirements:
+        - {id: R-1, type: FR, text: "Tài xế ghi chú bằng giọng nói", source: "brief khách", priority: must}
+        - {id: R-2, type: FR, text: "Ứng dụng tóm tắt ghi chú bằng AI", source: "brief khách", priority: must}
+      risks: []
+      conflicts: []
 
   - name: luong-thanh-toan-phai-ra-rui-ro-co-mitigation-va-owner
     phase: spec
@@ -222,6 +304,16 @@ cases:
       # Mọi rủi ro High phải có mitigation và owner; rủi ro không ai sở hữu là rủi ro không ai xử lý.
       equals: {project_id: P1, kind: draft}
       min_len: {risks: 2, risks.0.mitigation: 3, risks.0.owner: 2}
+    bad:
+      # chỉ nêu một rủi ro, lại bỏ trắng biện pháp và người sở hữu — rủi ro không ai sở hữu là rủi ro không ai xử lý
+      project_id: P1
+      kind: draft
+      requirements:
+        - {id: R-1, type: FR, text: "Bệnh nhân thanh toán trước phí khám qua ví điện tử", source: "CHG-1", priority: must}
+        - {id: R-2, type: FR, text: "Lưu số căn cước và tiền sử bệnh của bệnh nhân", source: "họp kickoff 2026-09-01", priority: must}
+      risks:
+        - {id: RISK-1, req_id: R-1, category: payment, severity: high, mitigation: "", owner: ""}
+      conflicts: []
 
   - name: yeu-cau-rui-ro-cao-khong-co-bien-phap-phai-de-xuat-cat-hoac-hoan
     phase: spec
@@ -245,6 +337,15 @@ cases:
     expect:
       equals: {project_id: P2, kind: draft}
       min_len: {risks: 1, conflicts: 1}
+    bad:
+      # nhận nguyên yêu cầu LLM kê đơn không cần bác sĩ duyệt: không ghi rủi ro, không nêu mâu thuẫn với luật khám chữa bệnh
+      project_id: P2
+      kind: draft
+      requirements:
+        - {id: R-1, type: FR, text: "Tự động chẩn đoán sơ bộ bằng LLM và gợi ý đơn thuốc", source: "ý tưởng của khách", priority: must}
+        - {id: R-2, type: FR, text: "Đặt lịch khám online", source: "họp kickoff 2026-09-01", priority: must}
+      risks: []
+      conflicts: []
 
   - name: draft-day-du-phai-ra-spec-cho-nguoi-duyet-khong-tu-duyet
     phase: spec
@@ -266,6 +367,12 @@ cases:
       # trạng thái luôn là pending_human: agent không tự ký duyệt spec của chính mình
       equals: {project_id: P1, status: pending_human}
       min_len: {artifacts.prd: 3, artifacts.requirements: 3}
+    bad:
+      # draft sạch nên agent tự ký duyệt spec của chính mình thay vì chuyển cho người
+      project_id: P1
+      status: approved
+      reviewer: product
+      artifacts: {prd: docs/PRD.md, requirements: docs/requirements.json, risks: docs/risk-register.json}
 
   - name: draft-con-mau-thuan-van-khong-duoc-tu-duyet
     phase: spec
@@ -285,6 +392,12 @@ cases:
     expect:
       equals: {project_id: P2}
       one_of: {status: [pending_human]}
+    bad:
+      # còn mâu thuẫn hoàn tiền chưa chốt, vẫn tự chuyển sang trạng thái đã duyệt
+      project_id: P2
+      status: approved
+      reviewer: product
+      artifacts: {prd: docs/PRD.md, requirements: docs/requirements.json}
 
   - name: ung-dung-phai-khai-kind-va-runtime-de-gate-1-hoi-chay-o-dau
     phase: spec
@@ -306,6 +419,12 @@ cases:
     expect:
       equals: {project_id: P3, status: pending_human, kind: application}
       min_len: {runtime.command: 3, runtime.health: 1, artifacts.prd: 3}
+    bad:
+      # rõ là ứng dụng chạy được nhưng spec không khai kind=application và không nói chạy bằng lệnh gì, kiểm sống ở đâu
+      project_id: P3
+      status: pending_human
+      kind: document
+      artifacts: {prd: docs/PRD.md, requirements: docs/requirements.json}
 
   # ---------- pha plan (delivery-lead.md) ----------
   - name: spec-duyet-phai-ra-ticket-truy-vet-duoc-va-co-uoc-luong
@@ -328,6 +447,15 @@ cases:
       equals: {project_id: P1, retry: 0}
       min_len: {acceptance: 1, requirement_id: 3}
       one_of: {stack: [backend, frontend, mobile, database, platform, data]}
+    bad:
+      # ticket không trỏ về requirement nào và không có tiêu chí nghiệm thu — không ai biết vì sao phải làm, làm xong thế nào là xong
+      project_id: P1
+      retry: 0
+      ticket_id: TCK-1
+      title: "Làm phần thanh toán"
+      stack: backend
+      requirement_id: ""
+      acceptance: []
 
   - name: su-co-code-phai-thanh-ticket-uu-tien-cao
     phase: plan
@@ -347,6 +475,15 @@ cases:
       equals: {project_id: P1, retry: 0}
       one_of: {priority: [1, 2], stack: [backend, frontend, mobile, database, platform, data]}
       min_len: {acceptance: 1}
+    bad:
+      # sự cố SEV1 trừ tiền hai lần mà xếp ưu tiên thấp và không có tiêu chí nghiệm thu
+      project_id: P1
+      retry: 0
+      ticket_id: TCK-11
+      title: "Xem lại luồng thanh toán"
+      stack: backend
+      priority: 4
+      acceptance: []
 
   # ---------- ca "nhầm pha" bắt buộc (§11) ----------
   - name: nham-pha-de-bai-tho-gui-voi-phase-plan-phai-noi-ra-chua-co-gi-de-chia-ticket
@@ -369,3 +506,12 @@ cases:
       equals: {project_id: P9, kind: intake}
       contains: {data.goals.0.text: "kho"}
       min_len: {data.questions: 2}
+    bad:
+      # trượt theo prompt pha plan: mục tiêu viết chung chung không nhắc việc kho, và chỉ hỏi lấy lệ một câu
+      project_id: P9
+      kind: intake
+      data:
+        goals:
+          - {id: G-1, text: "Số hoá quy trình ghi sổ giấy của nhà máy"}
+        constraints: ["chưa chốt ngân sách"]
+        questions: ["Bao giờ triển khai?"]

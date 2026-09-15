@@ -80,6 +80,10 @@ jobs:
       - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
       # Eval từ bản ghi (ADR-0010): không gọi model. `--strict` đỏ khi agent có tên trong
       # evals/recordings/REQUIRED.txt mà thiếu bản ghi, hoặc bản ghi ghi ở phiên bản prompt cũ.
+      # Cổng cho CHÍNH CÁI THƯỚC (ADR-0042): mỗi ca phải bác được bản `bad:` của nó. Không gọi model, không
+      # đọc bản ghi — chạy trước `--replay` vì một thước không chia vạch thì điểm phía sau không có nghĩa.
+      - run: uv run python -m company.evals all --selftest
+        working-directory: companies/software-company
       - run: uv run python -m company.evals all --replay --strict
         working-directory: companies/software-company
 

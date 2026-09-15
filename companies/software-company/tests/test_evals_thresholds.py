@@ -136,3 +136,23 @@ def test_load_thresholds_gia_tri_khong_phai_so_nem_llmerror(tmp_path: Path) -> N
     p.write_text(yaml.safe_dump({"a0": {"min_pass_ratio": "cao", "cases": 8}}), encoding="utf-8")
     with pytest.raises(evals.LLMError):
         evals.load_thresholds(p)
+
+
+# --- `cases` phải khớp bộ ca THẬT (`pt.9`) ----------------------------------
+
+
+@pytest.mark.parametrize("agent_id", sorted(evals.load_thresholds()))
+def test_cases_trong_thresholds_khop_bo_ca_that(agent_id: str) -> None:
+    """`cases` là số ca ĐANG có, không phải số ca của lần đo nào đó rồi thôi.
+
+    Cổng chỉ so `total < cases` (`xagents_core/evals.py:433`), nên `cases` ghi thấp hơn thực tế là một lỗ
+    đúng bằng phần lệch: xoá ngần ấy ca vẫn xanh — đúng thứ cổng này sinh ra để chặn. Đo 2026-09-15:
+    `ops` ghi 8 trong khi `ops.yaml` có 9 ca.
+
+    Chiều sửa chỉ có một: bộ ca là sự thật, con số là bản chép. Thấy đỏ thì sửa số, đừng xoá ca cho khớp số.
+    """
+    that = len(evals.load_cases(agent_id))
+    ghi = evals.load_thresholds()[agent_id].cases
+    assert ghi == that, (
+        f"thresholds.yaml ghi `{agent_id}: cases: {ghi}` nhưng bộ ca thật có {that} ca — "
+        f"cổng chống thu nhỏ bộ đang hở {that - ghi} ca. Sửa con số, không sửa bộ ca.")

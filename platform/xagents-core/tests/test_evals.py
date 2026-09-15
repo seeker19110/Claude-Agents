@@ -14,6 +14,8 @@ import pytest
 import yaml
 
 from xagents_core.evals import (
+    CHUA_CHUNG_MINH,
+    KHONG_BAT_DUOC,
     CaseResult,
     EvalSuite,
     RecordingClient,
@@ -23,6 +25,7 @@ from xagents_core.evals import (
     check,
     load_recording_score,
     prompt_key,
+    selftest_case,
 )
 from xagents_core.llm import Completion, LLMError
 
@@ -400,3 +403,43 @@ def test_prompt_version_van_chot_luc_INIT_ke_ca_khi_runs_3(tmp_path):
     s.load_agents = lambda: {"bien-tap": FakeSpec(version=99)}   # type: ignore[method-assign]
     s.run_eval("bien-tap", rec)
     assert json.loads(rec.save().read_text(encoding="utf-8"))["prompt_version"] == 3
+
+
+# ---------- `--selftest`: thước phải tự chứng minh nó chỉ sai được (ADR-0042) ----------
+
+
+def test_selftest_bat_duoc_expect_long():
+    """Ca lỏng là ca xanh vĩnh viễn — và vẫn được đếm vào mẫu số `min_pass_ratio`, nên nó làm điểm đẹp lên
+    bằng một phép đo rỗng. Nới `expect` ra thì `selftest_case` phải bác đúng ca đó."""
+    chat = {"expect": {"contains": {"s": "x"}, "min_len": {"items": 2}}, "bad": {"s": "x", "items": [1]}}
+    assert selftest_case(chat) is None, "`min_len` bác được bản bad ⇒ ca này tự chứng minh được"
+
+    long = {"expect": {"contains": {"s": "x"}}, "bad": {"s": "x", "items": [1]}}
+    assert selftest_case(long) == KHONG_BAT_DUOC, (
+        "bỏ `min_len` đi thì `expect` chỉ còn đòi chữ 'x' — đúng bản bad cũng qua, ca thành vô nghĩa")
+
+
+def test_ca_thieu_bad_bi_gan_chua_chung_minh():
+    """Không có `bad:` thì ca chưa chứng minh được gì — cũng đỏ, không chỉ cảnh báo (ADR-0042 quyết định 3)."""
+    assert selftest_case({"expect": {"equals": {"x": 1}}}) == CHUA_CHUNG_MINH
+
+
+def test_selftest_bac_bad_rong_khi_expect_doi_thu_gi_do():
+    """`bad: {}` không phải lối tắt: `expect` đòi bất cứ thứ gì thì payload rỗng phải trượt."""
+    assert selftest_case({"expect": {"equals": {"x": 1}}, "bad": {}}) is None
+
+
+def test_selftest_ke_ten_moi_ca_hong_cua_mot_agent(tmp_path):
+    """`EvalSuite.selftest` trả (tên ca, lý do) cho MỌI ca hỏng — một ca hỏng không được che ca sau."""
+    s = _suite(tmp_path, cases=[
+        {"name": "long", "expect": {"contains": {"s": "x"}}, "bad": {"s": "x"}},
+        {"name": "thieu-bad", "expect": {"equals": {"x": 1}}},
+        {"name": "dat", "expect": {"equals": {"x": 1}}, "bad": {"x": 2}},
+    ])
+    assert s.selftest("bien-tap") == [("long", KHONG_BAT_DUOC), ("thieu-bad", CHUA_CHUNG_MINH)]
+
+
+def test_selftest_dat_ten_theo_chi_so_khi_ca_khong_co_name(tmp_path):
+    """Ca quên `name:` vẫn phải gọi tên được, nếu không người đọc log không biết sửa ca nào."""
+    s = _suite(tmp_path, cases=[{"expect": {"equals": {"x": 1}}}])
+    assert s.selftest("bien-tap") == [("ca-0", CHUA_CHUNG_MINH)]
