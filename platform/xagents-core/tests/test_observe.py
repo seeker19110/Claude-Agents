@@ -59,7 +59,10 @@ def test_sink_none_la_no_op_that_su(monkeypatch):
     """Chiều ngược 1: không cấu hình sink thì `span()` KHÔNG đọc đồng hồ và KHÔNG cấp phát `Span`."""
     def no_clock() -> int:
         raise AssertionError("sink=None mà vẫn đọc đồng hồ")
-    monkeypatch.setattr(observe.time, "monotonic_ns", no_clock)
+    # Vá `observe._now_ns` — đúng thứ `span()` gọi. Trước 2026-09-15 ca này vá `observe.time.monotonic_ns`;
+    # khi đồng hồ đổi sang `perf_counter_ns` nó vẫn XANH nhưng xanh RỖNG: hàm bị vá không còn ai gọi, nên phép
+    # thử không còn chứng minh điều gì. Vá đúng chỗ mã thật đọc, đừng vá một cái tên trong `time`.
+    monkeypatch.setattr(observe, "_now_ns", no_clock)
     with span("a", None, x=1) as sp:
         assert sp is None
 
@@ -215,3 +218,23 @@ def test_toolbox_mac_dinh_khong_co_sink(monkeypatch):
     """Mặc định `ToolBox.sink is None` → không đọc đồng hồ span (đồng hồ của `ms` là `monotonic`, khác hàm)."""
     monkeypatch.setattr(observe.time, "monotonic_ns", lambda: (_ for _ in ()).throw(AssertionError("đọc đồng hồ")))
     assert _box().call(ToolCall(id="1", name="echo", args={"x": "a"})) == "đã nhận a"
+
+
+def test_span_dung_dong_ho_du_min_de_do_span_ngan():
+    """Đồng hồ của span phải ĐƠN ĐIỆU **và** phân giải dưới micro-giây.
+
+    `time.monotonic` trên Windows + CPython ≤ 3.12 là `GetTickCount64()`, phân giải **15,625 ms** (đo trong
+    venv của repo, Python 3.11.15). Mọi span ngắn hơn một tick báo `duration_ms = 0.0` — module sinh ra để
+    "đo được thời gian" lại không đo được gì dưới 15 ms. Trên Linux/CI thì `monotonic` là `clock_gettime`
+    phân giải ns nên **CI không bao giờ thấy**; chỉ máy Windows thấy, và thấy dưới dạng hai ca đỏ CHẬP CHỜN
+    (`sleep(0.002)` chỉ vượt tick khoảng 13% số lần) — nên dễ bị bỏ qua như "máy bận".
+
+    `perf_counter` cũng `monotonic=True` nhưng là `QueryPerformanceCounter()`, phân giải 1e-7 s trên cùng máy.
+    Đo bằng `get_clock_info` thay vì bằng `sleep`: phép thử dựa trên `sleep` chính là phép thử chập chờn vừa
+    phải vá.
+    """
+    info = time.get_clock_info(observe.CLOCK)
+    assert info.monotonic, f"đồng hồ `{observe.CLOCK}` phải đơn điệu: span không được lùi khi giờ hệ thống đổi"
+    assert info.resolution <= 1e-6, (
+        f"đồng hồ `{observe.CLOCK}` phân giải {info.resolution}s ({info.implementation}) — span ngắn hơn thế "
+        f"báo duration_ms = 0.0 và không ai biết")

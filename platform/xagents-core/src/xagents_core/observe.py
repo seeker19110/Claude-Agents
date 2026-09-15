@@ -16,7 +16,7 @@ và lùi về `NullSink` khi thiếu gói (quyết định 4).
 span vào đường nóng của cả sáu package mà không phải bọc mỗi chỗ ghép bằng một cờ cấu hình riêng (quyết định 5).
 "Tắt" ở đây nghĩa là **không cấp phát, không đọc đồng hồ, không gọi sink** — nên chỗ gọi phải chịu được `None`
 (`if sp is not None: sp.attrs[...] = ...`). Test `test_sink_none_la_no_op_that_su` chứng minh bằng cách cho
-`time.monotonic_ns` ném ngoại lệ; một bản "vẫn tạo Span rồi bỏ" sẽ đỏ ở đó.
+`_now_ns` ném ngoại lệ; một bản "vẫn tạo Span rồi bỏ" sẽ đỏ ở đó.
 
 **Vì sao cha đi bằng `contextvars` chứ không bằng biến toàn cục.** Scheduler chạy `ThreadPoolExecutor`: hai
 ticket song song với một biến toàn cục sẽ gán span của ticket A làm cha cho ticket B. `ContextVar` có ngữ cảnh
@@ -41,10 +41,21 @@ from typing import Any, Protocol, runtime_checkable
 __all__ = ["MemorySink", "NullSink", "Span", "SpanSink", "otel_sink", "span", "use_parent"]
 
 
+# Đồng hồ của span. `perf_counter` chứ KHÔNG `monotonic`, dù cả hai đều `monotonic=True`:
+# trên Windows + CPython ≤ 3.12, `time.monotonic` là `GetTickCount64()` phân giải **15,625 ms** (đo trong venv
+# của repo, Python 3.11.15), nên mọi span ngắn hơn một tick báo `duration_ms = 0.0` — module sinh ra để đo thời
+# gian lại mù đúng khoảng ngắn. `perf_counter` là `QueryPerformanceCounter()`, phân giải 1e-7 s trên cùng máy.
+# Trên Linux cả hai đều là `clock_gettime` phân giải ns, nên CI KHÔNG BAO GIỜ thấy khác biệt — lý do lỗi này
+# sống sót tới 2026-09-15 dưới dạng hai ca đỏ chập chờn chỉ hiện trên máy Windows.
+# `perf_counter` không phải mốc treo tường và có thể khác gốc giữa các tiến trình: không sao, span chỉ dùng HIỆU.
+CLOCK = "perf_counter"
+_now_ns = time.perf_counter_ns
+
+
 @dataclass
 class Span:
-    """Một khoảng thời gian có tên, có cha. `start_ns`/`end_ns` là đồng hồ ĐƠN ĐIỆU (`monotonic_ns`) — dùng để
-    đo hiệu, không phải để biết "lúc mấy giờ"; sink nào cần mốc treo tường thì tự quy đổi (xem `_OtelSink`)."""
+    """Một khoảng thời gian có tên, có cha. `start_ns`/`end_ns` là đồng hồ đơn điệu `CLOCK` — dùng để đo HIỆU,
+    không phải để biết "lúc mấy giờ"; sink nào cần mốc treo tường thì tự quy đổi (xem `_OtelSink`)."""
     name: str
     start_ns: int
     end_ns: int = 0
@@ -93,7 +104,7 @@ def span(name: str, sink: SpanSink | None, **attrs: Any) -> Iterator[Span | None
     if sink is None:
         yield None
         return
-    sp = Span(name=name, start_ns=time.monotonic_ns(), attrs=dict(attrs), parent=_current.get())
+    sp = Span(name=name, start_ns=_now_ns(), attrs=dict(attrs), parent=_current.get())
     token = _current.set(sp)
     try:
         yield sp
@@ -102,7 +113,7 @@ def span(name: str, sink: SpanSink | None, **attrs: Any) -> Iterator[Span | None
         raise
     finally:
         _current.reset(token)
-        sp.end_ns = time.monotonic_ns()
+        sp.end_ns = _now_ns()
         sink.emit(sp)
 
 
