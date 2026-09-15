@@ -6,6 +6,14 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(khung): **`pt.8` chờ người — subscription không đóng được ngưỡng eval** (#314). Đo bằng
+  `provider: claude-code` (subscription, ADR-0019): bốn câu chống over-engineering cho `builder.md` làm điểm
+  eval tệ đi thật (0.54 → 0.23), nhưng ngay cả prompt gốc cũng dưới xa `min_pass_ratio: 0.95` — client này
+  không có đường cấp tool cho `builder` trong chế độ eval (`run()` không truyền `tools=`, khác
+  `generate_in_workspace()`). Không commit bản ghi điểm thấp; cần backend có tool thật hoặc sửa harness
+  (việc kiến trúc, ngoài phạm vi `pt.8`) trước khi ghi lại được. `pt.4`/`pt.5` vẫn chờ người (đo `SubagentStart`
+  bị classifier auto-mode chặn tự sửa cấu hình).
+
 - docs(sessions): **chốt phiên 2026-09-15** — sáu PR (#304, #307, #308, #309, #310, #311) và một sợi chỉ xuyên
   suốt đáng đọc trước khi làm tiếp: bốn lỗi khác nhau trong phiên (#299, #307, #310, #311) **cùng một khuôn** —
   *phép thử lệ thuộc môi trường ở chỗ không ai nghĩ tới* (máy có WSL · thứ tự merge · `$HOME` có `llm.yaml` ·
