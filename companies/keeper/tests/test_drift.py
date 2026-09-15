@@ -73,8 +73,7 @@ def test_sc_agent_drift_nguon_khong_ton_tai(tmp_path: Path) -> None:
 def test_sc_agent_drift_bo_qua_file_khong_co_comment_nguon(tmp_path: Path) -> None:
     claude_dir = tmp_path / ".claude" / "agents"
     claude_dir.mkdir(parents=True)
-    (claude_dir / "sc-khac.md").write_text("---\nname: sc-khac\n---\n\nkhông có comment dẫn xuất\n",
-                                            encoding="utf-8")
+    (claude_dir / "sc-khac.md").write_text("---\nname: sc-khac\n---\n\nkhông có comment dẫn xuất\n", encoding="utf-8")
     assert drift.sc_agent_drift(claude_dir, tmp_path / "software-company") == []
 
 
@@ -140,13 +139,16 @@ def _commit(repo: Path, message: str, when: datetime) -> None:
     subprocess.run(["git", "add", "-A"], cwd=str(repo), check=True, capture_output=True)
     subprocess.run(
         ["git", "commit", "-m", message, "--date", iso],
-        cwd=str(repo), check=True, capture_output=True,
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
         env={**_base_env(), **dict(a.split("=", 1) for a in env_args)},
     )
 
 
 def _base_env() -> dict[str, str]:
     import os
+
     return dict(os.environ)
 
 
@@ -213,8 +215,23 @@ def test_changelog_drift_commit_khong_co_so_pr_bi_bo_qua(tmp_path: Path) -> None
     assert drift.changelog_drift(repo, repo / "CHANGELOG.md") == []
 
 
+def test_changelog_drift_bo_qua_so_pr_khong_o_cuoi_tieu_de(tmp_path: Path) -> None:
+    """`(#n)` khuôn squash-merge của GitHub luôn ở CUỐI tiêu đề. Một commit tường thuật ("điền số PR (#306)
+    vào CHANGELOG") có `(#306)` giữa câu văn, không phải hậu tố squash-merge — không được coi là PR #306 vừa
+    merge, nếu không mọi commit nhắc TỚI một số PR bằng lời cũng tự biến thành một "PR merged" giả."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    after_cutoff = drift.CHANGELOG_RULE_CUTOFF + timedelta(days=1)
+    _commit(repo, "docs: điền số PR (#306) vào CHANGELOG và nhật ký phiên", after_cutoff)
+    changelog = repo / "CHANGELOG.md"
+    changelog.write_text("# Changelog\n", encoding="utf-8")  # không có (#306) — không được soi vì đây không
+
+    assert drift.changelog_drift(repo, changelog) == []
+
+
 def test_git_log_that_bai_tra_rong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`git log` thất bại (returncode != 0, ví dụ thư mục không phải repo) → rỗng, không ném."""
+
     class _Bad:
         returncode = 1
         stdout = ""
@@ -226,6 +243,7 @@ def test_git_log_that_bai_tra_rong(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 def test_git_log_dong_hong_va_ngay_hong_bi_bo_qua(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Dòng không có ký tự phân cách `\\x1f` (không đúng khuôn `--format`) và dòng có ngày không parse được
     đều bị bỏ qua, không ném lỗi — chỉ dòng hợp lệ mới vào kết quả."""
+
     class _Ok:
         returncode = 0
         stdout = (
@@ -251,14 +269,18 @@ def test_scan_tong_hop(tmp_path: Path) -> None:
     (company_root / "agents").mkdir(parents=True)
 
     out = drift.scan(
-        claude_agents_dir=claude_dir, golden_agents_dir=golden_dir, company_root=company_root,
-        repo=repo, changelog=repo / "CHANGELOG.md",
+        claude_agents_dir=claude_dir,
+        golden_agents_dir=golden_dir,
+        company_root=company_root,
+        repo=repo,
+        changelog=repo / "CHANGELOG.md",
     )
     assert isinstance(out, list)
 
 
 # --- phép (d): chỗ trống chưa điền số PR. Ba trong bốn ca thiếu dòng CHANGELOG (2026-09-09) là "quên điền
 # --- số" chứ không phải "quên viết dòng" — phép (c) mù với chúng khi dòng đã tồn tại.
+
 
 def test_placeholder_bat_cho_trong_that(tmp_path: Path) -> None:
     cl = tmp_path / "CHANGELOG.md"

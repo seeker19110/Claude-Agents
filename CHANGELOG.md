@@ -6,6 +6,12 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(keeper): **`drift-check` báo nhầm một PR đang mở là "đã merge thiếu CHANGELOG"** (#306). `_PR_REF_RE` khớp
+  `(#n)` ở BẤT KỲ ĐÂU trong tiêu đề commit, trong khi khuôn squash-merge của GitHub luôn đặt nó ở **cuối**. Commit
+  văn xuôi nhắc tới một số PR bằng lời (`docs: điền số PR (#306) vào CHANGELOG...`) tự biến thành một "PR #306 vừa
+  merge" giả và tự chặn CI của chính PR #306. Đã neo regex vào cuối chuỗi; ca chiều ngược:
+  `test_changelog_drift_bo_qua_so_pr_khong_o_cuoi_tieu_de`.
+
 - test(company): **`--selftest` — mỗi ca eval phải bác được bản `bad:` của chính nó** (`pt.6`, `pt.7`, `pt.9`, #306,
   ADR-0042). Repo có cổng cho *đầu vào* của phép đo eval (`--replay --strict`) và cho *kết quả* của nó
   (`thresholds.yaml`), nhưng không có cổng nào hỏi **"thước này có bao giờ chỉ sai không?"**. Đo ra: **13/59 ca**

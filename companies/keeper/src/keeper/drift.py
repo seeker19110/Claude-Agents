@@ -17,6 +17,7 @@ Cơ chế thật: so `version=<n>` ghi trong comment đó với trường `versi
 `tests/golden/agents/<id>.md` mang đúng khuôn dấu vết tương tự: `<!-- golden agent=<id> version=<n> -->`
 (so cùng cơ chế cho phép (b)).
 """
+
 from __future__ import annotations
 
 import re
@@ -29,7 +30,7 @@ from .events import Signal
 _SC_SRC_RE = re.compile(r"<!--\s*SINH TỰ ĐỘNG từ (?P<src>\S+) version=(?P<ver>\d+)")
 _GOLDEN_RE = re.compile(r"<!--\s*golden agent=(?P<id>\S+) version=(?P<ver>\d+)\s*-->")
 _FRONT_MATTER_VERSION_RE = re.compile(r"(?m)^version:\s*(?P<ver>\d+)\s*$")
-_PR_REF_RE = re.compile(r"\(#(?P<n>\d+)\)")
+_PR_REF_RE = re.compile(r"\(#(?P<n>\d+)\)\s*$")
 # Phép (d): chỗ đáng lẽ là số PR nhưng còn là chỗ trống. Đo từ dữ liệu thật chứ không đoán khuôn: bốn ca thiếu
 # dòng CHANGELOG tìm ra ngày 2026-09-09 thì BA là "quên điền số" chứ không phải "quên viết dòng" — #208 để
 # nguyên `(#PENDING)`, #161 và #192 viết đủ mô tả mà không có `(#n)` nào. Phép (c) mù với cả ba khi dòng đã
@@ -75,18 +76,24 @@ def sc_agent_drift(claude_agents_dir: Path, company_root: Path) -> list[Signal]:
         src_rel, recorded = m.group("src"), int(m.group("ver"))
         actual = _source_version(company_root / src_rel)
         if actual is None:
-            out.append(Signal(
-                subject=str(sc_path.name), kind="drift",
-                detail=f"{sc_path.name} trỏ nguồn {src_rel} nhưng KHÔNG có file đó — bản dẫn xuất ghi sai đường "
-                       f"dẫn, chạy make subagents để sinh lại",
-                evidence=src_rel,
-            ))
+            out.append(
+                Signal(
+                    subject=str(sc_path.name),
+                    kind="drift",
+                    detail=f"{sc_path.name} trỏ nguồn {src_rel} nhưng KHÔNG có file đó — bản dẫn xuất ghi sai đường "
+                    f"dẫn, chạy make subagents để sinh lại",
+                    evidence=src_rel,
+                )
+            )
         elif actual != recorded:
-            out.append(Signal(
-                subject=str(sc_path.name), kind="drift",
-                detail=f"{sc_path.name} ghi version={recorded} của {src_rel} nhưng nguồn hiện version={actual}",
-                evidence=src_rel,
-            ))
+            out.append(
+                Signal(
+                    subject=str(sc_path.name),
+                    kind="drift",
+                    detail=f"{sc_path.name} ghi version={recorded} của {src_rel} nhưng nguồn hiện version={actual}",
+                    evidence=src_rel,
+                )
+            )
     return out
 
 
@@ -104,12 +111,15 @@ def golden_drift(golden_agents_dir: Path, company_root: Path) -> list[Signal]:
         actual = _source_version(matches[0]) if matches else None
         if actual != recorded:
             shown = "không có file nguồn" if actual is None else f"version={actual}"
-            out.append(Signal(
-                subject=golden_path.name, kind="drift",
-                detail=f"golden {golden_path.name} ghi version={recorded} nhưng nguồn agent={agent_id} "
-                       f"hiện {shown}",
-                evidence=str(matches[0].relative_to(company_root)) if matches else "nguồn không tìm thấy",
-            ))
+            out.append(
+                Signal(
+                    subject=golden_path.name,
+                    kind="drift",
+                    detail=f"golden {golden_path.name} ghi version={recorded} nhưng nguồn agent={agent_id} "
+                    f"hiện {shown}",
+                    evidence=str(matches[0].relative_to(company_root)) if matches else "nguồn không tìm thấy",
+                )
+            )
     return out
 
 
@@ -117,8 +127,12 @@ def _git_log_pr_commits(repo: Path) -> list[tuple[int, datetime]]:
     """`(số PR, ngày merge)` cho mỗi commit trong `git log` của `repo` có `(#n)` ở tiêu đề — khuôn message của
     squash-merge GitHub. Lệnh `git log` cục bộ (đọc `.git` trên đĩa), không mạng."""
     r = subprocess.run(
-        ["git", "log", "--format=%s%x1f%aI"], cwd=str(repo), capture_output=True, text=True,
-        encoding="utf-8", check=False,
+        ["git", "log", "--format=%s%x1f%aI"],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
     )
     if r.returncode != 0:
         return []
@@ -148,12 +162,14 @@ def changelog_drift(repo: Path, changelog: Path, *, cutoff: datetime = CHANGELOG
             continue
         marker = f"(#{pr_number})"
         if marker not in changelog_text:
-            out.append(Signal(
-                subject=f"pr-{pr_number}", kind="drift",
-                detail=f"PR #{pr_number} merged {when.isoformat()} (sau mốc luật §10) nhưng thiếu "
-                       f"dòng CHANGELOG",
-                evidence=marker,
-            ))
+            out.append(
+                Signal(
+                    subject=f"pr-{pr_number}",
+                    kind="drift",
+                    detail=f"PR #{pr_number} merged {when.isoformat()} (sau mốc luật §10) nhưng thiếu dòng CHANGELOG",
+                    evidence=marker,
+                )
+            )
     return out
 
 
@@ -170,17 +186,21 @@ def changelog_placeholder_drift(changelog: Path) -> list[Signal]:
         # (`đổi (#208) về (#PENDING)`, `điền (#<n>) rồi commit`), và một bộ dò báo động vì tài liệu MÔ TẢ nó
         # là bộ dò người ta sẽ tắt. Chỗ trống thật không bao giờ nằm trong code span.
         if m := _PLACEHOLDER_RE.search(_INLINE_CODE_RE.sub(" ", line)):
-            out.append(Signal(
-                subject=f"changelog-L{i}", kind="drift",
-                detail=f"CHANGELOG.md dòng {i} còn chỗ trống {m.group(0)} thay cho số PR — điền `(#<n>)` rồi "
-                       f"commit tiếp vào CHÍNH PR đó (AGENTS.md luật bắt buộc §10)",
-                evidence=m.group(0),
-            ))
+            out.append(
+                Signal(
+                    subject=f"changelog-L{i}",
+                    kind="drift",
+                    detail=f"CHANGELOG.md dòng {i} còn chỗ trống {m.group(0)} thay cho số PR — điền `(#<n>)` rồi "
+                    f"commit tiếp vào CHÍNH PR đó (AGENTS.md luật bắt buộc §10)",
+                    evidence=m.group(0),
+                )
+            )
     return out
 
 
-def scan(*, claude_agents_dir: Path, golden_agents_dir: Path, company_root: Path, repo: Path,
-          changelog: Path) -> list[Signal]:
+def scan(
+    *, claude_agents_dir: Path, golden_agents_dir: Path, company_root: Path, repo: Path, changelog: Path
+) -> list[Signal]:
     return (
         sc_agent_drift(claude_agents_dir, company_root)
         + golden_drift(golden_agents_dir, company_root)
