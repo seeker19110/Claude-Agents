@@ -7,7 +7,8 @@ Bạn không phải Claude Code, nên `.claude/hooks/` KHÔNG chạy cho bạn �
 (bản đầy đủ: `GEMINI.md`, mục "Ba thứ Claude Code có mà bạn không có"):
 
 - Trước `git commit`: không đứng trên `main`; staged không có `llm.yaml` / `media.yaml` / `*.sqlite*` /
-  `company.artifacts/`; diff không hạ `fail_under`; `scripts/dev-task.sh gate <gói>` phải xanh.
+  `company.artifacts/` / `khoá/token` / `dữ liệu khách thật`; diff không hạ `fail_under`;
+  `scripts/dev-task.sh gate <gói>` phải xanh.
 - Không `git push` vào `main`. Không `git reset --hard`. Không `merge|rebase --abort` để né giải xung đột.
 - Lệnh cổng: `scripts/dev-task.sh gate [company|gateway|console|core|keeper|all]` — đừng đoán lệnh từng package.
 - `.claude/agents/sc-*.md` là bản sinh tự động (`make subagents`), không sửa tay.

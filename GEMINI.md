@@ -10,7 +10,8 @@ File này cố ý KHÔNG chép lại luật: hai bản luật thì sẽ lệch n
 1. **Hook không chạy cho bạn.** `.claude/hooks/` chỉ Claude Code nạp. Bốn phép kiểm dưới đây bạn phải **tự
    làm bằng tay**, coi như luật cứng:
    - trước `git commit`: không đứng trên `main`; staged không có `llm.yaml`/`media.yaml`/`*.sqlite*`/
-     `company.artifacts/`; diff không hạ `fail_under`; `scripts/dev-task.sh gate <gói>` xanh.
+     `company.artifacts/`/`khoá/token`/`dữ liệu khách thật`; diff không hạ `fail_under`;
+     `scripts/dev-task.sh gate <gói>` xanh.
    - không `git push` vào `main`, không `git reset --hard`, không `merge|rebase --abort` để né xung đột.
 2. **Lệnh cổng**: đừng đoán lệnh của từng package — gọi `scripts/dev-task.sh gate [gói]`
    (`gói`: `company|gateway|console|core|keeper|all`). Nó chạy đúng lệnh CI, kể cả `-n auto --cov` riêng của

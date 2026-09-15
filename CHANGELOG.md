@@ -6,6 +6,14 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- test(khung): **cổng chặn 4 file luật harness trôi khỏi `AGENTS.md`** (`pt.1`). `.cursorrules`,
+  `.windsurfrules`, `.clinerules` và `GEMINI.md` tự khai "cố ý không chép lại luật" nhưng thực tế có chép hai
+  danh sách — file cấm commit và tên gói — và **đã trôi**: cả bốn thiếu "khoá/token, dữ liệu khách thật" của
+  luật cấm 3, tức agent không phải Claude Code (không có hook nào canh) đọc bản thiếu đó rồi commit khoá mà
+  không biết mình sai. Cổng mới ở `test_cong_repo.py` **trích danh sách từ chính `AGENTS.md`** (chốt cứng ở
+  test chỉ tạo bản sao thứ năm) và soi cả bốn bản sao; kèm một ca đếm đủ 8 mục cấm + 11 mục bắt buộc để regex
+  trích không sót mục in đậm trải hai dòng. Bốn file đã được sửa cho đủ.
+
 - fix(khung): **`pre-commit-gate.sh` canh cây đang commit, không phải checkout chính** (`pt.10`). `CLAUDE.md`
   luật 2 bắt mỗi phiên một `git worktree`, nhưng hook đọc `git -C "$CLAUDE_PROJECT_DIR"` — checkout chính. Hỏng
   hai chiều cùng lúc: phép 1 thấy nhánh `main` của checkout chính nên **chặn oan mọi commit đúng luật**, phép
