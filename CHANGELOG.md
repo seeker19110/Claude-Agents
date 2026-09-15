@@ -52,7 +52,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   phát và ticket đi CẢ HAI đường (`tests_authored_by` thành `assignee` ở đúng lượt vừa có test độc lập — bản vá
   đầu mắc đúng lỗi này, ca luồng cũ bắt được). Bỏ pha có **vết audit** `test_author_bo_qua` với khoá `once`
   mang thế hệ retry, không bỏ im. Đường re-author hợp lệ duy nhất (tranh chấp test, `_has_dispute`) không bị
-  đụng. Kèm: gộp hai chỗ tra `retry` trùng nhau trong cùng hàm. (#<n>)
+  đụng. Kèm: gộp hai chỗ tra `retry` trùng nhau trong cùng hàm. (#307)
 - docs(khung): **kế hoạch thi hành `pt` — năm cơ chế lấy từ `DietrichGebert/ponytail`.** Đo hiện trạng bằng
   4 subagent `Explore` chỉ đọc tìm ra **ba lỗi đang tồn tại**, không phải ba chỗ "có thể cải thiện": 4 file luật
   harness đã trôi khỏi `AGENTS.md:34` (thiếu "khoá/token, dữ liệu khách thật"); `evals/thresholds.yaml:15` ghi
