@@ -410,9 +410,14 @@ def test_rework_khi_da_co_bo_test_thi_khong_quay_lai_pha_author(tmp_path: Path) 
     ev_id = orch.queue[0].event_id
     orch.run()
 
+    # Lọc đúng T1: kế hoạch giả sinh nhiều ticket, và agent giả ghi CÙNG một đường dẫn/nội dung test cho mọi
+    # ticket — nên T2 dựng worktree sau khi T1 merge thì đã sẵn file ấy và "không viết gì" vì lý do khác hẳn.
+    # Đó là giả tạo của harness (agent thật viết test riêng cho từng ticket), không phải ca này đang đo. Không
+    # lọc thì phép thử xanh/đỏ theo thứ tự merge — đỏ trên CI, xanh ở máy, đúng khuôn test chập chờn.
     hong = [a for a in bus.replay(topic="audit-log")
             if a.payload.get("action") in {"invalid_output", "agent_error_unhandled"}
-            and "file test" in str(a.payload.get("evidence") or "")]
+            and "file test" in str(a.payload.get("evidence") or "")
+            and (a.payload.get("ticket_id") == "T1" or "ticket/T1" in str(a.payload.get("evidence") or ""))]
     assert not hong, f"không được phạt agent vì bộ test đã có sẵn: {[a.payload.get('evidence') for a in hong]}"
 
     lam = [json.loads(a.payload["evidence"])["actions"] for a in bus.replay(topic="audit-log")
@@ -434,12 +439,12 @@ def test_bo_qua_pha_author_phai_noi_ra_chu_khong_im(tmp_path: Path) -> None:
     _rework(orch, "T1", "lint đỏ")
     orch.run()
 
-    vet = [a for a in bus.replay(topic="audit-log") if a.payload.get("action") == "test_author_bo_qua"]
+    vet = [a for a in bus.replay(topic="audit-log")
+           if a.payload.get("action") == "test_author_bo_qua" and a.payload.get("ticket_id") == "T1"]
     assert vet, "bỏ pha author mà không để lại vết thì người đọc audit không biết vì sao lượt này không có test"
-    assert all(a.payload.get("ticket_id") == "T1" for a in vet)
 
     khoa = [json.loads(a.payload["evidence"])["key"] for a in bus.replay(topic="audit-log")
-            if a.payload.get("action") == "once" and "test-author-bo-qua" in str(a.payload.get("evidence"))]
+            if a.payload.get("action") == "once" and "test-author-bo-qua:T1:" in str(a.payload.get("evidence"))]
     assert khoa, "phải đi qua khoá `once`, không thì mỗi lần dispatch một dòng audit giống hệt"
     assert len(khoa) == len(set(khoa)), f"khoá `once` phải mang thế hệ retry nên không được trùng: {khoa}"
     assert len(khoa) == len(vet), "một vết cho mỗi thế hệ, không hơn"
