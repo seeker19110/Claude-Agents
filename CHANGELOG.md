@@ -6,6 +6,11 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs(sessions): **xoá worktree là xoá luôn state của công ty; engine treo im lặng khi chạy nền** (#<n>).
+  State QLKH (`company.sqlite`) mất cùng worktree bị dọn ở #298 vì phép dọn tra "commit đã merge chưa" mà
+  file state thì không theo dõi. Dựng lại dự án từ yêu cầu mới trên đúng code khách còn nguyên. Ghi cả khuôn
+  chưa giải: `run` chạy nền sống + giữ lock + `status` xanh nhưng 0 lượt model, foreground thì chạy ngay —
+  hai giả thiết đầu đã bị đo bác bỏ.
 - docs(khung): **`pt.8` chờ người — subscription không đóng được ngưỡng eval** (#314). Đo bằng
   `provider: claude-code` (subscription, ADR-0019): bốn câu chống over-engineering cho `builder.md` làm điểm
   eval tệ đi thật (0.54 → 0.23), nhưng ngay cả prompt gốc cũng dưới xa `min_pass_ratio: 0.95` — client này
