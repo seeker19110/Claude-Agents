@@ -6,6 +6,14 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(khung): **`pre-commit-gate.sh` canh cây đang commit, không phải checkout chính** (`pt.10`). `CLAUDE.md`
+  luật 2 bắt mỗi phiên một `git worktree`, nhưng hook đọc `git -C "$CLAUDE_PROJECT_DIR"` — checkout chính. Hỏng
+  hai chiều cùng lúc: phép 1 thấy nhánh `main` của checkout chính nên **chặn oan mọi commit đúng luật**, phép
+  2–4 đọc index rỗng nên **file cấm, hạ `fail_under` và cổng gói không được canh gì**. Tách hai nghĩa: `$ROOT`
+  chỉ để tìm `scripts/dev-task.sh`, `$CAY` (`git rev-parse --show-toplevel`, lùi về `$ROOT`) cho mọi phép đọc
+  trạng thái git. Bốn ca mới dựng worktree thật, ba ca đỏ trước khi sửa. Đã rà cả họ lỗi: `block-dangerous-git.sh`
+  (không đọc trạng thái git) và `auto-format.sh` (chỉ dùng `$ROOT` để tìm script) an toàn, không phải sửa.
+
 - docs(khung): **kế hoạch thi hành `pt` — năm cơ chế lấy từ `DietrichGebert/ponytail`.** Đo hiện trạng bằng
   4 subagent `Explore` chỉ đọc tìm ra **ba lỗi đang tồn tại**, không phải ba chỗ "có thể cải thiện": 4 file luật
   harness đã trôi khỏi `AGENTS.md:34` (thiếu "khoá/token, dữ liệu khách thật"); `evals/thresholds.yaml:15` ghi

@@ -254,8 +254,10 @@ def test_chan_git_thieu_jq_thi_noi_ra() -> None:
 CONG_COMMIT = HOOKS / "pre-commit-gate.sh"
 
 
-def _cong(cmd: str, kho: Path, **env: str) -> subprocess.CompletedProcess[str]:
+def _cong(cmd: str, kho: Path, _cwd: str | None = None, **env: str) -> subprocess.CompletedProcess[str]:
+    """`kho` = cây mặc định (cwd và `CLAUDE_PROJECT_DIR`); `_cwd` tách hai thứ đó ra khi cần thử worktree."""
     assert BASH is not None
+    cwd = _cwd if _cwd is not None else str(kho)
     return subprocess.run(
         [BASH, str(CONG_COMMIT)],
         input=_payload(cmd),
@@ -264,7 +266,7 @@ def _cong(cmd: str, kho: Path, **env: str) -> subprocess.CompletedProcess[str]:
         encoding='utf-8',
         errors='replace',
         env={**os.environ, "CLAUDE_PROJECT_DIR": str(kho), "DEV_TASK_DRY_RUN": "1", **env},
-        cwd=kho,
+        cwd=cwd,
     )
 
 
@@ -336,6 +338,67 @@ def test_cong_commit_doi_file_goc_thi_chay_ca_workspace(kho_main: Path) -> None:
     (kho_main / "Makefile").write_text("x:\n", encoding="utf-8")
     _git(kho_main, "add", "-A")
     assert "all" in _cong("git commit -m 'x'", kho_main).stderr
+
+
+@pytest.fixture
+def kho_worktree(kho_main: Path, tmp_path: Path) -> tuple[Path, Path]:
+    """Checkout chính đứng trên `main` + một worktree trên nhánh riêng.
+
+    Đúng hoàn cảnh `CLAUDE.md` luật 2 bắt buộc: mỗi phiên một worktree. Trả `(chinh, worktree)`.
+    """
+    (kho_main / "nen.txt").write_text("x", encoding="utf-8")
+    _git(kho_main, "add", "-A")
+    _git(kho_main, "commit", "-qm", "nen")
+    wt = tmp_path / "wt"
+    _git(kho_main, "worktree", "add", "-q", "-b", "fix/thu", str(wt))
+    _git(wt, "config", "user.email", "t@t")
+    _git(wt, "config", "user.name", "t")
+    return kho_main, wt
+
+
+def test_cong_commit_khong_chan_oan_trong_worktree(kho_worktree: tuple[Path, Path]) -> None:
+    """Hook phải đọc nhánh của CÂY ĐANG COMMIT, không phải của checkout chính.
+
+    Checkout chính đứng trên `main`; worktree đứng trên `fix/thu`. Đọc nhầm cây ⇒ chặn oan mọi commit
+    đúng luật — hàng rào cản chính quy trình mà `CLAUDE.md` luật 2 bắt buộc.
+    """
+    chinh, wt = kho_worktree
+    (wt / "a.txt").write_text("x", encoding="utf-8")
+    _git(wt, "add", "-A")
+    kq = _cong("git commit -m 'x'", wt, CLAUDE_PROJECT_DIR=str(chinh))
+    assert kq.returncode == 0, f"chặn oan commit trên nhánh 'fix/thu': {kq.stderr}"
+
+
+def test_cong_commit_van_chan_file_cam_trong_worktree(kho_worktree: tuple[Path, Path]) -> None:
+    """Chiều ngược: đọc nhầm cây cũng làm index của worktree vô hình ⇒ file cấm lọt qua."""
+    chinh, wt = kho_worktree
+    (wt / "llm.yaml").write_text("x", encoding="utf-8")
+    _git(wt, "add", "-f", "llm.yaml")
+    kq = _cong("git commit -m 'x'", wt, CLAUDE_PROJECT_DIR=str(chinh))
+    assert kq.returncode == 2, f"file cấm trong worktree lọt qua cổng: {kq.stderr}"
+    assert "llm.yaml" in kq.stderr
+
+
+def test_cong_commit_van_chan_ha_nguong_trong_worktree(kho_worktree: tuple[Path, Path]) -> None:
+    """Phép 3 cũng đọc index — cùng một lỗi cây, nên cùng phải có ca."""
+    chinh, wt = kho_worktree
+    (wt / "pyproject.toml").write_text("fail_under = 100\n", encoding="utf-8")
+    _git(wt, "add", "-A")
+    _git(wt, "commit", "-qm", "nen")
+    (wt / "pyproject.toml").write_text("fail_under = 90\n", encoding="utf-8")
+    _git(wt, "add", "-A")
+    kq = _cong("git commit -m 'x'", wt, CLAUDE_PROJECT_DIR=str(chinh))
+    assert kq.returncode == 2, f"hạ fail_under trong worktree lọt qua: {kq.stderr}"
+    assert "fail_under" in kq.stderr
+
+
+def test_cong_commit_lui_ve_root_khi_cwd_khong_phai_repo(kho_main: Path, tmp_path: Path) -> None:
+    """`git rev-parse --show-toplevel` rỗng ngoài repo → phải lùi về `CLAUDE_PROJECT_DIR`, không buông cổng."""
+    ngoai = tmp_path / "ngoai"
+    ngoai.mkdir()
+    kq = _cong("git commit -m 'x'", kho_main, _cwd=str(ngoai))
+    assert kq.returncode == 2, f"mất phép kiểm nhánh khi cwd ngoài repo: {kq.stderr}"
+    assert "main" in kq.stderr
 
 
 # --- .claude/hooks/auto-format.sh -------------------------------------------

@@ -16,6 +16,17 @@ set -uo pipefail   # cố ý KHÔNG -e: hook không được làm chết phiên
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
+# CÂY ĐANG COMMIT ≠ CHECKOUT CHÍNH. `CLAUDE.md` luật 2 bắt mỗi phiên một `git worktree`, nên `CLAUDE_PROJECT_DIR`
+# (checkout chính) và cây mà `git commit` sắp chạy trên đó thường là HAI thư mục khác nhau. Dùng chung một biến
+# cho hai nghĩa làm hàng rào hỏng cả hai chiều: phép 1 đọc nhánh của checkout chính (`main`) → chặn oan mọi
+# commit đúng luật; phép 2-4 đọc index của checkout chính (rỗng) → file cấm và `fail_under` bị buông.
+#   $ROOT → tìm script trong repo (worktree có bản sao riêng, nhưng bản chính luôn có).
+#   $CAY  → mọi phép kiểm đọc trạng thái git (nhánh, index, diff staged).
+# Lấy từ cwd của hook: đó là cwd của lệnh `git commit` sắp chạy. Ngoài repo (hoặc không lấy được) thì lùi về
+# $ROOT — lùi về chặt hơn là buông cổng.
+CAY="$(git rev-parse --show-toplevel 2>/dev/null)"
+[ -n "$CAY" ] || CAY="$ROOT"
+
 # Đọc lệnh từ payload — xem chú thích `doc_lenh` ở `block-dangerous-git.sh` (máy phát triển không có jq).
 doc_lenh() {
   if command -v jq >/dev/null 2>&1; then
@@ -58,7 +69,7 @@ chan() {
 }
 
 # --- 1. nhánh hiện tại ---
-nhanh="$(git -C "$ROOT" branch --show-current 2>/dev/null)"
+nhanh="$(git -C "$CAY" branch --show-current 2>/dev/null)"
 case "$nhanh" in
   main|master)
     chan "đang đứng trên nhánh '$nhanh'" \
@@ -67,7 +78,7 @@ case "$nhanh" in
 esac
 
 # --- 2. file cấm commit ---
-staged="$(git -C "$ROOT" diff --cached --name-only 2>/dev/null)"
+staged="$(git -C "$CAY" diff --cached --name-only 2>/dev/null)"
 if [ -n "$staged" ]; then
   cam="$(printf '%s\n' "$staged" | grep -E '(^|/)(llm\.yaml|media\.yaml)$|\.sqlite|(^|/)company\.artifacts/' || true)"
   if [ -n "$cam" ]; then
@@ -77,7 +88,7 @@ if [ -n "$staged" ]; then
 fi
 
 # --- 3. hạ ngưỡng coverage ---
-ha_nguong="$(git -C "$ROOT" diff --cached -U0 2>/dev/null \
+ha_nguong="$(git -C "$CAY" diff --cached -U0 2>/dev/null \
   | grep -E '^\+[[:space:]]*fail_under[[:space:]]*=' \
   | grep -Ev '=[[:space:]]*100([^0-9]|$)' || true)"
 if [ -n "$ha_nguong" ]; then
