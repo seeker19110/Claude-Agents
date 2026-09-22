@@ -2,7 +2,7 @@
 
 Bản đồ đầy đủ: [`docs/architecture.md`](docs/architecture.md) (nguyên tắc, bảng topic producer/consumer được test đối
 chiếu với `ROUTES`, vòng đời ticket, trạng thái, human gate). Tiêu chuẩn ngành từng khối: `docs/standards.md`. Quyết
-định: `docs/adr/` 0001–0038. File này chỉ là lối vào nhanh.
+định: `docs/adr/` 0001–0042. File này chỉ là lối vào nhanh.
 
 ## Năm công đoạn (ADR-0037)
 

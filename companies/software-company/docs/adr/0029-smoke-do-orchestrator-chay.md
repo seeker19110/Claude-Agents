@@ -49,7 +49,7 @@ code chạy lint/test thật), nhưng dừng ở PR. Từ RC trở đi mọi tr�
 - Chưa làm: ảnh chụp giao diện cho ticket frontend (cùng hình dạng, khác kênh bằng chứng); sổ `Ruling:` cho quyết
   định agent tự đưa ra ngoài bốn gate. Mỗi cái một ADR riêng.
 
-## Mở rộng 2026-09-06 — `regression-staging` cũng phải có bằng chứng chạy (B3 của `docs/DAC-TA-NANG-CAP-2026-09.md`)
+## Mở rộng 2026-09-06 — `regression-staging` cũng phải có bằng chứng chạy (B3 của `docs/archive/DAC-TA-NANG-CAP-2026-09.md`)
 
 Mục 3 ở trên chặn `deployed` giả; nhưng verdict `regression-staging` của qa-debugger vẫn là **lời khai đọc diff**:
 QA có tool `run` chỉ đọc trên worktree tích hợp, nhưng không gì bắt nó khởi động sản phẩm, và Gate 3 ký trên

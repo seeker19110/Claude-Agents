@@ -222,9 +222,16 @@ def _superseded_release(o: Orchestrator, rid: str) -> bool:
     nội dung RC này đã tới tay khách trong bản giao đó; RC chỉ còn là sổ sách."""
     if rid in o.delivered or rid not in o.lead.release_tickets: return False
     if rid not in o.lead.releases: return False
+    tickets = o.lead.release_tickets[rid]
+    # RC TRÙNG: mọi ticket của nó đã nằm trong một bản giao KHÁC — trước hay sau đều tính. Bản đầu chỉ xét "có bản
+    # giao SAU", nên RC trùng nằm CUỐI danh sách (sinh bởi `flush_releases` cho ticket đã giao) không bao giờ được
+    # nhận là trùng: từ chối escalation → `rework_release_tickets` đá ticket đã xong về `changes_requested`.
+    # Đo 2026-09-10 (QLKH), `TRAPS.md` "chưa vá" tới 2026-09-22.
+    da_giao = {t for d, tids in o.lead.release_tickets.items() if d != rid and d in o.delivered for t in tids}
+    if tickets and all(t in da_giao for t in tickets): return True
     later = [d for d in o.delivered if d in o.lead.releases and o.lead.releases.index(d) > o.lead.releases.index(rid)]
     if not later: return False
-    return all(t in o.integrated or o.lead.state.get(t) in DONE_STATES for t in o.lead.release_tickets[rid])
+    return all(t in o.integrated or o.lead.state.get(t) in DONE_STATES for t in tickets)
 
 def _release_paused(o: Orchestrator, env: Envelope, res: StepResult) -> None:
     """release-engineer TỰ DỪNG (`status=pending_human`): xem `_check_paused_releases` — sweep đó chạy ở mọi nhịp
@@ -280,7 +287,7 @@ def _act_production_deploy_or_rollback(o: Orchestrator, env: Envelope, res: Step
     status = env.payload.get("status")
     if status == "deployed":
         o._deliver(env, res)
-        o._open_acceptance_gate(env.key, res)
+        o._open_acceptance_gate(env.key, res, env.event_id)
     elif status in {"rolled_back", "failed"}:
         o._rollback_delivery(env, res)
     return False

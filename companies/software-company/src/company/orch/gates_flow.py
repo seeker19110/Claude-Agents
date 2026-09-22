@@ -205,12 +205,17 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
         if o.lead.batch_releases:  # ticket đóng không còn giữ release của các ticket đã approved
             o.lead.flush_releases(o.lead.tickets[tid].project_id)
 
-def _open_acceptance_gate(o: Orchestrator, rid: str, res: StepResult) -> None:
+def _open_acceptance_gate(o: Orchestrator, rid: str, res: StepResult, gen: str) -> None:
     """Sau production: mở gate `acceptance` cho khách ký (ADR-0017). Là gate thật nên có hạn 24h, có nhắc ở 12h
-    và được escalate khi quá hạn — trước đây chỉ là một dòng audit `uat.pending` không ai theo dõi."""
+    và được escalate khi quá hạn — trước đây chỉ là một dòng audit `uat.pending` không ai theo dõi.
+
+    `gen` là `event_id` của release-event `deployed`: khách TỪ CHỐI rồi ops `redeploy`/`_rerun_release` cùng `rid`
+    → lượt `deployed` thứ hai là event MỚI và phải mở lại gate để khách ký lại. Khoá cũ `uat:{rid}` (miễn thế hệ
+    với lý do "production một lần mỗi RC" — code không thi hành lý do đó) nuốt lần hai: giao mà không chữ ký,
+    không audit (khuôn 3 `TRAPS.md`, đo khi audit 2026-09-22)."""
     sid = f"UAT-{rid}"
-    if sid in o.gate.pending or o.gate.is_approved(sid) or f"uat:{rid}" in o.once: return
-    o._remember(f"uat:{rid}")
+    if sid in o.gate.pending or o.gate.is_approved(sid) or f"uat:{rid}:{gen}" in o.once: return
+    o._remember(f"uat:{rid}:{gen}")
     request_gate(o.gate, GateRequest(kind="acceptance", subject_id=sid, created_by=ROLE.OPS,
                                   checklist=["uat-script", "acceptance-criteria", "known-issues", "signed_by"]))
     res.actions.append(f"gate:acceptance:{sid}")

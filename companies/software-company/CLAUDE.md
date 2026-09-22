@@ -28,7 +28,7 @@ xanh. `fail_under = 100` (luật cấm 6) nghĩa là code mới không có test 
    điền, không phải prompt dặn.
 2. **Tool có ranh giới** (`src/company/tools.py` + `workspace.py`): allowlist `run`, khoá đường dẫn, lọc env `SECRET_ENV`, không hook
    git (`NO_HOOKS`). Nới tool = thêm test ranh giới, không chỉ thêm lệnh.
-3. **Bản dẫn xuất không sửa tay**: `tests/golden/` (`make golden`), `../.claude/agents/sc-*.md` (`make subagents`),
+3. **Bản dẫn xuất không sửa tay**: `tests/golden/` (`make golden`), `../../.claude/agents/sc-*.md` (`make subagents`),
    `evals/recordings/` (`make eval-record AGENT=<id>` với model thật).
 
 ## Sửa cái gì phải làm gì

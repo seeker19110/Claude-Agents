@@ -197,7 +197,7 @@ def test_open_acceptance_gate_da_pending_thi_khong_mo_gate_thu_hai():
     orch.gate.request(GateRequest(kind="acceptance", subject_id="UAT-REL-1", created_by="ops",
                                    checklist=["uat-script", "acceptance-criteria", "known-issues", "signed_by"]))
     res = StepResult("e1", "delivery-status", "REL-1")
-    orch._open_acceptance_gate("REL-1", res)
+    orch._open_acceptance_gate("REL-1", res, "e1")
     assert res.actions == []  # không thêm hành động mở gate lần hai
     assert sum(1 for g in orch.gate.history if g.subject_id == "UAT-REL-1") == 0  # chưa quyết định gì, vẫn pending 1 lần
 

@@ -13,6 +13,12 @@ lỗi bắt nguồn từ cùng dạng ("quên rehydrate một trường", "quên
 
 ## Quyết định
 
+> **Đối chiếu 2026-09-22 (audit):** mục 1 `ctx.py`/`OrchCtx` KHÔNG được cài đặt — mọi module `orch/` nhận
+> thẳng `Orchestrator` qua `TYPE_CHECKING` và được gán làm method (`_deadlock_warnings = scheduler._deadlock_warnings`…).
+> Đích "≤ 300 dòng" ở mục 2 đo theo TỆP thì chưa đạt (`orchestrator.py` 518 dòng, phần lớn là docstring và bảng
+> gán); cổng thật đang canh là `tests/test_orch_khuon_loi.py::test_k18_*` — tổng THÂN HÀM ≤ 260 dòng. Giữ ADR,
+> ghi rõ hai chỗ lệch để người sau không đi tìm `OrchCtx`.
+
 1. Gói `orch/` bên trong `company`, tách theo trách nhiệm: `ctx.py` (giao diện `OrchCtx` Protocol những gì các
    module còn lại cần từ `Orchestrator`), `cli.py` (dispatch CLI), `verify.py` (smoke/regression/evidence),
    `routes.py` (hằng số route + guard thuần, không giữ trạng thái), `state.py` (`OrchState` dataclass — mỗi

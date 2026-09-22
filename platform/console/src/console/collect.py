@@ -34,6 +34,7 @@ from company.bus import InMemoryBus as CompanyBus
 from company.delivery import DONE_STATES, DeliveryLead
 from company.events import Envelope as CompanyEnvelope
 from company.events import Task
+from company.orch.guards import pending_clarifications
 from company.registry import load_agents as load_company_agents
 from company.supervisor import Supervisor as CompanySupervisor
 from keeper.budget import WINDOW_DAYS as KEEPER_WINDOW_DAYS
@@ -188,7 +189,8 @@ class _View:
                         "trigger": getattr(r, "triggered_by", None) or "", "hours": h, "sev": sev,
                         "effect": self.gate_effect(r), "reject": self.gate_reject(r), "agent": self.gate_agent(r),
                         "title": self.gate_title(r), "facts": self.gate_facts(r),
-                        "cl": [[item, self.checklist_note(r, item)] for item in r.checklist]})
+                        "cl": [[item, self.checklist_note(r, item)] for item in r.checklist],
+                        "decidable": True})
         out.sort(key=lambda g: -g["hours"])
         return out
 
@@ -317,6 +319,35 @@ class CompanyView(_View):
             return {a: spec.model_tier for a, spec in load_company_agents(check_owners=False).items()}
         except Exception:
             return {}
+
+    def gates(self, now: datetime) -> list[dict[str, Any]]:
+        """Gate thật + câu hỏi làm rõ đang chờ người (`kind=clarification`, `decidable=False`). Đo 2026-09-22
+        (CAMPUS-UNI): `product` hỏi vòng 1, không ai trả lời, hàng đợi in "Sạch hàng đợi" — người trực không có
+        chỗ nào để biết dự án đang đứng im chờ mình. Câu hỏi đi CHUNG hàng đợi vì đây là chỗ duy nhất người trực
+        nhìn; nó không phải `HumanGate` nên không duyệt được, chỉ trỏ tới form trả lời."""
+        out = super().gates(now)
+        if not self.ok or self.bus is None: return out
+        over_h = self.gate.timeout.total_seconds() / 3600
+        warn_h = self.gate.remind_at.total_seconds() / 3600
+        for pid, c in sorted(pending_clarifications(self.bus).items()):
+            h = _hours(datetime.fromisoformat(c["since"]), now)
+            sev = "over" if h >= over_h else ("warn" if h >= warn_h else "calm")
+            out.append({"id": f"CLARIFY-{pid}", "xuong": self.name, "kind": "clarification", "by": c["asked_by"],
+                        "trigger": "", "hours": h, "sev": sev,
+                        "effect": f"Trả lời ở màn Giao việc → «Trả lời câu hỏi làm rõ» (topic clarification-answers, "
+                                  f"project_id={pid}, theo question_id). Dự án đứng im tới khi trả lời đủ "
+                                  f"{len(c['unanswered'])} câu; sau đó product viết PRD.",
+                        "reject": "", "agent": "product",
+                        "title": f"câu hỏi làm rõ · {pid} · vòng {c['round']}",
+                        "facts": [["project_id", pid], ["round", str(c["round"])], ["asked_by", c["asked_by"]],
+                                  ["since", c["since"]], ["unanswered", ", ".join(c["unanswered"])]],
+                        "cl": [[f"{q['id']}: {q['text']}",
+                                (f"lựa chọn: {' | '.join(q['options'])}" if q["options"] else "")
+                                + (f" · mặc định: {q['default']}" if q["default"] else "")]
+                               for q in c["questions"]],
+                        "decidable": False})
+        out.sort(key=lambda g: -g["hours"])
+        return out
 
     def gate_title(self, r: Any) -> str:
         t = self.lead.tickets.get(r.subject_id)

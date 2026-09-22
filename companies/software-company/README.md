@@ -56,7 +56,7 @@ src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, g
                giới tin cậy), mcp_bridge (cầu MCP đưa tool công ty vào CLI — ADR-0024), probe (CLI chạy được chế độ tool
                nào), web (tool web cho `product` pha research), guard (chống injection), assetscan (quét tài sản prompt), context (hạn mức ngữ cảnh),
                metrics (từ audit-log), sổ Ruling `rulings` (quyết định agent tự đưa ra — ADR-0030), evals (ghi/phát lại), stacks (lint/test theo stack — ADR-0013), smoke (khởi động sản phẩm theo `runtime` của spec, bằng chứng cho `deployed` — ADR-0029; `runtime` là điều kiện cần của Gate 1 — ADR-0031),
-               deploy (dựng compose file **của khách** cho `staging`/`production`, `deployed` = `up -d` + `ps` running + smoke, thiếu một phần thì `down` — ADR-0039; chưa nối vào vòng đời release),
+               deploy (dựng compose file **của khách** cho `staging`/`production`, `deployed` = `up -d` + `ps` running + smoke, thiếu một phần thì `down` — ADR-0039; nối vào vòng đời release qua `orch/verify.py::deploy_release`, gọi từ `orch/release_fsm.py::_release`),
                subagents (sinh 10 trợ lý kiểm duyệt chỉ-đọc `.claude/agents/sc-*.md` từ agents/ + gates/checklists.md — `make subagents`),
                gate_checklists (parser checklists.md + bảng nguồn bằng chứng §5 đặc tả), gate_brief (hồ sơ bằng chứng chỉ đọc
                cho nửa "người tự kiểm" của một gate — `make gate-brief SUBJECT=…`), demo, graph (cần `uv sync --extra graph`, không tính coverage)
@@ -65,7 +65,7 @@ examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--rela
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng pha `intake` cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 6 agent, mỗi agent ≥ 2 ca (agent nhiều pha: ≥ 2 ca mỗi pha); recordings/ = phản hồi model đã ghi
-tests/         pytest 1246 ca / 74 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+tests/         pytest 1283 ca / 77 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, release tự dừng → gate, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
                guard/blackboard, schema consistency, golden 6 agent + 4 hồ sơ gate, bộ sinh subagent, hồ sơ gate, deploy compose (runner tiêm được), rà soát bảo mật);
                coverage fail_under=100 (phủ 100% dòng VÀ 100% nhánh, `branch = true` từ 2026-09-13)
@@ -247,7 +247,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   research → ticket → code → review → release → nghiệm thu bằng client giả, model thật (`--real`) hoặc relay qua file
   (`--relay DIR`, `examples/relay_client.py`: một phiên Claude Code khác trả lời `<n>.req.json`); `--resume` chạy tiếp.
   Phát hiện F13–F19 từ mô phỏng đều đã sửa (bảng trong báo cáo).
-- Test: 1232 ca pytest gồm golden 6 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
+- Test: 1283 ca pytest gồm golden 6 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
   vòng tool, orchestrator với repo git thật, eval ghi/phát lại, adapter tool-use (server HTTP giả), guard, cắt ngữ cảnh,
   artifact store, retry, bảng giá, tool web (fetcher giả), song song, metrics, comment/takeover, routing nhiều backend,
   release flow và replay; ruff + mypy sạch, coverage 100% (`fail_under = 100`; `graph.py` không tính).

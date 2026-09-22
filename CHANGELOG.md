@@ -6,6 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): **audit 2026-09-22 — ba lỗ cơ chế và một lớp tài liệu trôi** (#TODO). (1) Dự án chờ người trả lời câu hỏi làm rõ nay hiện ở `status.clarifications_pending` + `warnings`, và ở hàng đợi gate của console (`CLARIFY-<pid>`, `decidable=false`) — trước đó pha intake/research/spec mù hoàn toàn (CAMPUS-UNI đứng im từ 13:11, không ai biết). (2) `_superseded_release` nhận RC trùng ở CUỐI danh sách (TRAPS "chưa vá" từ 09-10): void thay vì đá ticket đã giao về rework. (3) Khoá `uat:{rid}` mang thế hệ `event_id`: deploy lại sau khi khách từ chối mở lại gate nghiệm thu. (4) Cổng mới `test_codemap_duong_dan.py`: mọi đường dẫn backtick trong `CODEMAP.md`/`ARCHITECTURE.md`/`CLAUDE.md` của company phải tồn tại — bắt 14 đường dẫn sai sau lần dời `platform/`; sửa kèm ARCHITECTURE (ADR 0001–0042), README package (deploy đã nối vào release; 1282 ca / 77 file), 4 ADR trỏ file đã dời vào `docs/archive/`, ghi chú đối chiếu ADR-0033/0034/0036, `thresholds.yaml` nói rõ "100%" là replay chứ không phải `score`. `_deadlock_warnings` dời sang `orch/scheduler.py` (K1.8).
 - fix(gateway): **ghi file token không còn mất im lặng trên Windows; README hết conflict marker** (#318).
   `os.replace` thỉnh thoảng trả `WinError 5` khi Defender/indexer giữ file đích; `_update_account_fields` nuốt
   lỗi nên cooldown và `last_used_at` mất mà không ai biết — đó là nguồn của test LRU "chập chờn" (đo 1/8 lượt

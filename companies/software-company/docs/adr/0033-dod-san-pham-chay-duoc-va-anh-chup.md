@@ -1,6 +1,6 @@
 # ADR-0033: "Định nghĩa xong" phải gồm sản phẩm chạy được; ticket frontend phải đính ảnh chụp giao diện
 
-Trạng thái: chấp nhận · Ngày: 2026-09-06 · Mục B6 của `docs/DAC-TA-NANG-CAP-2026-09.md` · Nối tiếp ADR-0029, ADR-0031
+Trạng thái: chấp nhận (tên agent trong ADR là vai TRƯỚC ADR-0037 — `delivery-lead`/`release-engineer`/`account-manager`/`frontend` nay là `ops`, `builder`; quyết định vẫn hiệu lực, chỉ đổi người mang) · Ngày: 2026-09-06 · Mục B6 của `docs/archive/DAC-TA-NANG-CAP-2026-09.md` · Nối tiếp ADR-0029, ADR-0031
 
 ## Bối cảnh
 

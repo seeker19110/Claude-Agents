@@ -55,7 +55,7 @@ from typing import TYPE_CHECKING, Any
 
 from .blackboard import Blackboard
 from .bus import InMemoryBus
-from .delivery import DONE_STATES, DeliveryLead
+from .delivery import DeliveryLead
 from .deploy import deploy
 from .events import Envelope
 from .gate_cli import PersistentGate
@@ -66,7 +66,7 @@ from .orch.cli import main, source_fingerprint
 from .orch.enrich import _with_chan_doan as _with_chan_doan
 from .orch.enrich import _with_diff as _with_diff
 from .orch.guards import _can_author_tests as _can_author_tests
-from .orch.guards import _dict_of
+from .orch.guards import _dict_of, pending_clarifications
 from .orch.guards import _has_dispute as _has_dispute
 from .orch.guards import _test_scope_ok as _test_scope_ok
 from .orch.review_source import enforce_source as enforce_source
@@ -445,29 +445,7 @@ class Orchestrator:
         if projects: out["projects"] = projects
         return out
 
-    def _deadlock_warnings(self) -> list[str]:
-        """Còn ticket chưa xong mà KHÔNG đường nào có thể chạy tiếp → nói thẳng ra.
-
-        Mọi trường trong `status()` đều mô tả trạng thái, không trường nào trả lời "có việc gì chạy được không".
-        Nên một dự án chết vẫn đọc ra hoàn toàn bình thường: `queue: 0`, `stalled: {}`, `gates_pending: {}` —
-        ba chỉ số xanh vì rỗng, mà rỗng ở đây chính là triệu chứng.
-
-        Đo được khi chạy thật (2026-09-04): QLKH-001 `blocked` lúc 13:25 không mở được gate (xem
-        `_check_escalations`), 13 ticket phụ thuộc đứng chờ. `status` không có gì bất thường trong 26 phút; chỉ
-        vì có người ngồi đọc từng finding mới phát hiện. Đây là lớp phòng thủ cuối: kể cả khi một nhánh cụ thể
-        quên mở gate, câu hỏi "còn việc nào chạy được không" vẫn phải được trả lời trung thực.
-
-        `queue` đếm event chưa được đánh dấu `orchestrated`, nên lượt agent đang bay vẫn tính là có việc — cảnh
-        báo này không kêu oan khi hệ thống chỉ đang chờ model trả lời."""
-        live = {t: st for t, st in self.lead.state.items() if st not in DONE_STATES}
-        if not live: return []
-        # KHÔNG miễn trừ `self.paused`: pause luôn cần người gỡ, mà người chỉ được hỏi qua gate. Pause mà không
-        # có gate nào chính là ca bế tắc cần kêu to nhất — bản đầu của cảnh báo này miễn trừ `paused` nên mù
-        # đúng ca đó (`paused=['P1']`, `gates_pending={}`, `warnings=[]`).
-        if self.queue or self.deferred or self.gate.pending or self.stalled: return []
-        return [f"khong co viec nao chay duoc: {len(live)} ticket chua xong "
-                f"({', '.join(f'{t}={st}' for t, st in sorted(live.items())[:5])}"
-                f"{', ...' if len(live) > 5 else ''}) ma queue/gate/deferred/stalled deu rong"]
+    _deadlock_warnings = scheduler._deadlock_warnings  # ADR-0034: logic ở orch/scheduler.py
 
     def rulings(self, project_id: str | None = None, ticket_id: str | None = None) -> list[dict[str, Any]]:
         """Sổ Ruling (ADR-0030): mọi quyết định agent tự đưa ra, đọc từ audit `ruling` — không giữ trong RAM nên không
@@ -491,6 +469,7 @@ class Orchestrator:
                 "stalled": {pid: f"{st['agent']} lỗi trên {st['topic']}: {st['error'][:120]}" for pid, st in self.stalled.items()},
                 "architecture_debt": self.supervisor.debt_table(),  # ADR-0032
                 "gates_pending": {sid: g.kind for sid, g in self.gate.pending.items()}, "plans": list(self.plans),
+                "clarifications_pending": pending_clarifications(self.bus),
                 "blackboard": {key: {"v": sc.version, "ref": sc.content_ref, "chars": len(sc.content or ""),
                                      "file": str(p) if (p := self.blackboard.path(sc.namespace,
                                                                                   project_id=sc.project_id)) else None}
