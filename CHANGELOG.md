@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- fix(gateway): **ghi file token không còn mất im lặng trên Windows; README hết conflict marker** (#PR).
+- fix(gateway): **ghi file token không còn mất im lặng trên Windows; README hết conflict marker** (#318).
   `os.replace` thỉnh thoảng trả `WinError 5` khi Defender/indexer giữ file đích; `_update_account_fields` nuốt
   lỗi nên cooldown và `last_used_at` mất mà không ai biết — đó là nguồn của test LRU "chập chờn" (đo 1/8 lượt
   đỏ). `_atomic_write` nay thử lại có giới hạn khi `PermissionError`, sau sửa 20/20 lượt xanh. Kèm: `README.md`
