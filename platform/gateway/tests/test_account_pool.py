@@ -162,7 +162,10 @@ def test_bearer_email_prefix_does_not_match(manager):
     manager.save_credentials(_creds("a"))
     manager.save_credentials(_creds("b"))
     manager.resolve_credential_candidates()  # a được dùng → LRU đẩy b lên đầu dù không khớp bearer
-    assert [c.email for c in manager.resolve_credential_candidates(bearer_token="b")] == ["b@example.com", "a@example.com"]
+    assert [c.email for c in manager.resolve_credential_candidates(bearer_token="b")] == [
+        "b@example.com",
+        "a@example.com",
+    ]
     manager.resolve_credential_candidates(bearer_token="a@example.com")
     assert manager.resolve_credential_candidates(bearer_token="b")[0].email == "b@example.com"
 
@@ -323,6 +326,42 @@ def test_atomic_write_cleans_up_tmp_file_and_reraises_on_failure(manager, monkey
     assert not manager.token_file.exists()
 
 
+def test_atomic_write_retries_transient_permission_error(manager, monkeypatch):
+    # Windows: `os.replace` trả `[WinError 5] Access is denied` khi tiến trình khác (Defender, indexer) đang
+    # giữ file đích trong một khoảnh khắc. Đo 2026-09-22: 1/8 lượt chạy cả bộ gateway đỏ đúng vì thế, và
+    # `_update_account_fields` nuốt lỗi → cooldown/`last_used_at` mất im lặng. Lỗi tạm thì phải thử lại.
+    real_replace = gw_auth.os.replace
+    calls = []
+
+    def flaky_replace(src, dst):
+        calls.append(1)
+        if len(calls) == 1:
+            raise PermissionError(13, "Access is denied")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(gw_auth.os, "replace", flaky_replace)
+    monkeypatch.setattr(gw_auth.time, "sleep", lambda s: None)
+    manager._atomic_write(manager.token_file, {"a": 1})
+    assert json.loads(manager.token_file.read_text(encoding="utf-8")) == {"a": 1}
+    assert len(calls) == 2
+
+
+def test_atomic_write_gives_up_after_bounded_permission_retries(manager, monkeypatch):
+    # File bị khoá thật (không phải khoảnh khắc) thì không được treo: hết số lần thử là ném, và dọn file tạm.
+    calls = []
+
+    def locked(src, dst):
+        calls.append(1)
+        raise PermissionError(13, "Access is denied")
+
+    monkeypatch.setattr(gw_auth.os, "replace", locked)
+    monkeypatch.setattr(gw_auth.time, "sleep", lambda s: None)
+    with pytest.raises(PermissionError):
+        manager._atomic_write(manager.token_file, {"a": 1})
+    assert len(calls) == gw_auth.REPLACE_ATTEMPTS
+    assert not manager.token_file.with_suffix(".tmp").exists()
+
+
 # ---------- save_credentials ----------
 
 
@@ -337,9 +376,7 @@ def test_save_credentials_migrates_legacy_flat_file(manager):
 
 
 def test_save_credentials_logs_error_on_write_failure(manager, monkeypatch, caplog):
-    monkeypatch.setattr(
-        manager, "_atomic_write", lambda *a, **kw: (_ for _ in ()).throw(OSError("no space"))
-    )
+    monkeypatch.setattr(manager, "_atomic_write", lambda *a, **kw: (_ for _ in ()).throw(OSError("no space")))
     manager.save_credentials(_creds("a"))
     assert "Không ghi được" in caplog.text
 
@@ -357,9 +394,7 @@ def test_update_account_fields_falls_back_to_save_when_no_existing_file(manager)
 def test_update_account_fields_logs_error_on_write_failure(manager, monkeypatch, caplog):
     c = _creds("a")
     manager.save_credentials(c)
-    monkeypatch.setattr(
-        manager, "_atomic_write", lambda *a, **kw: (_ for _ in ()).throw(OSError("no space"))
-    )
+    monkeypatch.setattr(manager, "_atomic_write", lambda *a, **kw: (_ for _ in ()).throw(OSError("no space")))
     manager.mark_account_unavailable(c, 429)
     assert "Không ghi được" in caplog.text
 

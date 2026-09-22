@@ -6,6 +6,12 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(gateway): **ghi file token không còn mất im lặng trên Windows; README hết conflict marker** (#318).
+  `os.replace` thỉnh thoảng trả `WinError 5` khi Defender/indexer giữ file đích; `_update_account_fields` nuốt
+  lỗi nên cooldown và `last_used_at` mất mà không ai biết — đó là nguồn của test LRU "chập chờn" (đo 1/8 lượt
+  đỏ). `_atomic_write` nay thử lại có giới hạn khi `PermissionError`, sau sửa 20/20 lượt xanh. Kèm: `README.md`
+  mang nguyên hai nhánh conflict từ #307 suốt một tuần mà không cổng nào đỏ; giải conflict và thêm cổng
+  `test_khong_file_nao_con_conflict_marker` quét mọi file git theo dõi.
 - docs(sessions): **xoá worktree là xoá luôn state của công ty; engine treo im lặng khi chạy nền** (#315).
   State QLKH (`company.sqlite`) mất cùng worktree bị dọn ở #298 vì phép dọn tra "commit đã merge chưa" mà
   file state thì không theo dõi. Dựng lại dự án từ yêu cầu mới trên đúng code khách còn nguyên. Ghi cả khuôn

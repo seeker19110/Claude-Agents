@@ -77,6 +77,11 @@ REFRESH_SKEW_SECONDS = 120
 COOLDOWN_DEFAULTS = {401: 300, 402: 3600, 403: 3600, 429: 3600}
 COOLDOWN_FALLBACK = 60
 
+# Windows: `os.replace` trả `PermissionError` (WinError 5) khi tiến trình khác (Defender, indexer) giữ file đích
+# trong chốc lát. Thử lại vài lần với nghỉ tăng dần; tổng chờ tối đa ~0,3 s, khoá thật thì vẫn ném.
+REPLACE_ATTEMPTS = 5
+REPLACE_BACKOFF_SECONDS = 0.02
+
 
 def get_home_dir() -> Path:
     """Thư mục dữ liệu của gateway: `$XAGENTS_HOME`, mặc định `~/.x-agents`."""
@@ -228,7 +233,14 @@ class AntigravityAuthManager:
                 json.dump(data, f, indent=2)
             if os.name != "nt":
                 os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)
-            os.replace(tmp_path, path)
+            for attempt in range(1, REPLACE_ATTEMPTS + 1):
+                try:
+                    os.replace(tmp_path, path)
+                    break
+                except PermissionError:
+                    if attempt == REPLACE_ATTEMPTS:
+                        raise
+                    time.sleep(REPLACE_BACKOFF_SECONDS * attempt)
         except Exception:
             with contextlib.suppress(OSError):
                 tmp_path.unlink(missing_ok=True)
@@ -379,9 +391,7 @@ class AntigravityAuthManager:
         self._update_account_fields(
             creds, unavailable_until=time.time() + cooldown, last_failure_status=int(status_code)
         )
-        logger.warning(
-            "Tài khoản %s vào cooldown %ss sau HTTP %s", creds.email or "unknown", cooldown, status_code
-        )
+        logger.warning("Tài khoản %s vào cooldown %ss sau HTTP %s", creds.email or "unknown", cooldown, status_code)
 
     def mark_account_healthy(self, creds: AntigravityCredentials) -> None:
         """Xóa cooldown thủ công (CLI `reset`)."""

@@ -75,8 +75,14 @@ def _dem_that(goi: str) -> int:
     # `uv run --directory` chứ không `sys.executable -m pytest`: mỗi package có nhóm dev riêng — chạy pytest của
     # console trong thư mục gateway thì 10 file lỗi thu thập vì thiếu `pytest-asyncio`, và một cổng "đếm được 0"
     # là cổng nói dối chứ không phải cổng đỏ. `uv` luôn có: CI chạy test bằng chính nó.
-    kq = subprocess.run(["uv", "run", "--directory", str(ROOT / goi), "pytest", "--collect-only", "-q"],
-                        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    kq = subprocess.run(
+        ["uv", "run", "--directory", str(ROOT / goi), "pytest", "--collect-only", "-q"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     m = re.search(r"(\d+) tests? collected", kq.stdout)
     assert m, f"không đọc được số ca của {goi}: {kq.stdout[-500:]}\n{kq.stderr[-500:]}"
     return int(m.group(1))
@@ -98,5 +104,36 @@ def test_so_test_trong_readme_khop_dia() -> None:
     assert khai, "không dòng nào của bảng README khai số test — regex hỏng chứ không phải README sạch"
 
     lech = {goi: (so, that) for goi, so in khai.items() if (that := _dem_that(goi)) != so}
-    assert not lech, ("README khai số test không khớp đĩa (khai, thật): " + repr(lech) +
-                      " — sửa README trong CÙNG PR làm số đổi, đừng để lại cho phiên audit.")
+    assert not lech, (
+        "README khai số test không khớp đĩa (khai, thật): "
+        + repr(lech)
+        + " — sửa README trong CÙNG PR làm số đổi, đừng để lại cho phiên audit."
+    )
+
+
+# Dòng mở/đóng conflict của git — `=======` không đủ (bảng Markdown, gạch dưới tiêu đề Setext đều hợp lệ).
+_CONFLICT_MARKER = re.compile(r"^(<<<<<<< |>>>>>>> )", re.MULTILINE)
+
+
+def test_khong_file_nao_con_conflict_marker() -> None:
+    """Không file nào git theo dõi còn dấu conflict `<<<<<<< ` / `>>>>>>> ` ở đầu dòng.
+
+    Vì sao đáng một phép riêng: PR #307 (2026-09-15) đưa lên `main` một `README.md` còn nguyên cả hai nhánh
+    conflict ở bảng "Quy mô", và không cổng nào đỏ — `test_so_test_trong_readme_khop_dia` gom dòng bảng vào
+    dict nên bản chép sau đè bản chép trước, còn Markdown thì render marker như chữ thường. Tức README nói
+    hai số khác nhau cho cùng một gói suốt một tuần mà máy vẫn xanh. Marker là thứ xác định (đầu dòng, bảy ký
+    tự, một dấu cách) nên canh bằng cổng, không canh bằng mắt người review.
+    """
+    kq = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True)
+    dinh = []
+    for ten in kq.stdout.decode("utf-8").split("\0"):
+        duong = ROOT / ten
+        if not ten or not duong.is_file():
+            continue
+        try:
+            noi_dung = duong.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue  # file nhị phân hoặc không đọc được — git merge cũng không chèn marker vào đó
+        for m in _CONFLICT_MARKER.finditer(noi_dung):
+            dinh.append(f"{ten}:{noi_dung.count(chr(10), 0, m.start()) + 1}")
+    assert not dinh, "file còn conflict marker của git (giải conflict rồi mới commit): " + ", ".join(dinh)
