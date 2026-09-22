@@ -62,7 +62,9 @@ công ty đó bao giờ).
     "reject": "Từ chối = … (ticket/RC về đâu; rỗng khi xưởng không nói)",   // C2
     "agent":  "ops",                                                       // agent chạy lại sau khi duyệt; "" khi không biết
     "title": "…", "facts": [["ticket_id","TCK-112"], …],
-    "cl": [["review:fact:pass","mô tả ngắn lấy từ checklist/evidence"], …]
+    "cl": [["review:fact:pass","mô tả ngắn lấy từ checklist/evidence"], …],
+    "decidable": true      // false = không phải HumanGate: `kind="clarification"` (câu hỏi làm rõ chờ người,
+                           //   id `CLARIFY-<project_id>`, cl = các câu chưa trả lời) — trả lời qua form, không duyệt
   }],
   "tickets": [{"id":"TCK-112","st":"in_review","who":"builder","t":"…",
                "used":82400,"out":9800,"bud":120000,"est":78000,"retry":0,   // used = tổng token; out = đầu ra (ngân sách so với out)
@@ -126,7 +128,7 @@ Nguồn của từng phần:
 | Phần | Lấy từ |
 |---|---|
 | `tiles`, `agents`, `cost_days`, `supervisor` | `supervisor.sprint_report()` + quét `audit-log` |
-| `gates` | `gate.request` chưa có `gate.decide` tương ứng, tính `hours` từ timestamp |
+| `gates` | `gate.request` chưa có `gate.decide` tương ứng, tính `hours` từ timestamp; cộng `clarification-questions` chưa được `clarification-answers` trả lời đủ (`company.orch.guards.pending_clarifications`) |
 | `tickets` | `tasks` + `TicketState` suy ra như `orchestrator.status()` |
 | `prs`, `reviews` | topic `pull-requests`, `review-results` |
 | `backends` | `routing.status()` nếu đọc được `llm.yaml`, nếu không thì gateway `/auth/status` |

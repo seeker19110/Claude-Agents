@@ -14,8 +14,8 @@ Dẫn xuất là MỘT CHIỀU, từ hai nguồn (đặc tả `docs/dac-ta-tro-l
 Sửa đích bằng tay sẽ bị `check` bắt (CI gọi cùng chỗ với golden test), vì bản dẫn xuất lệch nguồn nghĩa là người
 duyệt đang chấm theo tiêu chuẩn khác với tiêu chuẩn công ty thực sự dùng.
 
-    python -m company.subagents build [--out ../.claude/agents] [--only sc-qa-debugger|sc-gate-plan]
-    python -m company.subagents check [--out ../.claude/agents]   # exit 1 nếu lệch, in diff thống nhất
+    python -m company.subagents build [--out ../../.claude/agents] [--only sc-qa-debugger|sc-gate-plan]
+    python -m company.subagents check [--out ../../.claude/agents]   # exit 1 nếu lệch, in diff thống nhất
     python -m company.subagents list
 """
 from __future__ import annotations

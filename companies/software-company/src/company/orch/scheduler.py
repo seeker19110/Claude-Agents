@@ -14,9 +14,11 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from ..delivery import DONE_STATES
 from ..events import AuditLog, Envelope
 from ..gate_cli import trusted_decision
 from .cli import _fmt, source_fingerprint
+from .guards import clarification_warnings
 from .routes import ACTIVE_STATES, ACTOR, CONTROL_TOPICS, PAUSING, PLAN_INPUTS, REVIEW_AGENT, review_route
 
 if TYPE_CHECKING:
@@ -255,3 +257,32 @@ def _audit(o: Orchestrator, action: str, data: dict[str, Any], actor: str = ACTO
     a = AuditLog(actor=actor, action=action, tokens=tokens, ticket_id=ticket_id, project_id=project_id,
                  evidence=json.dumps(data, ensure_ascii=False), cost_usd=cost)
     o.bus.publish(Envelope(topic="audit-log", key=actor, actor=actor, payload=a.model_dump()))
+
+
+def _deadlock_warnings(o: Orchestrator) -> list[str]:
+    """Còn ticket chưa xong mà KHÔNG đường nào có thể chạy tiếp → nói thẳng ra.
+
+    Mọi trường trong `status()` đều mô tả trạng thái, không trường nào trả lời "có việc gì chạy được không".
+    Nên một dự án chết vẫn đọc ra hoàn toàn bình thường: `queue: 0`, `stalled: {}`, `gates_pending: {}` —
+    ba chỉ số xanh vì rỗng, mà rỗng ở đây chính là triệu chứng.
+
+    Đo được khi chạy thật (2026-09-04): QLKH-001 `blocked` lúc 13:25 không mở được gate (xem
+    `_check_escalations`), 13 ticket phụ thuộc đứng chờ. `status` không có gì bất thường trong 26 phút; chỉ
+    vì có người ngồi đọc từng finding mới phát hiện. Đây là lớp phòng thủ cuối: kể cả khi một nhánh cụ thể
+    quên mở gate, câu hỏi "còn việc nào chạy được không" vẫn phải được trả lời trung thực.
+
+    `queue` đếm event chưa được đánh dấu `orchestrated`, nên lượt agent đang bay vẫn tính là có việc — cảnh
+    báo này không kêu oan khi hệ thống chỉ đang chờ model trả lời."""
+    # KHÔNG miễn trừ `o.paused`: pause luôn cần người gỡ, mà người chỉ được hỏi qua gate. Pause mà không
+    # có gate nào chính là ca bế tắc cần kêu to nhất — bản đầu của cảnh báo này miễn trừ `paused` nên mù
+    # đúng ca đó (`paused=['P1']`, `gates_pending={}`, `warnings=[]`).
+    if o.queue or o.deferred or o.gate.pending or o.stalled: return []
+    # Pha TRƯỚC ticket: dự án chờ người trả lời câu hỏi làm rõ mà không gate nào hỏi ai. Bản đầu thoát sớm
+    # khi `live` rỗng nên mù toàn bộ intake/research/spec (đo 2026-09-22, CAMPUS-UNI: hỏi vòng 1 lúc 13:11,
+    # `warnings: []` suốt buổi). Không phải bế tắc — là "chờ người" chưa có gate — nhưng người phải được nói.
+    out = clarification_warnings(o.bus)
+    live = {t: st for t, st in o.lead.state.items() if st not in DONE_STATES}
+    if not live: return out
+    return [*out, f"khong co viec nao chay duoc: {len(live)} ticket chua xong "
+                  f"({', '.join(f'{t}={st}' for t, st in sorted(live.items())[:5])}"
+                  f"{', ...' if len(live) > 5 else ''}) ma queue/gate/deferred/stalled deu rong"]

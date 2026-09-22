@@ -63,7 +63,8 @@ export function openGate(id){
       <p class="note">Quyết định đi qua <code>HumanGate</code> của xưởng và ghi thẳng vào <code>audit-log</code> kèm tên bạn.
         Người duyệt phải khác người tạo (four-eyes); gate chỉ quyết một lần.${g.kind==="escalation"?" <b>Lý do bạn ghi được gửi thẳng cho agent làm hint</b> — một chữ “ok” là bảo nó không có gì để sửa.":""}</p>
     </div>
-    <div class="dr-f">
+    ${g.decidable===false?`<div class="dr-f"><p class="note">Đây không phải gate — là câu hỏi agent đặt cho người. Không có nút duyệt:
+        trả lời ở màn <b>Giao việc → Trả lời câu hỏi làm rõ</b> theo đúng <code>question_id</code> ở checklist trên.</p></div>`:`<div class="dr-f">
       <label class="by">Bạn là <input id="by" value="${esc(localStorage.getItem(ME_KEY)||"human:owner")}" placeholder="human:owner"></label>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
         <button class="fbtn" id="tmpl" type="button">Chèn mẫu root_cause / decision / hint</button>
@@ -77,7 +78,8 @@ export function openGate(id){
         ${g.kind==="publish"?'<button class="vb danger" data-d="rollback">Thu hồi</button>':""}
       </div>
       <div class="note" id="gnote"></div>
-    </div>`);
+    </div>`}`);
+  if(g.decidable===false) return;  // không có ô tick/nút duyệt để nối sự kiện
 
   const boxes=$$("#cl input");
   const sync=()=>{

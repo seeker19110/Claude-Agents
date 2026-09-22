@@ -51,15 +51,18 @@ def test_khuon2_bang_chuyen_giao_la_du_lieu_tinh_khong_phai_state():
 # ---------- khuôn 3: mọi khoá `once`/`_remember` phải mang THẾ HỆ, trừ danh sách miễn có lý do ----------
 
 # Miễn vì lý do RÕ, không phải vì "chưa ai kêu ca":
-# - uat:{rid} / lesson:{tid} / closed:{tid}: đích của chúng (gate nghiệm thu, gói bài học, trạng thái cuối) tự nó
-#   chỉ xảy ra MỘT LẦN trong đời chủ thể — không có "lần thứ hai hợp lệ" để bị nuốt oan.
+# - lesson:{tid} / closed:{tid}: đích của chúng (gói bài học, trạng thái cuối) tự nó chỉ xảy ra MỘT LẦN trong
+#   đời chủ thể — không có "lần thứ hai hợp lệ" để bị nuốt oan.
+# - uat:{rid} TỪNG được miễn cùng lý do ("production deploy một lần mỗi RC"). Sai: `redeploy`/`_rerun_release`
+#   chạy lại production cùng `rid` sau khi khách từ chối nghiệm thu, và lần `deployed` thứ hai KHÔNG mở lại gate
+#   (audit 2026-09-22). Nay mang `event_id` của release-event: `uat:{rid}:{gen}`.
 # - review.escalate:{key}: một thành phần nhưng `key` là biến ĐÃ ghép sẵn `review:{tid}:{src}:{since}` ngay
 #   trên đó — thế hệ (`since`) nằm trong biến, mẫu regex không nhìn xuyên biến được.
 # - delivery.skipped / smoke.unverified TỪNG được miễn với lý do "audit phụ, đường ống đã có audit chính".
 #   K1.4 bỏ miễn: lý do đó chỉ đúng cho nhánh CÓ chạy được smoke (`release.smoke` mang payload từng lượt) —
 #   đúng hai nhánh dùng khoá này là nhánh KHÔNG chạy được (thiếu `runtime`, thiếu worktree) và ở đó audit phụ
 #   là bản ghi DUY NHẤT nói lượt ấy chưa kiểm. Cả hai nay mang `event_id` của lượt.
-KHOA_MIEN: frozenset[str] = frozenset({"uat", "lesson", "closed", "review.escalate"})
+KHOA_MIEN: frozenset[str] = frozenset({"lesson", "closed", "review.escalate"})
 
 
 def _co_the_he(key_tmpl: str) -> bool:

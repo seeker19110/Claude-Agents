@@ -1,4 +1,5 @@
 """collect(): hợp đồng API.md trên DB thật (event publish qua bus của software-company)."""
+
 from __future__ import annotations
 
 import json
@@ -33,8 +34,9 @@ def test_xuong_co_du_lieu(company_db: Path) -> None:
     assert s["tiles"]["events"] == 8
     assert [t["id"] for t in s["tickets"]] == ["TCK-112"]
     assert s["tickets"][0]["bud"] == 120_000 and s["tickets"][0]["used"] == 8_420
-    assert s["prs"] == [{"id": "TCK-112", "br": "ticket/TCK-112", "s": "thêm login",
-                         "lint": "pass", "tests": "pass", "v": "workspace"}]
+    assert s["prs"] == [
+        {"id": "TCK-112", "br": "ticket/TCK-112", "s": "thêm login", "lint": "pass", "tests": "pass", "v": "workspace"}
+    ]
     assert s["reviews"][0]["v"] == "block" and "thiếu authz" in s["reviews"][0]["f"]
     assert dict(s["agents"])["builder"] == 0.21
     assert {g["xuong"] for g in s["gates"]} == {COMPANY}
@@ -45,21 +47,40 @@ def test_xuong_co_du_lieu(company_db: Path) -> None:
 
 def test_moi_khoa_luon_co_mat_va_khong_nem_khi_thieu_db(tmp_path: Path) -> None:
     s = state(tmp_path / "khong-co.sqlite")
-    assert s["sources"][COMPANY] == {"ok": False, "db": None, "events": 0, "error": "chưa có file DB",
-                                     "sandbox_available": s["sources"][COMPANY]["sandbox_available"]}
+    assert s["sources"][COMPANY] == {
+        "ok": False,
+        "db": None,
+        "events": 0,
+        "error": "chưa có file DB",
+        "sandbox_available": s["sources"][COMPANY]["sandbox_available"],
+    }
     # K2.7: cờ là của MÁY, không của xưởng — có mặt kể cả khi nguồn hỏng (ô cảnh báo cần biết "máy có docker
     # không" trước cả khi biết "công ty chạy gì"), và luôn là bool chứ không phải None.
     assert isinstance(s["sources"][COMPANY]["sandbox_available"], bool)
     assert s["tickets"] == [] and s["prs"] == [] and s["reviews"] == []
     assert s["gates"] == []
     assert s["tiles"]["events"] == 0
-    for key in ("generated_at", "sources", "tiles", "gates", "tickets", "prs", "reviews",
-                "cost_days", "agents", "backends", "supervisor", "log", "loops"):
+    for key in (
+        "generated_at",
+        "sources",
+        "tiles",
+        "gates",
+        "tickets",
+        "prs",
+        "reviews",
+        "cost_days",
+        "agents",
+        "backends",
+        "supervisor",
+        "log",
+        "loops",
+    ):
         assert key in s
 
 
 def test_db_hong_bao_loi_chu_khong_nem(tmp_path: Path) -> None:
-    bad = tmp_path / "hong.sqlite"; bad.write_bytes(b"day khong phai sqlite")
+    bad = tmp_path / "hong.sqlite"
+    bad.write_bytes(b"day khong phai sqlite")
     s = state(bad)
     assert s["sources"][COMPANY]["ok"] is False
     assert "không đọc được DB" in s["sources"][COMPANY]["error"]
@@ -84,7 +105,7 @@ def test_tuoi_gate_va_nguong_sev_theo_hang_so_cua_cong_ty(company_db: Path) -> N
 
 def test_gate_da_quyet_khong_con_trong_danh_sach(company_db: Path) -> None:
     s = state(company_db)
-    assert "SPEC-1" not in {g["id"] for g in s["gates"]}          # đã có gate.decide trong log
+    assert "SPEC-1" not in {g["id"] for g in s["gates"]}  # đã có gate.decide trong log
     assert {"REL-001"} == {g["id"] for g in s["gates"]}
     bus = CompanySQLiteBus(company_db)
     gate_decide(bus, CompanyEnvelope, CompanyAudit, subject_id="REL-001", decision="request_changes", by="human:owner")
@@ -172,9 +193,15 @@ def test_view_mac_dinh_gate_title_facts_review_note_tiers() -> None:
 def test_review_note_noi_finding_khi_khong_co_root_cause() -> None:
     v = object.__new__(collect_mod._View)
     v.envelopes = [
-        SimpleNamespace(topic="review-results",
-                        payload={"ticket_id": "T1", "source": "revr", "verdict": "block",
-                                 "findings": [{"text": "a"}, {"text": "b"}]}),
+        SimpleNamespace(
+            topic="review-results",
+            payload={
+                "ticket_id": "T1",
+                "source": "revr",
+                "verdict": "block",
+                "findings": [{"text": "a"}, {"text": "b"}],
+            },
+        ),
     ]
     assert v._review_note("ticket_id", "T1", "revr") == "block · a; b"
     # không khớp nguồn/subject -> rỗng
@@ -188,8 +215,7 @@ def test_company_tiers_loi_load_agents_tra_rong(company_db: Path, monkeypatch: p
     assert len(s["cost_days"]["series"]) == 14
 
 
-def test_routing_status_config_loi_bo_qua_va_thu_gateway(company_db: Path,
-                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+def test_routing_status_config_loi_bo_qua_va_thu_gateway(company_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`llm.yaml` có tồn tại (giả) nhưng load_config ném lỗi -> _routing_status() bỏ qua, coi như không có, đi hỏi gateway."""
     import console.collect as cmod
 
@@ -201,8 +227,9 @@ def test_routing_status_config_loi_bo_qua_va_thu_gateway(company_db: Path,
     assert s["sources"]["gateway"]["ok"] is False
 
 
-def test_routing_status_tu_llm_yaml_that_khong_hoi_gateway(tmp_path: Path, company_db: Path,
-                                                            monkeypatch: pytest.MonkeyPatch) -> None:
+def test_routing_status_tu_llm_yaml_that_khong_hoi_gateway(
+    tmp_path: Path, company_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """`llm.yaml` có `backends:` -> backends lấy từ routing.status() thật, gateway KHÔNG được hỏi (sources.gateway ok, error None).
 
     Trước đây nhánh này chỉ được phủ nhờ máy dev tình cờ có sẵn `software-company/llm.yaml` (bị gitignore) — trên CI
@@ -240,8 +267,9 @@ def test_routing_status_tu_llm_yaml_that_khong_hoi_gateway(tmp_path: Path, compa
     assert s["sources"]["gateway"] == {"ok": True, "url": DEAD_GATEWAY, "error": None}  # không hỏi gateway (đã chết)
 
 
-def test_gateway_status_doc_token_that_bai_van_hoi_duoc(tmp_path: Path, company_db: Path,
-                                                         khong_co_llm_yaml: None) -> None:
+def test_gateway_status_doc_token_that_bai_van_hoi_duoc(
+    tmp_path: Path, company_db: Path, khong_co_llm_yaml: None
+) -> None:
     """token_file trỏ tới đường dẫn không đọc được (thư mục) -> OSError bị nuốt, request vẫn không kèm token."""
     bad_token = tmp_path  # là thư mục, đọc như file sẽ ném OSError
     s = collect(company_db, gateway_token_file=bad_token, gateway_url=DEAD_GATEWAY)
@@ -249,8 +277,9 @@ def test_gateway_status_doc_token_that_bai_van_hoi_duoc(tmp_path: Path, company_
     assert s["sources"]["gateway"]["ok"] is False
 
 
-def test_gateway_status_thanh_cong_tra_danh_sach_account(tmp_path: Path, company_db: Path,
-                                                          khong_co_llm_yaml: None, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gateway_status_thanh_cong_tra_danh_sach_account(
+    tmp_path: Path, company_db: Path, khong_co_llm_yaml: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """`GET /auth/status` thành công, kèm token file hợp lệ -> parse ra danh sách account đúng hình dạng."""
     import io
     import urllib.request
@@ -258,11 +287,27 @@ def test_gateway_status_thanh_cong_tra_danh_sach_account(tmp_path: Path, company
     token_file = tmp_path / "tok"
     token_file.write_text("abc123", encoding="utf-8")
 
-    payload = json.dumps({"accounts": [
-        {"email": "a@x.com", "cooldown_remaining": 0, "is_expired": False, "last_failure_status": 0, "source": "s1"},
-        {"email": "b@x.com", "cooldown_remaining": 30, "is_expired": False, "last_failure_status": 429, "source": "s2"},
-        {"email": "c@x.com", "cooldown_remaining": 0, "is_expired": True, "source": "s3"},
-    ]}).encode("utf-8")
+    payload = json.dumps(
+        {
+            "accounts": [
+                {
+                    "email": "a@x.com",
+                    "cooldown_remaining": 0,
+                    "is_expired": False,
+                    "last_failure_status": 0,
+                    "source": "s1",
+                },
+                {
+                    "email": "b@x.com",
+                    "cooldown_remaining": 30,
+                    "is_expired": False,
+                    "last_failure_status": 429,
+                    "source": "s2",
+                },
+                {"email": "c@x.com", "cooldown_remaining": 0, "is_expired": True, "source": "s3"},
+            ]
+        }
+    ).encode("utf-8")
 
     class FakeResp(io.BytesIO):
         def __enter__(self):
@@ -301,17 +346,33 @@ def test_replay_ticket_cu_assignee_stack_khong_lam_chet_collect(company_db: Path
     FAILED ... src/console/collect.py:288: ValidationError) — đúng lỗi đã làm chết mặt kính trực ban
     trên DB thật của QLKH, nơi /api/stream trả lỗi thay vì dữ liệu.
     """
-    body = json.loads(json.dumps({
-        "event_id": "ev-cu-999", "topic": "tasks", "key": "TCK-999", "actor": "delivery-lead",
-        "ts": datetime.now(UTC).isoformat(),
-        "payload": {"ticket_id": "TCK-999", "project_id": "P1", "requirement_id": "R1",
+    body = json.loads(
+        json.dumps(
+            {
+                "event_id": "ev-cu-999",
+                "topic": "tasks",
+                "key": "TCK-999",
+                "actor": "delivery-lead",
+                "ts": datetime.now(UTC).isoformat(),
+                "payload": {
+                    "ticket_id": "TCK-999",
+                    "project_id": "P1",
+                    "requirement_id": "R1",
                     # bản ghi lịch sử: `assignee` mang một trong sáu stack cũ, chưa có trường `stack`
-                    "assignee": "platform", "title": "ticket cu", "acceptance": ["ok"],
-                    "estimate_tokens": 1000, "budget_tokens": 2000},
-    }))
+                    "assignee": "platform",
+                    "title": "ticket cu",
+                    "acceptance": ["ok"],
+                    "estimate_tokens": 1000,
+                    "budget_tokens": 2000,
+                },
+            }
+        )
+    )
     with sqlite3.connect(company_db) as db:
-        db.execute("INSERT INTO events(event_id, topic, key, actor, ts, body) VALUES (?,?,?,?,?,?)",
-                   ("ev-cu-999", "tasks", "TCK-999", "delivery-lead", body["ts"], json.dumps(body)))
+        db.execute(
+            "INSERT INTO events(event_id, topic, key, actor, ts, body) VALUES (?,?,?,?,?,?)",
+            ("ev-cu-999", "tasks", "TCK-999", "delivery-lead", body["ts"], json.dumps(body)),
+        )
 
     s = state(company_db)
 
@@ -333,18 +394,43 @@ def test_ticket_blocked_roi_merge_qua_already_integrated_khong_bao_bloc_gia(comp
     `st` quay về `blocked` và ticket lọt vào `silent_deadlocks`."""
     tid = "TCK-DA-XONG-1"
     bus = CompanySQLiteBus(company_db)
-    task = Task(ticket_id=tid, project_id="P1", requirement_id="R1", assignee="builder",
-                title="việc bị chặn rồi được đánh dấu đã tích hợp", acceptance=["ok"],
-                estimate_tokens=1_000, budget_tokens=2_000)
+    task = Task(
+        ticket_id=tid,
+        project_id="P1",
+        requirement_id="R1",
+        assignee="builder",
+        title="việc bị chặn rồi được đánh dấu đã tích hợp",
+        acceptance=["ok"],
+        estimate_tokens=1_000,
+        budget_tokens=2_000,
+    )
     bus.publish(CompanyEnvelope(topic="tasks", key=tid, actor="delivery-lead", payload=task.model_dump()))
-    bus.publish(CompanyEnvelope(topic="audit-log", key="delivery-lead", actor="delivery-lead",
-        payload=CompanyAudit(actor="delivery-lead", action="ticket.blocked", ticket_id=tid,
-                             evidence=json.dumps({"ticket_id": tid, "retry": 3, "max_retries": 3},
-                                                  ensure_ascii=False)).model_dump()))
-    bus.publish(CompanyEnvelope(topic="audit-log", key="delivery-lead", actor="delivery-lead",
-        payload=CompanyAudit(actor="delivery-lead", action="ticket.already_integrated", ticket_id=tid,
-                             evidence=json.dumps({"ticket_id": tid, "state": "merged"},
-                                                  ensure_ascii=False)).model_dump()))
+    bus.publish(
+        CompanyEnvelope(
+            topic="audit-log",
+            key="delivery-lead",
+            actor="delivery-lead",
+            payload=CompanyAudit(
+                actor="delivery-lead",
+                action="ticket.blocked",
+                ticket_id=tid,
+                evidence=json.dumps({"ticket_id": tid, "retry": 3, "max_retries": 3}, ensure_ascii=False),
+            ).model_dump(),
+        )
+    )
+    bus.publish(
+        CompanyEnvelope(
+            topic="audit-log",
+            key="delivery-lead",
+            actor="delivery-lead",
+            payload=CompanyAudit(
+                actor="delivery-lead",
+                action="ticket.already_integrated",
+                ticket_id=tid,
+                evidence=json.dumps({"ticket_id": tid, "state": "merged"}, ensure_ascii=False),
+            ).model_dump(),
+        )
+    )
     bus.close()
 
     s = state(company_db)
@@ -352,3 +438,48 @@ def test_ticket_blocked_roi_merge_qua_already_integrated_khong_bao_bloc_gia(comp
     by_id = {t["id"]: t["st"] for t in s["tickets"]}
     assert by_id[tid] == "merged", by_id
     assert tid not in {d["id"] for d in s["silent_deadlocks"]}
+
+
+def _hoi_lam_ro(company_db: Path, answers: list[dict] | None = None) -> None:
+    bus = CompanySQLiteBus(company_db)
+    if answers is None:
+        bus.publish(
+            CompanyEnvelope(
+                topic="clarification-questions",
+                key="P1",
+                actor="product",
+                payload={
+                    "project_id": "P1",
+                    "round": 1,
+                    "questions": [{"id": "Q-01", "req_id": "FR-1", "text": "A hay B?", "options": ["A", "B"], "default": "A"}],
+                },
+            )
+        )
+    else:
+        bus.publish(
+            CompanyEnvelope(
+                topic="clarification-answers",
+                key="P1",
+                actor="human:owner",
+                payload={"project_id": "P1", "answers": answers},
+            )
+        )
+    bus.close()
+
+
+def test_cau_hoi_lam_ro_dang_cho_hien_trong_hang_doi_gate(company_db: Path) -> None:
+    """Đo 2026-09-22 (CAMPUS-UNI): `product` đăng `clarification-questions`, chưa ai trả lời; console chỉ có form
+    trả lời, không có chỗ nào NÓI rằng đang có câu hỏi chờ. Người trực nhìn "Sạch hàng đợi" trong khi dự án đứng
+    im. Câu hỏi chờ đi CHUNG hàng đợi gate (một chỗ duy nhất để người trực nhìn), kind `clarification`, không
+    duyệt được (không phải HumanGate) — chỉ trỏ tới form trả lời."""
+    _hoi_lam_ro(company_db)
+    s = state(company_db)
+    g = next((g for g in s["gates"] if g["id"] == "CLARIFY-P1"), None)
+    assert g is not None, f"câu hỏi chờ phải hiện trong hàng đợi, có: {[x['id'] for x in s['gates']]}"
+    assert g["kind"] == "clarification" and g["xuong"] == COMPANY and g["by"] == "product"
+    assert g["decidable"] is False, "không phải HumanGate — nút duyệt phải tắt"
+    assert any("Q-01" in c[0] for c in g["cl"]), "checklist là chính các câu hỏi, để người trực đọc tại chỗ"
+    assert g["hours"] >= 0 and g["sev"] in {"calm", "warn", "over"}
+    assert all(x["decidable"] is True for x in s["gates"] if x["id"] != "CLARIFY-P1"), "gate thật vẫn duyệt được"
+    _hoi_lam_ro(company_db, answers=[{"question_id": "Q-01", "answer": "A"}])  # trả lời đủ → biến mất
+    assert "CLARIFY-P1" not in {g["id"] for g in state(company_db)["gates"]}

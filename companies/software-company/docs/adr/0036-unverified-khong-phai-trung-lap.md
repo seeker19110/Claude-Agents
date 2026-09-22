@@ -48,8 +48,12 @@ fail (RC `status=failed` + mở gate `escalation`).
    không waive được — muốn đi tiếp phải sửa spec rồi redeploy, đúng việc cần làm; (b) không tiêu lượt QA cho một
    RC đã biết là không kiểm được; (c) `status` ở staging nói thật ngay tại chỗ nó được ghi.
 
-4. **Một chỗ quyết duy nhất** (`verify._chua_kiem`) cho cả hai nhánh không-kiểm-được (thiếu `runtime`, thiếu
-   worktree). Hai nhánh xử lý giống nhau mà viết hai chỗ thì sớm muộn lệch.
+4. **Một chỗ quyết duy nhất** cho cả hai nhánh không-kiểm-được (thiếu `runtime`, thiếu worktree). Hai nhánh xử
+   lý giống nhau mà viết hai chỗ thì sớm muộn lệch.
+
+   > Đối chiếu 2026-09-22: cài đặt thật là hàm `smoke.unverified(reason)` (một chỗ dựng khối `smoke` chưa kiểm),
+   > gọi từ hai nhánh trong `orch/verify.py::smoke` (thiếu `runtime`, và ADR-0041 `runtime.deploy` đã khai) —
+   > không có hàm `verify._chua_kiem` như bản đầu ADR viết.
 
 ## Hệ quả
 

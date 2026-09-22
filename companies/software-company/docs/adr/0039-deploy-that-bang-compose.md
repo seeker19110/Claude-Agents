@@ -1,6 +1,6 @@
 # ADR-0039: Deploy thật bằng `docker compose` — `deployed` là container đang chạy, không phải lời khai
 
-Trạng thái: Accepted · Ngày: 2026-09-08 · Thực hiện mục **D1** của `docs/DAC-TA-NANG-CAP-2026-09.md`
+Trạng thái: Accepted · Ngày: 2026-09-08 · Thực hiện mục **D1** của `docs/archive/DAC-TA-NANG-CAP-2026-09.md`
 (bảng §4 ghi "ADR-0034" là số **đặt trước** đã bị dùng cho việc tách máy trạng thái — xem cảnh báo cuối §8 của
 đặc tả đó). Nối tiếp ADR-0029/0036 (smoke là bằng chứng), ADR-0035 (sandbox, fail-closed), ADR-0027 (giao hàng
 thật), ADR-0031 (`runtime` trong spec).
