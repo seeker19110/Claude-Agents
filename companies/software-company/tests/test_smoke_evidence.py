@@ -86,7 +86,7 @@ def test_probe_loopback_khong_di_qua_http_proxy(monkeypatch):
     from company.smoke import _probe
 
     class H(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):  # noqa: N802
+        def do_GET(self):
             self.send_response(200); self.end_headers()
         def log_message(self, *a): pass
 
