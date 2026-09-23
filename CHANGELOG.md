@@ -11,7 +11,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 - build(deps): bump `ruff` 0.16.6 → 0.16.7 (dependabot) (#316)
 - build(deps): bump `anthropic` 1.4.0 → 1.5.0 (dependabot) (#317)
 - fix(company): **kế hoạch thiếu `risk_tags` tự sửa thay vì `plan_rejected` cả kế hoạch; thêm tiêu chí phá thế
-  bế tắc cho gate** (#TBD). Đo thật 2026-09-22 (CAMPUS-UNI): `_check_plan` từ chối cả kế hoạch 2 lần liên tiếp
+  bế tắc cho gate** (#322). Đo thật 2026-09-22 (CAMPUS-UNI): `_check_plan` từ chối cả kế hoạch 2 lần liên tiếp
   chỉ vì một ticket thiếu `risk_tags` suy được thẳng từ `RISK_HINTS` — mỗi lần tốn một lượt `product[plan]`
   đầy đủ (model thật) để sinh lại từ đầu. Nay `HINT_TO_TAG` (`events.py`) ánh xạ hint đã biết sang đúng tag,
   `_check_plan` tự gắn và ghi audit `risk_tags_autofixed` thay vì từ chối; hint không suy được tag vẫn bị từ
