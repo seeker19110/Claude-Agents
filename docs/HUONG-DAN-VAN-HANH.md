@@ -611,6 +611,19 @@ uv run python -m company.orchestrator takeover T-12 --by human:lead      # đã 
 Sau khi `ops` (pha `deploy`) deploy staging và `qa` (pha `review`) hồi quy pass, gate `release` mở; approve xong mới
 lên production. Khách ký nghiệm thu bằng `acceptance-results` qua `ops` (pha `account`) — gate `acceptance`, ADR-0017.
 
+#### Người im lặng thì sao — hai hạn tự đi tiếp (2026-09-23)
+
+Sau khi đưa yêu cầu vào, người có thể không quay lại trả lời câu hỏi làm rõ; backend có thể chập chờn hàng giờ. Hai
+biến môi trường đặt trần, đọc lại mỗi nhịp, không cần restart:
+
+| Biến | Mặc định | Quá trần thì |
+|---|---|---|
+| `COMPANY_CLARIFY_TIMEOUT_H` | `24` | orchestrator lấy `default` của từng câu hỏi chưa trả lời làm câu trả lời (audit `clarification.assumed`, `status.clarifications_pending` hết chờ) và chạy pha `spec` từ draft. Người vẫn ký gate `spec` — giả định chỉ đi xa tới một PRD chờ người đọc |
+| `COMPANY_TRANSIENT_MAX_H` | `2` | event hoãn `transient:` (mạng, quota) không thử lại nữa: gate `escalation` mở cho người (audit `agent_error_unhandled`); duyệt = chạy lại event đó |
+
+Cùng đợt: `product[plan]` lỗi và threat model `block` cũng mở gate `escalation` thay vì chỉ ghi audit — không còn
+trường hợp nào dự án chết mà `status` xanh.
+
 #### Công ty tự duyệt release và nghiệm thu theo sàn chất lượng (ADR-0043, mặc định TẮT)
 
 `COMPANY_GATE_AUTOAPPROVE=1` bật đường code tự đóng gate. Từ ADR-0043 bảng `company/gate_risk.py:RISK_RULES` có

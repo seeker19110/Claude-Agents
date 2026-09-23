@@ -26,7 +26,8 @@ yêu cầu thô ─► product[intake] ─► product[research] (4 mảng) ─�
 
 `delivery.py` phát event dưới actor `delivery-lead` (`roles.LEAD_ACTOR`) — đó là CODE đóng vòng, không phải agent.
 
-Kẹt ở đâu cũng có đường ra: agent tự dừng / smoke fail / retry hết → gate `escalation`; supervisor đếm ngân sách và
+Kẹt ở đâu cũng có đường ra: agent tự dừng / smoke fail / retry hết / plan lỗi / threat model chặn / transient quá trần → gate
+`escalation` (một cửa `_mark_unhandled`); câu hỏi làm rõ quá hạn → giả định theo `default` rồi pha `spec` chạy; supervisor đếm ngân sách và
 bế tắc. Không đường nào được kết thúc trong im lặng (`../TRAPS.md` §1).
 
 ## Lớp code (`src/company/`)

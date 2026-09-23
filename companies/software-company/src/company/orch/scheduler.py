@@ -8,6 +8,7 @@ mặt gọi cũ (`o.run()`, `o.tick()`, `o._audit(...)`) không đổi.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -158,6 +159,7 @@ def tick(o: Orchestrator, now: datetime | None = None) -> list[StepResult]:
                 o.supervisor.escalate_gate(tid, f"review {src} giao lại vẫn lỗi: {failed[0][:200]}", once_key=f"review.escalate:{key}")
     active = {tid for tid, st in o.lead.state.items() if st in ACTIVE_STATES}
     o.supervisor.check_timeouts(now, active=active)
+    results += o._assume_clarifications(now)  # câu hỏi làm rõ quá hạn → giả định theo default, pha spec chạy
     # `flush_releases` (chế độ gom release) trước đây chỉ được gọi ngay lúc MỘT ticket vừa review pass
     # (`_on_review`) hoặc lúc đóng một ticket escalated (`_on_escalation_decided`, reject/rollback) — không có
     # nhịp nào gọi lại sau đó. Ticket approved từ TRƯỚC một lần orchestrator restart (RC không được tạo lại khi
@@ -202,8 +204,23 @@ def _maybe_reload(o: Orchestrator) -> None:
     print(f"mã nguồn đổi ({fp[1]}) — khởi động lại với mã mới", file=sys.stderr)
     raise ReloadRequested(fp[1])
 
+def transient_limit() -> float:
+    """Một event hoãn `transient:` (backend chập chờn/hết quota) được thử lại tối đa bao lâu (giây) trước khi
+    thành việc của người. `COMPANY_TRANSIENT_MAX_H`, mặc định 2 giờ — đủ hai lượt cooldown quota 1h."""
+    return float(os.environ.get("COMPANY_TRANSIENT_MAX_H") or 2) * 3600
+
 def _defer(o: Orchestrator, env: Envelope, res: StepResult, reason: str, wait_s: float | None = None) -> StepResult:
-    """`wait_s`: backend nói rõ phải chờ bao lâu → không thử lại trước mốc đó (xem `_retry_deferred`)."""
+    """`wait_s`: backend nói rõ phải chờ bao lâu → không thử lại trước mốc đó (xem `_retry_deferred`).
+    `transient:` quá `transient_limit()` kể từ lần hoãn đầu → không hoãn nữa: `_mark_unhandled` (gate escalation)
+    và đánh dấu đã xử lý. Trước 2026-09-23 không có trần: mỗi nhịp thử lại một lần, mãi mãi, không ai được hỏi.
+    Mốc đầu chỉ sống trong RAM — restart là đếm lại từ đầu (chấp nhận: restart hiếm hơn nhiều so với 2h)."""
+    if reason.startswith("transient:"):
+        t0 = o.transient_since.setdefault(env.event_id, time.monotonic())
+        if time.monotonic() - t0 > transient_limit():
+            with o._lock: o.transient_since.pop(env.event_id, None)
+            agent = reason.split(":", 2)[1] if reason.count(":") >= 2 else ACTOR
+            o._mark_unhandled(env, agent, f"hoãn transient quá {int(transient_limit())}s: {reason[:200]}", res)
+            o._mark(env, res); return res
     with o._lock:
         o.deferred[env.event_id] = (env, reason); res.deferred = reason; o.stats["deferred"] += 1
         if wait_s and wait_s > 0:
@@ -238,7 +255,7 @@ def _retry_deferred(o: Orchestrator, only: str | None = None) -> None:
 
 def _mark(o: Orchestrator, env: Envelope, res: StepResult) -> None:
     with o._lock:
-        o.processed.add(env.event_id); o.partial.pop(env.event_id, None)
+        o.processed.add(env.event_id); o.partial.pop(env.event_id, None); o.transient_since.pop(env.event_id, None)
     o._audit("orchestrated", {"event_id": env.event_id, "topic": env.topic, "actions": res.actions},
                 ticket_id=env.payload.get("ticket_id") or (env.key if env.topic == "tasks" else None),
                 project_id=env.payload.get("project_id"))

@@ -10,6 +10,7 @@ qua `_audit` để một lối thoát khỏi cổng không bao giờ im lặng.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, TypedDict
 
@@ -35,6 +36,7 @@ class ClarificationPending(TypedDict):
     """Một dự án đang chờ người trả lời câu hỏi làm rõ (`pending_clarifications`)."""
 
     round: int
+    event_id: str
     unanswered: list[str]
     since: str
     asked_by: str
@@ -112,6 +114,20 @@ def unanswered_questions(bus: Any, q: Envelope) -> list[str]:
     return [str(x.get("id")) for x in q.payload.get("questions", []) if str(x.get("id")) not in answered]
 
 
+def assumed_clarifications(bus: Any) -> set[str]:
+    """event_id của các vòng câu hỏi đã được orchestrator giả định theo `default` vì quá hạn (audit
+    `clarification.assumed`). Đọc từ bus để restart vẫn nhớ."""
+    out: set[str] = set()
+    for a in bus.replay(topic="audit-log"):
+        if a.payload.get("action") != "clarification.assumed":
+            continue
+        try:
+            out.add(str(json.loads(a.payload.get("evidence") or "{}").get("event_id")))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def pending_clarifications(bus: Any) -> dict[str, ClarificationPending]:
     """Dự án đang ĐỨNG IM chờ người trả lời câu hỏi làm rõ, tính từ bus (không RAM — mở lại tiến trình vẫn thấy).
 
@@ -123,17 +139,19 @@ def pending_clarifications(bus: Any) -> dict[str, ClarificationPending]:
     latest: dict[str, Envelope] = {}
     for q in bus.replay(topic="clarification-questions"):
         latest[str(q.payload.get("project_id") or q.key)] = q
+    assumed = assumed_clarifications(bus)
     out: dict[str, ClarificationPending] = {}
     for pid, q in latest.items():
         missing = unanswered_questions(bus, q)
-        if not missing:
-            continue
+        if not missing or q.event_id in assumed:
+            continue  # đã giả định theo default (quá hạn, `_assume_clarifications`): không còn "chờ người"
         rnd = int(q.payload.get("round", 1))
         asked = [str(x.get("id")) for x in q.payload.get("questions", [])]
         if rnd >= MAX_CLARIFY_ROUNDS and len(missing) < len(asked):
             continue  # vòng cuối, đã trả lời một phần
         out[pid] = {
             "round": rnd,
+            "event_id": q.event_id,
             "unanswered": missing,
             "since": q.ts.isoformat(timespec="seconds"),
             "asked_by": q.actor,
