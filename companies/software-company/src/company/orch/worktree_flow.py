@@ -19,6 +19,7 @@ from ..roles import LEAD_ACTOR, ROLE
 from ..tools import ToolBox, WorkspaceTools
 from ..workspace import Integration, TicketWorkspace, WorkspaceError, _git
 from .routes import BLIND_STRIP, MAX_CONFLICT_RETRIES, Route, key_for
+from .verify import _release_root
 
 SAFE_TICKET_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
@@ -183,7 +184,9 @@ def read_only_tools(o: Orchestrator, inp: Envelope) -> ToolBox | None:
     if integ is not None and integ.path.exists():
         # Gốc là `Path` (worktree tích hợp, không phải worktree của ticket) nên không có `ws.sandbox` để
         # đi theo — truyền tường minh, nếu không QA hồi quy sẽ chạy lệnh khách ngoài sandbox.
-        return WorkspaceTools(integ.path, allow_write=False, sandbox=o.sandbox).toolbox()
+        # Đọc ĐÚNG sha đã staged, không phải đầu nhánh tích hợp (cùng họ lỗi với `verify._release_root`).
+        root = _release_root(o, str(inp.payload["release_id"]), integ)
+        return WorkspaceTools(root, allow_write=False, sandbox=o.sandbox).toolbox()
     return None
 
 def author_tests(o: Orchestrator, agent: str, task: Envelope, r: Route, phase: str | None = None) -> Envelope | None:
