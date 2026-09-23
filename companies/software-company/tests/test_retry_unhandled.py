@@ -9,6 +9,7 @@ from __future__ import annotations
 from company.bus import InMemoryBus
 from company.events import Envelope
 from company.llm import FakeClient, LLMError
+from company.orch.routes import PLAN_REWORKS
 from company.orchestrator import Orchestrator
 from company.sqlite_bus import SQLiteBus
 from test_orchestrator import _agent_of, _inp, _product_phase, handler
@@ -73,12 +74,14 @@ def test_retry_unhandled_khong_co_gi_de_chay():
 
 
 def _lead_empty_plan_once():
+    """Rỗng đủ số lượt máy tự sửa (`PLAN_REWORKS`) rồi thêm một lần nữa → mới tới `plan_rejected` + gate; lần kế
+    tiếp (sau khi người duyệt retry) mới hợp lệ. Tên giữ nguyên: "once" là một lần TỚI NGƯỜI."""
     n = {"k": 0}
     def h(system, user):
         a, p = _agent_of(system), _inp(user)
         if a == "product" and _product_phase(system) == "plan" and p.get("decision") != "pending":
             n["k"] += 1
-            if n["k"] == 1: return {"items": []}  # kế hoạch rỗng → plan_rejected
+            if n["k"] <= 1 + PLAN_REWORKS: return {"items": []}  # kế hoạch rỗng → tự sửa hết lượt → plan_rejected
         return handler(system, user)
     return h
 

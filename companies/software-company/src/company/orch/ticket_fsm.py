@@ -20,7 +20,7 @@ from ..roles import PHASE, ROLE, SOURCE
 from ..runner import RunnerError
 from .fsm import Transition
 from .guards import pending_clarifications
-from .routes import PLAN_INPUTS, SPEC_RUNTIME_REWORKS, spec_route, spec_runtime_gap
+from .routes import PLAN_INPUTS, PLAN_REWORKS, SPEC_RUNTIME_REWORKS, spec_route, spec_runtime_gap
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
@@ -109,6 +109,19 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
             "tickets": [t.model_dump() for t in tickets], "problems": problems,
             "threat_model": "missing" if f"SPEC-{project}" in o.missing_threat_model else "ok"}
     if problems:
+        with o._lock:
+            o.plan_reworks[env.event_id] += 1; attempt = o.plan_reworks[env.event_id]
+        if attempt <= PLAN_REWORKS:
+            # Từ chối của `_check_plan` là danh sách lỗi cấu trúc máy đọc được — trả thẳng cho `product[plan]`
+            # sửa (cùng khuôn `hint` của `_spec_runtime_missing`) thay vì bắt người gõ "retry". Không ghi
+            # `plan_rejected` (đó là dấu "đã hỏi người" mà `_rehydrate` dựng `unhandled` từ nó).
+            o._audit("plan.rework", {**plan, "attempt": attempt}, actor=ROLE.PRODUCT, tokens=g.tokens,
+                     cost=g.cost_usd, project_id=project)
+            res.actions.append(f"plan_rework:{plan_id}:{attempt}")
+            hint = f"orchestrator từ chối kế hoạch {plan_id} (lần {attempt}): {'; '.join(problems)}"
+            prev = {"plan_id": plan_id, "problems": problems, "tickets": [t.ticket_id for t in tickets]}
+            inp = env.model_copy(update={"payload": {**env.payload, "hint": hint, "previous_plan": prev}})
+            return o._plan(inp, res)
         o._audit("plan_rejected", plan, actor=ROLE.PRODUCT, tokens=g.tokens, cost=g.cost_usd, project_id=project)
         res.actions.append(f"plan_rejected:{'; '.join(problems)[:120]}")
         with o._lock: o.stats["errors"] += 1

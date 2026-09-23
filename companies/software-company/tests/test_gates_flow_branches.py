@@ -149,7 +149,7 @@ def test_plan_rejected_lan_hai_gate_da_pending_khong_mo_gate_trung():
     env2 = _Env(topic="change-requests", key="P1", actor="product", payload={"project_id": "P1"})
     res2 = StepResult(env2.event_id, env2.topic, env2.key)
     _plan(orch, env2, res2)
-    assert "plan_rejected" in res2.actions[0]
+    assert any("plan_rejected" in a for a in res2.actions), "sau lượt tự sửa (plan_rework) vẫn tới plan_rejected"
     n_sau = sum(1 for e in bus.replay(topic="audit-log") if e.payload["action"] == "gate.request"
                 and '"subject_id": "P1"' in (e.payload.get("evidence") or ""))
     assert n_sau == n_truoc, "gate escalation đã pending thì không mở lần hai cho cùng dự án"

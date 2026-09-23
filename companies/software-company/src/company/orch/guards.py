@@ -210,6 +210,9 @@ SPEC_KINDS = (
 SPEC_RUNTIME_REWORKS = (
     1  # số lần tự trả spec về spec-writer vì thiếu runtime trước khi hỏi người (= max_retries của nó)
 )
+# Số lần tự trả kế hoạch về `product[plan]` (kèm `hint` = problems của `_check_plan`) trước khi hỏi người, tính theo
+# EVENT nguồn. Đo 2026-09-22 (CAMPUS-UNI): hai lần liên tiếp người phải gõ "retry" cho một việc máy tự làm được.
+PLAN_REWORKS = 1
 
 
 def spec_runtime_gap(payload: dict[str, Any]) -> str | None:

@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 from .enrich import BLIND_STRIP as BLIND_STRIP  # re-export: worktree_flow/orchestrator nhập từ đây
 from .enrich import _with_chan_doan, _with_diff, _with_draft, _with_intake, _with_task
 from .guards import MAX_CLARIFY_ROUNDS as MAX_CLARIFY_ROUNDS
+from .guards import PLAN_REWORKS as PLAN_REWORKS
 from .guards import SPEC_KINDS as SPEC_KINDS
 from .guards import SPEC_RUNTIME_REWORKS as SPEC_RUNTIME_REWORKS
 from .guards import (

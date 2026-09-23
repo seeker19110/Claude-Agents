@@ -29,6 +29,7 @@ TRUSTED_WRITERS: dict[str, frozenset[str]] = {
     # `plan.proposed`/`plan_rejected`: nay ghi dưới tên `product` (`orch/ticket_fsm.py`), bus cũ (QLKH 2026-09-09,
     # `tests/test_rehydrate_ke_hoach_cu.py`) ghi dưới tên orchestrator — cả hai đều là code, không agent nào giả được.
     "plan.proposed": frozenset({ROLE.PRODUCT, ACTOR}), "plan_rejected": frozenset({ROLE.PRODUCT, ACTOR}),
+    "plan.rework": frozenset({ROLE.PRODUCT, ACTOR}),  # cùng chỗ ghi với hai hàng trên (2026-09-23)
     "ticket.blocked": frozenset({LEAD_ACTOR}), "release.finding_waived": frozenset({LEAD_ACTOR}),
     "ticket.already_integrated": frozenset({LEAD_ACTOR, ACTOR}),
     "gate.decide": frozenset({"*"}),
@@ -104,9 +105,11 @@ def rehydrate(o: Orchestrator) -> None:
             elif a["action"] in {"project.retried", "project.closed"}: o.stalled.pop(d["project_id"], None)
             elif a["action"] == "agent_error_unhandled" and d.get("subject"): o.unhandled[str(d["subject"])] = d
             elif a["action"] == "plan_rejected" and d.get("source_event"):
+                o.plan_reworks[str(d["source_event"])] += 1
                 o.unhandled[str(d["project_id"])] = {"agent": ROLE.PRODUCT, "topic": d.get("source_topic"),
                                                         "event_id": d["source_event"], "subject": str(d["project_id"])}
             elif a["action"] == "spec.runtime_missing": o.spec_runtime_reworks[str(d["project_id"])] += 1
+            elif a["action"] == "plan.rework" and d.get("source_event"): o.plan_reworks[str(d["source_event"])] += 1
             elif a["action"] == "spec.runtime_escalated" and d.get("source_event"):
                 o.unhandled[str(d["project_id"])] = {"agent": ROLE.PRODUCT, "topic": d.get("source_topic"),
                                                         "event_id": d["source_event"], "subject": str(d["project_id"]),
@@ -114,6 +117,7 @@ def rehydrate(o: Orchestrator) -> None:
             elif a["action"] in {"event.retried", "event.abandoned"}:
                 o.unhandled.pop(str(d.get("subject")), None)
                 o.spec_runtime_reworks.pop(str(d.get("subject")), None)
+                o.plan_reworks.pop(str(d.get("event_id")), None)
             elif a["action"] == "gate.decide":
                 if d.get("subject_id"): o.escalation_decided[str(d["subject_id"])] += 1
             elif a["action"] == "integration.conflict":
