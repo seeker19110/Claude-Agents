@@ -312,6 +312,41 @@ def test_truong_lam_gh_api_thanh_post_cung_bi_chan(argv, tmp_path):
         GitHubReader(tmp_path)._run(*argv)
 
 
+@pytest.mark.parametrize("argv", [
+    ("api", "repos/o/r/issues/1", "--method=DELETE"),
+    ("api", "repos/o/r/issues/1", "-XDELETE"),
+    ("api", "repos/o/r/issues/1", "-X=DELETE"),
+    ("api", "repos/o/r/issues/1", "-iXPOST"),               # gộp cờ ngắn: -i (bool) rồi -X POST
+    ("api", "repos/o/r/pulls/1/merge", "-fmerge_method=squash"),
+    ("api", "repos/o/r/issues/1/comments", "-Fbody=@x.txt"),
+    ("api", "repos/o/r/pulls", "--field=title=x"),
+    ("api", "repos/o/r/pulls", "--raw-field=title=x"),
+    ("api", "graphql", "--input=q.json"),
+])
+def test_co_ghi_dang_dinh_lien_cung_bi_chan(argv, tmp_path, monkeypatch):
+    """`gh` (pflag) nhận cờ ở dạng DÍNH LIỀN: `--method=POST`, `-XPOST`, `-fk=v`, `--field=k=v`... So khớp
+    tuyệt đối từng token thì các dạng này lọt qua bảng chặn — một lời gọi GHI thủng I1."""
+    spy = _RunSpy()
+    monkeypatch.setattr(github_mod.subprocess, "run", spy)
+    with pytest.raises(GitHubWriteAttempt):
+        GitHubReader(tmp_path)._run(*argv)
+    assert spy.calls == []
+
+
+@pytest.mark.parametrize("argv", [
+    ("pr", "list", "--json=number", "--jq=.[].number"),
+    ("api", "repos/o/r/pulls", "-q.[].number"),               # -q nhận giá trị dính liền, chữ "f"/"X" sau đó là giá trị
+    ("api", "repos/o/r/pulls", "-HAccept: application/vnd.github+json"),
+    ("pr", "list", "--repo=o/delete-me", "--limit=5"),
+    ("pr", "list", "-L5", "--paginate"),                     # cụm cờ ngắn không chứa cờ ghi
+])
+def test_co_doc_dang_dinh_lien_khong_bi_chan_nham(argv, tmp_path, monkeypatch):
+    spy = _RunSpy(stdout="[]")
+    monkeypatch.setattr(github_mod.subprocess, "run", spy)
+    GitHubReader(tmp_path)._run(*argv)          # không ném
+    assert len(spy.calls) == 1
+
+
 def test_truong_lam_gh_api_thanh_post_chieu_nguoc(monkeypatch, tmp_path):
     """Chiều ngược: bỏ đúng năm cờ trường khỏi bảng chặn → lời gọi ghi ở trên KHÔNG còn bị chặn, chứng minh
     test trên đang đo chính năm cờ đó chứ không đo token "merge"/"delete" sẵn có."""
