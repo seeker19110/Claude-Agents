@@ -162,6 +162,13 @@ class _View:
             self.ok, self.error = True, None
         except _SourceError as e:
             self.error = str(e)
+        except NotImplementedError:
+            raise  # lớp con thiếu _read/_replay là lỗi lập trình, không phải nguồn hỏng
+        except Exception as e:
+            # Một event sai schema (KeyError, pydantic ValidationError...) trong replay: chỉ nguồn NÀY hỏng —
+            # thoát ra ngoài thì `collect()` ném, `/api/state` 500 và hàng gate của xưởng kia mất theo.
+            self.envelopes, self.gate = [], None
+            self.error = f"replay hỏng ({type(e).__name__}): {str(e)[:NOTE_WIDTH]}"
 
     def _read(self) -> list[Any]:
         raise NotImplementedError

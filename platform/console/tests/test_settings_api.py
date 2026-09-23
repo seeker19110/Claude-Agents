@@ -71,3 +71,21 @@ def test_bad_company_and_bad_model_are_400(make_console, llm_yaml):  # noqa: F81
     status, body = c.request("POST", "/api/settings",
                              body={"company": "software-company", "models": {"khong-co": {"strong": "x"}}})
     assert status == 400 and "không có backend" in body["error"]
+
+
+@pytest.mark.parametrize("extra", [
+    {"models": {"antigravity": "gemini-3.7-flash-low"}},   # tier phải là ánh xạ → trước đây AttributeError
+    {"models": ["antigravity"]},
+    {"disable": [["claude-sub"]]},                          # phần tử không phải chuỗi → trước đây TypeError
+    {"disable": "claude-sub"},
+    {"enable": {"claude-sub": True}},
+    {"prefer": ["standard"]},
+    {"prefer": {"standard": ["antigravity"]}},
+])
+def test_sai_kieu_truong_la_400_khong_rot_ket_noi(make_console, llm_yaml, extra):  # noqa: F811
+    """Audit 2026-09-23: thân POST không kiểm kiểu → ngoại lệ không bắt → kết nối bị cắt thay vì 400."""
+    c = make_console(allow_config=True, llm_yaml=llm_yaml)
+    before = llm_yaml["software-company"].read_text(encoding="utf-8")
+    status, body = c.request("POST", "/api/settings", body={"company": "software-company", **extra})
+    assert status == 400, body
+    assert llm_yaml["software-company"].read_text(encoding="utf-8") == before
