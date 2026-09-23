@@ -419,3 +419,19 @@ def test_clear_credentials_logs_warning_on_failure(manager, monkeypatch, caplog)
     )
     assert manager.clear_credentials() is False
     assert "Không xóa được" in caplog.text
+
+
+@pytest.mark.parametrize("status", [429, 500, 503])
+def test_refresh_5xx_or_429_is_transient_no_cooldown(manager, status):
+    # audit 2026-09-23: mọi HTTPError từng bị coi là "Google từ chối" → cooldown 401, nên một nhịp 503 của
+    # endpoint token làm nguội cả pool 5 phút. Chỉ 4xx (trừ 429) mới là từ chối thật.
+    manager.save_credentials(_creds("a", refresh_token="ok", expires_at=1))
+    manager.save_credentials(_creds("b"))
+
+    def fail(_c):
+        raise urllib.error.HTTPError("https://oauth2.googleapis.com/token", status, "x", {}, None)
+
+    manager.refresh_access_token = fail
+    assert [c.email for c in manager.resolve_credential_candidates()] == ["b@example.com"]
+    stored = json.loads(manager.token_file.read_text(encoding="utf-8"))["accounts"]["a@example.com"]
+    assert stored.get("unavailable_until", 0) == 0

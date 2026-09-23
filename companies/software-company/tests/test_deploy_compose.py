@@ -83,11 +83,11 @@ def test_duong_hanh_phuc_ok_co_container_id_va_khong_goi_down(tmp_path, monkeypa
     _probe_tra(monkeypatch, 200)
     r, fake = _deploy(tmp_path)
     assert r.ok is True and r.error == "" and r.skipped == ""
-    assert r.project == "company-P1-staging" and r.env == "staging"
+    assert r.project == "company-p1-staging" and r.env == "staging"
     assert r.services == ("web",) and r.container_ids == ("abcdef012345",), "id container là bằng chứng máy sinh"
     assert r.port == 8080 and r.smoke["http_status"] == 200 and r.started_at
     assert fake.subs == ["up", "ps"], f"deploy xong KHÔNG được `down` (sản phẩm phải còn sống): {fake.subs}"
-    assert fake.calls[0][:6] == ["docker", "compose", "--project-name", "company-P1-staging", "-f", "compose.yaml"]
+    assert fake.calls[0][:6] == ["docker", "compose", "--project-name", "company-p1-staging", "-f", "compose.yaml"]
     assert fake.calls[0][6:] == ["up", "-d"]
     env = fake.kwargs[0]["env"]
     assert "PATH" in env and not [k for k in env if k.startswith(("GH_", "GITHUB_"))], "env phải qua clean_env"
@@ -209,7 +209,15 @@ def test_compose_file_do_dung_hai_ten_mac_dinh(tmp_path):
 
 
 def test_project_name_do_code_dat_khong_phai_payload():
-    assert project_name("QLKH", "production") == "company-QLKH-production"
+    assert project_name("QLKH", "production") == "company-qlkh-production"
+
+
+def test_project_name_hop_le_voi_compose():
+    # audit 2026-09-23: compose chỉ nhận [a-z0-9_-] cho --project-name; mã dự án thật (QLKH, DHCB) viết hoa
+    # nên `up -d` luôn thoát khác 0 → mọi deploy compose thành deploy_failed + gate leo thang.
+    import re
+    for pid in ("QLKH", "P1", "Dự Án.2"):
+        assert re.fullmatch(r"[a-z0-9][a-z0-9_-]*", project_name(pid, "staging")), pid
 
 
 def test_runtime_deploy_doc_duoc_tu_spec_va_khong_co_thi_rong():

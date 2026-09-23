@@ -199,12 +199,13 @@ def bump_dependency(root: Path, ticket_id: str, *, package: str, new_spec: str,
 
     Không tìm thấy gói ở đâu cả → `ValueError`, không ghi gì: một bump không khớp chỗ nào là dấu hiệu signal
     sai chủ thể, không phải chuyện im lặng bỏ qua."""
-    pattern = re.compile(rf"{re.escape(package)}\s*(?:[=<>!~^]=?[^\"',\s]*)?")
+    # ranh giới tên gói hai phía: `pytest` không được khớp `pytest-cov`, `xpytest` hay `[tool.pytest.ini_options]`
+    pattern = re.compile(rf"(?<![\w.-]){re.escape(package)}(?![\w.-])\s*(?:[=<>!~^]=?[^\"',\s]*)?")
     edits: list[Edit] = []
     for rel in files:
         target = check_path(root, rel)
         text = target.read_text(encoding="utf-8")
-        moi, n = pattern.subn(new_spec, text)
+        moi, n = pattern.subn(lambda _m: new_spec, text)  # new_spec là chữ, không phải mẫu thay thế regex
         if n:
             edits.append(Edit(rel, moi))
     if not edits:

@@ -527,3 +527,19 @@ def test_changed_files_ban_ghi_doi_ten_bi_cut_khong_no(monkeypatch, tmp_path: Pa
     monkeypatch.setattr(patcher.subprocess, "run", lambda *a, **k: _R())
 
     assert patcher._changed_files(tmp_path) == ["keeper/agents/moi.md"]
+
+
+def test_bump_dependency_khong_dung_goi_trung_tien_to(root: Path):
+    # audit 2026-09-23: regex không có ranh giới tên gói — bump `pytest` biến `pytest-cov>=5` thành
+    # `pytest>=8.3-cov>=5` và `[tool.pytest.ini_options]` thành `[tool.pytest>=8.3.ini_options]`.
+    goc = '[project]\ndependencies = ["pytest>=7", "pytest-cov>=5", "xpytest==1"]\n[tool.pytest.ini_options]\nx = 1\n'
+    (root / "pyproject.toml").write_text(goc, encoding="utf-8")
+    bump_dependency(root, "T1", package="pytest", new_spec="pytest>=8.3", files=("pyproject.toml",))
+    moi = (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert moi == goc.replace('"pytest>=7"', '"pytest>=8.3"')
+
+
+def test_bump_dependency_new_spec_khong_la_mau_regex(root: Path):
+    (root / "pyproject.toml").write_text('dependencies = ["bi>=1"]\n', encoding="utf-8")
+    bump_dependency(root, "T1", package="bi", new_spec=r"bi>=2\1", files=("pyproject.toml",))
+    assert (root / "pyproject.toml").read_text(encoding="utf-8") == 'dependencies = ["bi>=2\\1"]\n'

@@ -122,6 +122,8 @@ class WorkspaceTools:
     def _walk(self, base: Path, glob: str):
         for p in sorted(base.glob(glob)):
             rel = p.relative_to(self.root)
+            # `relative_to` so chuỗi: `root/../x` cho `rel` bắt đầu bằng `..` — glob `../*` thoát khỏi worktree
+            if ".." in rel.parts: continue
             # symlink có thể trỏ ra ngoài worktree (hoặc vào .git/): không liệt kê, không đọc
             if p.is_symlink() or not p.is_file() or set(rel.parts) & SKIP_DIRS or _is_secret(rel.parts): continue
             yield p, rel
