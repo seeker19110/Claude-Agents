@@ -19,6 +19,8 @@ from typing import Any, Protocol
 
 from xagents_core.bus import is_human
 
+from .roles import SOURCE
+
 MACHINE_PR = "workspace"
 MACHINE_RUN = "orchestrator"
 #: `audit-log` action mang mức nâng người đặt lúc ký spec (`gate_cli approve SPEC-<pid> --quality-bar ...`).
@@ -74,8 +76,11 @@ class QualityEvidence:
     production_deploy: Mapping[str, Any] | None
 
 
-def _machine_ok(d: Mapping[str, Any] | None, by: str) -> bool:
-    return d is not None and d.get("ok") is True and d.get("verified_by") == by and not d.get("skipped")
+def _machine_ok_at(d: Mapping[str, Any] | None, sha: str | None) -> bool:
+    """Máy (orchestrator) chứng `ok`, không `skipped`, ở ĐÚNG sha đã staged — thiếu sha ở một trong hai phía là thiếu
+    bằng chứng, không phải "khớp"."""
+    return (d is not None and d.get("ok") is True and d.get("verified_by") == MACHINE_RUN and not d.get("skipped")
+            and sha is not None and d.get("sha") == sha)
 
 
 def _release_gaps(ev: QualityEvidence, bar: QualityBar) -> list[str]:
@@ -86,10 +91,8 @@ def _release_gaps(ev: QualityEvidence, bar: QualityBar) -> list[str]:
         if lc is None or lc.get("unverified") or lc.get("verified_by") != MACHINE_PR \
                 or lc.get("lint") is not True or lc.get("tests") is not True:
             gaps.append(f"R1: PR của {tid} không có lint+test xanh do workspace chứng")
-    run = ev.run or {}
-    ran_at_sha = _machine_ok(ev.run, MACHINE_RUN) and ev.staged_sha is not None and run.get("sha") == ev.staged_sha
-    deployed = bool(run.get("deploy_declared")) and _machine_ok(ev.staging_deploy, MACHINE_RUN)
-    if not (ran_at_sha or deployed):
+    deployed = bool((ev.run or {}).get("deploy_declared")) and _machine_ok_at(ev.staging_deploy, ev.staged_sha)
+    if not (_machine_ok_at(ev.run, ev.staged_sha) or deployed):
         gaps.append("R2: không có bằng chứng orchestrator rằng sản phẩm chạy được ở đúng sha đã staged")
     if ev.qa_verdict != "pass":
         gaps.append(f"R3: review QA trên release là {ev.qa_verdict!r}, không phải 'pass'")
@@ -110,9 +113,7 @@ def floor_gaps(ev: QualityEvidence, bar: QualityBar) -> list[str]:
         gaps = ["nâng: dự án đặt acceptance=human"] if bar.acceptance_human else []
         if not ev.release_approved:
             gaps.append("A1: gate release của release này chưa được duyệt")
-        prod = ev.production_deploy or {}
-        if not (_machine_ok(ev.production_deploy, MACHINE_RUN) and ev.staged_sha is not None
-                and prod.get("sha") == ev.staged_sha):
+        if not _machine_ok_at(ev.production_deploy, ev.staged_sha):
             gaps.append("A2: không có deploy production do orchestrator chứng ở đúng sha đã staged")
         return gaps + _release_gaps(ev, bar)
     return [f"gate {ev.kind!r} không bao giờ tự duyệt (ADR-0043)"]
@@ -144,3 +145,64 @@ def project_bar(bus: _Replayable, project_id: str) -> QualityBar:
         except ValueError:
             bar = FAIL_CLOSED_BAR
     return bar
+
+
+def _json_dict(raw: Any) -> dict[str, Any]:
+    try:
+        d = json.loads(raw or "{}")
+    except (ValueError, TypeError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def _dict(v: Any) -> dict[str, Any] | None:
+    return v if isinstance(v, dict) else None
+
+
+class _Gate(Protocol):
+    kind: str
+    subject_id: str
+    decision: str
+
+
+def collect_evidence(bus: _Replayable, kind: str, rid: str, *, tickets: Iterable[str], needs_security: bool,
+                     waived: Iterable[str], history: Iterable[_Gate]) -> QualityEvidence:
+    """Dựng `QualityEvidence` cho gate `kind` của release `rid` từ bus — bản MỚI NHẤT của mỗi nguồn.
+
+    Nguồn nào thiếu thì trường đó là `None`/rỗng (⇒ `floor_gaps` báo khoảng trống), không bao giờ điền giá trị
+    mặc định "cho có". `release.staged` chỉ tin khi actor là `orchestrator` (audit-log là topic mở: agent ghi được
+    một dòng cùng tên với sha tuỳ ý). `tickets`/`needs_security`/`waived` do `DeliveryLead` giữ; `history` là
+    `gate.history` — cả ba đều đã có sẵn ở nơi gọi, không đọc lại từ bus.
+    # no-ky-thuat: quét tuyến tính audit-log + review-results + release-events mỗi lần mở gate release/nghiệm thu, ổn tới ~50k event audit, quay lại khi mở gate chậm quá 1s trên company.sqlite thật
+    """
+    staged: str | None = None
+    for env in bus.replay(topic="audit-log"):
+        if env.payload.get("action") == "release.staged" and env.actor == MACHINE_RUN:
+            d = _json_dict(env.payload.get("evidence"))
+            if d.get("release_id") == rid and isinstance(d.get("sha"), str):
+                staged = d["sha"]
+    pr_checks = []
+    for tid in tickets:
+        pr = bus.latest("pull-requests", tid)  # type: ignore[attr-defined]
+        pr_checks.append((tid, _dict(pr.payload.get("local_checks")) if pr is not None else None))
+    verdicts: dict[str, str] = {}; run: dict[str, Any] | None = None
+    for env in bus.replay(topic="review-results", key=rid):
+        src, verdict = env.payload.get("source"), env.payload.get("verdict")
+        verdicts[str(src)] = str(verdict)
+        if src == SOURCE.QA:
+            run = _dict((_dict(env.payload.get("evidence")) or {}).get("run"))
+    deploys: dict[str, dict[str, Any] | None] = {}
+    for env in bus.replay(topic="release-events", key=rid):
+        if env.payload.get("status") == "deployed":
+            deploys[str(env.payload.get("env"))] = _dict((_dict(env.payload.get("evidence")) or {}).get("deploy"))
+    subjects = {rid, f"UAT-{rid}"}
+    gates = [g for g in history if g.subject_id in subjects and g.decision != "pending"]
+    return QualityEvidence(
+        kind=kind, release_id=rid, staged_sha=staged, pr_checks=tuple(pr_checks), run=run,
+        staging_deploy=deploys.get("staging"), qa_verdict=verdicts.get(SOURCE.QA),
+        security_verdict=verdicts.get(SOURCE.SECURITY),
+        needs_security=needs_security, waived=tuple(waived),
+        had_incident=any(g.kind == "escalation" or g.decision != "approve" for g in gates),
+        release_approved=any(g.subject_id == rid and g.kind == "release" and g.decision == "approve" for g in gates),
+        production_deploy=deploys.get("production"),
+    )

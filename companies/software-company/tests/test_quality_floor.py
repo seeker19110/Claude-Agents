@@ -68,13 +68,15 @@ def test_r2_san_pham_khong_chung_minh_chay_dung_sha(run):
 
 def test_r2_deploy_staging_thay_cho_hoi_quy_khi_spec_khai_runtime_deploy():
     run = {"unverified": True, "deploy_declared": True, "verified_by": "orchestrator"}
-    dep = {"ok": True, "verified_by": "orchestrator"}
+    dep = {"ok": True, "verified_by": "orchestrator", "sha": SHA}
     assert floor_gaps(_release_ev(run=run, staging_deploy=dep), QualityBar()) == []
 
 
-@pytest.mark.parametrize("dep", [None, {"ok": False, "verified_by": "orchestrator"},
-                                 {"ok": True, "verified_by": "orchestrator", "skipped": "docker không có"},
-                                 {"ok": True, "verified_by": "ops"}])
+@pytest.mark.parametrize("dep", [None, {"ok": False, "verified_by": "orchestrator", "sha": SHA},
+                                 {"ok": True, "verified_by": "orchestrator", "sha": SHA, "skipped": "docker không có"},
+                                 {"ok": True, "verified_by": "ops", "sha": SHA},
+                                 {"ok": True, "verified_by": "orchestrator"},
+                                 {"ok": True, "verified_by": "orchestrator", "sha": "e" * 40}])
 def test_r2_deploy_staging_hong_hoac_bo_qua_khong_thay_duoc(dep):
     run = {"unverified": True, "deploy_declared": True, "verified_by": "orchestrator"}
     assert any("R2" in g for g in floor_gaps(_release_ev(run=run, staging_deploy=dep), QualityBar()))

@@ -9,6 +9,7 @@ from .events import BUDGET_FACTOR, AcceptanceResult, AuditLog, Envelope, ReviewR
 from .gate_cli import PersistentGate
 from .gate_risk import request_gate
 from .gates import GateRequest
+from .quality_floor import QualityBar, QualityEvidence, collect_evidence, project_bar
 from .roles import LEAD_ACTOR, SOURCE
 
 DONE_STATES = frozenset({"approved", "merged", "released", "closed"})
@@ -336,15 +337,26 @@ class DeliveryLead:
         release không bao giờ mở được nữa sau khi escalation được chấp nhận."""
         return any(g.subject_id == subject_id and g.kind == kind and g.decision == "approve" for g in self.gate.history)
 
+    def _quality_evidence(self, kind: str, rid: str) -> tuple[QualityEvidence, QualityBar | None]:
+        """ADR-0043: bằng chứng máy + mức nâng của dự án cho gate `kind` của `rid`. Không xác định được dự án →
+        mức nâng `None` ⇒ `request_gate` không tự duyệt (thiếu → người)."""
+        tickets = self.release_tickets.get(rid, [])
+        pid = next((self.tickets[t].project_id for t in tickets if t in self.tickets), None)
+        ev = collect_evidence(self.bus, kind, rid, tickets=tickets, needs_security=self.release_needs_security(rid),
+                              waived=sorted(self.release_waived.get(rid, set())), history=self.gate.history)
+        return ev, (project_bar(self.bus, pid) if pid else None)
+
     def _maybe_open_release_gate(self, rid: str) -> None:
         need = {SOURCE.QA} | ({SOURCE.SECURITY} if self.release_needs_security(rid) else set())
         got = {s for s, x in self.release_reviews[rid].items() if x.verdict == "pass"} | self.release_waived.get(rid, set())
         if need <= got and not self.replaying and rid not in self.gate.pending and not self._gate_kind_approved(rid, "release"):
             # `threat-model` và `architecture` dời từ gate plan cũ (ADR-0037): bỏ gate plan thì hai khoá đó phải
             # còn chỗ để người ký nhìn, và release là gate công đoạn cuối trước khi tiền thật đi ra.
+            evidence, bar = self._quality_evidence("release", rid)
             request_gate(self.gate, GateRequest(kind="release", subject_id=rid, created_by=LEAD_ACTOR,
                                           checklist=["tests", "scan", "regression-staging", "perf", "a11y", "runbook",
-                                                     "rollback", "threat-model", "architecture"]))
+                                                     "rollback", "threat-model", "architecture"]),
+                         evidence=evidence, bar=bar)
 
     def _on_release_qa(self, r: ReviewResult) -> None:
         """Review trên release (ticket_id = release_id): QA hồi quy/perf/a11y trên staging, và security (DAST/license)

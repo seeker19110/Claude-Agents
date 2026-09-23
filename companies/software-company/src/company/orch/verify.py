@@ -162,6 +162,8 @@ def deploy_release(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[
             detail = {"error": d["error"]}
         else:
             d = rec.record()
+            if o.release_sha.get(rid):  # `_release_root` đã chạy trên đúng sha này (ADR-0043: sàn đối chiếu sha)
+                d["sha"] = o.release_sha[rid]
             if not rec.ok and not rec.skipped:
                 detail = {"error": rec.error, "services": list(rec.services), "logs_tail": rec.logs_tail[-600:]}
     if detail is not None:
