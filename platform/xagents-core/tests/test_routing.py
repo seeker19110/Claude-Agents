@@ -220,3 +220,56 @@ def test_backend_ready_va_status_phan_anh_dong_ho_tiem_vao():
     assert b.ready(1000.0)
     b.cooldown_until = 1100.0
     assert not b.ready(1000.0) and b.ready(1100.0)
+
+
+# ---------- phân loại không đọc chữ do MODEL viết ----------
+
+_MODEL_NOI = ("Tôi đã kiểm: file config not found, billing module exhausted, quota bảng 429 rate limit, "
+              "thử lại sau 900s")
+
+
+def _loi_cli_that():
+    """Hai lỗi CLI thật mang chữ model viết trong thông điệp: subtype hết lượt (qua `_parse`) và thoát mã 1 với
+    subtype hết lượt (qua `cli_exit_error`). `result` ở cả hai là câu trả lời dở của model, không phải lời CLI."""
+    import json
+
+    from xagents_core.llm import ClaudeCodeClient, LLMConfig, cli_exit_error
+
+    class _CC(ClaudeCodeClient):
+        def complete(self, **kw): raise NotImplementedError
+
+    cc = _CC(LLMConfig(provider="claude-code", models={"standard": "x"}), binary="claude")
+    try:
+        cc._parse(json.dumps({"subtype": "error_max_turns", "result": _MODEL_NOI}), "x")
+    except LLMError as e:
+        parse_err = e
+    return [parse_err, cli_exit_error(1, json.dumps({"subtype": "error_max_turns", "result": _MODEL_NOI}), "")]
+
+
+@pytest.mark.parametrize("i", [0, 1])
+def test_chu_model_trong_loi_cli_khong_lam_backend_nghi(i):
+    """`claude -p error_max_turns: ...; <chữ model>` — regex quota/thiếu khớp "not found"/"billing"/"exhausted"
+    trong câu model viết và cho một backend còn tốt nghỉ một tiếng. Lỗi hết lượt là lỗi NỘI DUNG: ném thẳng cho
+    agent, không xoay, không nghỉ; thông điệp vẫn giữ chữ model cho người đọc."""
+    e = _loi_cli_that()[i]
+    assert "billing module exhausted" in str(e)
+    assert not isinstance(e, TransientError)
+    assert not is_quota_error(e) and not is_missing_error(e)
+    a = _Client("a", [e])
+    r = _router(Backend("a", a), Backend("b", _Client("b")))
+    with pytest.raises(LLMError, match="billing module exhausted"):
+        _call(r)
+    assert r.status()[0]["ready"] is True
+
+
+def test_hen_gio_trong_chu_model_khong_thanh_thoi_gian_nghi():
+    """Lỗi hết lượt kèm `api_error_status=529` (quá tải thật, trường có cấu trúc) → nghỉ `cooldown_s` như mọi 529.
+    "thử lại sau 900s" nằm trong câu MODEL viết, không phải lời hẹn của provider — không được thành thời gian nghỉ."""
+    import json
+
+    from xagents_core.llm import cli_exit_error
+    e = cli_exit_error(1, json.dumps({"subtype": "error_max_turns", "api_error_status": 529, "result": _MODEL_NOI}), "")
+    assert isinstance(e, TransientError)
+    r = _router(Backend("a", _Client("a", [e])), Backend("b", _Client("b")), cooldown_s=3600)
+    _call(r)
+    assert r.status()[0]["cooldown_remaining"] == 3600
