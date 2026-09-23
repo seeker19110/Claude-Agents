@@ -37,7 +37,7 @@ def _on_gate_decide(o: Orchestrator, env: Envelope, res: StepResult) -> StepResu
     o.escalation_decided[sid] += 1
     if kind == "escalation":
         o._on_escalation_decided(sid, decision, by, d.get("reason", ""), res)
-    elif kind == "acceptance" and decision == "approve" and by == AUTOAPPROVE_ACTOR:
+    elif kind == "acceptance" and decision == "approve" and env.actor == AUTOAPPROVE_ACTOR:  # actor do bus kiểm, không `by` tự khai
         # ADR-0043 §3: máy nghiệm thu — đóng ticket ở đây vì không có `acceptance-results` nào kéo theo; audit
         # `acceptance.auto` là thứ `_rehydrate` dựng lại sau restart (trạng thái ticket không được chỉ sống trong RAM).
         rid = sid.removeprefix(o.gate.UAT_PREFIX or "")

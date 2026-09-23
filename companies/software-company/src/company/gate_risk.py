@@ -68,6 +68,9 @@ class RiskRule:
     name: str
     tier: RiskTier
     match: Callable[[GateRiskContext], bool]
+    #: Loại gate duy nhất hàng này được đóng (`gate_cli.trusted_autoapprove` kiểm lúc replay). `None` = không ràng
+    #: buộc — chỉ cho hàng giả trong test; hàng thật của bảng luôn khai.
+    kind: str | None = None
 
 
 def gaps_of(ctx: GateRiskContext) -> list[str] | None:
@@ -85,8 +88,8 @@ def _meets_floor(kind: str) -> Callable[[GateRiskContext], bool]:
 # ADR-0043: hai hàng đầu tiên, cùng một sàn cứng trong `quality_floor.floor_gaps`. Thêm/bớt hàng là PR + test đỏ
 # trước + `sc-security` (docstring module).
 RISK_RULES: tuple[RiskRule, ...] = (
-    RiskRule(name="release-quality-floor", tier="low", match=_meets_floor("release")),
-    RiskRule(name="acceptance-quality-floor", tier="low", match=_meets_floor("acceptance")),
+    RiskRule(name="release-quality-floor", tier="low", match=_meets_floor("release"), kind="release"),
+    RiskRule(name="acceptance-quality-floor", tier="low", match=_meets_floor("acceptance"), kind="acceptance"),
 )
 
 

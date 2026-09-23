@@ -13,7 +13,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any, cast, get_args
 
 from xagents_core.gate_cli import SYSTEM_GATE_ACTOR as SYSTEM_GATE_ACTOR
 from xagents_core.gate_cli import PersistentGate as CorePersistentGate
@@ -35,7 +35,7 @@ SPEC_PREFIX = "SPEC-"  # subject gate spec = SPEC-<project_id> (`orch/ticket_fsm
 # nơi gọi (`orch/scheduler.py`, console, test).
 
 
-def trusted_autoapprove(env: Envelope) -> dict[str, Any] | None:
+def trusted_autoapprove(env: Envelope, kind: str | None = None) -> dict[str, Any] | None:
     """Quyết định `gate.decide` do CODE tự động qua gate rủi ro thấp (ADR-0011 §4 giai đoạn 3,
     `docs/thi-hanh/adr113.md` mục D) — nhánh tin cậy RIÊNG, tách khỏi `trusted_decision` (core, không đổi:
     core không biết `AUTOAPPROVE_ACTOR`/`RISK_RULES` của company, ADR-0001 §2).
@@ -64,8 +64,16 @@ def trusted_autoapprove(env: Envelope) -> dict[str, Any] | None:
     # envelope `reason="auto-risk:<tên bịa>"` vẫn được tin nếu chỉ đúng tiền tố — tiền tố là hằng công khai
     # trong mã nguồn, không phải bí mật (sc-security, adr113 2026-09-10).
     rule_name = reason[len(AUTOAPPROVE_REASON_PREFIX):]
-    if not any(r.name == rule_name for r in gate_risk.RISK_RULES): return None
+    # Hàng gắn `kind` chỉ đóng được gate ĐÚNG loại đó (`kind` = loại của gate đang chờ, do `_trusted` tra): không
+    # thì tên `release-quality-floor` đóng được cả gate `spec` (sc-security 2026-09-23; ADR-0043 §4).
+    if not any(r.name == rule_name and (r.kind is None or r.kind == kind) for r in gate_risk.RISK_RULES): return None
     return d
+
+
+def _json_evidence(env: Envelope) -> dict[str, Any]:
+    try: d = json.loads(env.payload.get("evidence") or "{}")
+    except (ValueError, TypeError): return {}
+    return d if isinstance(d, dict) else {}
 
 
 class PersistentGate(CorePersistentGate[Envelope, AuditLog], HumanGate):
@@ -86,7 +94,23 @@ class PersistentGate(CorePersistentGate[Envelope, AuditLog], HumanGate):
         thử nhánh MỚI của company (`trusted_autoapprove`) — thứ tự này cố ý, không được đảo: `AUTOAPPROVE_ACTOR`
         không phải người và không phải `"orchestrator"` nên không bao giờ khớp đường cũ, nhưng giữ thứ tự rõ
         ràng để đọc code không phải suy luận."""
-        return trusted_decision(env, uat_prefix=self.UAT_PREFIX) or trusted_autoapprove(env)
+        if (d := trusted_decision(env, uat_prefix=self.UAT_PREFIX)) is not None:
+            return d
+        # Loại gate: đang chờ (lúc `apply` replay) hoặc thế hệ mới nhất đã quyết (lúc scheduler hỏi lại SAU khi
+        # quyết định đã áp). Không tìm thấy gate nào ⇒ `None` ⇒ hàng có `kind` không khớp ⇒ không tin.
+        sid = _json_evidence(env).get("subject_id")
+        g = self.pending.get(sid) or next((h for h in reversed(self.history) if h.subject_id == sid), None) \
+            if isinstance(sid, str) else None
+        return trusted_autoapprove(env, g.kind if g is not None else None)
+
+    def decide(self, subject_id: str, decision: str, by: str, reason: str = "", actor: str | None = None,
+               *, enforce: bool = True) -> GateRequest:
+        """`by=AUTOAPPROVE_ACTOR` chỉ hợp lệ khi chính `request_gate` ghi (actor cũng là `"code"`). Người/CLI/console
+        ký dưới tên đó thì nhánh "máy nghiệm thu" đóng ticket mà không sàn nào được chấm (sc-security 2026-09-23)."""
+        if by == AUTOAPPROVE_ACTOR and actor != AUTOAPPROVE_ACTOR:
+            raise PermissionError(f"'{AUTOAPPROVE_ACTOR}' là tên của máy tự duyệt (ADR-0043) — không ký tay dưới tên này")
+        # `request_cls=GateRequest` (company) ⇒ phần tử trả về là GateRequest của company; core khai lớp cơ sở.
+        return cast(GateRequest, super().decide(subject_id, decision, by=by, reason=reason, actor=actor, enforce=enforce))
 
     def __init__(self, bus: InMemoryBus, **kw):
         super().__init__(bus, envelope_cls=Envelope, audit_cls=AuditLog, request_cls=GateRequest, **kw)

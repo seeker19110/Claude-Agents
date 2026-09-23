@@ -91,8 +91,8 @@ def _release_gaps(ev: QualityEvidence, bar: QualityBar) -> list[str]:
         if lc is None or lc.get("unverified") or lc.get("verified_by") != MACHINE_PR \
                 or lc.get("lint") is not True or lc.get("tests") is not True:
             gaps.append(f"R1: PR của {tid} không có lint+test xanh do workspace chứng")
-    deployed = bool((ev.run or {}).get("deploy_declared")) and _machine_ok_at(ev.staging_deploy, ev.staged_sha)
-    if not (_machine_ok_at(ev.run, ev.staged_sha) or deployed):
+    # Hồi quy do orchestrator chạy, HOẶC deploy staging thật (kèm smoke) — cả hai là "máy thấy sản phẩm chạy ở đúng sha".
+    if not (_machine_ok_at(ev.run, ev.staged_sha) or _machine_ok_at(ev.staging_deploy, ev.staged_sha)):
         gaps.append("R2: không có bằng chứng orchestrator rằng sản phẩm chạy được ở đúng sha đã staged")
     if ev.qa_verdict != "pass":
         gaps.append(f"R3: review QA trên release là {ev.qa_verdict!r}, không phải 'pass'")
@@ -175,26 +175,37 @@ def collect_evidence(bus: _Replayable, kind: str, rid: str, *, tickets: Iterable
     `gate.history` — cả ba đều đã có sẵn ở nơi gọi, không đọc lại từ bus.
     # no-ky-thuat: quét tuyến tính audit-log + review-results + release-events mỗi lần mở gate release/nghiệm thu, ổn tới ~50k event audit, quay lại khi mở gate chậm quá 1s trên company.sqlite thật
     """
-    staged: str | None = None
+    staged: str | None = None; run: dict[str, Any] | None = None
     for env in bus.replay(topic="audit-log"):
-        if env.payload.get("action") == "release.staged" and env.actor == MACHINE_RUN:
-            d = _json_dict(env.payload.get("evidence"))
-            if d.get("release_id") == rid and isinstance(d.get("sha"), str):
-                staged = d["sha"]
+        act = env.payload.get("action")
+        if act not in {"release.staged", "regression.run"} or env.actor != MACHINE_RUN:
+            continue
+        d = _json_dict(env.payload.get("evidence"))
+        if d.get("release_id") != rid:
+            continue
+        if act == "regression.run":
+            run = {k: v for k, v in d.items() if k != "release_id"}
+        elif isinstance(d.get("sha"), str):
+            staged = d["sha"]
     pr_checks = []
     for tid in tickets:
         pr = bus.latest("pull-requests", tid)  # type: ignore[attr-defined]
         pr_checks.append((tid, _dict(pr.payload.get("local_checks")) if pr is not None else None))
-    verdicts: dict[str, str] = {}; run: dict[str, Any] | None = None
-    for env in bus.replay(topic="review-results", key=rid):
-        src, verdict = env.payload.get("source"), env.payload.get("verdict")
-        verdicts[str(src)] = str(verdict)
-        if src == SOURCE.QA:
-            run = _dict((_dict(env.payload.get("evidence")) or {}).get("run"))
-    deploys: dict[str, dict[str, Any] | None] = {}
+    deploys: dict[str, dict[str, Any] | None] = {}; release_events: set[str] = set()
     for env in bus.replay(topic="release-events", key=rid):
+        release_events.add(env.event_id)
         if env.payload.get("status") == "deployed":
             deploys[str(env.payload.get("env"))] = _dict((_dict(env.payload.get("evidence")) or {}).get("deploy"))
+    # sc-security 2026-09-23: route PR không ghi đè `ticket_id` của model, nên QA duyệt PR tự khai được
+    # `ticket_id=<rid>`. Verdict release chỉ tính khi là PHẢN HỒI (causation) cho sự kiện của chính release:
+    # QA hồi quy trên `release-events` (staging), security trên `release-candidates` (`orch/routes.py`).
+    causes = {SOURCE.QA: release_events,
+              SOURCE.SECURITY: {e.event_id for e in bus.replay(topic="release-candidates", key=rid)}}
+    verdicts: dict[str, str] = {}
+    for env in bus.replay(topic="review-results", key=rid):
+        src = str(env.payload.get("source"))
+        if env.causation_id is not None and env.causation_id in causes.get(src, set()):
+            verdicts[src] = str(env.payload.get("verdict"))
     subjects = {rid, f"UAT-{rid}"}
     gates = [g for g in history if g.subject_id in subjects and g.decision != "pending"]
     return QualityEvidence(

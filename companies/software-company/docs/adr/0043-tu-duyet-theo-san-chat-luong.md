@@ -32,7 +32,7 @@ Bằng chứng **do máy sinh** (không phải lời khai của model) đã có 
 | Bằng chứng | Nguồn | `verified_by` |
 |---|---|---|
 | lint + test của từng PR ticket | `pull-requests.payload.local_checks` (`workspace.py:154`) | `workspace` |
-| hồi quy trên sha RC đã staged | `review-results{source=qa}.payload.evidence.run` (`orch/verify.py:180-212`) | `orchestrator` |
+| hồi quy trên sha RC đã staged | audit `regression.run` (actor `orchestrator`, `orch/verify.py:180-212`); bản chép trong `review-results.evidence.run` KHÔNG dùng (xem mục review `sc-security`) | `orchestrator` |
 | deploy thật (kèm smoke) staging/production | `release-events.payload.evidence.deploy` (`orch/verify.py:126-177`, `deploy.py`) | `orchestrator` |
 | smoke staging (khi không khai `runtime.deploy`) | `release-events{staging}.payload.smoke` (`orch/verify.py`, `smoke.py`) | `orchestrator` |
 
@@ -63,8 +63,8 @@ Module mới `company/quality_floor.py`:
 | Mã | Điều kiện | Thiếu bằng chứng thì |
 |---|---|---|
 | R1 | mọi ticket của RC có PR mới nhất với `local_checks.lint is True`, `tests is True`, `verified_by == "workspace"`, không `unverified` | người |
-| R2 | sản phẩm **chạy được ở đúng sha đã staged**, do orchestrator chứng: `evidence.run.ok is True` với `sha ==` sha RC, **hoặc** (spec khai `runtime.deploy`) deploy staging `ok is True`, không `skipped` | người |
-| R3 | review QA trên release `verdict == "pass"`; nếu RC có ticket `risk_tags` (hoặc dự án nâng `security_review`) thì review security cũng `pass` | người |
+| R2 | sản phẩm **chạy được ở đúng sha đã staged**, do orchestrator chứng: audit `regression.run` (actor `orchestrator`) `ok is True` với `sha ==` sha RC, **hoặc** deploy staging (`release-events.evidence.deploy`, code điền) `ok is True`, không `skipped`, đúng sha | người |
+| R3 | review QA trên release `verdict == "pass"`; nếu RC có ticket `risk_tags` (hoặc dự án nâng `security_review`) thì review security cũng `pass`. Chỉ tính review là **phản hồi** (`causation_id`) cho `release-events` (QA) / `release-candidates` (security) của chính release | người |
 | R4 | **không có finding nào được miễn** (`release_waived` rỗng) — miễn là một quyết định chấp nhận rủi ro của người, máy không được thừa hưởng nó | người |
 | R5 | release này **chưa từng** có gate `escalation` hay quyết định khác `approve` — có sự cố một lần thì các lần sau là việc của người | người |
 
@@ -97,7 +97,7 @@ không đổi gì ở runtime.
 Không có khoá nào nới sàn, nên "không bao giờ hạ dưới sàn" là tính chất của **kiểu dữ liệu**, không phải của một
 phép kiểm có thể quên. Khoá lạ → CLI từ chối. Bản ghi `quality.bar_set` chỉ được tin khi `env.actor` là người
 (`human:*`) và khớp `by` — cùng luật với `trusted_decision` (ADR-0002) — và bus từ chối ngay lúc publish nếu
-actor không phải người. Bản ghi không tin được bị **bỏ qua** (bỏ qua không nới được gì: không có bản ghi nghĩa là
+actor không phải người. Bản ghi không tin được, hoặc `evidence` không phải JSON (không gắn được vào dự án nào — CLI luôn ghi JSON hợp lệ), bị **bỏ qua** (bỏ qua không nới được gì: không có bản ghi nghĩa là
 chỉ có sàn); bản ghi của người mà hỏng (khoá lạ, không phải object) khi replay ⇒ coi như `release: human` +
 `acceptance: human` (hỏng thì đóng, không mở). Bản ghi mới nhất đáng tin thắng.
 
@@ -170,3 +170,20 @@ replay, chạy subprocess (git, smoke), và cố ý chỉ trả `ok/gap/unknown`
   gần như mọi release (vd. R2 vì không dự án nào khai `runtime`) nghĩa là sàn đang đo thứ không ai sinh ra, và
   "tự duyệt" chỉ tồn tại trên giấy. Ngược lại, một release tự duyệt rồi khách `rejected` là tín hiệu sàn quá
   lỏng: thêm điều kiện vào sàn (PR + test), không nới mức nâng.
+
+## Review `sc-security` (2026-09-23) — đã vá trong cùng PR
+
+Năm khoảng trống, mỗi cái một test đỏ trước (`tests/test_quality_collect.py`, `tests/test_tu_duyet_bao_mat.py`):
+
+1. QA duyệt PR tự khai được `ticket_id=<rid>` + `evidence.run` (route PR không ghi đè identity) → `run` nay chỉ lấy
+   từ audit `regression.run` do orchestrator ghi; verdict QA/security chỉ tính khi `causation_id` là sự kiện
+   `release-events`/`release-candidates` của chính release.
+2. `_rehydrate` tin `acceptance.auto`/`release.staged` theo tên action → nay đòi `env.actor == "orchestrator"`.
+3. Người/CLI/console ký `--by code` đi vào nhánh "máy nghiệm thu" → `PersistentGate.decide` từ chối `by="code"`
+   khi actor không phải `"code"`; nhánh nghiệm thu trong `_on_gate_decide` đọc `env.actor`, không đọc `by`.
+4. Tên hàng đóng được gate khác loại (vd. `spec`) → `RiskRule.kind`; `trusted_autoapprove` đối chiếu loại gate.
+5. Bản ghi mức nâng không phải JSON bị bỏ qua (không gắn được dự án) — sửa lời ADR §2 cho khớp.
+
+Còn lại, có trước PR này và ngoài phạm vi: các action khác của `_rehydrate` (`delivery.done`, `ticket.blocked`,
+`plan.proposed`…) vẫn tin theo tên; route PR không ghi đè `ticket_id` của model cho mọi topic đầu ra; `ops` có
+trong producer của `acceptance-results` (`core.py:55`) — chưa đo agent có tự ghi được chữ ký khách hay không.
