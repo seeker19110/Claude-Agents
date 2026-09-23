@@ -54,6 +54,7 @@ __all__ = [
     "RETRY_AFTER_PATTERNS",
     "Backend",
     "RoutingClient",
+    "classified_text",
     "http_status",
     "is_auth_error",
     "is_missing_error",
@@ -96,14 +97,20 @@ def retry_after_seconds(message: str) -> float | None:
     return None
 
 
+def classified_text(e: BaseException) -> str:
+    """Phần thông điệp regex được phép soi: `LLMError.head` (chữ do code/provider viết), bỏ `model_text` — chữ
+    model viết trong câu trả lời dở không phải lời provider. Ngoại lệ khác thì cả thông điệp."""
+    return plain(str(getattr(e, "head", e)))
+
+
 def is_quota_error(e: BaseException) -> bool:
     if (s := http_status(e)) is not None: return s in QUOTA_STATUS
-    return bool(QUOTA_PATTERNS.search(plain(str(e))))
+    return bool(QUOTA_PATTERNS.search(classified_text(e)))
 
 
 def is_missing_error(e: BaseException) -> bool:
     if (s := http_status(e)) is not None: return s in MISSING_STATUS
-    return bool(MISSING_PATTERNS.search(plain(str(e))))
+    return bool(MISSING_PATTERNS.search(classified_text(e)))
 
 
 def is_auth_error(e: BaseException) -> bool:
@@ -186,7 +193,7 @@ class RoutingClient:
             secs = self.cooldown_s; kind = "thiếu"
         elif is_auth_error(e):
             secs = self.cooldown_s; kind = "xác thực"
-        elif (ra := retry_after_seconds(msg)) is not None:
+        elif (ra := retry_after_seconds(classified_text(e))) is not None:
             secs = ra; kind = "hết quota"
         elif is_quota_error(e):
             secs = self.cooldown_s; kind = "hết quota"

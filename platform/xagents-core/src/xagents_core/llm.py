@@ -102,9 +102,13 @@ def cache_control(ttl: str | None = None) -> dict[str, str]:
 
 class LLMError(Exception):
     """`status`: mã HTTP của provider khi biết — routing phân loại theo mã (429 quota, 404 thiếu model, 401/403 xác thực)
-    thay vì đoán bằng regex trên thông điệp."""
-    def __init__(self, message: str = "", status: int | None = None):
-        super().__init__(message); self.status = status
+    thay vì đoán bằng regex trên thông điệp.
+
+    `model_text`: chữ do MODEL viết (vd `result` dở của `claude -p error_max_turns`) nối sau `message` cho người
+    đọc, nhưng **không** nằm trong `head` — phần routing được phép soi regex. Model viết "not found"/"billing"
+    trong câu trả lời thì đó không phải lời provider, và không được làm backend nghỉ một tiếng."""
+    def __init__(self, message: str = "", status: int | None = None, model_text: str = ""):
+        super().__init__(message + model_text); self.status = status; self.head = message
 
 
 class Refused(LLMError):
@@ -1066,11 +1070,15 @@ def cli_exit_error(code: int, stdout: str, stderr: str) -> LLMError:
     if data:
         msg = str(data.get("result") or data.get("error") or "")[:300]
         status = data.get("api_error_status")
-        head = (f"claude -p thoát mã {code} (subtype={data.get('subtype') or '?'}, api_error_status={status}): "
-                f"{msg or '(không có thông điệp)'}")
-        if status in (429, 502, 503, 529) or any(s in msg.lower() for s in ("limit", "rate", "overloaded", "quota")):
-            return TransientError(head)
-        return LLMError(head)
+        head = f"claude -p thoát mã {code} (subtype={data.get('subtype') or '?'}, api_error_status={status}): "
+        text = msg or "(không có thông điệp)"
+        # `result` của các subtype hết lượt/hết ngân sách là câu trả lời dở của MODEL, không phải lời CLI/provider:
+        # chỉ phân loại theo trường có cấu trúc (`api_error_status`), chữ model đi riêng qua `model_text`.
+        from_model = data.get("subtype") in CLI_SUBTYPE_ERRORS
+        transient = status in (429, 502, 503, 529) or (
+            not from_model and any(s in msg.lower() for s in ("limit", "rate", "overloaded", "quota")))
+        cls = TransientError if transient else LLMError
+        return cls(head, model_text=text) if from_model else cls(head + text)
     err = (stderr or stdout)[-500:]
     if any(s in err.lower() for s in ("limit", "rate", "overloaded", "529", "503")):
         return TransientError(f"claude -p thoát mã {code}: {err}")
@@ -1149,7 +1157,8 @@ class ClaudeCodeClient:
         # nhánh "không phải object JSON" trước đây là code chết, đã bỏ.
         subtype = str(data.get("subtype") or "")
         if subtype in CLI_SUBTYPE_ERRORS:   # đọc TRƯỚC `result`: các subtype này có thể không có result
-            raise LLMError(f"claude -p {subtype}: {CLI_SUBTYPE_ERRORS[subtype]}; {str(data.get('result') or '')[:200]}")
+            raise LLMError(f"claude -p {subtype}: {CLI_SUBTYPE_ERRORS[subtype]}; ",
+                           model_text=str(data.get("result") or "")[:200])
         if "result" not in data:
             raise LLMError(f"claude -p thiếu trường result (subtype={subtype or '?'}): {out[:300]}")
         if data.get("is_error"):
