@@ -184,6 +184,18 @@ Năm khoảng trống, mỗi cái một test đỏ trước (`tests/test_quality
 4. Tên hàng đóng được gate khác loại (vd. `spec`) → `RiskRule.kind`; `trusted_autoapprove` đối chiếu loại gate.
 5. Bản ghi mức nâng không phải JSON bị bỏ qua (không gắn được dự án) — sửa lời ADR §2 cho khớp.
 
-Còn lại, có trước PR này và ngoài phạm vi: các action khác của `_rehydrate` (`delivery.done`, `ticket.blocked`,
-`plan.proposed`…) vẫn tin theo tên; route PR không ghi đè `ticket_id` của model cho mọi topic đầu ra; `ops` có
-trong producer của `acceptance-results` (`core.py:55`) — chưa đo agent có tự ghi được chữ ký khách hay không.
+Ba việc "còn lại, có trước PR này" của bản đầu ADR đã đóng ở PR (#324) (`tests/test_audit_gia_mao.py`,
+`test_identity_tu_route.py`, `test_chu_ky_khach_chi_nguoi.py`):
+
+1. `_rehydrate` tin action theo tên (và `actor` tự khai trong payload) → bảng `TRUSTED_WRITERS`
+   (`orch/rehydrate.py`): mỗi action chỉ được áp khi `env.actor` là người ghi thật (orchestrator mặc định;
+   `product` cho `plan.proposed`/`plan_rejected`; `delivery-lead` cho `ticket.blocked`/`release.finding_waived`).
+   Gốc của lỗ: route `change-requests → product → audit-log` publish payload của model, model tự chọn `action` —
+   nay code ép `action="change.impact"` + `actor`=agent (`output.action_overridden`).
+2. Route PR không ghi đè `ticket_id` của model → đầu vào thuộc `tasks`/`pull-requests`/`test-suites` thì đầu ra
+   mang đúng `ticket_id` đó (`output.subject_overridden`, `TICKET_TOPICS` ở `orch/routes.py`).
+3. `ops` là producer của `acceptance-results` — đo: `runner.publish` chỉ phát lên `topic_out` của route và không
+   route nào xuất `acceptance-results`; đường thật của khách là `orchestrator publish --actor human:*` (CLI từ chối
+   actor không phải người). Agent KHÔNG tự ký được. Quyền `ops` trong ACL chỉ phản chiếu `writes` của
+   `agents/operations/ops.md` (+ hai ca eval pha `account`); gỡ nó là đổi hợp đồng agent, cần `make eval-record`
+   bằng model thật — để lại, và canh bằng test: thêm route cho agent xuất `acceptance-results` là CI đỏ.
