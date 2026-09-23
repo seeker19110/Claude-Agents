@@ -551,9 +551,14 @@ def test_threat_model_transient_khong_chan_lap_ke_hoach_nhung_check_plan_tu_choi
     _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "a"}]})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
     assert any(v == "transient:security" for _, v in orch.deferred.values()) or orch.stats["transient"] >= 1
-    assert "PLAN-P1-1" not in orch.plans, "chưa có threat model thì _check_plan phải từ chối, không để lọt tới người duyệt"
-    rejects = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "plan_rejected"]
-    assert rejects and "thiếu threat model" in rejects[-1]["evidence"]
+    # 2026-09-23: lần đầu `_check_plan` từ chối vì "thiếu threat model" — nhưng đó là lượt TỰ SỬA (`plan.rework`),
+    # và khi `_plan` chạy lại thì `_threat_model` được thử lại, transient đã qua nên threat model có và kế hoạch đi
+    # tiếp. Trước đây cùng kịch bản này tốn một lần người gõ "retry" ở gate escalation cho một lỗi tạm thời.
+    reworks = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "plan.rework"]
+    assert reworks and "thiếu threat model" in reworks[-1]["evidence"], "lượt đầu vẫn bị từ chối vì chưa có threat model"
+    assert not [e for e in bus.replay(topic="audit-log") if e.payload["action"] == "plan_rejected"]
+    assert "PLAN-P1-1" in orch.plans and "SPEC-P1" not in orch.missing_threat_model, \
+        "transient qua rồi thì lượt tự sửa có threat model và kế hoạch được giao, không hỏi người"
 
 
 def test_threat_model_loi_vinh_vien_duoc_ghi_missing_va_check_plan_tu_choi():
