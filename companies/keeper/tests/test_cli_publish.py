@@ -54,6 +54,9 @@ def repo(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     root.mkdir()
     _git(root, "init", "-b", "main")
+    # Danh tính cục bộ: `publish()` tự commit số PR (runner CI không có user.name toàn cục).
+    _git(root, "config", "user.name", "t")
+    _git(root, "config", "user.email", "t@x")
     (root / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
     _git(root, "add", "-A")
     _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-m", "khoi tao")

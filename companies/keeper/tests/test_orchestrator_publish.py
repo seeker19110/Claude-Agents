@@ -46,6 +46,9 @@ def repo(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     root.mkdir()
     _git(root, "init", "-b", "main")
+    # Danh tính cục bộ: `publish()` tự commit số PR (runner CI không có user.name toàn cục).
+    _git(root, "config", "user.name", "t")
+    _git(root, "config", "user.email", "t@x")
     (root / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
     _git(root, "add", "-A")
     _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-m", "khoi tao")
@@ -172,3 +175,22 @@ def test_publish_push_that_bai_khong_goi_gh(monkeypatch: pytest.MonkeyPatch, rep
     with pytest.raises(PublishError):
         o.publish(tid, wt)  # không có `remote` fixture -> chưa add origin -> git push lỗi thật
     assert spy.calls == [], "gh pr create không được gọi khi push chưa xong"
+
+
+def test_publish_commit_va_push_so_pr_da_dien(monkeypatch: pytest.MonkeyPatch, repo: Path, remote: Path) -> None:
+    """Số PR thật điền vào CHANGELOG phải thành một COMMIT và lên REMOTE — không chỉ nằm trong worktree. Không
+    thì PR giữ `(#PR)` mãi, vì lần `publish()` sau trả sớm (note đã có `pr_number`)."""
+    o, tid = _orc_voi_ticket_du_cong(repo)
+    wt = open_worktree(tid, repo=repo)
+    _commit_dong_changelog(wt.path, tid)
+    spy = _RunSpy(script=[(0, "https://github.com/o/r/pull/9\n", "")], calls=[])
+    monkeypatch.setattr(publish_mod.subprocess, "run", spy)
+
+    o.publish(tid, wt)
+
+    assert _git(wt.path, "status", "--porcelain") == "", "bản điền số PR phải được commit, không để dở"
+    assert "(#9)" in _git(wt.path, "show", "HEAD:CHANGELOG.md")
+    assert PR_PLACEHOLDER not in _git(wt.path, "show", "HEAD:CHANGELOG.md")
+    head = _git(wt.path, "rev-parse", "HEAD")
+    ls = subprocess.run(["git", "ls-remote", str(remote), wt.branch], capture_output=True, text=True)
+    assert ls.stdout.startswith(head), "commit điền số PR phải được push lên nhánh của PR"
