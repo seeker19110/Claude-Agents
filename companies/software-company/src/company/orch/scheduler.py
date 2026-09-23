@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, Any
 
 from ..delivery import DONE_STATES
 from ..events import AuditLog, Envelope
-from ..gate_cli import trusted_decision
 from .cli import _fmt, source_fingerprint
 from .guards import clarification_warnings
 from .routes import ACTIVE_STATES, ACTOR, CONTROL_TOPICS, PAUSING, PLAN_INPUTS, REVIEW_AGENT, review_route
@@ -26,7 +25,10 @@ if TYPE_CHECKING:
 
 
 def _actionable(o: Orchestrator, env: Envelope) -> bool:
-    if env.topic == "audit-log": return trusted_decision(env) is not None  # gate.decide giả (actor không phải người) không chạy
+    # gate.decide giả (actor không phải người) không chạy. Hỏi `o.gate._trusted` (company) chứ không `trusted_decision`
+    # (core): chỉ bản company biết nhánh `trusted_autoapprove` — hỏi core thì quyết định do code tự duyệt (ADR-0043)
+    # được ghi vào gate nhưng không bao giờ chạy, release "đã duyệt" mà không lên production.
+    if env.topic == "audit-log": return o.gate._trusted(env) is not None
     return env.topic not in CONTROL_TOPICS
 
 def _track_pause(o: Orchestrator, env: Envelope) -> None:

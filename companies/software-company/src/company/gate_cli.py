@@ -13,7 +13,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any, cast, get_args
 
 from xagents_core.gate_cli import SYSTEM_GATE_ACTOR as SYSTEM_GATE_ACTOR
 from xagents_core.gate_cli import PersistentGate as CorePersistentGate
@@ -24,16 +24,18 @@ from .bus import InMemoryBus
 from .events import AuditLog, Envelope
 from .gate_risk import AUTOAPPROVE_ACTOR, AUTOAPPROVE_REASON_PREFIX
 from .gates import GateKind, GateRequest, HumanGate, gate_approvers, gate_autoapprove_enabled
+from .quality_floor import BAR_ACTION, parse_bar
 from .roles import LEAD_ACTOR, LEGACY_GATE_ACTORS, ROLE
 
 DECISIONS: tuple[str, ...] = ("approve", "request_changes", "reject", "hold", "rollback")
+SPEC_PREFIX = "SPEC-"  # subject gate spec = SPEC-<project_id> (`orch/ticket_fsm.py`)
 
 # `SYSTEM_GATE_ACTOR` và `trusted_decision` ở `xagents_core.gate_cli` từ K3.7: cùng một allowlist tồn tại hai
 # bản ở hai công ty đã phải vá cùng một lỗ hổng hai lần (2026-09-09). Re-export giữ nguyên chỗ nhập của mọi
 # nơi gọi (`orch/scheduler.py`, console, test).
 
 
-def trusted_autoapprove(env: Envelope) -> dict[str, Any] | None:
+def trusted_autoapprove(env: Envelope, kind: str | None = None) -> dict[str, Any] | None:
     """Quyết định `gate.decide` do CODE tự động qua gate rủi ro thấp (ADR-0011 §4 giai đoạn 3,
     `docs/thi-hanh/adr113.md` mục D) — nhánh tin cậy RIÊNG, tách khỏi `trusted_decision` (core, không đổi:
     core không biết `AUTOAPPROVE_ACTOR`/`RISK_RULES` của company, ADR-0001 §2).
@@ -62,8 +64,16 @@ def trusted_autoapprove(env: Envelope) -> dict[str, Any] | None:
     # envelope `reason="auto-risk:<tên bịa>"` vẫn được tin nếu chỉ đúng tiền tố — tiền tố là hằng công khai
     # trong mã nguồn, không phải bí mật (sc-security, adr113 2026-09-10).
     rule_name = reason[len(AUTOAPPROVE_REASON_PREFIX):]
-    if not any(r.name == rule_name for r in gate_risk.RISK_RULES): return None
+    # Hàng gắn `kind` chỉ đóng được gate ĐÚNG loại đó (`kind` = loại của gate đang chờ, do `_trusted` tra): không
+    # thì tên `release-quality-floor` đóng được cả gate `spec` (sc-security 2026-09-23; ADR-0043 §4).
+    if not any(r.name == rule_name and (r.kind is None or r.kind == kind) for r in gate_risk.RISK_RULES): return None
     return d
+
+
+def _json_evidence(env: Envelope) -> dict[str, Any]:
+    try: d = json.loads(env.payload.get("evidence") or "{}")
+    except (ValueError, TypeError): return {}
+    return d if isinstance(d, dict) else {}
 
 
 class PersistentGate(CorePersistentGate[Envelope, AuditLog], HumanGate):
@@ -84,7 +94,23 @@ class PersistentGate(CorePersistentGate[Envelope, AuditLog], HumanGate):
         thử nhánh MỚI của company (`trusted_autoapprove`) — thứ tự này cố ý, không được đảo: `AUTOAPPROVE_ACTOR`
         không phải người và không phải `"orchestrator"` nên không bao giờ khớp đường cũ, nhưng giữ thứ tự rõ
         ràng để đọc code không phải suy luận."""
-        return trusted_decision(env, uat_prefix=self.UAT_PREFIX) or trusted_autoapprove(env)
+        if (d := trusted_decision(env, uat_prefix=self.UAT_PREFIX)) is not None:
+            return d
+        # Loại gate: đang chờ (lúc `apply` replay) hoặc thế hệ mới nhất đã quyết (lúc scheduler hỏi lại SAU khi
+        # quyết định đã áp). Không tìm thấy gate nào ⇒ `None` ⇒ hàng có `kind` không khớp ⇒ không tin.
+        sid = _json_evidence(env).get("subject_id")
+        g = self.pending.get(sid) or next((h for h in reversed(self.history) if h.subject_id == sid), None) \
+            if isinstance(sid, str) else None
+        return trusted_autoapprove(env, g.kind if g is not None else None)
+
+    def decide(self, subject_id: str, decision: str, by: str, reason: str = "", actor: str | None = None,
+               *, enforce: bool = True) -> GateRequest:
+        """`by=AUTOAPPROVE_ACTOR` chỉ hợp lệ khi chính `request_gate` ghi (actor cũng là `"code"`). Người/CLI/console
+        ký dưới tên đó thì nhánh "máy nghiệm thu" đóng ticket mà không sàn nào được chấm (sc-security 2026-09-23)."""
+        if by == AUTOAPPROVE_ACTOR and actor != AUTOAPPROVE_ACTOR:
+            raise PermissionError(f"'{AUTOAPPROVE_ACTOR}' là tên của máy tự duyệt (ADR-0043) — không ký tay dưới tên này")
+        # `request_cls=GateRequest` (company) ⇒ phần tử trả về là GateRequest của company; core khai lớp cơ sở.
+        return cast(GateRequest, super().decide(subject_id, decision, by=by, reason=reason, actor=actor, enforce=enforce))
 
     def __init__(self, bus: InMemoryBus, **kw):
         super().__init__(bus, envelope_cls=Envelope, audit_cls=AuditLog, request_cls=GateRequest, **kw)
@@ -99,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
     rq.add_argument("--by", required=True); rq.add_argument("--checklist", default="")
     for d in DECISIONS:
         p = sub.add_parser(d); p.add_argument("subject_id"); p.add_argument("--by", required=True); p.add_argument("--reason", default="")
+        p.add_argument("--quality-bar", default="",
+                       help="chỉ với approve SPEC-<dự án>: mức nâng chất lượng k=v[,k=v] (ADR-0043 §2)")
     ns = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8")  # Windows console cp1252
 
@@ -123,12 +151,24 @@ def main(argv: list[str] | None = None) -> int:
         except PermissionError as e:
             print(str(e), file=sys.stderr); return 3
         print(f"requested {ns.kind} {ns.subject_id}"); return 0
+    bar: dict[str, str] | None = None
+    if ns.quality_bar:
+        # Kiểm TRƯỚC khi ký: mức nâng hỏng thì spec chưa ký — không để một chữ ký spec đi kèm mức nâng không ghi được.
+        if ns.cmd != "approve" or not ns.subject_id.startswith(SPEC_PREFIX):
+            print(f"--quality-bar chỉ đi cùng approve {SPEC_PREFIX}<dự án>", file=sys.stderr); return 2
+        try:
+            bar = dict(kv.split("=", 1) for kv in (x.strip() for x in ns.quality_bar.split(",")) if kv)
+            parse_bar(bar)
+        except ValueError as e:
+            print(f"--quality-bar không hợp lệ: {e}", file=sys.stderr); return 2
     try:
         done = gate.decide(ns.subject_id, ns.cmd, by=ns.by, reason=ns.reason)
     except KeyError:
         print(f"không có gate chờ: {ns.subject_id}", file=sys.stderr); return 2
     except PermissionError as e:
         print(str(e), file=sys.stderr); return 3
+    if bar is not None:
+        gate._log(ns.by, BAR_ACTION, {"project_id": ns.subject_id[len(SPEC_PREFIX):], "bar": bar, "by": ns.by}, by=ns.by)
     print(f"{done.subject_id}: {done.decision} by {done.decided_by}"); return 0
 
 

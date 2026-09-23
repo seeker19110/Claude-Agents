@@ -37,6 +37,7 @@ bế tắc. Không đường nào được kết thúc trong im lặng (`../TRAP
 | Hợp đồng | `events.py`, `topics/schemas/`, `registry.py` | topic, payload Pydantic, agent đọc/ghi gì, `phases:` của agent |
 | Bus | `bus.py`, `sqlite_bus.py`, `blackboard.py` | publish có kiểm producer + schema; replay; artifact theo namespace |
 | Điều phối | `orchestrator.py`, `delivery.py`, `gates.py`, `gate_cli.py`, `supervisor.py` | route, máy trạng thái ticket/release, human gate bền, watchdog |
+| Tự duyệt theo sàn | `quality_floor.py`, `gate_risk.py` | ADR-0043: bằng chứng máy + mức nâng dự án → release/nghiệm thu tự duyệt; thiếu → người |
 | Chạy agent | `runner.py`, `tools.py`, `guard.py`, `context.py`, `subagents.py` | vòng lặp tool, ranh giới tin cậy, injection, hạn mức ngữ cảnh |
 | Bằng chứng | `workspace.py`, `stacks.py`, `smoke.py` | worktree, lint/test thật, merge/deliver, smoke |
 | Model | `llm.py`, `routing.py`, `mcp_bridge.py`, `probe.py`, `web.py` | adapter, tier, xoay quota, cầu MCP |
@@ -48,3 +49,7 @@ Model **chỉ trả JSON**; mọi hành động có hậu quả là code: ghi fi
 đường dẫn, env đã lọc, không hook git), lint/test qua `stacks.py`, merge/tag/push qua `workspace.py`, smoke qua
 `smoke.py`. Trường "đã làm được" do code điền (`verified_by=workspace|orchestrator`); identity của event do ROUTE
 quyết. Chi tiết: ADR-0010, 0013, 0027, 0028, 0029.
+
+Gate `release`/`acceptance` chỉ được code tự duyệt (cờ `COMPANY_GATE_AUTOAPPROVE`, ADR-0043) khi CHÍNH các trường
+máy điền ấy đạt sàn `quality_floor.floor_gaps` — verdict của model chỉ được dùng để chặn, không để cho qua. Máy
+nghiệm thu không ghi `acceptance-results` (chữ ký khách); `spec` và `escalation` luôn là của người.

@@ -346,3 +346,28 @@ def test_tool_chi_doc_cua_qa_hoi_quy_nhin_dung_sha_da_staged(tmp_path, monkeypat
     root = ov._release_root(orch, rid, orch._integration_of_release(ev))
     assert "chua_ky.py" not in tb.call(ToolCall(id="1", name="list_files", args={"path": ".", "glob": "*"}))
     assert (root / "chua_ky.py").exists() is False
+
+
+def test_bang_chung_deploy_ghi_sha_da_deploy_de_san_chat_luong_doi_chieu(tmp_path, monkeypatch):
+    """ADR-0043 sàn A2/R2: gate tự duyệt đòi deploy ở ĐÚNG sha đã staged. Deploy chạy trên `checkout_at(sha)` nhưng
+    bằng chứng không nói sha nào — sàn không có gì để đối chiếu, nên code phải điền (model không khai được)."""
+    fn, _ = _fake_deploy(monkeypatch)
+    bus, orch = _orch(tmp_path, _repo(tmp_path), deploy_fn=fn, runtime=RUNTIME)
+    orch.run()
+    staged = orch.release_sha["REL-001"]
+    assert _rel(bus, "staging")[-1]["evidence"]["deploy"]["sha"] == staged
+    orch.gate.decide("REL-001", "approve", by="human:release-manager", reason="staging xanh — deploy production")
+    orch.run()
+    assert _rel(bus, "production")[-1]["evidence"]["deploy"]["sha"] == staged
+
+
+def test_khong_co_sha_da_staged_thi_bang_chung_deploy_khong_khai_sha(tmp_path, monkeypatch):
+    """Chiều ngược của ca trên: `_release_root` rơi về worktree tích hợp khi chưa có sha — bằng chứng không được ghi
+    một sha mà deploy không chạy trên đó (sàn ADR-0043 khi đó báo thiếu, đúng: thiếu bằng chứng → người)."""
+    fn, _ = _fake_deploy(monkeypatch)
+    bus, orch = _orch(tmp_path, _repo(tmp_path), deploy_fn=fn, runtime=RUNTIME)
+    orch.run()
+    orch.release_sha.pop("REL-001")
+    orch.gate.decide("REL-001", "approve", by="human:release-manager", reason="staging xanh — deploy production")
+    orch.run()
+    assert "sha" not in _rel(bus, "production")[-1]["evidence"]["deploy"]

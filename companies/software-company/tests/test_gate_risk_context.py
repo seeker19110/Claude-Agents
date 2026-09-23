@@ -58,8 +58,8 @@ def test_created_by_thieu_thi_la_none_khong_no() -> None:
     assert context_of(req).created_by is None
 
 
-def test_bang_van_rong_nen_hanh_vi_khong_doi() -> None:
-    """Cột mốc của PR này: thêm trường, KHÔNG thêm luật. Mọi gate vẫn phải chờ người."""
-    assert RISK_RULES == ()
+def test_khong_bang_chung_thi_hanh_vi_khong_doi() -> None:
+    """Bảng có hàng từ ADR-0043, nhưng mọi hàng đòi bằng chứng: ngữ cảnh không mang bằng chứng vẫn chờ người."""
+    assert RISK_RULES
     ctx = context_of(GateRequest(kind="escalation", subject_id="T1", created_by=ROLE.SUPERVISOR, checklist=[]))
     assert gate_risk_tier(ctx) == DEFAULT_TIER != "low"

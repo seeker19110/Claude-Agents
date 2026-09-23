@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 from ..delivery import DONE_STATES
 from ..events import Envelope
-from ..gate_risk import request_gate
+from ..gate_risk import AUTOAPPROVE_ACTOR, request_gate
 from ..gates import Decision, GateRequest
 from ..roles import LEAD_ACTOR, ROLE
 from .routes import ACTOR, PROD_ROUTE, RESEARCH_TOPICS, REVIEW_AGENT, Route, review_route
@@ -37,6 +37,12 @@ def _on_gate_decide(o: Orchestrator, env: Envelope, res: StepResult) -> StepResu
     o.escalation_decided[sid] += 1
     if kind == "escalation":
         o._on_escalation_decided(sid, decision, by, d.get("reason", ""), res)
+    elif kind == "acceptance" and decision == "approve" and env.actor == AUTOAPPROVE_ACTOR:  # actor do bus kiểm, không `by` tự khai
+        # ADR-0043 §3: máy nghiệm thu — đóng ticket ở đây vì không có `acceptance-results` nào kéo theo; audit
+        # `acceptance.auto` là thứ `_rehydrate` dựng lại sau restart (trạng thái ticket không được chỉ sống trong RAM).
+        rid = sid.removeprefix(o.gate.UAT_PREFIX or "")
+        o.lead.close_accepted(rid)
+        o._audit("acceptance.auto", {"release_id": rid, "subject_id": sid, "reason": d.get("reason", "")})
     elif decision == "approve":
         # ADR-0037: không còn nhánh `sid in o.plans` — kế hoạch được `_check_plan` cho đi thẳng lúc lập, không
         # chờ ai ký. Duyệt gate release vẫn là bước cho phép deploy production.
@@ -216,15 +222,32 @@ def _open_acceptance_gate(o: Orchestrator, rid: str, res: StepResult, gen: str) 
     sid = f"UAT-{rid}"
     if sid in o.gate.pending or o.gate.is_approved(sid) or f"uat:{rid}:{gen}" in o.once: return
     o._remember(f"uat:{rid}:{gen}")
+    evidence, bar = o.lead._quality_evidence("acceptance", rid)
     request_gate(o.gate, GateRequest(kind="acceptance", subject_id=sid, created_by=ROLE.OPS,
-                                  checklist=["uat-script", "acceptance-criteria", "known-issues", "signed_by"]))
+                                  checklist=["uat-script", "acceptance-criteria", "known-issues", "signed_by"]),
+                 evidence=evidence, bar=bar)
     res.actions.append(f"gate:acceptance:{sid}")
+
+def _customer_overrides_auto(o: Orchestrator, env: Envelope, rid: str, sid: str, res: StepResult) -> None:
+    """ADR-0043 §3: máy đã nghiệm thu (`UAT-*` do `AUTOAPPROVE_ACTOR` duyệt) rồi khách ký KHÁC `accepted` — chữ ký
+    khách thắng máy, nhưng ticket đã `closed` nên đường `DeliveryLead._on_acceptance` không còn gì để đẩy. Không im
+    lặng nuốt: ghi `acceptance.overridden` và mở gate `escalation` cho người quyết làm lại hay chấp nhận."""
+    if env.payload.get("verdict") == "accepted": return
+    last = next((g for g in reversed(o.gate.history) if g.subject_id == sid), None)
+    if last is None or last.decided_by != AUTOAPPROVE_ACTOR or rid in o.gate.pending: return
+    o._audit("acceptance.overridden", {"release_id": rid, "verdict": env.payload.get("verdict"),
+                                       "signed_by": env.payload.get("signed_by")})
+    request_gate(o.gate, GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
+                                  checklist=["root_cause", "decision:reopen|close", "hint"]))
+    res.actions.append(f"gate:escalation:{rid}")
 
 def _close_acceptance_gate(o: Orchestrator, env: Envelope, res: StepResult) -> None:
     """Khách ký `acceptance-results` → đóng gate nghiệm thu bằng chính chữ ký đó. Four-eyes bảo đảm người ký của
     khách khác account-manager. Conditional đóng ở dạng request_changes; phần còn lại đi qua change request."""
     rid = env.payload.get("release_id"); sid = f"UAT-{rid}"
-    if sid not in o.gate.pending: return
+    if sid not in o.gate.pending:
+        _customer_overrides_auto(o, env, str(rid), sid, res)
+        return
     verdict = env.payload.get("verdict")
     decision: Decision = {"accepted": "approve", "rejected": "reject"}.get(str(verdict), "request_changes")  # type: ignore[assignment]
     by = str(env.payload.get("signed_by") or env.actor)
