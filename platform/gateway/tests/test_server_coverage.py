@@ -147,6 +147,49 @@ async def test_refresh_catalog_per_candidate_fetch_failure_then_success(manager,
         gw_client.set_discovered_models([])
 
 
+@pytest.mark.asyncio
+async def test_refresh_catalog_failure_is_negatively_cached(manager, monkeypatch):
+    """Discovery hỏng thì KHÔNG dò lại ở mọi request: mỗi lần dò là N lượt fetch tuần tự + đóng dấu LRU."""
+    monkeypatch.setattr(gw_server, "discovery_is_stale", lambda: True)
+    creds = gw_auth.AntigravityCredentials(access_token="t1", email="a@example.com", project_id="p1")
+    resolves: list[int] = []
+
+    def resolve():
+        resolves.append(1)
+        return [creds]
+
+    def fetch_fail(token, project, **kw):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(manager, "resolve_credential_candidates", resolve)
+    monkeypatch.setattr(gw_server, "fetch_available_models", fetch_fail)
+    server = GatewayServer(auth_manager=manager, client=StubClient())
+    await server._refresh_catalog()
+    await server._refresh_catalog()
+    assert len(resolves) == 1
+
+    # Hết thời gian lùi → được dò lại.
+    server._catalog_retry_at = 0.0
+    await server._refresh_catalog()
+    assert len(resolves) == 2
+
+
+@pytest.mark.asyncio
+async def test_refresh_catalog_resolution_failure_is_negatively_cached(manager, monkeypatch):
+    monkeypatch.setattr(gw_server, "discovery_is_stale", lambda: True)
+    calls: list[int] = []
+
+    def boom():
+        calls.append(1)
+        raise RuntimeError("no creds")
+
+    monkeypatch.setattr(manager, "resolve_credential_candidates", boom)
+    server = GatewayServer(auth_manager=manager, client=StubClient())
+    await server._refresh_catalog()
+    await server._refresh_catalog()
+    assert len(calls) == 1
+
+
 # ---------- is_server_running ----------
 
 

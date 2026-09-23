@@ -506,7 +506,9 @@ class AntigravityAuthManager:
                     return
                 qs = urllib.parse.parse_qs(parsed.query)
                 if qs.get("state", [None])[0] != state:
-                    holder["error"] = "State không khớp trong OAuth callback"
+                    # Không phải callback của lượt này: bất kỳ tiến trình cục bộ nào cũng gọi được cổng, nên KHÔNG
+                    # đặt holder["error"] (kẻo một request lạ huỷ lượt đăng nhập) — trả 400 và chờ tiếp.
+                    logger.warning("Bỏ qua OAuth callback có state không khớp")
                     self._html("<h3>Lỗi xác thực</h3><p>State không khớp.</p>", 400)
                     return
                 code = qs.get("code", [None])[0]

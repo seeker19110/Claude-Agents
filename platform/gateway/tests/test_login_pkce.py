@@ -233,16 +233,29 @@ def test_login_pkce_full_flow_saves_credentials(manager, monkeypatch):
     assert stored["access_token"] == "final-tok"
 
 
-def test_login_pkce_state_mismatch_raises(manager, monkeypatch):
+def test_login_pkce_state_mismatch_is_ignored_and_login_continues(manager, monkeypatch):
+    """Callback sai/thiếu `state` KHÔNG phải của luồng này (bất kỳ tiến trình cục bộ nào cũng gọi được cổng):
+    trả 400 cho nó nhưng tiếp tục chờ callback thật, không để một request lạ huỷ lượt đăng nhập (audit 2026-09-23).
+    Test cũ `test_login_pkce_state_mismatch_raises` khoá đúng hành vi lỗi này và đã được thay."""
     port = _free_port()
     monkeypatch.setattr(gw_auth.secrets, "token_hex", lambda n: "expectedstate")
     monkeypatch.setattr(gw_auth.webbrowser, "open", lambda url: True)
 
+    def fake_urlopen(req, timeout=None):
+        if req.full_url == gw_auth.TOKEN_ENDPOINT:
+            return _FakeResponse({"access_token": "tok-ok", "refresh_token": "r", "expires_in": 3600})
+        if req.full_url.startswith(gw_auth.USERINFO_ENDPOINT):
+            return _FakeResponse({"email": "real@example.com"})
+        if req.full_url == gw_auth.LOAD_CODE_ASSIST_ENDPOINT:
+            return _FakeResponse({"cloudaicompanionProject": "proj-ok"})
+        raise AssertionError(f"unexpected urlopen: {req.full_url}")
+
+    monkeypatch.setattr(gw_auth.urllib.request, "urlopen", fake_urlopen)
     result: dict = {}
 
     def run():
         try:
-            manager.login_pkce(port=port, open_browser=True, timeout_seconds=10.0)
+            result["creds"] = manager.login_pkce(port=port, open_browser=True, timeout_seconds=10.0)
         except BaseException as exc:
             result["error"] = exc
 
@@ -251,12 +264,14 @@ def test_login_pkce_state_mismatch_raises(manager, monkeypatch):
     import time as _time
 
     _time.sleep(0.3)
-    status = _drive_callback(port, code="whatever", state="wrong-state")
+    wrong = _drive_callback(port, code="attacker-code", state="wrong-state")
+    missing = _drive_callback(port, code="attacker-code", state="")
+    ok = _drive_callback(port, code="real-code", state="expectedstate")
     t.join(timeout=15)
 
-    assert status == 400
-    assert isinstance(result.get("error"), RuntimeError)
-    assert "State không khớp" in str(result["error"])
+    assert (wrong, missing, ok) == (400, 400, 200)
+    assert "error" not in result, result.get("error")
+    assert result["creds"].access_token == "tok-ok"
 
 
 def test_login_pkce_google_error_param_raises(manager, monkeypatch):

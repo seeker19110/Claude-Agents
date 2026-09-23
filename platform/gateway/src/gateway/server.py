@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_HOST = os.getenv("GATEWAY_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.getenv("GATEWAY_PORT", "1123"))
+# Discovery hỏng (mất mạng, pool trống) thì chờ bấy nhiêu giây mới dò lại, thay vì dò ở MỌI request.
+CATALOG_RETRY_BACKOFF_S = 300.0
 _DUMMY_BEARERS = {"dummy", "none", "token", "default", "antigravity", "gateway-local", "sk-gateway"}
 
 
@@ -205,6 +207,7 @@ class GatewayServer:
         self.port = port
         self.auth_manager = auth_manager or AntigravityAuthManager()
         self.client = client or AntigravityClient(self.auth_manager)
+        self._catalog_retry_at = 0.0
         self.app = web.Application(client_max_size=32 * 1024**2,   # lịch sử chat dài kèm ảnh vượt 1MB mặc định
                                    middlewares=[guard_middleware(is_loopback_host(host))])
         self.app.router.add_get("/health", self.handle_health)
@@ -251,8 +254,11 @@ class GatewayServer:
     async def _refresh_catalog(self) -> None:
         """Hỏi upstream danh sách model (TTL 1 giờ). Hỏng thì im lặng dùng bảng tĩnh —
         không có model mới còn hơn là gateway chết vì một lần discovery lỗi."""
-        if not discovery_is_stale():
+        if not discovery_is_stale() or time.time() < self._catalog_retry_at:
             return
+        # Lùi TRƯỚC khi dò: hỏng thì không dò lại ở mọi request (mỗi lần là N fetch tuần tự + một dấu LRU);
+        # thành công thì `discovery_is_stale()` đã chặn, mốc lùi không còn ý nghĩa.
+        self._catalog_retry_at = time.time() + CATALOG_RETRY_BACKOFF_S
         try:
             candidates = await asyncio.to_thread(self.auth_manager.resolve_credential_candidates)
         except Exception as e:

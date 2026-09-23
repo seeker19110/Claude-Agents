@@ -52,7 +52,7 @@ enumerate(candidates, start=1)` (`client.py:888`). Với mỗi tài khoản:
 | 200 | trả về, ghi log tài khoản đã phục vụ (`client.py:900-901`) |
 | 401/402/403/429 hoặc thân có `resource_exhausted`, `rate limit`, `quota`, `invalid_grant`, `token expired` (`client.py:89-96`) | model Gemini → thử **model anh em `claude-sonnet-4-6` trên cùng tài khoản** (`client.py:87,906-913`); vẫn lỗi cùng họ → cooldown tài khoản, sang tài khoản kế (`client.py:914-926`) |
 | 4xx khác (payload hỏng, model lạ) | ném `UpstreamError` ngay, **không xoay** — tài khoản khác không cứu được (`client.py:929-931`) |
-| 5xx endpoint chính `daily-cloudcode-pa` | thử endpoint dự phòng `cloudcode-pa` cùng tài khoản (`client.py:30-31,933-935`); vẫn lỗi có thể xoay được → cooldown + tài khoản kế (`client.py:941-946`) |
+| 5xx endpoint chính `daily-cloudcode-pa` | thử endpoint dự phòng `cloudcode-pa` cùng tài khoản (`client.py:30-31,933-935`); dự phòng cũng 5xx → tài khoản kế **không cooldown** (lỗi phía Google, như stream; audit 2026-09-23); dự phòng trả lỗi họ quota → cooldown + tài khoản kế |
 | hết danh sách | ném lỗi của response cuối cùng với mã HTTP thật (`client.py:948-951`) |
 
 Stream (`client.py:953-1053`) chỉ xoay **trước chunk đầu tiên** (`client.py:954`): 5xx lúc mở stream → tài khoản kế
