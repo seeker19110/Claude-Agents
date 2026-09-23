@@ -142,7 +142,7 @@ def test_bo_dem_theo_argv_rieng(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 def test_gh_khong_co_tren_may(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     spy = _RunSpy(raise_exc=FileNotFoundError())
     reader = _reader(tmp_path, spy, monkeypatch)
-    assert reader.open_prs() == []
+    assert reader.open_prs() is None, "gh vắng mặt = KHÔNG BIẾT số PR mở, không phải 0 (I3 phải đóng)"
 
 
 def test_gh_qua_thoi_gian(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,13 +160,13 @@ def test_gh_tra_ma_loi(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 def test_json_hong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     spy = _RunSpy(stdout="khong-phai-json{{{")
     reader = _reader(tmp_path, spy, monkeypatch)
-    assert reader.open_prs() == []
+    assert reader.open_prs() is None
 
 
 def test_json_khong_phai_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     spy = _RunSpy(stdout=json.dumps({"not": "a list"}))
     reader = _reader(tmp_path, spy, monkeypatch)
-    assert reader.merged_prs("2026-09-01") == []
+    assert reader.merged_prs("2026-09-01") is None
 
 
 def test_json_rong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -190,7 +190,7 @@ def test_gh_loi_code_scanning_alerts(tmp_path: Path, monkeypatch: pytest.MonkeyP
 def test_gh_loi_merged_prs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     spy = _RunSpy(stdout="", returncode=1)
     reader = _reader(tmp_path, spy, monkeypatch)
-    assert reader.merged_prs("2026-09-01") == []
+    assert reader.merged_prs("2026-09-01") is None
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -344,3 +344,16 @@ def test_gia_tri_cua_co_chieu_nguoc(tmp_path, monkeypatch):
     monkeypatch.setattr(github_mod, "_VALUE_FLAGS", frozenset({"--repo", "-R"}))
     with pytest.raises(GitHubWriteAttempt):
         GitHubReader(tmp_path)._run("pr", "create", "--title", "merge", "--body-file", "b.md")
+
+
+def test_gh_loi_open_prs_la_khong_biet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    spy = _RunSpy(stdout="", returncode=1)
+    reader = _reader(tmp_path, spy, monkeypatch)
+    assert reader.open_prs() is None
+
+
+def test_open_prs_rong_that_la_list_rong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`[]` hợp lệ từ gh = BIẾT là 0 PR — khác hẳn `None` (không biết)."""
+    spy = _RunSpy(stdout="[]")
+    reader = _reader(tmp_path, spy, monkeypatch)
+    assert reader.open_prs() == []

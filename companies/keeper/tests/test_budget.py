@@ -135,3 +135,29 @@ def test_hang_doi_fifo_theo_tier_roi_tuoi():
                   age_days=30.0),
     ]
     assert [q.signal.subject for q in order_queue(items)] == ["c", "b", "a", "d"]
+
+
+class _GHMu(_GH):
+    """`gh` hỏng: `None` = không biết (xem `GitHubReader.open_prs`)."""
+
+    def __init__(self, *, open_known: bool, merged_known: bool) -> None:
+        super().__init__([], [])
+        self.open_known = open_known
+        self.merged_known = merged_known
+
+    def open_prs(self) -> list[PullRequest] | None:  # type: ignore[override]
+        return [] if self.open_known else None
+
+    def merged_prs(self, since: str) -> list[PullRequest] | None:  # type: ignore[override]
+        return [] if self.merged_known else None
+
+
+def test_khong_biet_so_pr_mo_thi_chan(monkeypatch):
+    """I3 fail CLOSED: gh hỏng không được đọc thành "0 PR đang mở"."""
+    monkeypatch.delenv(MAX_PR_ENV, raising=False)
+    assert can_open_pr(_GHMu(open_known=False, merged_known=True), now=NOW) is False
+
+
+def test_khong_biet_so_pr_da_gop_thi_chan(monkeypatch):
+    monkeypatch.delenv(MAX_PR_ENV, raising=False)
+    assert can_open_pr(_GHMu(open_known=True, merged_known=False), now=NOW) is False

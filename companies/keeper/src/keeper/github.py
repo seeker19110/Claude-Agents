@@ -182,11 +182,24 @@ class GitHubReader:
             return []
         return data if isinstance(data, list) else []
 
-    def open_prs(self) -> list[PullRequest]:
-        ok, out = self._run("pr", "list", "--state", "open", "--json", "number,title,url,headRefName,createdAt")
+    @staticmethod
+    def _parse_list_strict(ok: bool, out: str) -> list[dict] | None:
+        """Như `_parse_list` nhưng PHÂN BIỆT "gh nói rỗng" (`[]`) với "không biết" (`None`): gh lỗi, quá
+        giờ, vắng mặt, hay trả thứ không phải một mảng JSON → `None`. Dùng cho câu hỏi mà câu trả lời rỗng
+        mở cổng (bất biến I3 — `budget.can_open_pr`): đọc lỗi thành "0 PR" là fail OPEN."""
         if not ok:
-            return []
-        return [PullRequest.model_validate(row) for row in self._parse_list(out)]
+            return None
+        try:
+            data = json.loads(out)
+        except json.JSONDecodeError:
+            return None
+        return data if isinstance(data, list) else None
+
+    def open_prs(self) -> list[PullRequest] | None:
+        """`None` = không biết (gh lỗi/JSON hỏng) — KHÁC `[]` (biết chắc 0 PR). Xem `_parse_list_strict`."""
+        ok, out = self._run("pr", "list", "--state", "open", "--json", "number,title,url,headRefName,createdAt")
+        rows = self._parse_list_strict(ok, out)
+        return None if rows is None else [PullRequest.model_validate(row) for row in rows]
 
     def checks(self, pr: int) -> list[CheckRun]:
         ok, out = self._run("pr", "checks", str(pr), "--json", "name,state,link")
@@ -240,11 +253,11 @@ class GitHubReader:
             return []
         return [WorkflowRun.model_validate(row) for row in self._parse_list(out)]
 
-    def merged_prs(self, since: str) -> list[PullRequest]:
+    def merged_prs(self, since: str) -> list[PullRequest] | None:
+        """`None` = không biết, như `open_prs`."""
         ok, out = self._run(
             "pr", "list", "--state", "merged", "--search", f"merged:>={since}",
             "--json", "number,title,url,headRefName,mergedAt",
         )
-        if not ok:
-            return []
-        return [PullRequest.model_validate(row) for row in self._parse_list(out)]
+        rows = self._parse_list_strict(ok, out)
+        return None if rows is None else [PullRequest.model_validate(row) for row in rows]
