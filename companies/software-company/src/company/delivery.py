@@ -455,6 +455,14 @@ class DeliveryLead:
         for dep in blocked: self._set(dep, "blocked")
         return blocked
 
+    def close_accepted(self, rid: str) -> None:
+        """ADR-0043 §3: nghiệm thu do MÁY duyệt (gate `UAT-*` qua `trusted_autoapprove`) — đóng ticket `released`
+        của release như nhánh `accepted` của `_on_acceptance`, nhưng KHÔNG có `acceptance-results` nào (topic đó là
+        chữ ký của khách, máy không ghi vào)."""
+        for tid in self.release_tickets.get(rid, []):
+            if self.state.get(tid) == "released":
+                self._set(tid, "closed")
+
     def _on_acceptance(self, env: Envelope) -> None:
         a = AcceptanceResult.model_validate(env.payload); self.acceptance[a.release_id] = a
         for tid in self.release_tickets.get(a.release_id, []):

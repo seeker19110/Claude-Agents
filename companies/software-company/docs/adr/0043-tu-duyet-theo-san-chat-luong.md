@@ -114,9 +114,14 @@ có ngưỡng.
 - Đóng ticket: `_on_gate_decide` thấy `UAT-<rid>` được `approve` bởi `AUTOAPPROVE_ACTOR` → gọi
   `DeliveryLead.close_accepted(rid)` (tách ra từ nhánh `accepted` của `_on_acceptance`, không nhân bản logic)
   và audit `acceptance.auto`. `metrics` không đếm nó là "khách nghiệm thu".
-- Khách vẫn còn nguyên quyền: `acceptance-results` `rejected`/`conditional` tới SAU vẫn đi đúng đường cũ của
-  `DeliveryLead._on_acceptance` (ticket về `changes_requested` / change request) — nghiệm thu máy không khoá
-  cửa khách.
+- Khách vẫn còn nguyên quyền: `acceptance-results` `rejected`/`conditional` tới SAU khi máy đã nghiệm thu thì
+  chữ ký khách thắng máy — ticket đã `closed` nên đường `_on_acceptance` cũ không còn gì để đẩy, vì vậy
+  orchestrator ghi `acceptance.overridden` và mở gate `escalation` trên release cho NGƯỜI quyết làm lại hay chấp
+  nhận (`orch/gates_flow._customer_overrides_auto`). Không im lặng nuốt chữ ký khách.
+- Sau restart: `_rehydrate` áp lại `acceptance.auto` (không có `acceptance-results` nào để replay).
+- Lỗ phát hiện khi nối: `scheduler._actionable` hỏi `trusted_decision` của core nên quyết định do `"code"` duyệt
+  được ghi vào gate nhưng không bao giờ CHẠY (release "đã duyệt" mà không lên production) — nay hỏi
+  `gate._trusted` của company, nơi duy nhất biết nhánh `trusted_autoapprove`.
 
 ### 4. Cái gì cố ý giữ nguyên
 

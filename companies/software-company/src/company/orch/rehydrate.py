@@ -51,6 +51,10 @@ def rehydrate(o: Orchestrator) -> None:
             elif a["action"] == "release.void": o._void(d["release_id"])
             elif a["action"] == "release.staged": o.release_sha[d["release_id"]] = d["sha"]
             elif a["action"] == "delivery.done": o.delivered[d["release_id"]] = d
+            elif a["action"] == "acceptance.auto":  # ADR-0043 §3: nghiệm thu máy không có acceptance-results để replay
+                prev_r, o.lead.replaying = o.lead.replaying, True
+                try: o.lead.close_accepted(str(d["release_id"]))
+                finally: o.lead.replaying = prev_r
             elif a["action"] == "delivery.rolled_back": o.delivered.pop(d["release_id"], None)
             elif a["action"] == "ticket.abandoned": o.lead.abandon(d["ticket_id"])
             elif a["action"] == "defer.until" and d.get("event_id"):
