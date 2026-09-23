@@ -1,7 +1,7 @@
 """Bậc rủi ro gate do CODE xếp (ADR-0011 §4, giai đoạn 3/5 — docs/thi-hanh/adr113.md gói `adr113-a`).
 
-`RISK_RULES` khởi tạo RỖNG có chủ đích: chưa có luật cứng nào qua review để tự động qua gate. Test ở đây chứng
-minh CƠ CHẾ tra bảng đúng (qua rule giả truyền bằng tham số `rules=`), không chứng minh có luật thật nào."""
+Test ở đây chứng minh CƠ CHẾ tra bảng đúng (qua rule giả truyền bằng tham số `rules=`). Hai hàng thật của bảng
+(ADR-0043, sàn chất lượng) có test riêng ở `test_gate_risk_quality.py`."""
 import json
 
 import pytest
@@ -42,7 +42,8 @@ def test_rules_without_ten_la_no():
 
 
 def test_rules_without_khong_ten_nao_tra_bang_hien_co():
-    assert rules_without() == ()  # bảng đang rỗng: không tên nào cần bỏ, kết quả là chính bảng hiện có
+    from company.gate_risk import RISK_RULES
+    assert rules_without() == RISK_RULES  # không tên nào cần bỏ: kết quả là chính bảng hiện có
 
 
 def test_rules_without_bang_rong_ném_vi_khong_co_gi_de_bo():
@@ -85,7 +86,7 @@ def test_request_gate_bang_that_rong_khong_tu_dong_qua_gi(monkeypatch):
     bus = InMemoryBus(); gate = PersistentGate(bus)
     req = GateRequest(kind="release", subject_id="REL-2", created_by="delivery-lead", checklist=["tests"])
     request_gate(gate, req)
-    assert "REL-2" in gate.pending  # RISK_RULES đang rỗng thật trong repo
+    assert "REL-2" in gate.pending  # không truyền bằng chứng (ADR-0043) ⇒ không hàng nào khớp
 
 
 def test_request_gate_bat_va_rule_gia_khop_low_tu_dong_qua(monkeypatch):

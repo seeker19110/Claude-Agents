@@ -5,10 +5,11 @@ chung bảng: hai công ty có `GateKind`/miền khác nhau (ADR-0011 §1), và 
 ngữ cảnh rủi ro (semver, severity...) như keeper — 12 điểm `gate.request` của company (nay đi qua `request_gate`) chỉ có `kind`,
 `subject_id`, `checklist`.
 
-`RISK_RULES` khởi tạo RỖNG **có chủ đích**: bậc rủi ro phải do CODE xếp bằng luật đã qua review, không phải
-luật một phiên tự nghĩ ra để "cho có". Bảng rỗng ⇒ `gate_risk_tier` luôn trả `DEFAULT_TIER` ("medium") ⇒
-không gate nào tự động qua được, đúng hành vi hôm nay dù cờ `COMPANY_GATE_AUTOAPPROVE` có bật hay không (xem
-`request_gate`). Thêm hàng đầu tiên là một PR riêng, tự đứng, tự test, đi qua `sc-security`.
+`RISK_RULES` khởi tạo RỖNG có chủ đích (2026-09-10): bậc rủi ro phải do CODE xếp bằng luật đã qua review, không
+phải luật một phiên tự nghĩ ra để "cho có". Hai hàng đầu tiên vào từ ADR-0043 (`release-quality-floor`,
+`acceptance-quality-floor`): cả hai chỉ khớp khi nơi gọi truyền bằng chứng máy + mức nâng của dự án và
+`quality_floor.floor_gaps` trả rỗng. Không bằng chứng ⇒ không hàng nào khớp ⇒ `DEFAULT_TIER` ("medium") ⇒ người.
+Thêm/bớt hàng là PR riêng, test đỏ trước, đi qua `sc-security`.
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from .gates import GateRequest, gate_autoapprove_enabled
+from .quality_floor import QualityBar, QualityEvidence, floor_gaps
 
 if TYPE_CHECKING:
     from .gate_cli import PersistentGate  # chỉ để chú kiểu: `decide(..., actor=)` là chữ ký của PersistentGate
@@ -54,6 +56,10 @@ class GateRiskContext:
     checklist: tuple[str, ...]
     created_by: str | None = None
     seq: int = 0
+    #: ADR-0043: bằng chứng máy + mức nâng của dự án. Chỉ gate `release`/`acceptance` truyền; `None` ⇒ không luật
+    #: sàn chất lượng nào khớp ⇒ người (thiếu bằng chứng → người, thiếu mức nâng → hỏng thì đóng).
+    evidence: QualityEvidence | None = None
+    bar: QualityBar | None = None
 
 
 @dataclass(frozen=True)
@@ -64,16 +70,33 @@ class RiskRule:
     match: Callable[[GateRiskContext], bool]
 
 
-# RỖNG có chủ đích — xem docstring module.
-RISK_RULES: tuple[RiskRule, ...] = ()
+def gaps_of(ctx: GateRiskContext) -> list[str] | None:
+    """Khoảng trống so với sàn (ADR-0043), hoặc `None` khi ngữ cảnh không mang bằng chứng/mức nâng hay bằng chứng
+    không cùng loại với gate — tức là không có gì để chấm, không phải "đạt"."""
+    if ctx.evidence is None or ctx.bar is None or ctx.evidence.kind != ctx.kind:
+        return None
+    return floor_gaps(ctx.evidence, ctx.bar)
 
 
-def context_of(req: GateRequest) -> GateRiskContext:
+def _meets_floor(kind: str) -> Callable[[GateRiskContext], bool]:
+    return lambda c: c.kind == kind and gaps_of(c) == []
+
+
+# ADR-0043: hai hàng đầu tiên, cùng một sàn cứng trong `quality_floor.floor_gaps`. Thêm/bớt hàng là PR + test đỏ
+# trước + `sc-security` (docstring module).
+RISK_RULES: tuple[RiskRule, ...] = (
+    RiskRule(name="release-quality-floor", tier="low", match=_meets_floor("release")),
+    RiskRule(name="acceptance-quality-floor", tier="low", match=_meets_floor("acceptance")),
+)
+
+
+def context_of(req: GateRequest, *, evidence: QualityEvidence | None = None,
+               bar: QualityBar | None = None) -> GateRiskContext:
     """`GateRequest` → `GateRiskContext`. Một chỗ dựng duy nhất, nên thêm trường về sau chỉ sửa ở đây.
 
     Đọc SAU khi `HumanGate.request()` chạy thì `seq` mới là thế hệ thật (trước đó nó là 0 mặc định)."""
     return GateRiskContext(kind=req.kind, subject_id=req.subject_id, checklist=tuple(req.checklist),
-                           created_by=req.created_by, seq=req.seq)
+                           created_by=req.created_by, seq=req.seq, evidence=evidence, bar=bar)
 
 
 def rules_without(*names: str) -> tuple[RiskRule, ...]:
@@ -95,7 +118,8 @@ def gate_risk_tier(ctx: GateRiskContext, *, rules: tuple[RiskRule, ...] = RISK_R
     return DEFAULT_TIER
 
 
-def request_gate(gate: PersistentGate, req: GateRequest) -> GateRequest:
+def request_gate(gate: PersistentGate, req: GateRequest, *, evidence: QualityEvidence | None = None,
+                 bar: QualityBar | None = None) -> GateRequest:
     """Thay `gate.request(req)` ở mọi điểm gọi của orchestrator/delivery-lead: mở gate như cũ, rồi — chỉ khi cờ
     `COMPANY_GATE_AUTOAPPROVE` đang bật VÀ đúng một hàng của `RISK_RULES` khớp với tier "low" — code tự đóng
     gate bằng `decide(by=AUTOAPPROVE_ACTOR, enforce=False, reason=<tiền tố>+<tên hàng>)`.
@@ -108,8 +132,13 @@ def request_gate(gate: PersistentGate, req: GateRequest) -> GateRequest:
     gate.request(req)
     if not gate_autoapprove_enabled():
         return req
-    ctx = context_of(req)  # sau `gate.request(req)`: `seq` đã là thế hệ thật
+    ctx = context_of(req, evidence=evidence, bar=bar)  # sau `gate.request(req)`: `seq` đã là thế hệ thật
     matched = [r for r in RISK_RULES if r.match(ctx)]
+    gaps = gaps_of(ctx)
+    if gaps:
+        # ADR-0043: người ký phải thấy VÌ SAO máy không tự ký — không thì "tự duyệt" chỉ tồn tại trên giấy mà không
+        # ai đếm được khoảng trống nào chặn nó.
+        gate._log(AUTOAPPROVE_ACTOR, "gate.auto_skipped", {"subject_id": req.subject_id, "kind": req.kind, "gaps": gaps})
     if len(matched) == 1 and matched[0].tier == "low":
         # `actor=AUTOAPPROVE_ACTOR` PHẢI truyền tường minh (sc-security, adr113 2026-09-10): không truyền,
         # `PersistentGate.decide` (core) tự suy `actor` — với subject bắt đầu `UAT-` và `by` không phải người,
