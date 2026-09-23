@@ -11,12 +11,33 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from ..events import Envelope
-from ..roles import ROLE
+from ..roles import LEAD_ACTOR, ROLE
 from ..runner import CONTEXT_ONLY
 from .routes import ACTOR, ROUTES
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator
+
+
+_ORCH_ONLY = frozenset({ACTOR})
+#: Người ghi THẬT của mỗi action mà `rehydrate` dựng lại trạng thái từ đó — đo từ chính các lời gọi `_audit`
+#: (`orch/*.py`, `delivery.py`). `env.actor` là thứ bus kiểm; `actor` trong payload là lời khai. `audit-log` là topic
+#: mở và route `change-requests → product → audit-log` publish payload của model, nên một dòng đúng tên action mà
+#: sai người ghi là lệnh giả: bỏ qua, không dựng gì (sc-security 2026-09-23, ADR-0043 "còn mở"). Action không có
+#: trong bảng: chỉ orchestrator. `gate.decide`: bus đã giới hạn actor (người / orchestrator / code), chỉ đếm.
+TRUSTED_WRITERS: dict[str, frozenset[str]] = {
+    # `plan.proposed`/`plan_rejected`: nay ghi dưới tên `product` (`orch/ticket_fsm.py`), bus cũ (QLKH 2026-09-09,
+    # `tests/test_rehydrate_ke_hoach_cu.py`) ghi dưới tên orchestrator — cả hai đều là code, không agent nào giả được.
+    "plan.proposed": frozenset({ROLE.PRODUCT, ACTOR}), "plan_rejected": frozenset({ROLE.PRODUCT, ACTOR}),
+    "ticket.blocked": frozenset({LEAD_ACTOR}), "release.finding_waived": frozenset({LEAD_ACTOR}),
+    "ticket.already_integrated": frozenset({LEAD_ACTOR, ACTOR}),
+    "gate.decide": frozenset({"*"}),
+}
+
+
+def _trusted_writer(action: Any, actor: str) -> bool:
+    allowed = TRUSTED_WRITERS.get(action, _ORCH_ONLY)
+    return "*" in allowed or actor in allowed
 
 
 def rehydrate(o: Orchestrator) -> None:
@@ -30,15 +51,15 @@ def rehydrate(o: Orchestrator) -> None:
     last_retry: dict[str, tuple[int, dict[str, Any]]] = {}   # event_id → (thứ tự trong log, bản ghi stalled)
     hen: dict[str, tuple[str, str]] = {}                     # event_id → (mốc hẹn ISO, lý do hoãn)
     for i, env in enumerate(log):
-        if env.topic == "audit-log":
+        if env.topic == "audit-log" and _trusted_writer(env.payload.get("action"), env.actor):
             a = env.payload; d = _evidence(a)
             # `event.retried` (`_retry_unhandled`) cùng họ với `project.retried`: lệnh chạy lại chỉ sống trong RAM,
             # thiếu nó thì restart trước khi event chạy lại là dấu `orchestrated` của LẦN LỖI thắng (audit 2026-09-23).
             if a["action"] in {"project.retried", "event.retried"} and d.get("event_id"):
                 last_retry[str(d["event_id"])] = (i, d)
-            if a["actor"] == ACTOR and a["action"] == "orchestrated":
+            if a["action"] == "orchestrated":
                 o.processed.add(d["event_id"]); last_done[str(d["event_id"])] = i
-            elif a["actor"] == ACTOR and a["action"] == "once": o.once.add(d["key"])
+            elif a["action"] == "once": o.once.add(d["key"])
             elif a["action"] == "plan.proposed":
                 # ADR-0037: `plan.proposed` chỉ được ghi khi `_check_plan` không trả problem nào, và lúc đó ticket
                 # đã được giao ngay — nên dựng lại trạng thái phải giao lại ở ĐÚNG chỗ này trong log, không chờ
@@ -52,9 +73,9 @@ def rehydrate(o: Orchestrator) -> None:
             # `release.staged`/`acceptance.auto` dựng lại sha sẽ lên production và ticket đã đóng — sau ADR-0043 không
             # còn người ký chen giữa, nên chỉ tin dòng do CHÍNH orchestrator ghi (`env.actor` do bus kiểm; audit-log
             # là topic mở, agent ghi được action tuỳ ý — sc-security 2026-09-23).
-            elif a["action"] == "release.staged" and env.actor == ACTOR: o.release_sha[d["release_id"]] = d["sha"]
+            elif a["action"] == "release.staged": o.release_sha[d["release_id"]] = d["sha"]
             elif a["action"] == "delivery.done": o.delivered[d["release_id"]] = d
-            elif a["action"] == "acceptance.auto" and env.actor == ACTOR:  # ADR-0043 §3: nghiệm thu máy không có acceptance-results để replay
+            elif a["action"] == "acceptance.auto":  # ADR-0043 §3: nghiệm thu máy không có acceptance-results để replay
                 prev_r, o.lead.replaying = o.lead.replaying, True
                 try: o.lead.close_accepted(str(d["release_id"]))
                 finally: o.lead.replaying = prev_r

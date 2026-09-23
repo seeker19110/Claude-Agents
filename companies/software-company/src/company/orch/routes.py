@@ -54,6 +54,11 @@ REVIEW_AGENT = {SOURCE.REVIEWER: ROLE.QA, SOURCE.QA: ROLE.QA, SOURCE.SECURITY: R
 KEY_FIELD = {"tasks": "ticket_id", "pull-requests": "ticket_id", "test-suites": "ticket_id", "review-results": "ticket_id", "incidents": "incident_id",
              "change-requests": "change_id", "release-candidates": "release_id", "release-events": "release_id",
              "acceptance-results": "release_id"}  # topic khác (project_id) giữ key của event nguồn
+#: Topic mà mỗi event thuộc về đúng MỘT ticket: đầu ra của route đọc chúng mang `ticket_id` của chính ticket đó
+#: (`Orchestrator._run_route`, audit `output.subject_overridden`).
+TICKET_TOPICS = frozenset({"tasks", "pull-requests", "test-suites"})
+#: Action DUY NHẤT model được ghi lên `audit-log` (route `change-requests → product`, ước lượng impact).
+CR_IMPACT_ACTION = "change.impact"
 
 
 def key_for(topic: str, payload: dict[str, Any], default: str) -> str:

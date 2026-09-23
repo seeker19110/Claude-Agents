@@ -75,15 +75,18 @@ from .orch.review_source import enforce_source as enforce_source
 # Không dùng trong file này nhưng là hợp đồng công khai của module (gate_brief.py, test) — giữ re-export tường
 # minh bằng alias cùng tên để ruff không coi là import thừa.
 from .orch.routes import BLIND_STRIP as BLIND_STRIP
-from .orch.routes import MAX_CONFLICT_RETRIES as MAX_CONFLICT_RETRIES
-from .orch.routes import PLAN_INPUTS as PLAN_INPUTS
 from .orch.routes import (
+    CR_IMPACT_ACTION,
+    KEY_FIELD,
     ROUTES,
+    TICKET_TOPICS,
     Route,
     check_routes,
     key_for,
     phase_for,
 )
+from .orch.routes import MAX_CONFLICT_RETRIES as MAX_CONFLICT_RETRIES
+from .orch.routes import PLAN_INPUTS as PLAN_INPUTS
 from .orch.routes import SPEC_RUNTIME_REWORKS as SPEC_RUNTIME_REWORKS
 from .orch.routes import THREAT_ROUTE as THREAT_ROUTE
 from .orch.routes import spec_runtime_gap as spec_runtime_gap
@@ -378,6 +381,22 @@ class Orchestrator:
                                 actor=agent, ticket_id=inp.payload.get("ticket_id"), project_id=self.project_for(env))
                 p = g.payloads[0]
                 p = enforce_source(self, r, p, env, agent)  # nhãn `source` từ ROUTE, không từ lời khai model
+                if r.topic_out == "audit-log" and (p.get("action") != CR_IMPACT_ACTION or p.get("actor") != agent):
+                    # Đầu ra `audit-log` của model chỉ được là ước lượng impact của change request: `action` và
+                    # `actor` là identity của lượt, không phải lời khai — `audit-log` là topic mở và `_rehydrate`
+                    # dựng trạng thái theo tên action (sc-security 2026-09-23).
+                    self._audit("output.action_overridden", {"claimed_action": p.get("action"), "claimed_actor": p.get("actor"),
+                                                             "action": CR_IMPACT_ACTION}, actor=agent, project_id=self.project_for(env))
+                    p = {**p, "action": CR_IMPACT_ACTION, "actor": agent}
+                if env.topic in TICKET_TOPICS and (tid := env.payload.get("ticket_id")) \
+                        and KEY_FIELD.get(r.topic_out) == "ticket_id" and p.get("ticket_id") != tid:
+                    # Đầu vào thuộc về MỘT ticket (task/PR/bộ test) thì đầu ra cũng của ticket đó: `ticket_id` là
+                    # identity của lượt mà ROUTE biết chắc, không phải lời khai. Không ghi đè thì QA duyệt PR của T1
+                    # ghi được review cho `REL-x` hay ticket khác (sc-security 2026-09-23, lỗ để ngỏ ở ADR-0043).
+                    self._audit("output.subject_overridden", {"topic": r.topic_out, "ticket_id": tid,
+                                                              "claimed_ticket_id": p.get("ticket_id")},
+                                actor=agent, ticket_id=tid, project_id=self.project_for(env))
+                    p = {**p, "ticket_id": tid}
                 if r.topic_out == "review-results" and env.topic in {"release-candidates", "release-events"}                         and (rid := env.payload.get("release_id")) and p.get("ticket_id") != rid:
                     # Review trên RELEASE (release-check của security, QA hồi quy trên staging): subject là release_id
                     # của ROUTE, không phải lời khai của model — cùng nguyên tắc với `env`/`release_id` trong
