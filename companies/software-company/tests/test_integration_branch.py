@@ -367,7 +367,7 @@ def test_merge_hong_khong_phai_xung_dot_khong_xoa_nhanh_ticket_da_duyet(tmp_path
     DUYỆT và đá nó về rework. Đúng ra: giữ nhánh, không rework, báo lên người (escalate) một lần."""
     from company.orchestrator import StepResult
 
-    repo, it, _ = _merge_hong_khong_phai_xung_dot(tmp_path)
+    repo, _, _ = _merge_hong_khong_phai_xung_dot(tmp_path)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler), repo=repo, base="main")
     ws = orch.workspace("A"); tip = _git(repo, "rev-parse", ws.branch)
     for _ in range(2):
