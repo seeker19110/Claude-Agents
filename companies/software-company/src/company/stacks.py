@@ -5,10 +5,13 @@
 Ở đây mỗi stack tự khai dấu hiệu nhận biết và argv của lint/test; argv do CODE ghép, model chỉ chọn tên lệnh,
 nên ranh giới tin cậy của ADR-0010 không đổi. Không nhận ra stack nào → `local_checks` nói thẳng là không chạy được,
 thay vì báo pass giả."""
+
 from __future__ import annotations
 
 import json
+import re
 import sys
+import tomllib
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
@@ -38,7 +41,17 @@ class Stack:
 PY_TEST_GLOBS = ("tests/**", "test/**", "test_*.py", "*_test.py")
 NODE_TEST_GLOBS = ("test/**", "tests/**", "__tests__/**", "*.test.*", "*.spec.*")
 
-PY = Stack("python", [sys.executable, "-m", "ruff", "check"], [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"], PY_TEST_GLOBS)
+PY = Stack(
+    "python",
+    [sys.executable, "-m", "ruff", "check"],
+    [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
+    PY_TEST_GLOBS,
+)
+# ADR-0044: repo khách là dự án uv (`[project]` trong `pyproject.toml`) thì lint/test chạy bằng MÔI TRƯỜNG CỦA
+# KHÁCH. `uv run` tự đồng bộ `.venv` của worktree trước khi chạy, nên phụ thuộc khách khai (Django, pytest-django…)
+# có mặt. Dùng `sys.executable` ở đây là venv của ORCHESTRATOR: đo 2026-09-23 trên CAMPUS-UNI/TCK-001, mọi lượt
+# builder đều chết ở khâu collect vì thiếu `django` — lỗi hạ tầng mà ticket phải gánh tới `ticket.blocked`.
+_UV_RUN = ["uv", "run", "--", "python", "-m"]
 NODE = Stack("node", ["npm", "run", "--if-present", "lint"], ["npm", "test", "--if-present"], NODE_TEST_GLOBS)
 GO = Stack("go", ["go", "vet", "./..."], ["go", "test", "./..."], ("*_test.go",))
 RUST = Stack("rust", ["cargo", "clippy", "--quiet"], ["cargo", "test", "--quiet"], ("tests/**",))
@@ -48,9 +61,15 @@ UNKNOWN = Stack("unknown", None, None)  # không có test_globs ⇒ không phân
 
 # Thứ tự có ý nghĩa: file dấu hiệu đầu tiên khớp thì thắng (repo đa ngôn ngữ lấy stack của gốc repo).
 MARKERS: tuple[tuple[str, Stack], ...] = (
-    ("pyproject.toml", PY), ("setup.cfg", PY), ("requirements.txt", PY),
-    ("package.json", NODE), ("go.mod", GO), ("Cargo.toml", RUST),
-    ("build.gradle", GRADLE), ("build.gradle.kts", GRADLE), ("pom.xml", MAVEN),
+    ("pyproject.toml", PY),
+    ("setup.cfg", PY),
+    ("requirements.txt", PY),
+    ("package.json", NODE),
+    ("go.mod", GO),
+    ("Cargo.toml", RUST),
+    ("build.gradle", GRADLE),
+    ("build.gradle.kts", GRADLE),
+    ("pom.xml", MAVEN),
 )
 
 
@@ -60,8 +79,50 @@ def detect(root: Path) -> Stack:
         if (root / marker).exists():
             if stack is NODE:
                 return _node_stack(root / marker)
+            if stack is PY and marker == "pyproject.toml":
+                return _py_stack(root / marker)
             return stack
     return UNKNOWN
+
+
+def _py_stack(pyproject: Path) -> Stack:
+    """Chỉ chuyển sang `uv run` cho công cụ mà khách THẬT SỰ khai — cùng lý lẽ với `_node_stack`.
+
+    Khai `[project]` + `pytest` ⇒ `uv run` chạy bằng venv của khách (ADR-0044). Khai `[project]` nhưng không có
+    `pytest` ⇒ khách không mang bộ test riêng; `uv run` chỉ dựng một venv rỗng rồi trả `No module named pytest`,
+    tức một màu đỏ do hạ tầng chứ không do code — giữ đường cũ thay vì bịa ra lỗi mới."""
+    deps = _khai_bao(pyproject)
+    return Stack(
+        "python",
+        [*_UV_RUN, "ruff", "check"] if "ruff" in deps else PY.lint,
+        [*_UV_RUN, "pytest", "-q", "-p", "no:cacheprovider"] if "pytest" in deps else PY.test,
+        PY_TEST_GLOBS,
+    )
+
+
+def _khai_bao(pyproject: Path) -> frozenset[str]:
+    """Tên gói khách khai trong `[project].dependencies` và `[dependency-groups]`, đã chuẩn hoá.
+
+    Đọc bằng `tomllib` chứ không grep: `pytest` trong một chuỗi mô tả không phải là dependency. Không có bảng
+    `[project]` (file chỉ có `[tool.*]`) ⇒ rỗng: `uv run` không chạy được trên thứ không phải dự án."""
+    try:
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return frozenset()
+    project = data.get("project")
+    if not isinstance(project, dict):
+        return frozenset()
+    specs: list[str] = [x for x in (project.get("dependencies") or []) if isinstance(x, str)]
+    for group in (data.get("dependency-groups") or {}).values():
+        specs += [x for x in (group or []) if isinstance(x, str)]
+    for extra in (project.get("optional-dependencies") or {}).values():
+        specs += [x for x in (extra or []) if isinstance(x, str)]
+    return frozenset(_ten_goi(x) for x in specs)
+
+
+def _ten_goi(spec: str) -> str:
+    """`pytest-django>=4.9` → `pytest-django`; `coverage[toml]>=7.6` → `coverage`."""
+    return re.split(r"[\s\[<>=!~;,]", spec.strip(), maxsplit=1)[0].lower()
 
 
 def _node_stack(pkg: Path) -> Stack:
@@ -70,5 +131,9 @@ def _node_stack(pkg: Path) -> Stack:
         scripts = json.loads(pkg.read_text(encoding="utf-8")).get("scripts") or {}
     except (OSError, json.JSONDecodeError):
         scripts = {}
-    return Stack("node", ["npm", "run", "lint"] if "lint" in scripts else None,
-                 ["npm", "test", "--", "--watch=false"] if "test" in scripts else None, NODE_TEST_GLOBS)
+    return Stack(
+        "node",
+        ["npm", "run", "lint"] if "lint" in scripts else None,
+        ["npm", "test", "--", "--watch=false"] if "test" in scripts else None,
+        NODE_TEST_GLOBS,
+    )
