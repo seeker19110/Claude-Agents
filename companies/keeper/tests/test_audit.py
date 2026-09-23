@@ -9,6 +9,7 @@ from pathlib import Path
 
 from keeper.audit import (
     SCORECARD_CHECKS,
+    TOOL_ERROR,
     audit,
     dependabot_findings,
     gitleaks_findings,
@@ -16,7 +17,7 @@ from keeper.audit import (
     scorecard_findings,
 )
 from keeper.events import RunOutcome
-from keeper.evidence import MISSING_EXIT
+from keeper.evidence import MISSING_EXIT, TIMEOUT_EXIT
 from keeper.fakes import FakeGitHub
 from keeper.github import CodeScanningAlert, DependabotAlert
 
@@ -104,9 +105,30 @@ def test_gitleaks_sach_thi_khong_co_phat_hien_nao(tmp_path):
     assert gitleaks_findings(tmp_path, runner=_Tools(leaks=[], gitleaks_exit=0), report_path=tmp_path / "gitleaks.json") == []
 
 
-def test_gitleaks_bao_cao_hong_hoac_thieu_thi_tra_rong(tmp_path):
-    assert gitleaks_findings(tmp_path, runner=_Tools(leaks=None), report_path=tmp_path / "gitleaks.json") == []          # không ghi file nào
-    assert gitleaks_findings(tmp_path, runner=_Tools(leaks={"khong": "phai list"}), report_path=tmp_path / "gitleaks.json") == []
+def _la_loi_cong_cu(out, tool, kind):
+    """Công cụ CÓ trên máy nhưng không chạy xong: đúng MỘT finding đánh dấu, không phải `[]` ("sạch")."""
+    assert len(out) == 1, out
+    f = out[0]
+    assert f.subject == f"{tool}:{TOOL_ERROR}" and f.kind == kind
+    return f
+
+
+def test_gitleaks_bao_cao_hong_hoac_thieu_thi_bao_loi_cong_cu(tmp_path):
+    """Không file báo cáo / báo cáo không phải list = gitleaks KHÔNG quét xong — không được đọc thành "sạch"."""
+    _la_loi_cong_cu(gitleaks_findings(tmp_path, runner=_Tools(leaks=None), report_path=tmp_path / "gitleaks.json"),
+                    "gitleaks", "secret")          # không ghi file nào
+    _la_loi_cong_cu(gitleaks_findings(tmp_path, runner=_Tools(leaks={"khong": "phai list"}),
+                                      report_path=tmp_path / "gitleaks.json"), "gitleaks", "secret")
+
+
+def test_gitleaks_qua_gio_thi_bao_loi_cong_cu(tmp_path):
+    class _Treo(_Tools):
+        def __call__(self, argv, cwd, **kw):
+            return RunOutcome(cmd=" ".join(argv), exit_code=TIMEOUT_EXIT, output_tail="gitleaks: quá 600s")
+
+    f = _la_loi_cong_cu(gitleaks_findings(tmp_path, runner=_Treo(), report_path=tmp_path / "gitleaks.json"),
+                        "gitleaks", "secret")
+    assert "quá 600s" in f.detail
 
 
 # --- dependency -------------------------------------------------------------------------------------
@@ -117,17 +139,27 @@ def test_pip_audit_bao_cao_tung_lo_hong(tmp_path):
     assert out[0].kind == "dependency" and "GHSA-xxxx" in out[0].detail
 
 
-def test_pip_audit_khong_co_tren_may_hoac_json_hong(tmp_path):
+def test_pip_audit_khong_co_tren_may_thi_rong_json_hong_thi_bao_loi(tmp_path):
     assert pip_audit_findings(tmp_path, runner=_Tools(missing=["uv"])) == []
-    assert pip_audit_findings(tmp_path, runner=_Tools(pip_json="khong phai dict")) == []
+    _la_loi_cong_cu(pip_audit_findings(tmp_path, runner=_Tools(pip_json="khong phai dict")),
+                    "pip-audit", "dependency")
 
 
-def test_pip_audit_output_khong_phai_json_thi_tra_rong(tmp_path):
+def test_pip_audit_output_khong_phai_json_thi_bao_loi_cong_cu(tmp_path):
     class _Rac(_Tools):
         def __call__(self, argv, cwd, **kw):
             return RunOutcome(cmd=" ".join(argv), exit_code=2, output_tail="Traceback: khong phai JSON")
 
-    assert pip_audit_findings(tmp_path, runner=_Rac()) == []
+    f = _la_loi_cong_cu(pip_audit_findings(tmp_path, runner=_Rac()), "pip-audit", "dependency")
+    assert "Traceback" in f.detail
+
+
+def test_pip_audit_qua_gio_thi_bao_loi_cong_cu(tmp_path):
+    class _Treo(_Tools):
+        def __call__(self, argv, cwd, **kw):
+            return RunOutcome(cmd=" ".join(argv), exit_code=TIMEOUT_EXIT, output_tail="uv run pip-audit: quá 600s")
+
+    _la_loi_cong_cu(pip_audit_findings(tmp_path, runner=_Treo()), "pip-audit", "dependency")
 
 
 def test_dependabot_chi_lay_alert_dang_mo():
