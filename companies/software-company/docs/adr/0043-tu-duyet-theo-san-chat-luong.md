@@ -184,7 +184,7 @@ Năm khoảng trống, mỗi cái một test đỏ trước (`tests/test_quality
 4. Tên hàng đóng được gate khác loại (vd. `spec`) → `RiskRule.kind`; `trusted_autoapprove` đối chiếu loại gate.
 5. Bản ghi mức nâng không phải JSON bị bỏ qua (không gắn được dự án) — sửa lời ADR §2 cho khớp.
 
-Ba việc "còn lại, có trước PR này" của bản đầu ADR đã đóng ở PR (#PR) (`tests/test_audit_gia_mao.py`,
+Ba việc "còn lại, có trước PR này" của bản đầu ADR đã đóng ở PR (#324) (`tests/test_audit_gia_mao.py`,
 `test_identity_tu_route.py`, `test_chu_ky_khach_chi_nguoi.py`):
 
 1. `_rehydrate` tin action theo tên (và `actor` tự khai trong payload) → bảng `TRUSTED_WRITERS`
