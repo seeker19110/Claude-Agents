@@ -144,6 +144,16 @@ def merge_ticket_locked(o: Orchestrator, tid: str, res: StepResult, release_id: 
         started = o.lead.mark_integrated(tid)  # F15: ticket phụ thuộc bắt đầu trên nền đã có code này
         if started: res.actions.append("dispatch:" + ",".join(started))
         return True
+    if not m.conflicts:
+        # Merge hỏng KHÔNG vì xung đột (file chưa track trong worktree tích hợp, index khoá...): lỗi môi trường,
+        # không phải của ticket. Coi là xung đột thì `ws.fresh()` xoá nhánh ticket ĐÃ DUYỆT và đá nó về rework
+        # (audit 2026-09-23). Giữ nguyên nhánh + trạng thái, báo người một lần; nhịp sau tự thử lại khi đã dọn.
+        rec = {"release_id": release_id, "ticket_id": tid, "branch": integration.branch, "error": m.error}
+        o._audit("integration.failed", rec, ticket_id=tid, once=f"integration.failed:{tid}:{before}:{m.error}")
+        o.supervisor.escalate_gate(tid, f"merge {tid} vào {integration.branch} hỏng (không phải xung đột): {m.error[:200]}",
+                                   once_key=f"integration.failed:{tid}:{before}:{m.error}")
+        res.actions.append(f"integration_failed:{tid}")
+        return False
     hint = f"xung đột với nhánh tích hợp {integration.branch} ở: {', '.join(m.conflicts or [])}. Làm lại trên nền mới."
     o._audit("integration.conflict", {"release_id": release_id, "ticket_id": tid, "conflicts": m.conflicts}, ticket_id=tid)
     with o._lock: o.conflict_retries[tid] += 1; n = o.conflict_retries[tid]

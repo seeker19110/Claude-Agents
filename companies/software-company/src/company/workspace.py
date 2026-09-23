@@ -255,6 +255,9 @@ class MergeResult:
     ok: bool
     sha: str = ""
     conflicts: list[str] | None = None
+    # Merge hỏng mà KHÔNG có file xung đột (file chưa track bị ghi đè, index khoá...): lỗi môi trường, không phải
+    # lỗi của ticket — người gọi không được coi là xung đột (audit 2026-09-23).
+    error: str = ""
 
 
 @dataclass
@@ -399,7 +402,8 @@ class Integration:
         return int(out.strip() or 0)
 
     def merge(self, ticket_branch: str, message: str) -> MergeResult:
-        """merge --no-ff ticket vào nhánh tích hợp. Xung đột → abort, trả về file xung đột; nhánh tích hợp không đổi."""
+        """merge --no-ff ticket vào nhánh tích hợp. Xung đột → abort, trả về file xung đột; hỏng vì lý do khác → `error`
+        (không có `conflicts`). Nhánh tích hợp không đổi trong cả hai trường hợp."""
         self.ensure()
         # `merge -F -` không đọc stdin như `commit`; ghi message ra file UTF-8 để tránh mojibake argv trên Windows
         msg = self.repo / ".worktrees" / "_merge_msg.txt"
@@ -412,7 +416,9 @@ class Integration:
             return MergeResult(ok=True, sha=self.sha())
         conflicts = [x for x in _git(self.path, "diff", "--name-only", "--diff-filter=U").splitlines() if x]
         subprocess.run(["git", "-C", str(self.path), *NO_HOOKS, "merge", "--abort"], capture_output=True, env=clean_env())
-        return MergeResult(ok=False, conflicts=conflicts or [r.stderr.strip()[:300]])
+        if not conflicts:
+            return MergeResult(ok=False, conflicts=[], error=r.stderr.strip()[:300])
+        return MergeResult(ok=False, conflicts=conflicts)
 
     def files(self) -> list[str]:
         return [x for x in _git(self.repo, "ls-tree", "-r", "--name-only", self.branch).splitlines() if x]
