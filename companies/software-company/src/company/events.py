@@ -49,6 +49,19 @@ RISK_HINTS = frozenset({
     "auth", "login", "password", "payment", "thanh toán", "pii", "cccd", "email",
     "crypto", "upload", "admin", "webhook", "external",
 })
+# Hint nào suy được thẳng ra MỘT tag trong RISK_TAGS thì `_check_plan` tự gắn tag thay vì từ chối cả kế hoạch
+# (đo 2026-09-22, CAMPUS-UNI: hai lượt `plan_rejected` liên tiếp chỉ vì thiếu đúng một khoá suy được từ đây —
+# tốn một lượt model đầy đủ mỗi lần). Hint KHÔNG có mặt ở đây (bảng chưa phủ hết `RISK_HINTS`) vẫn bị từ chối
+# như cũ, không đoán bừa.
+HINT_TO_TAG: dict[str, str] = {
+    "auth": "auth", "login": "auth", "password": "auth",
+    "payment": "payment", "thanh toán": "payment",
+    "pii": "pii", "cccd": "pii",
+    "crypto": "crypto",
+    "upload": "upload",
+    "admin": "admin",
+    "email": "external-api", "webhook": "external-api", "external": "external-api",
+}
 
 
 

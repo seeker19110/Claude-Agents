@@ -11,6 +11,14 @@ Mỗi gate dưới đây tách làm hai phần:
   và subagent `.claude/agents/sc-gate-<kind>.md` sinh từ chính file này (`make subagents`). Sửa một mục "Người tự kiểm thêm"
   thì phải khai nguồn bằng chứng cho nó trong `src/company/gate_checklists.py` rồi `make subagents` — parser gãy nếu thiếu.
 
+**Khi phải chọn giữa nhiều phương án kỹ thuật hợp lệ** (stack, thư viện, version, kiến trúc) mà bằng chứng không
+chỉ rõ một hướng duy nhất — trong bất kỳ mục nào ở trên, "Code gửi kèm" hay "Người tự kiểm thêm" — người duyệt
+nghiêng về phương án **chất lượng/độ bền cao nhất** (đúng chuẩn ngành, ít nợ kỹ thuật nhất) và **phiên bản/nền
+tảng mới nhất đang có tại thời điểm duyệt, với điều kiện đã phát hành ≥ 3 tháng** (đủ ổn định, không phải bản
+vừa ra chưa kiểm chứng). Đây là tiêu chí phá thế bế tắc khi bằng chứng mơ hồ, không thay cho việc đọc bằng
+chứng — mục nào có bằng chứng rõ vẫn quyết theo bằng chứng đó. Quyết định vẫn phải ghi root_cause/decision/hint
+đầy đủ như mọi lượt duyệt khác.
+
 `GateKind` hiện có đúng bốn giá trị: `spec`, `release`, `acceptance`, `escalation` (`src/company/gates.py`).
 Hai gate CÔNG ĐOẠN là `spec` và `release`; `acceptance` là chữ ký của khách, `escalation` là đường bất thường.
 ADR-0037 bỏ gate `plan`: mọi khoá của nó nay là `problems` của `_check_plan` (code chặn trước khi giao ticket),
