@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -107,12 +108,34 @@ def read_settings(paths: dict[str, Path] | None = None, gateway_url: str = DEFAU
 
 
 def _atomic_write(path: Path, data: dict[str, Any]) -> None:
+    # tmp và .bak tạo theo umask (thường 0644); `os.replace` thì mang quyền của tmp sang — llm.yaml 0600 (có khoá)
+    # sẽ thành đọc-được-cho-mọi-người. Giữ đúng quyền của file gốc cho cả hai.
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
     backup = path.with_suffix(path.suffix + ".bak")
     if path.exists():
         backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        if mode is not None:
+            os.chmod(backup, mode)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    if mode is not None:
+        os.chmod(tmp, mode)
     os.replace(tmp, path)
+
+
+def _check_types(models: Any, prefer: Any, enable: Any, disable: Any) -> None:
+    """Thân `/api/settings` là JSON tuỳ ý: sai kiểu phải là `SettingsError` (→ 400), không phải
+    AttributeError/TypeError làm rớt kết nối."""
+    if models is not None and not (
+        isinstance(models, dict)
+        and all(isinstance(t, dict) and all(isinstance(m, str) for m in t.values()) for t in models.values())
+    ):
+        raise SettingsError("`models` phải là {backend: {tier: model}} với model là chuỗi")
+    if prefer is not None and not (isinstance(prefer, dict) and all(isinstance(n, str) for n in prefer.values())):
+        raise SettingsError("`prefer` phải là {tier: backend} với backend là chuỗi")
+    for field, names in (("enable", enable), ("disable", disable)):
+        if names is not None and not (isinstance(names, list) and all(isinstance(n, str) for n in names)):
+            raise SettingsError(f"`{field}` phải là danh sách tên backend (chuỗi)")
 
 
 def update_settings(
@@ -124,6 +147,7 @@ def update_settings(
     disable: list[str] | None = None,
 ) -> dict[str, Any]:
     """Sửa `llm.yaml` của MỘT công ty. Validate hết rồi mới ghi: hoặc đổi trọn, hoặc không đổi gì."""
+    _check_types(models, prefer, enable, disable)
     data = _load(path)
     active, disabled = _backends(data), _backends(data, "disabled_backends")
     by_name = {_name(b): b for b in [*active, *disabled]}

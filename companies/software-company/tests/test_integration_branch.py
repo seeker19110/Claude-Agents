@@ -341,3 +341,40 @@ def test_integration_skipped_chi_ghi_mot_lan_cho_moi_ticket():
            if json.loads(e.payload["evidence"]).get("ticket_id") == "TCK-1"
            and e.payload["action"] == "integration.skipped"]
     assert len(ghi) == 1, f"5 nhịp phải để lại đúng 1 bản ghi, nhận được {len(ghi)}"
+
+
+def _merge_hong_khong_phai_xung_dot(tmp_path):
+    """Nhánh tích hợp có file CHƯA TRACK trùng tên file ticket thêm vào → `git merge` từ chối
+    ("untracked working tree files would be overwritten") mà KHÔNG có file xung đột nào."""
+    repo = _init_repo(tmp_path / "repo"); it = Integration(repo, base="main"); it.ensure()
+    a = TicketWorkspace(repo, "A", base=it.branch); a.create()
+    (a.path / "moi.py").write_text("X = 1\n", encoding="utf-8"); a.commit_all("feat(A): moi")
+    (it.path / "moi.py").write_text("rac\n", encoding="utf-8")
+    return repo, it, a
+
+
+def test_integration_merge_hong_khong_phai_xung_dot_thi_khong_bao_conflict(tmp_path):
+    """Audit 2026-09-23: mọi merge hỏng bị báo là xung đột với `conflicts=[stderr]`."""
+    _, it, a = _merge_hong_khong_phai_xung_dot(tmp_path)
+    before = it.sha()
+    m = it.merge(a.branch, "merge(A): a")
+    assert not m.ok and not m.conflicts, "không có file nào ở trạng thái U: đây không phải xung đột"
+    assert "untracked" in m.error and it.sha() == before
+
+
+def test_merge_hong_khong_phai_xung_dot_khong_xoa_nhanh_ticket_da_duyet(tmp_path):
+    """Audit 2026-09-23: merge hỏng vì lý do môi trường bị coi là xung đột → `ws.fresh()` xoá nhánh ticket ĐÃ
+    DUYỆT và đá nó về rework. Đúng ra: giữ nhánh, không rework, báo lên người (escalate) một lần."""
+    from company.orchestrator import StepResult
+
+    repo, _, _ = _merge_hong_khong_phai_xung_dot(tmp_path)
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler), repo=repo, base="main")
+    ws = orch.workspace("A"); tip = _git(repo, "rev-parse", ws.branch)
+    for _ in range(2):
+        assert orch._merge_ticket("A", StepResult("integration", "integration", "-"), None) is False
+    assert _git(repo, "rev-parse", ws.branch) == tip and (ws.path / "moi.py").exists(), "nhánh ticket còn nguyên"
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "integration.conflict" not in acts and "handler_error" not in acts and not orch.conflict_retries
+    assert acts.count("integration.failed") == 1, "mỗi nhịp watch gọi lại — chỉ ghi một lần"
+    esc = [e for e in bus.replay(topic="supervisor-actions") if e.payload.get("action") == "escalate"]
+    assert len(esc) == 1 and "untracked" in json.dumps(esc[0].payload, ensure_ascii=False)

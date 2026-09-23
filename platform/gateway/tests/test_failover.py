@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import threading
 
 import httpx
 import pytest
@@ -439,3 +441,137 @@ async def test_429_cooldown_uses_reset_hint_instead_of_one_hour_default():
     await client.create_chat_completion(_payload())
     assert auth.marked == [("a@example.com", 429)]
     assert auth.hints == ["449"], "phải truyền 449s xuống cooldown, không để mặc định 3600s"
+
+
+
+# ---------- audit 2026-09-23: mark_account_unavailable không được chạy trên event loop ----------
+
+
+class BlockingMarkAuthManager(FakeAuthManager):
+    """`mark_account_unavailable` thật lấy RLock mà `resolve_credential_candidates` giữ (trong thread) suốt lượt
+    refresh qua mạng. Giả lập: lệnh ghi cooldown chờ tới khi một coroutine KHÁC trên loop kịp chạy và thả nó ra.
+    Chạy đồng bộ trên loop thì coroutine kia không bao giờ chạy được → chờ hết hạn → `released` ghi False."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.released: list[bool] = []
+
+    def mark_account_unavailable(self, creds, status_code: int, retry_after=None) -> None:
+        self.entered.set()
+        self.released.append(self.release.wait(timeout=1.0))
+        super().mark_account_unavailable(creds, status_code, retry_after)
+
+
+def _quota() -> httpx.Response:
+    return httpx.Response(429, json={"error": {"message": "RESOURCE_EXHAUSTED"}})
+
+
+def _sse_ok(text: str) -> httpx.Response:
+    event = {"response": {"candidates": [{"content": {"parts": [{"text": text}]}}]}}
+    body = f"data: {json.dumps(event)}\n\ndata: [DONE]\n\n"
+    return httpx.Response(200, headers={"Content-Type": "text/event-stream"}, content=body.encode())
+
+
+def _handler_no_sibling(request):
+    return _quota() if _token(request) == "token-a" else _ok("OK")
+
+
+def _handler_fallback_endpoint(request):
+    if _token(request) != "token-a":
+        return _ok("OK")
+    if request.url.host == "daily-cloudcode-pa.googleapis.com":
+        return httpx.Response(503, json={"error": "unavailable"})
+    return _quota()
+
+
+def _handler_stream(request):
+    return _quota() if _token(request) == "token-a" else _sse_ok("OK")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "model, handler, stream",
+    [
+        ("claude-sonnet-4-6", _handler_no_sibling, False),  # không có model anh em
+        ("gemini-3.7-flash", _handler_no_sibling, False),  # model anh em cũng hết quota
+        ("claude-sonnet-4-6", _handler_fallback_endpoint, False),  # endpoint dự phòng trả quota
+        ("gemini-3.7-flash", _handler_stream, True),  # mở stream bị 429
+    ],
+    ids=["no-sibling", "sibling", "fallback-endpoint", "stream"],
+)
+async def test_mark_unavailable_runs_off_event_loop(model, handler, stream):
+    auth = BlockingMarkAuthManager()
+
+    async def releaser():
+        await asyncio.to_thread(auth.entered.wait, 2.0)
+        auth.release.set()
+
+    client = _client(auth, handler)
+    helper = asyncio.create_task(releaser())
+    try:
+        payload = {"model": model, "messages": [{"role": "user", "content": "hi"}]}
+        if stream:
+            out = "".join([c async for c in client.stream_chat_completion(dict(payload, stream=True))])
+        else:
+            out = (await client.create_chat_completion(payload))["choices"][0]["message"]["content"]
+        await helper
+    finally:
+        await client.close()
+    assert "OK" in out
+    assert auth.marked == [("a@example.com", 429)]
+    assert auth.released == [True]  # loop vẫn chạy được coroutine khác trong lúc ghi cooldown
+
+
+# ---------- audit 2026-09-23: index tool_call phải duy nhất trên CẢ stream ----------
+
+
+@pytest.mark.asyncio
+async def test_stream_tool_call_index_unique_across_events():
+    auth = FakeAuthManager()
+
+    def handler(request):
+        events = [
+            {"response": {"candidates": [{"content": {"parts": [{"functionCall": {"name": "a", "args": {}}}]}}]}},
+            {"response": {"candidates": [{"content": {"parts": [{"functionCall": {"name": "b", "args": {}}}]}}]}},
+        ]
+        body = "".join(f"data: {json.dumps(e)}\n\n" for e in events) + "data: [DONE]\n\n"
+        return httpx.Response(200, headers={"Content-Type": "text/event-stream"}, content=body.encode())
+
+    client = _client(auth, handler)
+    try:
+        chunks = [c async for c in client.stream_chat_completion(_payload(stream=True))]
+    finally:
+        await client.close()
+    calls = [
+        (tc["index"], tc["function"]["name"])
+        for c in chunks
+        if c.startswith("data: {")
+        for tc in json.loads(c[6:])["choices"][0]["delta"].get("tool_calls", [])
+    ]
+    assert calls == [(0, "a"), (1, "b")]
+
+
+# ---------- audit 2026-09-23: 5xx ở cả hai endpoint là lỗi phía Google, không cooldown ----------
+
+
+@pytest.mark.asyncio
+async def test_nonstream_5xx_both_endpoints_rotates_without_cooldown():
+    auth = FakeAuthManager()
+    seen: list[tuple[str, str]] = []
+
+    def handler(request):
+        seen.append((request.url.host, _token(request)))
+        if _token(request) == "token-a":
+            return httpx.Response(503, json={"error": "temporarily unavailable"})
+        return _ok("SECOND_OK")
+
+    client = _client(auth, handler)
+    try:
+        result = await client.create_chat_completion(_payload())
+    finally:
+        await client.close()
+    assert result["choices"][0]["message"]["content"] == "SECOND_OK"
+    assert [s[1] for s in seen] == ["token-a", "token-a", "token-b"]
+    assert auth.marked == []  # nhất quán với stream: 5xx không làm nguội tài khoản

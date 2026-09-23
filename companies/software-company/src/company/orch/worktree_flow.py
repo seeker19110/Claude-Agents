@@ -19,6 +19,7 @@ from ..roles import LEAD_ACTOR, ROLE
 from ..tools import ToolBox, WorkspaceTools
 from ..workspace import Integration, TicketWorkspace, WorkspaceError, _git
 from .routes import BLIND_STRIP, MAX_CONFLICT_RETRIES, Route, key_for
+from .verify import _release_root
 
 SAFE_TICKET_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
@@ -144,6 +145,16 @@ def merge_ticket_locked(o: Orchestrator, tid: str, res: StepResult, release_id: 
         started = o.lead.mark_integrated(tid)  # F15: ticket phụ thuộc bắt đầu trên nền đã có code này
         if started: res.actions.append("dispatch:" + ",".join(started))
         return True
+    if not m.conflicts:
+        # Merge hỏng KHÔNG vì xung đột (file chưa track trong worktree tích hợp, index khoá...): lỗi môi trường,
+        # không phải của ticket. Coi là xung đột thì `ws.fresh()` xoá nhánh ticket ĐÃ DUYỆT và đá nó về rework
+        # (audit 2026-09-23). Giữ nguyên nhánh + trạng thái, báo người một lần; nhịp sau tự thử lại khi đã dọn.
+        rec = {"release_id": release_id, "ticket_id": tid, "branch": integration.branch, "error": m.error}
+        o._audit("integration.failed", rec, ticket_id=tid, once=f"integration.failed:{tid}:{before}:{m.error}")
+        o.supervisor.escalate_gate(tid, f"merge {tid} vào {integration.branch} hỏng (không phải xung đột): {m.error[:200]}",
+                                   once_key=f"integration.failed:{tid}:{before}:{m.error}")
+        res.actions.append(f"integration_failed:{tid}")
+        return False
     hint = f"xung đột với nhánh tích hợp {integration.branch} ở: {', '.join(m.conflicts or [])}. Làm lại trên nền mới."
     o._audit("integration.conflict", {"release_id": release_id, "ticket_id": tid, "conflicts": m.conflicts}, ticket_id=tid)
     with o._lock: o.conflict_retries[tid] += 1; n = o.conflict_retries[tid]
@@ -173,7 +184,9 @@ def read_only_tools(o: Orchestrator, inp: Envelope) -> ToolBox | None:
     if integ is not None and integ.path.exists():
         # Gốc là `Path` (worktree tích hợp, không phải worktree của ticket) nên không có `ws.sandbox` để
         # đi theo — truyền tường minh, nếu không QA hồi quy sẽ chạy lệnh khách ngoài sandbox.
-        return WorkspaceTools(integ.path, allow_write=False, sandbox=o.sandbox).toolbox()
+        # Đọc ĐÚNG sha đã staged, không phải đầu nhánh tích hợp (cùng họ lỗi với `verify._release_root`).
+        root = _release_root(o, str(inp.payload["release_id"]), integ)
+        return WorkspaceTools(root, allow_write=False, sandbox=o.sandbox).toolbox()
     return None
 
 def author_tests(o: Orchestrator, agent: str, task: Envelope, r: Route, phase: str | None = None) -> Envelope | None:

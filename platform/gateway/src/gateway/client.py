@@ -5,7 +5,8 @@
 - Xoay vòng tài khoản: 401/402/403/429 hoặc body báo hết quota → cooldown tài khoản, thử tài khoản kế.
 - In-account model fallback: model chính hết quota → thử model anh em (quota riêng) trên CÙNG tài khoản
   trước khi xoay tài khoản.
-- 5xx ở endpoint chính → thử endpoint dự phòng cùng tài khoản; stream 5xx → tài khoản kế, không cooldown.
+- 5xx ở endpoint chính → thử endpoint dự phòng cùng tài khoản; dự phòng cũng 5xx (hoặc stream 5xx) → tài khoản kế,
+  không cooldown.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from typing import Any
 
 import httpx
 
-from gateway.auth import DEFAULT_PROJECT_ID, AntigravityAuthManager, UpstreamError
+from gateway.auth import DEFAULT_PROJECT_ID, AntigravityAuthManager, AntigravityCredentials, UpstreamError
 
 logger = logging.getLogger(__name__)
 
@@ -706,7 +707,8 @@ def _usage_from_gemini(inner: dict[str, Any]) -> dict[str, Any]:
     return usage
 
 
-def _parts_to_openai(parts: list[Any], *, with_index: bool) -> tuple[str, str, list[dict[str, Any]]]:
+def _parts_to_openai(parts: list[Any], *, with_index: bool,
+                     index_base: int = 0) -> tuple[str, str, list[dict[str, Any]]]:
     content_text = ""
     reasoning_text = ""
     tool_calls: list[dict[str, Any]] = []
@@ -726,7 +728,7 @@ def _parts_to_openai(parts: list[Any], *, with_index: bool) -> tuple[str, str, l
                 "function": {"name": fc.get("name") or "", "arguments": json.dumps(fc.get("args") or {})},
             }
             if with_index:
-                item = {"index": len(tool_calls), **item}
+                item = {"index": index_base + len(tool_calls), **item}
             if ts:
                 item["thoughtSignature"] = ts
                 item["extra_content"] = {"google": {"thought_signature": ts}}
@@ -791,15 +793,17 @@ def translate_gemini_to_openai_response(gemini_resp: dict[str, Any], requested_m
 
 
 def translate_gemini_stream_event(
-    event_data: dict[str, Any], requested_model: str, stream_id: str
+    event_data: dict[str, Any], requested_model: str, stream_id: str, tool_index_base: int = 0
 ) -> dict[str, Any] | None:
+    """`tool_index_base`: số tool_call đã phát ở các event TRƯỚC của cùng stream. Client kiểu OpenAI gộp delta
+    theo `index`, nên index phải duy nhất trên cả stream chứ không chỉ trong một event."""
     inner: dict[str, Any] = event_data["response"] if isinstance(event_data.get("response"), dict) else event_data
     candidates = inner.get("candidates") or []
     if not candidates or not isinstance(candidates[0], dict):
         return None
     cand = candidates[0]
     content_piece, reasoning_piece, tool_calls = _parts_to_openai(
-        (cand.get("content") or {}).get("parts") or [], with_index=True
+        (cand.get("content") or {}).get("parts") or [], with_index=True, index_base=tool_index_base
     )
     delta: dict[str, Any] = {}
     if content_piece:
@@ -877,6 +881,12 @@ class AntigravityClient:
         # resolve có thể gọi mạng đồng bộ (refresh ~20s/tài khoản): chạy trong thread, không chặn event loop.
         return await asyncio.to_thread(self.auth_manager.resolve_credential_candidates, bearer_token=bearer_token)
 
+    async def _mark_unavailable(self, creds: AntigravityCredentials, status_code: int,
+                                retry_after: str | None) -> None:
+        # Cùng RLock mà `resolve_credential_candidates` giữ (trong thread) suốt lượt refresh qua mạng, cộng ghi
+        # file: gọi thẳng trên loop là chặn MỌI request khác tới hàng chục giây. Đẩy sang thread như `_candidates`.
+        await asyncio.to_thread(self.auth_manager.mark_account_unavailable, creds, status_code, retry_after)
+
     async def create_chat_completion(self, openai_payload: dict[str, Any], bearer_token: str = "") -> dict[str, Any]:
         requested_model = openai_payload.get("model") or DEFAULT_CODE_ASSIST_MODEL
         want_content = structured_only(openai_payload)
@@ -914,7 +924,7 @@ class AntigravityClient:
                     if _should_fail_over(sibling_resp):
                         logger.warning("tài khoản %s trả %s cả ở model anh em, cho nghỉ và xoay",
                                        creds.email, sibling_resp.status_code)
-                        self.auth_manager.mark_account_unavailable(
+                        await self._mark_unavailable(
                             creds, sibling_resp.status_code, cooldown_hint(sibling_resp)
                         )
                         continue
@@ -923,7 +933,7 @@ class AntigravityClient:
                     )
                 logger.warning("tài khoản %s trả %s, cho nghỉ và xoay sang tài khoản kế",
                                creds.email, resp.status_code)
-                self.auth_manager.mark_account_unavailable(creds, resp.status_code, cooldown_hint(resp))
+                await self._mark_unavailable(creds, resp.status_code, cooldown_hint(resp))
                 continue
 
             if resp.status_code < 500:
@@ -937,10 +947,15 @@ class AntigravityClient:
                 logger.info("%s → %s qua endpoint dự phòng (lần thử %d/%d)",
                             requested_model, creds.email, index, len(candidates))
                 return translate_gemini_to_openai_response(resp.json(), requested_model, as_content=want_content)
+            if resp.status_code >= 500:
+                # Như đường stream: lỗi phía Google, không phải lỗi tài khoản → thử tài khoản kế, không cooldown.
+                logger.warning("tài khoản %s trả %s ở cả endpoint dự phòng, xoay tài khoản (không cooldown)",
+                               creds.email, resp.status_code)
+                continue
             if _should_fail_over(resp):
                 logger.warning("tài khoản %s trả %s ở cả endpoint dự phòng, cho nghỉ và xoay",
                                creds.email, resp.status_code)
-                self.auth_manager.mark_account_unavailable(creds, resp.status_code, cooldown_hint(resp))
+                await self._mark_unavailable(creds, resp.status_code, cooldown_hint(resp))
                 continue
             raise UpstreamError(_upstream_error_message(resp.status_code, resp.text), resp.status_code)
 
@@ -979,7 +994,7 @@ class AntigravityClient:
                     if _should_fail_over(response):
                         logger.warning("tài khoản %s trả %s khi mở stream, cho nghỉ và xoay",
                                        creds.email, response.status_code)
-                        self.auth_manager.mark_account_unavailable(
+                        await self._mark_unavailable(
                             creds, response.status_code, cooldown_hint(response)
                         )
                         continue
@@ -1001,6 +1016,7 @@ class AntigravityClient:
                 buffer = ""
                 sent_finish: str | None = None
                 last_usage: dict[str, Any] | None = None
+                tool_calls_sent = 0
                 async for raw in response.aiter_text():
                     buffer += raw.replace("\r\n", "\n").replace("\r", "\n")
                     while "\n\n" in buffer:
@@ -1013,7 +1029,9 @@ class AntigravityClient:
                             if not raw_json or raw_json == "[DONE]":
                                 continue
                             try:
-                                chunk = translate_gemini_stream_event(json.loads(raw_json), requested_model, stream_id)
+                                chunk = translate_gemini_stream_event(
+                                    json.loads(raw_json), requested_model, stream_id, tool_calls_sent
+                                )
                             except Exception as exc:
                                 logger.debug("Bỏ qua SSE event không parse được: %s", exc)
                                 continue
@@ -1023,6 +1041,7 @@ class AntigravityClient:
                                     sent_finish = fr
                                 if chunk.get("usage"):
                                     last_usage = chunk["usage"]
+                                tool_calls_sent += len(chunk["choices"][0]["delta"].get("tool_calls") or [])
                                 yield f"data: {json.dumps(chunk)}\n\n"
 
                 # Chỉ phát chunk đóng tổng hợp khi upstream CHƯA gửi finish_reason thật; nếu không sẽ

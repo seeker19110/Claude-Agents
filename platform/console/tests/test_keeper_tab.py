@@ -165,6 +165,24 @@ def test_log_hong_thi_noi_ly_do_chu_khong_nem(tmp_path: Path) -> None:
     assert s["keeper"]["ran"] is False and [c["v"] for c in s["keeper"]["cards"]] == [None] * 4
 
 
+def test_mot_event_keeper_sai_schema_khong_giet_ca_trang(keeper_db: Path, company_db: Path) -> None:
+    """Envelope đọc được nhưng payload không hợp `Ticket` (audit 2026-09-23): `_replay` ném `ValidationError`,
+    không phải `_SourceError`. Trước đây nó thoát khỏi `collect()` → `/api/state` 500 và hàng gate của
+    software-company biến mất theo. Nay chỉ nguồn `keeper` hỏng, có lý do; nguồn khác nguyên vẹn."""
+    bad = Envelope(topic="maintenance-tickets", key="KT-X", actor="triager", payload={"ticket_id": "KT-X"})
+    con = sqlite3.connect(keeper_db)
+    con.execute("INSERT INTO events (event_id, topic, key, actor, ts, body) VALUES (?, ?, ?, ?, ?, ?)",
+                (bad.event_id, bad.topic, bad.key, bad.actor, bad.ts.isoformat(), bad.model_dump_json()))
+    con.commit()
+    con.close()
+    s = collect(company_db, keeper_db, gateway_url=DEAD_GATEWAY)
+    src = s["sources"][KEEPER]
+    assert src["ok"] is False and "ValidationError" in src["error"]
+    assert s["keeper"]["ran"] is False and s["keeper"]["gates"] == []
+    assert {g["xuong"] for g in s["gates"]} == {"software-company"}
+    assert s["sources"]["software-company"]["ok"] is True
+
+
 # ---------- ca chiều ngược ----------
 
 def test_do_hai_chieu_tat_co_ran_thi_o_rong_hien_so_khong(tmp_path: Path,

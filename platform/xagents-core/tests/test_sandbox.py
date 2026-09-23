@@ -165,11 +165,11 @@ def test_container_khong_co_getuid_thi_noi_thang_trong_ten_sandbox(monkeypatch):
     monkeypatch.delattr(os, "getuid", raising=False)
     monkeypatch.delattr(os, "getgid", raising=False)
     sb = ContainerSandbox("docker", "img:1", env_via_stdin=True)
-    assert sb.name == "container:img:1:no-uid" and "-u" not in sb._argv(RunSpec(argv=["x"], cwd=Path(".")))
+    assert sb.name == "container:img:1:no-uid" and "-u" not in sb._argv(RunSpec(argv=["x"], cwd=Path(".")), "n")
     monkeypatch.setattr(os, "getuid", lambda: 1000, raising=False)
     monkeypatch.setattr(os, "getgid", lambda: 1000, raising=False)
     sb2 = ContainerSandbox("docker", "img:1", env_via_stdin=True)
-    assert sb2.name == "container:img:1" and "1000:1000" in sb2._argv(RunSpec(argv=["x"], cwd=Path(".")))
+    assert sb2.name == "container:img:1" and "1000:1000" in sb2._argv(RunSpec(argv=["x"], cwd=Path(".")), "n")
 
 
 # ---------- spawn: tiến trình chạy nền ----------
@@ -267,3 +267,56 @@ def test_clean_env_bo_con_tro_tang_may_cua_adr0016(monkeypatch):
     (`AGENTS.md` luật bắt buộc 5)."""
     monkeypatch.setenv("XAGENTS_LLM_CONFIG", "/nha/toi/.config/xagents/llm.yaml")
     assert "XAGENTS_LLM_CONFIG" not in clean_env()
+
+
+# ---------- container không được sống sót sau khi client docker bị giết ----------
+
+def _cleanup_calls(rec: list[dict[str, Any]], runtime: str = "docker") -> list[list[str]]:
+    return [c["argv"] for c in rec if c["argv"][:2] == [runtime, "rm"]]
+
+
+def test_container_run_timeout_thi_xoa_han_container_theo_ten(tmp_path):
+    """`subprocess.run(timeout=)` chỉ giết tiến trình client `docker run`; container vẫn chạy tiếp dưới daemon
+    (không có `--name` thì không ai gọi tên được nó để dừng). Timeout phải kéo theo `rm -f <tên>`."""
+    rec: list[dict[str, Any]] = []
+    sb = ContainerSandbox("docker", "img:1", runner=_fake_runner(rec, boom=True), env_via_stdin=True)
+    r = sb.run(_spec(tmp_path, timeout=3))
+    argv = rec[0]["argv"]
+    name = argv[argv.index("--name") + 1]
+    assert r.timed_out is True
+    assert _cleanup_calls(rec) == [["docker", "rm", "-f", name]]
+
+
+def test_container_moi_lan_chay_mot_ten_rieng(tmp_path):
+    rec: list[dict[str, Any]] = []
+    sb = ContainerSandbox("podman", "img:1", runner=_fake_runner(rec), env_via_stdin=True)
+    sb.run(_spec(tmp_path)); sb.run(_spec(tmp_path))
+    names = [c["argv"][c["argv"].index("--name") + 1] for c in rec]
+    assert len(set(names)) == 2 and _cleanup_calls(rec, "podman") == []   # chạy xong bình thường: --rm tự dọn
+
+
+def test_container_spawn_kill_thi_xoa_han_container(tmp_path):
+    """`Handle.kill()` của container: giết client thôi là container (vd server smoke) vẫn giữ cổng."""
+    rec: list[dict[str, Any]] = []
+    seen: list[list[str]] = []
+    proc = _FakeProc()
+
+    def popen(argv: list[str], **kw: Any) -> Any:
+        seen.append(argv)
+        return proc
+
+    h = ContainerSandbox("docker", "img:1", runner=_fake_runner(rec), popen=popen, env_via_stdin=True).spawn(
+        _spec(tmp_path))
+    h.kill()
+    name = seen[0][seen[0].index("--name") + 1]
+    assert proc.killed and _cleanup_calls(rec) == [["docker", "rm", "-f", name]]
+
+
+def test_container_don_dep_that_bai_khong_nuot_ket_qua(tmp_path):
+    """Dọn là nỗ lực tốt nhất: binary biến mất hay `rm` treo không được biến timeout thành ngoại lệ."""
+    def runner(argv: list[str], **kw: Any) -> Any:
+        if argv[1] == "rm": raise FileNotFoundError(argv[0])
+        raise subprocess.TimeoutExpired(argv, 1)
+
+    r = ContainerSandbox("docker", "img:1", runner=runner, env_via_stdin=True).run(_spec(tmp_path, timeout=1))
+    assert r.timed_out is True

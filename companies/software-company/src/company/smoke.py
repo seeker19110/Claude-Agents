@@ -86,9 +86,14 @@ def free_port() -> int:
         return int(s.getsockname()[1])
 
 
+# Mọi probe ở đây (smoke + `deploy._smoke_running`) nhắm 127.0.0.1: `urlopen` mặc định theo `http_proxy` kể cả cho
+# loopback, nên máy có proxy sẽ đo nhầm proxy thay vì sản phẩm (audit 2026-09-23). Opener không proxy.
+_LOOPBACK = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
 def _probe(url: str) -> int | None:
     try:
-        with urllib.request.urlopen(url, timeout=2) as r:
+        with _LOOPBACK.open(url, timeout=2) as r:
             return int(r.status)
     except urllib.error.HTTPError as e:
         return int(e.code)

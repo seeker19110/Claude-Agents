@@ -41,6 +41,12 @@ C = TypeVar("C", bound=SharedContext)
 Scope = tuple[str | None, str]  # (project_id hoặc None nếu toàn công ty, namespace)
 
 
+def _safe_segment(s: str) -> bool:
+    """Đúng một tên thư mục: không rỗng, không `.`/`..`, không dấu phân cách (cả `\\` cho Windows), không `:`
+    (ổ đĩa `C:x` trên Windows), không NUL."""
+    return s not in ("", ".", "..") and not any(c in s for c in "/\\:\0")
+
+
 class Blackboard(Generic[E, C]):
     """Đọc/ghi shared-context. Ghi đi qua bus nên được kiểm quyền owner. Trạng thái giữ theo (project_id, namespace)."""
 
@@ -81,16 +87,21 @@ class Blackboard(Generic[E, C]):
                 self._mirror(sc)
 
     def path(self, namespace: str, version: int | None = None, project_id: str | None = None) -> Path | None:
-        """Đường dẫn file mirror của một bản (mặc định bản mới nhất); None nếu không có store."""
+        """Đường dẫn file mirror của một bản (mặc định bản mới nhất); None nếu không có store, hoặc nếu
+        `project_id`/namespace không phải MỘT đoạn đường dẫn an toàn — `project_id` đến từ payload do model/khách
+        viết ra, `../../x` hay đường tuyệt đối sẽ đưa mirror ra ngoài store. Bản ghi vẫn nằm trên bus (nguồn sự
+        thật); chỉ không mirror. Trả None thay vì ném vì `_on` chạy trong publish và cả `rehydrate`: một event
+        độc đã vào log sẽ làm hỏng mọi lần mở lại."""
         if self.store is None: return None
         pid, ns = self.scope_of(namespace, project_id)
+        if not all(_safe_segment(s) for s in (ns, pid) if s is not None): return None
         ext = self.EXT.get(ns, "md")
         base = self.store if pid is None else self.store / pid
         return base / ns / (f"v{version}.{ext}" if version else f"latest.{ext}")
 
     def _mirror(self, sc: C) -> None:
         for p in (self.path(sc.namespace, sc.version, sc.project_id), self.path(sc.namespace, None, sc.project_id)):
-            assert p is not None
+            if p is None: return
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(sc.content or "", encoding="utf-8", newline="\n")
 

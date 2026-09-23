@@ -110,3 +110,21 @@ def test_mo_lai_bus_van_nho_plan_rejected(tmp_path):
     assert "P1" in orch.unhandled
     bus.close(); bus2 = SQLiteBus(tmp_path / "c.sqlite"); orch2 = Orchestrator(bus2, FakeClient(handler=handler))
     assert orch2.unhandled["P1"]["topic"] == "approved-specs"
+
+
+def test_duyet_roi_restart_truoc_khi_chay_lai_van_chay_lai_event(tmp_path):
+    """Audit 2026-09-23: `_retry_unhandled` chỉ đẩy event vào hàng đợi RAM; restart trước khi nó chạy lại thì dấu
+    `orchestrated` của LẦN LỖI thắng và event bị bỏ im lặng. Anh em `_retry_stalled` đã vá (`project.retried`)."""
+    h = _flaky_lead(1)
+    bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient(handler=h))
+    bus.publish(Envelope(topic="change-requests", key="CR-1", actor="human:po", payload=CR)); orch.run()
+    orch.gate.decide("CR-1", "approve", by="human:lead", reason="lỗi model, thử lại")
+    orch.run(max_steps=1)          # xử lý đúng `gate.decide` → ghi `event.retried`, chưa kịp chạy lại thì chết
+    assert "event.retried" in [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert not _impacts(bus), "chưa kịp chạy lại trước khi chết"
+    bus.close()
+    bus2 = SQLiteBus(tmp_path / "c.sqlite"); orch2 = Orchestrator(bus2, FakeClient(handler=h))
+    assert [e.topic for e in orch2.queue] == ["change-requests"], "lệnh chạy lại phải sống qua restart"
+    orch2.run()
+    assert len(_impacts(bus2)) == 1
+    bus2.close()

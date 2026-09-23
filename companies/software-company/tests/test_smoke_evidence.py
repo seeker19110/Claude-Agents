@@ -77,6 +77,29 @@ def test_unverified_noi_ly_do():
     assert u["unverified"] is True and u["reason"] == "vì sao" and u["verified_by"] == "orchestrator"
 
 
+def test_probe_loopback_khong_di_qua_http_proxy(monkeypatch):
+    """Audit 2026-09-23: `urlopen` mặc định theo `http_proxy` kể cả cho 127.0.0.1 — máy vận hành có proxy thì
+    smoke/deploy probe đi vòng ra proxy và báo sản phẩm "không chạy" dù nó đang trả lời."""
+    import http.server
+    import threading
+
+    from company.smoke import _probe
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200); self.end_headers()
+        def log_message(self, *a): pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    for k in ("no_proxy", "NO_PROXY"): monkeypatch.delenv(k, raising=False)
+    for k in ("http_proxy", "HTTP_PROXY"): monkeypatch.setenv(k, "http://127.0.0.1:9")  # cổng discard: không ai nghe
+    try:
+        assert _probe(f"http://127.0.0.1:{srv.server_address[1]}/") == 200
+    finally:
+        srv.shutdown(); srv.server_close()
+
+
 # ---------- orchestrator: lời khai `deployed` đi qua smoke ----------
 
 def _git(repo: Path, *a: str) -> str:
@@ -325,7 +348,8 @@ def test_regression_staging_giu_pass_va_mang_evidence_run_khi_smoke_200(tmp_path
     run = qa[-1]["evidence"]["run"]
     assert run["ok"] is True and run["http_status"] == 200 and run["verified_by"] == "orchestrator"
     assert run["command"] == OK["command"] and run["sha"], "lệnh thật và sha RC: người ký Gate 3 biết CÁI GÌ đã chạy"
-    assert len(calls) == 2 and all(str(c).endswith("_integration") for c in calls), "một lần cho deployed, một lần cho QA — cùng worktree tích hợp"
+    assert len(calls) == 2 and str(calls[0]).endswith("_integration"), "một lần cho deployed (worktree tích hợp)..."
+    assert calls[1].name == run["sha"], "...một lần cho QA — ở checkout ĐÚNG sha đã staged, không ở đầu nhánh (audit 2026-09-23)"
     acts = _acts(bus)
     assert "regression.run" in acts and "regression.run_failed" not in acts and "regression.verdict_overridden" not in acts
     g = orch.gate.pending.get("REL-001")
