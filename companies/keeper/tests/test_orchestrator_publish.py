@@ -194,3 +194,37 @@ def test_publish_commit_va_push_so_pr_da_dien(monkeypatch: pytest.MonkeyPatch, r
     head = _git(wt.path, "rev-parse", "HEAD")
     ls = subprocess.run(["git", "ls-remote", str(remote), wt.branch], capture_output=True, text=True)
     assert ls.stdout.startswith(head), "commit điền số PR phải được push lên nhánh của PR"
+
+
+def test_publish_lan_hai_sau_khi_push_dien_so_hong_thi_hoan_tat(
+        monkeypatch: pytest.MonkeyPatch, repo: Path, remote: Path) -> None:
+    """Push lần hai (commit điền số) hỏng → note chưa có `pr_number`; gọi lại `publish()` phải push nốt commit
+    đó và kết thúc, không nổ `ValueError` vì `(#PR)` đã được thay trong commit lần trước."""
+    import keeper.orchestrator as orch_mod
+    o, tid = _orc_voi_ticket_du_cong(repo)
+    wt = open_worktree(tid, repo=repo)
+    _commit_dong_changelog(wt.path, tid)
+    goc_push = orch_mod.push_branch
+    lan = {"n": 0}
+
+    def push_hong_lan_hai(w: Any, **kw: Any) -> None:
+        lan["n"] += 1
+        if lan["n"] == 2:
+            raise PublishError("mạng rớt")
+        goc_push(w, **kw)
+
+    monkeypatch.setattr(orch_mod, "push_branch", push_hong_lan_hai)
+    spy = _RunSpy(script=[(0, "https://github.com/o/r/pull/9\n", ""),
+                          (1, "", "a pull request for branch already exists: https://github.com/o/r/pull/9\n")],
+                  calls=[])
+    monkeypatch.setattr(publish_mod.subprocess, "run", spy)
+    with pytest.raises(PublishError):
+        o.publish(tid, wt)
+    assert o.notes[tid].pr_number is None
+
+    pr = o.publish(tid, wt)
+
+    assert pr is not None and pr.number == 9 and o.notes[tid].pr_number == 9
+    head = _git(wt.path, "rev-parse", "HEAD")
+    ls = subprocess.run(["git", "ls-remote", str(remote), wt.branch], capture_output=True, text=True)
+    assert ls.stdout.startswith(head) and "(#9)" in _git(wt.path, "show", "HEAD:CHANGELOG.md")

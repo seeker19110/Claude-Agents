@@ -150,6 +150,8 @@ class KeeperWorktree:
         đã được theo dõi — không vơ file lạ chưa track vào PR. Không hook (`NO_HOOKS`), chốt checkout chung
         đứng trước."""
         refuse_shared_checkout(self.path)
+        if not _git(self.path, "status", "--porcelain", "--untracked-files=no").strip():
+            return  # không có gì để commit (lần gọi lại sau khi đã commit) — không phải lỗi
         _git(self.path, "commit", "-a", "-m", message)
 
     def discard_local_changes(self, target: Path | None = None) -> bool:
