@@ -206,6 +206,19 @@ def test_lease_bo_qua_file_lock_hong(tmp_path):
     lease.release()
 
 
+def test_lease_khong_doc_duoc_lock_thi_coi_la_lock_cu(tmp_path, monkeypatch):
+    """Giữ nguyên hành vi cũ: đọc lock lỗi OS (vd Windows khoá chia sẻ) → như pid không đọc được, lấy lại."""
+    from pathlib import Path
+    lease = Lease(tmp_path / "b.sqlite")
+    lease.path.write_text("123", encoding="utf-8")
+    def boom(p, *a, **k): raise PermissionError(p)
+    monkeypatch.setattr(Path, "read_text", boom)
+    lease.acquire()
+    assert lease.held
+    monkeypatch.undo()
+    assert lease.path.read_text(encoding="utf-8") == str(os.getpid())
+
+
 def test_lease_tu_choi_khi_tien_trinh_khac_con_song(tmp_path, monkeypatch):
     lease = Lease(tmp_path / "b.sqlite")
     lease.path.write_text("999999", encoding="utf-8")
@@ -213,3 +226,28 @@ def test_lease_tu_choi_khi_tien_trinh_khac_con_song(tmp_path, monkeypatch):
     with pytest.raises(LeaseError, match="đang chạy"):
         lease.acquire()
     assert not lease.held
+
+
+def test_lease_tao_moi_la_nguyen_tu_khong_de_len_lock_vua_co_nguoi_tao(tmp_path, monkeypatch):
+    """Đua giữa hai tiến trình: A kiểm "chưa có lock" xong thì B tạo lock; A ghi đè → CẢ HAI cùng giữ bus, xử lý
+    trùng event. Giả lập đúng cửa sổ đó: `exists()` trả lời theo cái nhìn trước khi B tạo, nhưng file đã có.
+    Tạo mới phải là thao tác nguyên tử (O_CREAT|O_EXCL), không phải kiểm-rồi-ghi."""
+    from pathlib import Path
+    lease = Lease(tmp_path / "b.sqlite")
+    lease.path.write_text("999999", encoding="utf-8")          # B vừa tạo xong
+    real_exists = Path.exists
+    monkeypatch.setattr(Path, "exists", lambda p: False if p == lease.path else real_exists(p))
+    monkeypatch.setattr(SB, "_alive", lambda pid: True)
+    with pytest.raises(LeaseError, match="đang chạy"):
+        lease.acquire()
+    assert lease.path.read_text(encoding="utf-8") == "999999" and not lease.held
+
+
+def test_lease_file_rong_la_dang_duoc_tao_khong_phai_lock_cu(tmp_path):
+    """Tạo nguyên tử rồi mới ghi pid: có một khoảnh khắc file tồn tại mà rỗng. Đọc rỗng thành "pid 0, lock cũ" thì
+    kẻ đến sau vẫn ghi đè được — đua quay lại qua cửa sau. Rỗng = đang có người tạo → từ chối."""
+    lease = Lease(tmp_path / "b.sqlite")
+    lease.path.write_text("", encoding="utf-8")
+    with pytest.raises(LeaseError, match="đang được tạo"):
+        lease.acquire()
+    assert lease.path.read_text(encoding="utf-8") == "" and not lease.held
