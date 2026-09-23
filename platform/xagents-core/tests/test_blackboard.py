@@ -127,6 +127,29 @@ def test_mirror_ghi_ban_theo_version_va_latest_dung_duoi_file(cfg2, tmp_path):
     assert bb.path("chung") == store / "chung" / "latest.md", "namespace không có trong EXT thì là markdown"
 
 
+@pytest.mark.parametrize("pid", ["../../thoat", "..", ".", "a/b", "a\\b", "C:x", "", "<tuyet-doi>"])
+def test_project_id_khong_an_toan_thi_khong_mirror_ra_ngoai_store(cfg2, tmp_path, pid):
+    """`project_id` đến từ payload (model/khách viết ra) và nối thẳng vào đường dẫn mirror: `../../x` thoát khỏi
+    store, đường tuyệt đối thay luôn store. Bản ghi vẫn vào bus (nguồn sự thật) — chỉ không mirror, `path` trả None
+    như khi không có store, để nơi gọi (đã xử lý None) không phải đổi."""
+    if pid == "<tuyet-doi>":
+        pid = str(tmp_path / "thoat")      # tuyệt đối nhưng vẫn trong tmp_path: đỏ cũng không bẩn máy chạy test
+    store = tmp_path / "a" / "b" / "store"
+    bb = BB(cfg2, Bus(cfg2), store=store)
+    before = {p for p in tmp_path.rglob("*")}
+    bb.write("bien-tap", "giong", "g.md", content="doc", project_id=pid)
+
+    assert bb.path("giong", project_id=pid) is None
+    assert bb.content("giong", project_id=pid) == "doc"
+    assert {p for p in tmp_path.rglob("*")} - before <= {p for p in tmp_path.rglob("*") if p.is_relative_to(store)}
+    assert not (tmp_path / "thoat").exists() and not (tmp_path / "a" / "thoat").exists()
+
+
+def test_namespace_khong_an_toan_cung_khong_thanh_duong_dan(cfg2, tmp_path):
+    bb = BB(cfg2, Bus(cfg2), store=tmp_path / "store")
+    assert bb.path("../giong", project_id="DA1") is None
+
+
 def test_khong_co_store_thi_khong_mirror_va_path_tra_none(bb):
     bb.write("bien-tap", "giong", "g.md", content="x")
     assert bb.path("giong") is None
