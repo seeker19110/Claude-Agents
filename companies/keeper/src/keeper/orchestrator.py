@@ -326,6 +326,10 @@ class KeeperOrchestrator:
 
         moc = now or datetime.now(UTC)
         moi = fill_pr_number(wt.path, note, pr.number, session_date=moc.strftime("%Y-%m-%d"))
+        # Điền số chỉ trong worktree là chưa xong: phải thành commit THỨ HAI và lên remote, TRƯỚC khi note mang
+        # `pr_number` lên bus — note có số rồi thì lần `publish()` sau trả sớm, và PR giữ `(#PR)` mãi.
+        wt.commit_tracked(f"chore(keeper): điền số PR #{pr.number} cho {ticket_id}")
+        push_branch(wt, remote=remote)
         self._publish("release-notes", ticket_id, RELEASE_ACTOR, moi.model_dump())
         self._audit("pr.created", {"ticket_id": ticket_id, "pr_number": pr.number, "url": pr.url},
                     ticket_id=ticket_id)

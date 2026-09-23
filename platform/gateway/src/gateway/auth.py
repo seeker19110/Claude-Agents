@@ -350,6 +350,13 @@ class AntigravityAuthManager:
                     try:
                         creds = self.refresh_access_token(creds)
                     except urllib.error.HTTPError as exc:
+                        if exc.code == 429 or exc.code >= 500:
+                            # lỗi phía Google/hạn mức endpoint token, không phải token hỏng: không cooldown
+                            logger.warning(
+                                "Lỗi tạm thời khi refresh %s (HTTP %s, không cooldown)", creds.email or "unknown",
+                                exc.code,
+                            )
+                            continue
                         logger.warning(
                             "Google từ chối refresh token của %s (HTTP %s)", creds.email or "unknown", exc.code
                         )

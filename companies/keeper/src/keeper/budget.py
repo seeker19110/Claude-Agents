@@ -34,15 +34,18 @@ _TIER_RANK: dict[RiskTier, int] = {"high": 0, "medium": 1, "low": 2}
 
 
 class GitHubLike(Protocol):
-    def open_prs(self) -> list[PullRequest]: ...
-    def merged_prs(self, since: str) -> list[PullRequest]: ...
+    def open_prs(self) -> list[PullRequest] | None: ...
+    def merged_prs(self, since: str) -> list[PullRequest] | None: ...
 
 
 @dataclass(frozen=True)
 class BudgetContext:
-    """Ảnh chụp NGAY LÚC HỎI. Không được giữ lại giữa hai lần `can_open_pr()` — xem docstring module."""
-    open_pr_count: int
-    merged_last_week: int
+    """Ảnh chụp NGAY LÚC HỎI. Không được giữ lại giữa hai lần `can_open_pr()` — xem docstring module.
+
+    `None` = `gh` không trả lời được. Mọi hàng kiểm coi `None` là KHÔNG QUA (fail closed, I3): không biết có
+    PR nào đang mở hay không thì không được mở thêm."""
+    open_pr_count: int | None
+    merged_last_week: int | None
     max_per_week: int
 
 
@@ -54,7 +57,7 @@ class BudgetCheck:
 
 BUDGET_CHECKS: tuple[BudgetCheck, ...] = (
     BudgetCheck("no-open-pr", lambda c: c.open_pr_count == 0),              # bất biến I3
-    BudgetCheck("weekly-quota", lambda c: c.merged_last_week < c.max_per_week),
+    BudgetCheck("weekly-quota", lambda c: c.merged_last_week is not None and c.merged_last_week < c.max_per_week),
 )
 
 
@@ -94,9 +97,11 @@ def budget_context(
 ) -> BudgetContext:
     """Hai câu hỏi tới `gh` + một lần đọc biến môi trường, mỗi lần gọi."""
     reference = now or datetime.now(UTC)
+    open_prs = gh.open_prs()
+    merged = gh.merged_prs(since_iso(reference))
     return BudgetContext(
-        open_pr_count=len(gh.open_prs()),
-        merged_last_week=len(gh.merged_prs(since_iso(reference))),
+        open_pr_count=None if open_prs is None else len(open_prs),
+        merged_last_week=None if merged is None else len(merged),
         max_per_week=max_pr_per_week(env),
     )
 

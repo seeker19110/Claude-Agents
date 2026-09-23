@@ -157,6 +157,15 @@ def test_pr_age_signals_trong_han() -> None:
     assert health.pr_age_signals(gh, max_age_days=7.0) == []
 
 
+def test_pr_age_signals_gh_khong_biet_thi_khong_no() -> None:
+    """`open_prs()` trả `None` (gh hỏng) → không tín hiệu, không `TypeError` giết vòng quét."""
+    class _MuGitHub(FakeGitHub):
+        def open_prs(self):  # type: ignore[no-untyped-def]
+            return None
+
+    assert health.pr_age_signals(_MuGitHub(), max_age_days=7.0) == []
+
+
 def _write_coverage(repo: Path, rel: str, line_rate: float) -> None:
     p = repo / rel
     p.parent.mkdir(parents=True, exist_ok=True)

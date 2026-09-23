@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -106,8 +107,10 @@ class DeployRecord:
 
 
 def project_name(project_id: str, env: str) -> str:
-    """Tên compose project do CODE đặt. Hai môi trường là hai project tách hẳn (ADR-0039 §2)."""
-    return f"company-{project_id}-{env}"
+    """Tên compose project do CODE đặt. Hai môi trường là hai project tách hẳn (ADR-0039 §2).
+
+    Compose chỉ nhận `[a-z0-9_-]`: mã dự án thật viết hoa (`QLKH`) → hạ chữ thường, ký tự khác → `-`."""
+    return re.sub(r"[^a-z0-9_-]", "-", f"company-{project_id}-{env}".lower())
 
 
 def deploy_settings() -> tuple[str, str]:

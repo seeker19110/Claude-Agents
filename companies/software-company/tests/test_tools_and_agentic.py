@@ -1265,3 +1265,14 @@ def test_runs_lon_hon_1_chi_co_nghia_voi_record(argv, vi_sao, capsys):
     with pytest.raises(SystemExit):
         evals_main(argv)
     assert vi_sao in capsys.readouterr().err
+
+
+def test_glob_khong_thoat_khoi_worktree(tmp_path):
+    # audit 2026-09-23: `glob` đi thẳng vào `Path.glob` (chấp nhận `..`), `relative_to` chỉ so chuỗi nên
+    # `root/../x` lọt qua cả SKIP_DIRS lẫn lọc file bí mật — đọc được repo khách và company.sqlite bên ngoài.
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    (ws.path.parent / "hang-xom.txt").write_text("SECRET_TOKEN=1\n", encoding="utf-8")
+    wt = WorkspaceTools(ws)
+    for g in ("../*", "../**/*", "sub/../../*"):
+        assert "SECRET_TOKEN" not in wt.search("SECRET", g), g
+        assert "hang-xom" not in wt.list_files(".", g), g

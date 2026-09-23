@@ -86,6 +86,10 @@ def fill_pr_number(root: Path, note: ReleaseNote, pr_number: int, *, session_dat
             continue
         edits.append(Edit(rel, cu.replace(PR_PLACEHOLDER, _ref(pr_number))))
     if not edits:
+        # Lần `publish()` trước đã điền + commit nhưng push hỏng → gọi lại: số đã nằm trong CHANGELOG, chỉ cần
+        # trả note mang số để push nốt. Không có số nào thì vẫn nổ như cũ.
+        if (root / changelog).exists() and _ref(pr_number) in (root / changelog).read_text(encoding="utf-8"):
+            return moi
         raise ValueError(
             f"không tìm thấy {PR_PLACEHOLDER} trong {changelog}/docs/sessions/{session_date}.md — "
             f"`record()` chưa chạy, hay số PR đã điền rồi?")

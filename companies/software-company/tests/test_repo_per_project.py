@@ -147,3 +147,13 @@ def test_qa_va_release_dung_nhanh_tich_hop_cua_du_an(tmp_path):
     tb = orch._read_only_tools(Envelope(topic="release-candidates", key=rc.key, actor="delivery-lead", payload=rc.payload))
     assert tb is not None, "QA hồi quy sau deploy đọc worktree tích hợp của dự án"
     assert orch._read_only_tools(Envelope(topic="release-candidates", key="R0", actor="x", payload={"release_id": "R0", "tickets": []})) is None or True
+
+
+def test_ticket_id_khong_an_toan_khong_co_worktree(tmp_path):
+    # audit 2026-09-23: `ticket_id` do agent lập kế hoạch đặt; `..` biến worktree thành chính checkout của khách
+    # (`create()` thấy thư mục có sẵn thì trả luôn), đường dẫn tuyệt đối thay hẳn gốc repo.
+    repo = _init_repo(tmp_path / "repo")
+    orch = Orchestrator(InMemoryBus(), FakeClient(handler=handler), repo=repo, base="main")
+    for bad in ("..", ".", "a/../../x", "/tmp/x", "", "-x", "a\\b"):
+        assert orch.workspace(bad) is None, bad
+    assert orch.workspace("QLKH-T01.2_a") is not None

@@ -53,15 +53,42 @@ class GitHubWriteAttempt(Exception):
     lỗi lập trình trong `keeper`, phải làm hỏng ngay, không được lặng lẽ tiếp tục."""
 
 
+def _is_forbidden_token(a: str) -> bool:
+    """Một token có phải từ/cờ ghi không — kể cả dạng DÍNH LIỀN mà `gh` (pflag) chấp nhận:
+
+    - cờ dài kèm `=`: `--method=POST`, `--field=k=v`, `--raw-field=k=v`, `--input=f` → so phần trước `=`;
+    - cờ ngắn dính giá trị hoặc gộp cụm: `-XPOST`, `-X=POST`, `-fk=v`, `-Fk=@f`, `-iXPOST` → duyệt từng chữ
+      sau `-`: gặp chữ của cờ ghi là chặn; gặp chữ của một cờ NHẬN GIÁ TRỊ (`-q`, `-H`, `-R`...) thì phần còn
+      lại là giá trị, dừng. Chữ lạ coi như cờ bool và đi tiếp — cờ lạ nhận giá trị có thể bị chặn nhầm, đó
+      là hướng hỏng an toàn (I1).
+
+    Bảng suy ra từ `FORBIDDEN_ARGS`/`_VALUE_FLAGS` MỖI LẦN gọi, không chép thành hằng thứ hai: ca chiều ngược
+    thay bảng phải thấy đúng bảng đó."""
+    if a in FORBIDDEN_ARGS:
+        return True
+    if a.startswith("--"):
+        return "=" in a and a.split("=", 1)[0] in FORBIDDEN_ARGS
+    if a.startswith("-") and len(a) > 2:
+        forbidden_shorts = {f[1] for f in FORBIDDEN_ARGS if len(f) == 2 and f.startswith("-")}
+        value_shorts = {f[1] for f in _VALUE_FLAGS if len(f) == 2 and f.startswith("-")} | {"H"}
+        for ch in a[1:]:
+            if ch in forbidden_shorts:
+                return True
+            if ch in value_shorts:
+                return False
+    return False
+
+
 def _contains_forbidden(args: tuple[str, ...]) -> bool:
-    """Quy tắc so khớp: mỗi token so KHỚP TUYỆT ĐỐI (không phải substring) với `FORBIDDEN_ARGS`, trừ token
-    ngay sau một cờ trong `_VALUE_FLAGS` (đó là giá trị của cờ, không phải một subcommand)."""
+    """Quy tắc so khớp: mỗi token qua `_is_forbidden_token` (khớp tuyệt đối HOẶC dạng dính liền của cờ ghi,
+    không phải substring), trừ token ngay sau một cờ trong `_VALUE_FLAGS` (đó là giá trị của cờ, không phải
+    một subcommand)."""
     skip_next = False
     for a in args:
         if skip_next:
             skip_next = False
             continue
-        if a in FORBIDDEN_ARGS:
+        if _is_forbidden_token(a):
             return True
         if a in _VALUE_FLAGS:
             skip_next = True
@@ -182,11 +209,24 @@ class GitHubReader:
             return []
         return data if isinstance(data, list) else []
 
-    def open_prs(self) -> list[PullRequest]:
-        ok, out = self._run("pr", "list", "--state", "open", "--json", "number,title,url,headRefName,createdAt")
+    @staticmethod
+    def _parse_list_strict(ok: bool, out: str) -> list[dict] | None:
+        """Như `_parse_list` nhưng PHÂN BIỆT "gh nói rỗng" (`[]`) với "không biết" (`None`): gh lỗi, quá
+        giờ, vắng mặt, hay trả thứ không phải một mảng JSON → `None`. Dùng cho câu hỏi mà câu trả lời rỗng
+        mở cổng (bất biến I3 — `budget.can_open_pr`): đọc lỗi thành "0 PR" là fail OPEN."""
         if not ok:
-            return []
-        return [PullRequest.model_validate(row) for row in self._parse_list(out)]
+            return None
+        try:
+            data = json.loads(out)
+        except json.JSONDecodeError:
+            return None
+        return data if isinstance(data, list) else None
+
+    def open_prs(self) -> list[PullRequest] | None:
+        """`None` = không biết (gh lỗi/JSON hỏng) — KHÁC `[]` (biết chắc 0 PR). Xem `_parse_list_strict`."""
+        ok, out = self._run("pr", "list", "--state", "open", "--json", "number,title,url,headRefName,createdAt")
+        rows = self._parse_list_strict(ok, out)
+        return None if rows is None else [PullRequest.model_validate(row) for row in rows]
 
     def checks(self, pr: int) -> list[CheckRun]:
         ok, out = self._run("pr", "checks", str(pr), "--json", "name,state,link")
@@ -240,11 +280,11 @@ class GitHubReader:
             return []
         return [WorkflowRun.model_validate(row) for row in self._parse_list(out)]
 
-    def merged_prs(self, since: str) -> list[PullRequest]:
+    def merged_prs(self, since: str) -> list[PullRequest] | None:
+        """`None` = không biết, như `open_prs`."""
         ok, out = self._run(
             "pr", "list", "--state", "merged", "--search", f"merged:>={since}",
             "--json", "number,title,url,headRefName,mergedAt",
         )
-        if not ok:
-            return []
-        return [PullRequest.model_validate(row) for row in self._parse_list(out)]
+        rows = self._parse_list_strict(ok, out)
+        return None if rows is None else [PullRequest.model_validate(row) for row in rows]

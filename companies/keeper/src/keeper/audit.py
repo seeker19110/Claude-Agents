@@ -20,6 +20,13 @@ lọc theo TÊN CHECK của Scorecard nên chúng không bị đếm nhầm thà
 một ca bỏ qua theo môi trường là một ca xanh vì rỗng (`TRAPS.md` §2). Cùng lý do, mọi tiến trình đi qua tham
 số `runner` tiêm được.
 
+## Công cụ lỗi KHÔNG phải "không có phát hiện"
+
+Chỉ `MISSING_EXIT` mới nghĩa là công cụ vắng mặt. Công cụ CÓ trên máy mà quá giờ (`TIMEOUT_EXIT`), không ghi
+báo cáo, hay trả thứ không parse được → đúng MỘT `SecurityFinding` đánh dấu (`subject="<tool>:loi-cong-cu"`,
+`kind` của nguồn đó, mức `DEFAULT_SEVERITY`), mang lý do trong `detail`. Trả `[]` ở đây là đọc "chưa quét
+xong" thành "sạch" — khuôn 1 "chế độ hỏng không tự khai báo" (`TRAPS.md`).
+
 Mã thoát của cả hai công cụ này là 1 khi TÌM THẤY vấn đề — nên `exit_code != 0` KHÔNG phải lỗi ở đây, và
 không được dùng để quyết định gì. Chỉ nội dung báo cáo mới được đọc.
 """
@@ -52,6 +59,11 @@ SCORECARD_CHECKS = frozenset({
     "Vulnerabilities", "Webhooks",
 })
 
+#: Hậu tố `subject` của finding đánh dấu "công cụ CÓ trên máy nhưng không chạy xong" (quá giờ, lỗi, báo cáo
+#: hỏng/thiếu) — xem mục "Công cụ lỗi" ở docstring module.
+TOOL_ERROR = "loi-cong-cu"
+
+
 def _default_gitleaks_report_path() -> Path:
     """Tên file MẶC ĐỊNH khi không truyền `report_path`, nhưng DUY NHẤT theo tiến trình + lời gọi
     (`os.getpid()` + `uuid4`) — không phải một hằng số toàn cục cố định.
@@ -78,6 +90,12 @@ def _severity(raw: str | None) -> Severity:
     return cast(Severity, s) if s in SEVERITIES else DEFAULT_SEVERITY
 
 
+def _tool_error(tool: str, kind: Literal["secret", "dependency"], reason: str) -> list[SecurityFinding]:
+    """Một finding đánh dấu công cụ không chạy xong — xem mục "Công cụ lỗi" ở docstring module."""
+    return [SecurityFinding(subject=f"{tool}:{TOOL_ERROR}", severity=DEFAULT_SEVERITY, kind=kind,
+                            detail=f"{tool} không quét xong — KHÔNG phải 'không có phát hiện': {reason[-300:]}")]
+
+
 def _load_json(text: str) -> Any:
     try:
         return json.loads(text)
@@ -101,11 +119,13 @@ def gitleaks_findings(
          "--log-opts=--all", "--report-format", "json", "--report-path", str(path)),
         repo,
     )
-    if r.exit_code == MISSING_EXIT or not path.exists():
+    if r.exit_code == MISSING_EXIT:
         return []
+    if not path.exists():
+        return _tool_error("gitleaks", "secret", f"exit {r.exit_code}, không có báo cáo: {r.output_tail}")
     data = _load_json(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
-        return []
+        return _tool_error("gitleaks", "secret", f"exit {r.exit_code}, báo cáo không phải mảng JSON")
     return [
         SecurityFinding(
             subject=f"{row.get('File', '?')}:{row.get('StartLine', 0)}",
@@ -134,7 +154,7 @@ def pip_audit_findings(repo: Path, *, runner: CommandRunner = run_command) -> li
         return []
     data = _load_json(r.output_tail)
     if not isinstance(data, dict):
-        return []
+        return _tool_error("pip-audit", "dependency", f"exit {r.exit_code}, output không phải JSON: {r.output_tail}")
     out: list[SecurityFinding] = []
     for dep in data.get("dependencies", []):
         for vuln in dep.get("vulns", []):

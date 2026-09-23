@@ -85,6 +85,14 @@ def test_goi_khong_trong_uv_lock_bi_loc(tmp_path: Path) -> None:
     assert scout.scan(tmp_path, gh) == []
 
 
+@pytest.mark.parametrize("state", ["fixed", "dismissed", "auto_dismissed"])
+def test_alert_khong_con_mo_bi_bo_qua(tmp_path: Path, state: str) -> None:
+    """Alert đã đóng không phải việc phải làm — cùng luật `audit.dependabot_findings` (`state == "open"`)."""
+    gh = _AlertGitHub([DependabotAlert(number=6, state=state, severity="high",
+                                        summary="Bump requests from 2.30.0 to 3.0.0")])
+    assert scout.scan(tmp_path, gh) == []
+
+
 def test_semver_jump_khong_parse_duoc_tra_none() -> None:
     assert scout.semver_jump("abc", "1.0.0") is None
     assert scout.semver_jump("1.0.0", "xyz") is None

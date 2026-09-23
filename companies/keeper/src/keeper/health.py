@@ -23,7 +23,7 @@ COVERAGE_DRIFT_THRESHOLD = 0.05
 
 class GitHubLike(Protocol):
     def workflow_runs(self) -> list[WorkflowRun]: ...
-    def open_prs(self) -> list[PullRequest]: ...
+    def open_prs(self) -> list[PullRequest] | None: ...
     def pr_age_days(self, pr: int, *, now: object = None) -> float | None: ...
 
 
@@ -112,7 +112,9 @@ def ci_duration_signal(runs: list[WorkflowRun]) -> Signal | None:
 def pr_age_signals(gh: GitHubLike, *, max_age_days: float = 7.0) -> list[Signal]:
     """Một `Signal` cho mỗi PR mở lâu hơn `max_age_days`."""
     out: list[Signal] = []
-    for pr in gh.open_prs():
+    # `None` (gh không trả lời) → không có tín hiệu tuổi PR: đây chỉ là quan sát, không mở cổng nào. Cổng
+    # cần fail closed là `budget.can_open_pr`, nó tự xử lý `None`.
+    for pr in gh.open_prs() or []:
         age = gh.pr_age_days(pr.number)
         if age is not None and age > max_age_days:
             out.append(Signal(subject=f"pr-{pr.number}", kind="health",

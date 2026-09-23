@@ -142,7 +142,7 @@ def test_bo_dem_theo_argv_rieng(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 def test_gh_khong_co_tren_may(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     spy = _RunSpy(raise_exc=FileNotFoundError())
     reader = _reader(tmp_path, spy, monkeypatch)
-    assert reader.open_prs() == []
+    assert reader.open_prs() is None, "gh vắng mặt = KHÔNG BIẾT số PR mở, không phải 0 (I3 phải đóng)"
 
 
 def test_gh_qua_thoi_gian(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,13 +160,21 @@ def test_gh_tra_ma_loi(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 def test_json_hong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     spy = _RunSpy(stdout="khong-phai-json{{{")
     reader = _reader(tmp_path, spy, monkeypatch)
-    assert reader.open_prs() == []
+    assert reader.open_prs() is None
+
+
+def test_json_hong_o_ham_doc_khong_phai_cong_thi_rong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hàm đọc KHÔNG mở cổng nào (`workflow_runs`) vẫn giữ quy ước cũ: JSON hỏng → `[]`. Chỉ `open_prs`/
+    `merged_prs` (cổng I3) phân biệt "không biết"."""
+    spy = _RunSpy(stdout="khong-phai-json{{{")
+    reader = _reader(tmp_path, spy, monkeypatch)
+    assert reader.workflow_runs() == []
 
 
 def test_json_khong_phai_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     spy = _RunSpy(stdout=json.dumps({"not": "a list"}))
     reader = _reader(tmp_path, spy, monkeypatch)
-    assert reader.merged_prs("2026-09-01") == []
+    assert reader.merged_prs("2026-09-01") is None
 
 
 def test_json_rong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -190,7 +198,7 @@ def test_gh_loi_code_scanning_alerts(tmp_path: Path, monkeypatch: pytest.MonkeyP
 def test_gh_loi_merged_prs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     spy = _RunSpy(stdout="", returncode=1)
     reader = _reader(tmp_path, spy, monkeypatch)
-    assert reader.merged_prs("2026-09-01") == []
+    assert reader.merged_prs("2026-09-01") is None
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -312,6 +320,41 @@ def test_truong_lam_gh_api_thanh_post_cung_bi_chan(argv, tmp_path):
         GitHubReader(tmp_path)._run(*argv)
 
 
+@pytest.mark.parametrize("argv", [
+    ("api", "repos/o/r/issues/1", "--method=DELETE"),
+    ("api", "repos/o/r/issues/1", "-XDELETE"),
+    ("api", "repos/o/r/issues/1", "-X=DELETE"),
+    ("api", "repos/o/r/issues/1", "-iXPOST"),               # gộp cờ ngắn: -i (bool) rồi -X POST
+    ("api", "repos/o/r/pulls/1/merge", "-fmerge_method=squash"),
+    ("api", "repos/o/r/issues/1/comments", "-Fbody=@x.txt"),
+    ("api", "repos/o/r/pulls", "--field=title=x"),
+    ("api", "repos/o/r/pulls", "--raw-field=title=x"),
+    ("api", "graphql", "--input=q.json"),
+])
+def test_co_ghi_dang_dinh_lien_cung_bi_chan(argv, tmp_path, monkeypatch):
+    """`gh` (pflag) nhận cờ ở dạng DÍNH LIỀN: `--method=POST`, `-XPOST`, `-fk=v`, `--field=k=v`... So khớp
+    tuyệt đối từng token thì các dạng này lọt qua bảng chặn — một lời gọi GHI thủng I1."""
+    spy = _RunSpy()
+    monkeypatch.setattr(github_mod.subprocess, "run", spy)
+    with pytest.raises(GitHubWriteAttempt):
+        GitHubReader(tmp_path)._run(*argv)
+    assert spy.calls == []
+
+
+@pytest.mark.parametrize("argv", [
+    ("pr", "list", "--json=number", "--jq=.[].number"),
+    ("api", "repos/o/r/pulls", "-q.[].number"),               # -q nhận giá trị dính liền, chữ "f"/"X" sau đó là giá trị
+    ("api", "repos/o/r/pulls", "-HAccept: application/vnd.github+json"),
+    ("pr", "list", "--repo=o/delete-me", "--limit=5"),
+    ("pr", "list", "-L5", "--paginate"),                     # cụm cờ ngắn không chứa cờ ghi
+])
+def test_co_doc_dang_dinh_lien_khong_bi_chan_nham(argv, tmp_path, monkeypatch):
+    spy = _RunSpy(stdout="[]")
+    monkeypatch.setattr(github_mod.subprocess, "run", spy)
+    GitHubReader(tmp_path)._run(*argv)          # không ném
+    assert len(spy.calls) == 1
+
+
 def test_truong_lam_gh_api_thanh_post_chieu_nguoc(monkeypatch, tmp_path):
     """Chiều ngược: bỏ đúng năm cờ trường khỏi bảng chặn → lời gọi ghi ở trên KHÔNG còn bị chặn, chứng minh
     test trên đang đo chính năm cờ đó chứ không đo token "merge"/"delete" sẵn có."""
@@ -344,3 +387,16 @@ def test_gia_tri_cua_co_chieu_nguoc(tmp_path, monkeypatch):
     monkeypatch.setattr(github_mod, "_VALUE_FLAGS", frozenset({"--repo", "-R"}))
     with pytest.raises(GitHubWriteAttempt):
         GitHubReader(tmp_path)._run("pr", "create", "--title", "merge", "--body-file", "b.md")
+
+
+def test_gh_loi_open_prs_la_khong_biet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    spy = _RunSpy(stdout="", returncode=1)
+    reader = _reader(tmp_path, spy, monkeypatch)
+    assert reader.open_prs() is None
+
+
+def test_open_prs_rong_that_la_list_rong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`[]` hợp lệ từ gh = BIẾT là 0 PR — khác hẳn `None` (không biết)."""
+    spy = _RunSpy(stdout="[]")
+    reader = _reader(tmp_path, spy, monkeypatch)
+    assert reader.open_prs() == []

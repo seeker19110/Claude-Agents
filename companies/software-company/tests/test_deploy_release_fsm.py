@@ -117,7 +117,7 @@ def test_deployed_la_container_dang_chay_kem_bang_chung(tmp_path, monkeypatch):
     assert st["status"] == "deployed"
     d = st["evidence"]["deploy"]
     assert d["ok"] is True and d["verified_by"] == "orchestrator", "bằng chứng máy sinh, không phải lời khai"
-    assert d["project"] == "company-P-staging" and d["env"] == "staging"
+    assert d["project"] == "company-p-staging" and d["env"] == "staging"
     assert d["services"] == ["web"] and d["container_ids"] == ["abcdef012345"] and d["port"] == 8080
     assert d["started_at"] and d["smoke"]["http_status"] == 200 and d["compose_file"] == "compose.yaml"
     assert fake.subs == ["up", "ps"], "deploy xong KHÔNG `down`: sản phẩm phải còn sống sau lượt"
@@ -255,7 +255,7 @@ def test_mac_dinh_khong_tiem_gi_thi_dung_deploy_that(tmp_path):
 
 def test_production_deploy_that_va_khong_them_cong_nao(tmp_path, monkeypatch):
     """ADR-0039 quyết định 5: production không có cổng mới — vẫn là `PROD_ROUTE` sau khi người ký gate release.
-    Lượt đó nay dựng compose project RIÊNG (`company-P-production`), không giẫm lên staging."""
+    Lượt đó nay dựng compose project RIÊNG (`company-p-production`), không giẫm lên staging."""
     fn, fake = _fake_deploy(monkeypatch)
     bus, orch = _orch(tmp_path, _repo(tmp_path), deploy_fn=fn, runtime=RUNTIME)
     orch.run()
@@ -263,8 +263,8 @@ def test_production_deploy_that_va_khong_them_cong_nao(tmp_path, monkeypatch):
     orch.gate.decide("REL-001", "approve", by="human:release-manager", reason="staging xanh — deploy production")
     orch.run()
     prod = _rel(bus, "production")[-1]
-    assert prod["status"] == "deployed" and prod["evidence"]["deploy"]["project"] == "company-P-production"
-    assert "company-P-staging" in fake.projects and "company-P-production" in fake.projects
+    assert prod["status"] == "deployed" and prod["evidence"]["deploy"]["project"] == "company-p-production"
+    assert "company-p-staging" in fake.projects and "company-p-production" in fake.projects
     assert orch.lead.state["T1"] == "released"
 
 

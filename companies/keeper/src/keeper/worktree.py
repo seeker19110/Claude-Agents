@@ -145,6 +145,15 @@ class KeeperWorktree:
         if delete_branch and _git(self.repo, "branch", "--list", self.branch):
             _git(self.repo, "branch", "-D", self.branch)
 
+    def commit_tracked(self, message: str) -> None:
+        """`git commit -a` TRONG worktree của ticket (I1 cho phép commit ở đây, không ở nơi nào khác). Chỉ file
+        đã được theo dõi — không vơ file lạ chưa track vào PR. Không hook (`NO_HOOKS`), chốt checkout chung
+        đứng trước."""
+        refuse_shared_checkout(self.path)
+        if not _git(self.path, "status", "--porcelain", "--untracked-files=no").strip():
+            return  # không có gì để commit (lần gọi lại sau khi đã commit) — không phải lỗi
+        _git(self.path, "commit", "-a", "-m", message)
+
     def discard_local_changes(self, target: Path | None = None) -> bool:
         """Bỏ sửa đổi chưa commit TRONG worktree của ticket. `target` chỉ để ca kiểm thử trỏ vào chỗ sai và
         chứng minh chốt bắt được; mã sản xuất luôn để mặc định."""

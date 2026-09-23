@@ -10,6 +10,7 @@ trong cùng tiến trình (test dựng vài bản trên cùng bus) phải có kh
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,6 +19,8 @@ from ..roles import LEAD_ACTOR, ROLE
 from ..tools import ToolBox, WorkspaceTools
 from ..workspace import Integration, TicketWorkspace, WorkspaceError, _git
 from .routes import BLIND_STRIP, MAX_CONFLICT_RETRIES, Route, key_for
+
+SAFE_TICKET_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
@@ -63,6 +66,9 @@ def has_integration(o: Orchestrator) -> bool:
 
 def workspace(o: Orchestrator, ticket_id: str) -> TicketWorkspace | None:
     """Worktree của ticket, rẽ từ nhánh tích hợp của DỰ ÁN chứa ticket (tạo nhánh tích hợp nếu chưa có)."""
+    # `ticket_id` do agent lập kế hoạch đặt, thành tên thư mục dưới `.worktrees/`: `..`/đường dẫn tuyệt đối sẽ
+    # biến "worktree" thành chính checkout của khách (hoặc chỗ bất kỳ) — chỉ nhận một đoạn tên an toàn.
+    if not SAFE_TICKET_ID.fullmatch(ticket_id): return None
     integ = o._integration_of_ticket(ticket_id)
     if integ is None or integ.repo is None: return None
     with o._ws_lock: integ.ensure()  # nhiều worker cùng tạo nhánh tích hợp lần đầu → tuần tự
