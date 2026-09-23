@@ -163,6 +163,14 @@ def test_json_hong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert reader.open_prs() is None
 
 
+def test_json_hong_o_ham_doc_khong_phai_cong_thi_rong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hàm đọc KHÔNG mở cổng nào (`workflow_runs`) vẫn giữ quy ước cũ: JSON hỏng → `[]`. Chỉ `open_prs`/
+    `merged_prs` (cổng I3) phân biệt "không biết"."""
+    spy = _RunSpy(stdout="khong-phai-json{{{")
+    reader = _reader(tmp_path, spy, monkeypatch)
+    assert reader.workflow_runs() == []
+
+
 def test_json_khong_phai_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     spy = _RunSpy(stdout=json.dumps({"not": "a list"}))
     reader = _reader(tmp_path, spy, monkeypatch)
