@@ -611,18 +611,40 @@ uv run python -m company.orchestrator takeover T-12 --by human:lead      # đã 
 Sau khi `ops` (pha `deploy`) deploy staging và `qa` (pha `review`) hồi quy pass, gate `release` mở; approve xong mới
 lên production. Khách ký nghiệm thu bằng `acceptance-results` qua `ops` (pha `account`) — gate `acceptance`, ADR-0017.
 
-#### Tự động qua gate rủi ro thấp (ADR-0011 §4, mặc định TẮT)
+#### Công ty tự duyệt release và nghiệm thu theo sàn chất lượng (ADR-0043, mặc định TẮT)
 
-`COMPANY_GATE_AUTOAPPROVE=1` bật đường code tự đóng gate khi bậc rủi ro (do `company/gate_risk.py:RISK_RULES`
-xếp — một bảng tra cứu được, không phải model tự khai) là `"low"`. **Bảng `RISK_RULES` khởi tạo RỖNG**: bật cờ
-này ngay bây giờ KHÔNG đổi hành vi gì cả — chưa có luật cứng nào để tự động qua, mọi gate vẫn chờ người y hệt
-hôm nay. Bảng chỉ có tác dụng sau khi một PR riêng (đi qua `sc-security`) thêm hàng đầu tiên.
+`COMPANY_GATE_AUTOAPPROVE=1` bật đường code tự đóng gate. Từ ADR-0043 bảng `company/gate_risk.py:RISK_RULES` có
+hai hàng: `release-quality-floor` và `acceptance-quality-floor`. Bật cờ nghĩa là: **sau khi người ký spec**,
+gate `release` (= lệnh deploy production) và gate nghiệm thu `UAT-*` được `code` tự `approve` khi — và chỉ khi —
+bằng chứng DO MÁY SINH đạt sàn cứng trong `company/quality_floor.py`:
 
-Khi có hàng rồi: gate khớp đúng một hàng `tier="low"` được `code` (actor mới, không phải `"orchestrator"`) tự
-`approve`, ghi `verified_by`-tương-đương qua `reason` mang tiền tố `auto-risk:<tên hàng>` trong `audit-log` —
-`gate_cli list`/`gate_brief` vẫn thấy được quyết định này (`decided_by == "code"`), chỉ khác là không ai phải
-gõ `approve` tay. Bật cờ là một quyết định có chủ ý của người vận hành, không phải mặc định — không đặt biến
-môi trường thì hành vi y hệt trước ADR-0011 giai đoạn 3.
+| Mã | Sàn (thiếu bất kỳ ⇒ chờ người) |
+|---|---|
+| R1 | mọi PR ticket của RC: lint + test xanh, `verified_by=workspace` |
+| R2 | sản phẩm chạy được ở đúng sha đã staged (hồi quy `evidence.run` hoặc deploy staging, `verified_by=orchestrator`) |
+| R3 | review QA trên release `pass`; security `pass` nếu RC có `risk_tags` hoặc dự án nâng `security_review` |
+| R4 | không finding nào được người miễn |
+| R5 | release chưa từng có escalation / quyết định khác approve |
+| A1–A2 | (nghiệm thu) gate release đã duyệt + deploy production do orchestrator chứng ở đúng sha |
+
+`spec` luôn cần người; `escalation` **không bao giờ** tự duyệt. Gate không đạt sàn vẫn chờ người như cũ, kèm một
+dòng `audit-log` `gate.auto_skipped` liệt kê khoảng trống — người ký đọc đó để biết vì sao máy không ký.
+
+**Nâng mức theo dự án lúc ký spec** (chỉ siết, không nới):
+
+```bash
+uv run python -m company.gate_cli approve SPEC-<dự án> --by human:<tên> --reason "<root_cause — decision — hint>" \
+    --quality-bar release=human,acceptance=human,security_review=required
+```
+
+`release=human` — dự án này release/production luôn do người ký; `acceptance=human` — khách phải tự ký nghiệm thu;
+`security_review=required` — mọi RC phải có review security `pass`. Khoá lạ ⇒ CLI từ chối và spec **chưa** được ký.
+
+**Nghiệm thu do máy không phải chữ ký khách**: máy không ghi `acceptance-results`; gate `UAT-*` đóng dưới actor
+`code` (audit `acceptance.auto`). Khách ký `rejected`/`conditional` sau đó thì chữ ký khách thắng: orchestrator
+ghi `acceptance.overridden` và mở gate `escalation` trên release cho người quyết.
+
+Bật cờ là quyết định có chủ ý của người vận hành. Không đặt biến ⇒ hành vi y hệt trước ADR-0011 giai đoạn 3.
 
 ### 5.4 Nhìn vào bên trong
 
