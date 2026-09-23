@@ -122,7 +122,8 @@ def test_hop_dong_env_da_qua_clean_env(tmp_path, idx, monkeypatch):
 def test_hop_dong_spawn_handle(tmp_path, idx):
     proc = FakeProc(codes=(None, 3))
     popen = FakePopen(proc)
-    sb = [SubprocessSandbox(popen=popen), ContainerSandbox("docker", "img", popen=popen)][idx]
+    # runner giả: kill() của container còn gọi `docker rm -f <tên>` — test không được chạm docker thật.
+    sb = [SubprocessSandbox(popen=popen), ContainerSandbox("docker", "img", runner=FakeRunner(), popen=popen)][idx]
     h = sb.spawn(spec(tmp_path, network=True, port=8123))
     assert h.poll() is None
     assert h.poll() == 3
@@ -161,8 +162,10 @@ def test_container_argv_mac_dinh_khong_mang(tmp_path, monkeypatch):
     runner = FakeRunner()
     sb = ContainerSandbox("docker", "python:3.12-slim", runner=runner, env_via_stdin=True)
     sb.run(spec(tmp_path))
-    assert runner.calls[0]["argv"] == [
-        "docker", "run", "--rm", "--pids-limit", "256", "--cpus", "2", "--memory", "2g",
+    argv = runner.calls[0]["argv"]
+    name = argv[argv.index("--name") + 1]   # tên sinh mỗi lần chạy để dọn được container khi timeout/kill
+    assert name.startswith("xagents-") and argv == [
+        "docker", "run", "--rm", "--name", name, "--pids-limit", "256", "--cpus", "2", "--memory", "2g",
         "-u", "1000:1000", "-v", f"{tmp_path}:/w:rw", "-w", "/w", "--env-file", "-",
         "--network", "none", "python:3.12-slim", "pytest", "-q"]
     assert sb.name == "container:python:3.12-slim"

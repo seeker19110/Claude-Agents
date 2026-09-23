@@ -30,6 +30,7 @@ import os
 import re
 import shutil
 import subprocess
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -104,9 +105,10 @@ def sanitize_env(env: dict[str, str] | None) -> dict[str, str]:
 class _ProcHandle:
     """Bọc `Popen` đúng vòng đời: poll → kill → communicate(timeout=5) → đuôi stderr."""
 
-    def __init__(self, proc: Any):
+    def __init__(self, proc: Any, on_kill: Any = None):
         self.proc = proc
         self._tail = ""
+        self._on_kill = on_kill
 
     def poll(self) -> int | None:
         rc = self.proc.poll()
@@ -114,6 +116,8 @@ class _ProcHandle:
 
     def kill(self) -> None:
         self.proc.kill()
+        if self._on_kill is not None:
+            self._on_kill()
 
     def stderr_tail(self, n: int) -> str:
         if not self._tail:
@@ -147,6 +151,11 @@ class SubprocessSandbox:
                                        encoding="utf-8", errors="replace"))
 
 
+def _container_name() -> str:
+    """Tên riêng mỗi lần chạy: không có `--name` thì container bỏ lại sau timeout không gọi tên được để dọn."""
+    return f"xagents-{uuid.uuid4().hex[:16]}"
+
+
 class ContainerSandbox:
     """`docker`/`podman run --rm` với cwd mount vào `/w`, mạng tắt, hạn mức pid/cpu/ram.
 
@@ -175,8 +184,16 @@ class ContainerSandbox:
             return None
         return f"{getuid()}:{getgid()}"
 
-    def _argv(self, spec: RunSpec) -> list[str]:
-        base = [self.runtime, "run", "--rm", "--pids-limit", "256", "--cpus", self.cpus, "--memory", self.memory]
+    def _remove(self, name: str) -> None:
+        """Giết client `docker run` KHÔNG dừng container — nó sống tiếp dưới daemon. Dọn theo tên, nỗ lực tốt
+        nhất: binary biến mất hay `rm` treo không được che kết quả timeout/kill của lệnh chính."""
+        try:
+            self._runner([self.runtime, "rm", "-f", name], capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    def _argv(self, spec: RunSpec, name: str) -> list[str]:
+        base = [self.runtime, "run", "--rm", "--name", name, "--pids-limit", "256", "--cpus", self.cpus, "--memory", self.memory]
         uid = self._uid()
         if uid: base += ["-u", uid]
         base += ["-v", f"{spec.cwd}:/w:{'ro' if spec.read_only else 'rw'}", "-w", "/w"]
@@ -199,21 +216,24 @@ class ContainerSandbox:
         return "\n".join(f"{k}={v}" for k, v in sanitize_env(spec.env).items() if "\n" not in v)
 
     def run(self, spec: RunSpec) -> Result:
+        name = _container_name()
         try:
-            r = self._runner(self._argv(spec), input=self._input(spec), capture_output=True, text=True,
+            r = self._runner(self._argv(spec, name), input=self._input(spec), capture_output=True, text=True,
                              encoding="utf-8", errors="replace", timeout=spec.timeout)
         except subprocess.TimeoutExpired:
+            self._remove(name)
             return Result(None, "", f"quá {spec.timeout}s", True, self.name)
         return Result(int(r.returncode), (r.stdout or "")[-spec.max_output:], (r.stderr or "")[-spec.max_output:],
                       False, self.name)
 
     def spawn(self, spec: RunSpec) -> Handle:
-        proc = self._popen(self._argv(spec), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+        name = _container_name()
+        proc = self._popen(self._argv(spec, name), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                            stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
         if proc.stdin is not None:
             proc.stdin.write(self._input(spec))
             proc.stdin.close()
-        return _ProcHandle(proc)
+        return _ProcHandle(proc, on_kill=lambda: self._remove(name))
 
 
 def sandbox_from_settings(mode: str, runtime: str, image: str, env_var: str,
