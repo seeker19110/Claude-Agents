@@ -61,11 +61,12 @@ from .events import Envelope
 from .gate_cli import PersistentGate
 from .gates import gate_approvers
 from .llm import LLMError, ModelClient, TransientError
-from .orch import fsm, gates_flow, rehydrate, release_fsm, scheduler, ticket_fsm, verify, worktree_flow
+from .orch import fsm, gates_flow, guards, rehydrate, release_fsm, scheduler, ticket_fsm, verify, worktree_flow
 from .orch.cli import main, source_fingerprint
 from .orch.enrich import _with_chan_doan as _with_chan_doan
 from .orch.enrich import _with_diff as _with_diff
 from .orch.guards import _can_author_tests as _can_author_tests
+from .orch.guards import _cycle as _cycle
 from .orch.guards import _dict_of, pending_clarifications
 from .orch.guards import _has_dispute as _has_dispute
 from .orch.guards import _test_scope_ok as _test_scope_ok
@@ -87,7 +88,6 @@ from .orch.routes import SPEC_RUNTIME_REWORKS as SPEC_RUNTIME_REWORKS
 from .orch.routes import THREAT_ROUTE as THREAT_ROUTE
 from .orch.routes import spec_runtime_gap as spec_runtime_gap
 from .orch.state import OrchState, install_aliases
-from .orch.ticket_fsm import _cycle as _cycle
 from .registry import AgentSpec, load_agents
 from .roles import ENGINEERING as ENGINEERING
 from .routing import retry_after_seconds
@@ -293,7 +293,7 @@ class Orchestrator:
     _plan = ticket_fsm._plan
     _spec_runtime_missing = ticket_fsm._spec_runtime_missing
     _threat_model = ticket_fsm._threat_model
-    _check_plan = ticket_fsm._check_plan
+    _check_plan = guards._check_plan  # tách sang orch/guards.py (2026-09-22): ticket_fsm.py chạm trần 400 dòng
     _dispatch_plan = ticket_fsm._dispatch_plan
 
     # ---------- máy trạng thái RELEASE (ADR-0034: orch/release_fsm.py) ----------
