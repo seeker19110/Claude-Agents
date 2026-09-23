@@ -53,11 +53,14 @@ def _state(o: Orchestrator) -> dict:
             "runtime": dict(o.spec_runtime_reworks)}
 
 
-@pytest.mark.parametrize(("action", "ev"), FORGED, ids=[a for a, _ in FORGED])
-@pytest.mark.parametrize("env_actor", [ROLE.QA, ROLE.PRODUCT, ROLE.OPS])
+# (`plan.proposed`, product) KHÔNG nằm trong bảng: product là người ghi thật của nó (orchestrator ghi dưới tên
+# product) — đường giả qua route product bị lớp 1 chặn (`test_route_change_request_ep_action_change_impact`).
+_CASES = [(a, ev, actor) for a, ev in FORGED for actor in (ROLE.QA, ROLE.PRODUCT, ROLE.OPS)
+          if (a, actor) != ("plan.proposed", ROLE.PRODUCT)]
+
+
+@pytest.mark.parametrize(("action", "ev", "env_actor"), _CASES, ids=[f"{a}-{x}" for a, _, x in _CASES])
 def test_rehydrate_khong_ap_action_do_sai_nguoi_ghi(tmp_path, action, ev, env_actor):
-    if (action, env_actor) in {("plan.proposed", ROLE.PRODUCT)}:
-        pytest.skip("người ghi thật của plan.proposed là product (orchestrator ghi dưới tên product) — lớp 1 chặn")
     db = tmp_path / "c.sqlite"
     SQLiteBus(db).close()
     sach = _state(Orchestrator(SQLiteBus(db), FakeClient(handler=handler)))
