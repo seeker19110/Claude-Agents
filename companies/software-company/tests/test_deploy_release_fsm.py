@@ -328,3 +328,21 @@ def test_hoi_quy_qa_chay_dung_sha_da_staged(tmp_path, monkeypatch):
     run = ov.regression_run(orch, ev)
     assert run["sha"] == staged and _git(roots[-1], "rev-parse", "HEAD") == staged
     assert not (roots[-1] / "chua_ky.py").exists()
+
+
+def test_tool_chi_doc_cua_qa_hoi_quy_nhin_dung_sha_da_staged(tmp_path, monkeypatch):
+    """Cùng họ lỗi (luật 5): QA hồi quy đọc code qua tool chỉ đọc — phải thấy đúng thứ đã staged, không phải
+    ticket merge vào nhánh tích hợp SAU staging."""
+    from company.orch import verify as ov
+    from company.tools import ToolCall
+    fn, _ = _fake_deploy(monkeypatch)
+    bus, orch = _orch(tmp_path, _repo(tmp_path), deploy_fn=fn, runtime=RUNTIME)
+    orch.run()
+    _merge_sau_staging(orch)
+    ev = next(e for e in bus.replay(topic="release-events") if e.payload.get("env") == "staging")
+    tb = orch._read_only_tools(ev)
+    assert tb is not None
+    rid = str(ev.payload["release_id"])
+    root = ov._release_root(orch, rid, orch._integration_of_release(ev))
+    assert "chua_ky.py" not in tb.call(ToolCall(id="1", name="list_files", args={"path": ".", "glob": "*"}))
+    assert (root / "chua_ky.py").exists() is False
