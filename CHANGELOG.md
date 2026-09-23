@@ -9,6 +9,15 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 - fix(company): **audit 2026-09-23 — năm lỗi đã tái hiện, sửa kèm test đỏ trước** (#320). (1) `glob` của `list_files`/`search` thoát khỏi worktree bằng `../*` (đọc được repo khách, `company.sqlite`); (2) `ticket_id` do agent đặt như `..`/đường dẫn tuyệt đối biến worktree thành checkout của khách — nay `workspace()` trả `None`; (3) tên compose project giữ chữ hoa (`company-QLKH-staging`) nên compose từ chối, mọi deploy compose đều hỏng — nay hạ chữ thường; (4) keeper `bump_dependency` không có ranh giới tên gói (`pytest` sửa cả `pytest-cov`, `[tool.pytest.ini_options]`) và coi `new_spec` là mẫu regex; (5) gateway: refresh token gặp 429/5xx bị coi là Google từ chối → cooldown 5 phút cả pool. Danh sách lỗi còn lại chưa sửa ở `docs/sessions/2026-09-23.md`.
 - build(deps): bump `ruff` 0.16.6 → 0.16.7 (dependabot) (#316)
 - build(deps): bump `anthropic` 1.4.0 → 1.5.0 (dependabot) (#317)
+- fix(company): **kế hoạch thiếu `risk_tags` tự sửa thay vì `plan_rejected` cả kế hoạch; thêm tiêu chí phá thế
+  bế tắc cho gate** (#TBD). Đo thật 2026-09-22 (CAMPUS-UNI): `_check_plan` từ chối cả kế hoạch 2 lần liên tiếp
+  chỉ vì một ticket thiếu `risk_tags` suy được thẳng từ `RISK_HINTS` — mỗi lần tốn một lượt `product[plan]`
+  đầy đủ (model thật) để sinh lại từ đầu. Nay `HINT_TO_TAG` (`events.py`) ánh xạ hint đã biết sang đúng tag,
+  `_check_plan` tự gắn và ghi audit `risk_tags_autofixed` thay vì từ chối; hint không suy được tag vẫn bị từ
+  chối như cũ, không đoán bừa. `_check_plan`/`_cycle` dời từ `ticket_fsm.py` (đã 479 dòng, vượt trần 400) sang
+  `orch/guards.py`. Kèm `gates/checklists.md`: một tiêu chí chung cho mọi gate — bằng chứng mơ hồ giữa nhiều
+  phương án kỹ thuật hợp lệ thì nghiêng về chất lượng cao nhất và phiên bản/nền tảng mới nhất đã ổn định (≥3
+  tháng).
 - fix(company): **audit 2026-09-22 — ba lỗ cơ chế và một lớp tài liệu trôi** (#319). (1) Dự án chờ người trả lời câu hỏi làm rõ nay hiện ở `status.clarifications_pending` + `warnings`, và ở hàng đợi gate của console (`CLARIFY-<pid>`, `decidable=false`) — trước đó pha intake/research/spec mù hoàn toàn (CAMPUS-UNI đứng im từ 13:11, không ai biết). (2) `_superseded_release` nhận RC trùng ở CUỐI danh sách (TRAPS "chưa vá" từ 09-10): void thay vì đá ticket đã giao về rework. (3) Khoá `uat:{rid}` mang thế hệ `event_id`: deploy lại sau khi khách từ chối mở lại gate nghiệm thu. (4) Cổng mới `test_codemap_duong_dan.py`: mọi đường dẫn backtick trong `CODEMAP.md`/`ARCHITECTURE.md`/`CLAUDE.md` của company phải tồn tại — bắt 14 đường dẫn sai sau lần dời `platform/`; sửa kèm ARCHITECTURE (ADR 0001–0042), README package (deploy đã nối vào release; 1282 ca / 77 file), 4 ADR trỏ file đã dời vào `docs/archive/`, ghi chú đối chiếu ADR-0033/0034/0036, `thresholds.yaml` nói rõ "100%" là replay chứ không phải `score`. `_deadlock_warnings` dời sang `orch/scheduler.py` (K1.8).
 - fix(gateway): **ghi file token không còn mất im lặng trên Windows; README hết conflict marker** (#318).
   `os.replace` thỉnh thoảng trả `WinError 5` khi Defender/indexer giữ file đích; `_update_account_fields` nuốt

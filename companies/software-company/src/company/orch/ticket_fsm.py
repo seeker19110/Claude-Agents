@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..events import BUDGET_FACTOR, MAX_TICKET_TOKENS, RISK_HINTS, Envelope, Task
+from ..events import Envelope, Task
 from ..gate_risk import request_gate
 from ..gates import GateRequest
 from ..llm import LLMError, TransientError
@@ -205,41 +205,6 @@ def _threat_model(o: Orchestrator, env: Envelope, sid: str, res: StepResult) -> 
         res.actions.append(f"spec_blocked:{sid}"); return False
     res.actions.append(f"threat-model:{sid}:{p['verdict']}"); return True
 
-def _check_plan(o: Orchestrator, tickets: list[Task], project: str) -> list[str]:
-    """ADR-0037 PR-1: mọi khoá "Code gửi kèm" của gate plan cũ trở thành một kiểm ở đây, để PR-2 bỏ gate mà
-    không mất kiểm nào (`docs/DAC-TA-TRIEN-KHAI-ADR-0037.md` §2)."""
-    ids = {t.ticket_id for t in tickets}; known = ids | set(o.lead.tickets)
-    problems = ["kế hoạch rỗng"] if not tickets else []
-    if len(ids) != len(tickets): problems.append("ticket_id trùng")
-    for t in tickets:
-        if t.ticket_id in o.lead.tickets: problems.append(f"{t.ticket_id} đã tồn tại")
-        if t.estimate_tokens is None: problems.append(f"{t.ticket_id} thiếu estimate_tokens")
-        elif t.budget_tokens < t.estimate_tokens * BUDGET_FACTOR: problems.append(f"{t.ticket_id} budget < estimate×{BUDGET_FACTOR}")
-        if not t.acceptance: problems.append(f"{t.ticket_id} thiếu acceptance")
-        # ADR-0037 §4.2: `stack` chọn bộ skill mà `builder` được nạp cho ticket này. Kiểm ở ĐÂY chứ không đặt
-        # `required` trong `tasks.json` (§13): bus từ chối một ticket là kế hoạch chết giữa chừng — vài ticket đã
-        # publish, phần còn lại rơi vào `invalid_output` — còn ở đây cả kế hoạch bị trả về cho `product` sửa,
-        # kèm tên ticket thiếu. Thiếu `stack` mà lọt xuống builder thì ticket chạy bằng prompt chung, không ai đỏ.
-        if not t.stack: problems.append(f"{t.ticket_id} thiếu stack")
-        unknown = [d for d in t.depends_on if d not in known]
-        if unknown or t.ticket_id in t.depends_on: problems.append(f"{t.ticket_id} depends_on sai {unknown or 'chính nó'}")
-        if t.estimate_days > 1 or (t.estimate_tokens is not None and t.estimate_tokens > MAX_TICKET_TOKENS):
-            problems.append(f"{t.ticket_id} quá 1 ngày/200k token: chia nhỏ")
-        text = " ".join((t.title, " ".join(t.scope), " ".join(t.acceptance))).lower()
-        if not t.risk_tags and any(hint in text for hint in RISK_HINTS):
-            hit = next(hint for hint in RISK_HINTS if hint in text)
-            problems.append(f"{t.ticket_id} chạm {hit} nhưng không có risk_tags")
-    sid = f"SPEC-{project}"
-    if sid in o.missing_threat_model or o.latest("review-results", sid) is None:
-        problems.append(f"thiếu threat model cho {sid}")
-    if o.blackboard:
-        have = o.blackboard.snapshot(project)
-        for ns in ("architecture", "api-contract"):
-            if ns not in have: problems.append(f"blackboard thiếu {ns}")
-    cyc = _cycle({t.ticket_id: [d for d in t.depends_on if d in ids] for t in tickets})
-    if cyc: problems.append("depends_on vòng: " + " → ".join(cyc))
-    return problems
-
 def _dispatch_plan(o: Orchestrator, plan_id: str, replaying: bool = False) -> list[str]:
     plan = o.plans[plan_id]
     # Phát lại đọc bản ghi CŨ (`Task.tu_log` khoan dung với từ vựng trước PR-5d); kế hoạch MỚI do model
@@ -257,20 +222,6 @@ def _dispatch_plan(o: Orchestrator, plan_id: str, replaying: bool = False) -> li
     finally:
         o.lead.replaying = prev
     return done
-
-
-def _cycle(graph: dict[str, list[str]]) -> list[str]:
-    """Một chu trình trong đồ thị phụ thuộc (rỗng nếu không có) — bắt ở bước lập kế hoạch, trước gate, không để tới dispatch."""
-    state: dict[str, int] = {}; stack: list[str] = []
-    def visit(n: str) -> list[str]:
-        state[n] = 1; stack.append(n)
-        for m in graph.get(n, []):
-            if state.get(m) == 1: return [*stack[stack.index(m):], m]
-            if m not in state and (c := visit(m)): return c
-        stack.pop(); state[n] = 2; return []
-    for n in graph:
-        if n not in state and (c := visit(n)): return c
-    return []
 
 
 # ---------- bảng chuyển giao (K1.7, orch/fsm.py) — dùng bởi Orchestrator.process() ----------
