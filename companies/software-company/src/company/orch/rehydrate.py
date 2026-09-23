@@ -32,7 +32,10 @@ def rehydrate(o: Orchestrator) -> None:
     for i, env in enumerate(log):
         if env.topic == "audit-log":
             a = env.payload; d = _evidence(a)
-            if a["action"] == "project.retried" and d.get("event_id"): last_retry[str(d["event_id"])] = (i, d)
+            # `event.retried` (`_retry_unhandled`) cùng họ với `project.retried`: lệnh chạy lại chỉ sống trong RAM,
+            # thiếu nó thì restart trước khi event chạy lại là dấu `orchestrated` của LẦN LỖI thắng (audit 2026-09-23).
+            if a["action"] in {"project.retried", "event.retried"} and d.get("event_id"):
+                last_retry[str(d["event_id"])] = (i, d)
             if a["actor"] == ACTOR and a["action"] == "orchestrated":
                 o.processed.add(d["event_id"]); last_done[str(d["event_id"])] = i
             elif a["actor"] == ACTOR and a["action"] == "once": o.once.add(d["key"])
