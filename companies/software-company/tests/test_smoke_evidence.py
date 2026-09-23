@@ -348,7 +348,8 @@ def test_regression_staging_giu_pass_va_mang_evidence_run_khi_smoke_200(tmp_path
     run = qa[-1]["evidence"]["run"]
     assert run["ok"] is True and run["http_status"] == 200 and run["verified_by"] == "orchestrator"
     assert run["command"] == OK["command"] and run["sha"], "lệnh thật và sha RC: người ký Gate 3 biết CÁI GÌ đã chạy"
-    assert len(calls) == 2 and all(str(c).endswith("_integration") for c in calls), "một lần cho deployed, một lần cho QA — cùng worktree tích hợp"
+    assert len(calls) == 2 and str(calls[0]).endswith("_integration"), "một lần cho deployed (worktree tích hợp)..."
+    assert calls[1].name == run["sha"], "...một lần cho QA — ở checkout ĐÚNG sha đã staged, không ở đầu nhánh (audit 2026-09-23)"
     acts = _acts(bus)
     assert "regression.run" in acts and "regression.run_failed" not in acts and "regression.verdict_overridden" not in acts
     g = orch.gate.pending.get("REL-001")

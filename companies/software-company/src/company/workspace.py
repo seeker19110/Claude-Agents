@@ -395,6 +395,19 @@ class Integration:
     def sha(self) -> str:
         return _git(self.repo, "rev-parse", "--short", self.branch)
 
+    def checkout_at(self, sha: str) -> Path:
+        """Worktree tách rời (detached) ở ĐÚNG `sha` — nơi deploy/hồi quy chạy thứ đã staged, không phải đầu nhánh
+        tích hợp vốn tiếp tục nhận merge của ticket approved sau staging (audit 2026-09-23). Thư mục đặt theo sha
+        đầy đủ nên không bao giờ phải checkout lại và không va nhau giữa các RC; đã có thì dùng lại."""
+        full = _git(self.repo, "rev-parse", "--verify", f"{sha}^{{commit}}")
+        # no-ky-thuat: một thư mục mỗi sha đã staged không bao giờ dọn, ổn tới vài chục release, quay lại khi .worktrees/_releases vượt ~50 thư mục hoặc repo khách lớn hơn ~100MB
+        path = self.repo / ".worktrees" / "_releases" / full
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            exclude_worktrees(self.repo)
+            _git(self.repo, "worktree", "add", "--detach", str(path), full)
+        return path
+
     def rev_list_count(self, ticket_branch: str) -> int:
         """Số commit của `ticket_branch` chưa có trong nhánh tích hợp (0 = không có gì mới để merge)."""
         self.ensure()

@@ -282,3 +282,49 @@ def test_production_deploy_failed_thi_khong_giao_hang(tmp_path, monkeypatch):
     assert prod["status"] == "deploy_failed"
     assert orch.delivered == {}, "chưa chạy được thì chưa giao hàng"
     assert orch.lead.state["T1"] == "merged", "không lên `released`"
+
+
+# ---------- đúng sha đã staged (audit 2026-09-23) ----------
+
+def _merge_sau_staging(orch) -> str:
+    """Ticket khác approved SAU khi RC đã staged: `integrate_approved` merge nó ngay vào nhánh tích hợp, nên đầu
+    nhánh chạy trước `release_sha[rid]`. Trả về sha đã staged."""
+    integ = orch.integration
+    (integ.path / "chua_ky.py").write_text("X = 1\n", encoding="utf-8")
+    _git(integ.path, "add", "-A"); _git(integ.path, "commit", "-q", "-m", "merge(T9): chua qua staging")
+    staged = orch.release_sha["REL-001"]
+    assert integ.rev(integ.branch) != staged
+    return staged
+
+
+def test_production_deploy_dung_sha_da_staged_khong_phai_dau_nhanh_tich_hop(tmp_path, monkeypatch):
+    """Audit 2026-09-23: production deploy chạy trong `_integration` (đầu nhánh) chứ không ở `release_sha[rid]` —
+    ticket approved sau staging lên production mà chưa qua staging/QA/Gate 3; tag thì lại ở sha staged."""
+    fn, _ = _fake_deploy(monkeypatch)
+    roots: list[Path] = []
+    def ghi(root, *a, **k):
+        roots.append(Path(root)); return fn(root, *a, **k)
+    bus, orch = _orch(tmp_path, _repo(tmp_path), deploy_fn=ghi, runtime=RUNTIME)
+    orch.run()
+    staged = _merge_sau_staging(orch)
+    orch.gate.decide("REL-001", "approve", by="human:release-manager", reason="staging xanh — deploy production")
+    orch.run()
+    assert _rel(bus, "production")[-1]["status"] == "deployed"
+    prod_root = roots[-1]
+    assert _git(prod_root, "rev-parse", "HEAD") == staged, "production chạy đúng sha đã staged"
+    assert not (prod_root / "chua_ky.py").exists(), "code chưa qua staging không được lên production"
+
+
+def test_hoi_quy_qa_chay_dung_sha_da_staged(tmp_path, monkeypatch):
+    """Cùng lỗi ở `regression_run`: smoke chạy trên đầu nhánh tích hợp nhưng bằng chứng lại ghi `sha` đã staged."""
+    from company.orch import verify as ov
+    fn, _ = _fake_deploy(monkeypatch)
+    bus, orch = _orch(tmp_path, _repo(tmp_path), deploy_fn=fn, runtime=RUNTIME)
+    orch.run()
+    staged = _merge_sau_staging(orch)
+    roots: list[Path] = []
+    monkeypatch.setattr(ov, "run_smoke", lambda root, rt, sandbox=None: roots.append(Path(root)) or {"ok": True})
+    ev = next(e for e in bus.replay(topic="release-events") if e.payload.get("env") == "staging")
+    run = ov.regression_run(orch, ev)
+    assert run["sha"] == staged and _git(roots[-1], "rev-parse", "HEAD") == staged
+    assert not (roots[-1] / "chua_ky.py").exists()

@@ -5,6 +5,7 @@ trong test cũ không đổi.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..deploy import DeployError, project_name
@@ -113,6 +114,15 @@ def _escalate(o: Orchestrator, rid: str) -> None:
                                       checklist=["root_cause", "decision:redeploy|close", "hint"]))
 
 
+def _release_root(o: Orchestrator, rid: str, integ: Integration) -> Path:
+    """Thư mục chứa ĐÚNG thứ đã staged cho `rid`: `release_sha[rid]` (thứ QA hồi quy, người ký Gate 3 và `deliver`
+    gắn tag). Đầu nhánh tích hợp thì KHÔNG: `integrate_approved` merge ngay mọi ticket vừa approved, nên sau staging
+    nó có thể chứa code chưa qua staging/QA/Gate 3 (audit 2026-09-23). Chưa staged (không có sha) → worktree
+    tích hợp như cũ."""
+    sha = o.release_sha.get(rid)
+    return integ.checkout_at(sha) if sha else integ.path
+
+
 def deploy_release(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[str, Any],
                    integ: Integration | None, target_env: str) -> dict[str, Any]:
     """ADR-0039: `deployed` là **container đang chạy**, không phải lời khai. `p["status"] == "deployed"` lúc vào đây
@@ -144,7 +154,7 @@ def deploy_release(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[
         d["skipped"] = "không có worktree tích hợp (dự án chạy không repo)"
     else:
         try:
-            rec = o.deploy_fn(integ.path, pid or rid, target_env, rt)
+            rec = o.deploy_fn(_release_root(o, rid, integ), pid or rid, target_env, rt)
         except DeployError as e:
             # Fail-closed của ADR-0039 quyết định 4 (`COMPANY_DEPLOY=compose` mà thiếu binary): người vận hành
             # khai đích danh nên đây là LỖI, không phải "coi như xong" — nhưng nó không được giết orchestrator.
@@ -193,7 +203,8 @@ def regression_run(o: Orchestrator, env: Envelope) -> dict[str, Any]:
         run = {**unverified("runtime.deploy đã khai (ADR-0039/0040) — bằng chứng thật do deploy() cung cấp, "
                            "không chạy smoke trần"), "spec_kind": kind, "deploy_declared": True}
     else:
-        run = {**run_smoke(integ.path, rt, sandbox=o.sandbox), "sha": o.release_sha.get(rid) or integ.sha(), "spec_kind": kind}
+        run = {**run_smoke(_release_root(o, rid, integ), rt, sandbox=o.sandbox), "sha": o.release_sha.get(rid) or integ.sha(),
+               "spec_kind": kind}
         o._audit("regression.run", {"release_id": rid, **run}, project_id=pid)
         return run
     o._audit("regression.run_unverified", {"release_id": rid, "reason": run["reason"], "spec_kind": kind},
