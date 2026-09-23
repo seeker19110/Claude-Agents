@@ -2,9 +2,12 @@
 threat model, architecture/api-contract trên blackboard) TRƯỚC khi plan tới người duyệt — vì PR-2 bỏ hẳn gate
 plan và các khoá này sẽ không còn ai kiểm nếu không nằm trong `_check_plan`
 (`docs/DAC-TA-TRIEN-KHAI-ADR-0037.md` §2)."""
+
 from __future__ import annotations
 
-import company.orch.ticket_fsm as ticket_fsm
+import json
+
+import company.orch.guards as guards
 from company.bus import InMemoryBus
 from company.events import Envelope, ReviewResult, Task
 from company.llm import FakeClient
@@ -16,15 +19,30 @@ def _orch() -> Orchestrator:
 
 
 def _task(**kw) -> Task:
-    base = dict(ticket_id="T1", project_id="P1", requirement_id="REQ-1", assignee="builder", stack="backend", title="x",
-                acceptance=["given/when/then"], estimate_tokens=4_000, budget_tokens=6_000)
+    base = dict(
+        ticket_id="T1",
+        project_id="P1",
+        requirement_id="REQ-1",
+        assignee="builder",
+        stack="backend",
+        title="x",
+        acceptance=["given/when/then"],
+        estimate_tokens=4_000,
+        budget_tokens=6_000,
+    )
     base.update(kw)
     return Task(**base)
 
 
 def _satisfy_threat_and_blackboard(o: Orchestrator, project: str = "P1") -> None:
-    o.bus.publish(Envelope(topic="review-results", key=f"SPEC-{project}", actor="security",
-                            payload=ReviewResult(ticket_id=f"SPEC-{project}", source="security", verdict="pass").model_dump()))
+    o.bus.publish(
+        Envelope(
+            topic="review-results",
+            key=f"SPEC-{project}",
+            actor="security",
+            payload=ReviewResult(ticket_id=f"SPEC-{project}", source="security", verdict="pass").model_dump(),
+        )
+    )
     o.blackboard.write("product", "architecture", "docs/c4.md", "L1-L2", project_id=project)
     o.blackboard.write("product", "api-contract", "openapi.yaml", "v1", project_id=project)
 
@@ -35,6 +53,7 @@ def _baseline_ok(o: Orchestrator, project: str = "P1") -> list[Task]:
 
 
 # ---------- thiếu `stack` (ADR-0037 §4.2, PR-5e) ----------
+
 
 def test_ticket_thieu_stack_bi_tu_choi(monkeypatch):
     """`stack` chọn bộ skill của `builder` cho lượt ấy (`routes.phase_for`), nên ticket thiếu `stack` được làm
@@ -48,14 +67,17 @@ def test_ticket_thieu_stack_bi_tu_choi(monkeypatch):
     tickets[0] = _task(stack="frontend")
     assert not any("thiếu stack" in p for p in o._check_plan(tickets, "P1"))
     # tắt bản sửa: bỏ đúng dòng kiểm → ticket thiếu `stack` đi lọt, chứng minh test đo đúng dòng đó
-    goc = ticket_fsm._check_plan
+    goc = guards._check_plan
+
     def khong_kiem_stack(o_, tickets_, project):
         return [p for p in goc(o_, tickets_, project) if "thiếu stack" not in p]
-    monkeypatch.setattr(ticket_fsm, "_check_plan", khong_kiem_stack)
+
+    monkeypatch.setattr(guards, "_check_plan", khong_kiem_stack)
     assert not any("thiếu stack" in p for p in khong_kiem_stack(o, [_task(stack=None)], "P1"))
 
 
 # ---------- ticket quá 1 ngày / 200k token ----------
+
 
 def test_ticket_qua_lon_bi_tu_choi():
     o = _orch()
@@ -94,35 +116,62 @@ def test_tat_kiem_token_thi_khong_con_problem(monkeypatch):
     o = _orch()
     tickets = _baseline_ok(o)
     tickets[0] = _task(estimate_tokens=250_000, budget_tokens=400_000)
-    monkeypatch.setattr(ticket_fsm, "MAX_TICKET_TOKENS", 10**9)
+    monkeypatch.setattr(guards, "MAX_TICKET_TOKENS", 10**9)
     problems = o._check_plan(tickets, "P1")
     assert not any("quá 1 ngày/200k token" in p for p in problems)
 
 
 # ---------- risk_tags ----------
 
-def test_risk_hint_khong_tag():
+
+def test_risk_hint_khong_tag_tu_dong_gan_thay_vi_tu_choi():
+    """Trước: ticket chạm từ khoá rủi ro mà quên khai risk_tags làm CẢ kế hoạch bị `plan_rejected`, dự án
+    đứng lại chờ người duyệt gate `escalation`, rồi `product` phải sinh lại TOÀN BỘ kế hoạch từ đầu (một lượt
+    model tốn tiền/thời gian) — dù việc thiếu chỉ là một khoá suy được thẳng từ `RISK_HINTS`. Đo thật
+    2026-09-22 (CAMPUS-UNI): plan bị từ chối 2 lần liên tiếp, mỗi lần một ticket khác nhau thiếu risk_tags.
+    Nay: gắn tag suy được và AUDIT lại (`risk_tags_autofixed`), không còn là `problems` — an toàn hơn hiện
+    trạng (tag được THÊM chứ không bớt, security review vẫn chạy), không tốn thêm lượt model nào."""
     o = _orch()
     tickets = _baseline_ok(o)
     tickets[0] = _task(title="Đăng nhập OAuth")
     problems = o._check_plan(tickets, "P1")
-    assert any("không có risk_tags" in p for p in problems)
+    assert not any("không có risk_tags" in p for p in problems)
+    assert tickets[0].risk_tags == ["auth"]
+    fixed = [
+        json.loads(e.payload["evidence"])
+        for e in o.bus.replay(topic="audit-log")
+        if e.payload.get("action") == "risk_tags_autofixed"
+    ]
+    assert fixed and fixed[0]["ticket_id"] == "T1" and fixed[0]["risk_tags"] == ["auth"]
 
     tickets[0] = _task(title="Đăng nhập OAuth", risk_tags=["auth"])
     problems = o._check_plan(tickets, "P1")
     assert not any("không có risk_tags" in p for p in problems)
+    assert tickets[0].risk_tags == ["auth"]  # đã có sẵn thì không đụng vào, không autofix thừa
+
+
+def test_risk_hint_khong_map_duoc_van_bi_tu_choi(monkeypatch):
+    """`HINT_TO_TAG` chưa phủ hết `RISK_HINTS` (bẫy đồng bộ hai bảng) → không đoán bừa, vẫn trả về `problems`
+    như hành vi cũ, để không lặng lẽ bỏ qua một hint không suy được tag."""
+    o = _orch()
+    tickets = _baseline_ok(o)
+    tickets[0] = _task(title="Đăng nhập OAuth")
+    monkeypatch.setattr(guards, "HINT_TO_TAG", {})
+    problems = o._check_plan(tickets, "P1")
+    assert any("không có risk_tags" in p for p in problems)
 
 
 def test_tat_risk_hints_thi_khong_con_problem(monkeypatch):
     o = _orch()
     tickets = _baseline_ok(o)
     tickets[0] = _task(title="Đăng nhập OAuth")
-    monkeypatch.setattr(ticket_fsm, "RISK_HINTS", frozenset())
+    monkeypatch.setattr(guards, "RISK_HINTS", frozenset())
     problems = o._check_plan(tickets, "P1")
     assert not any("không có risk_tags" in p for p in problems)
 
 
 # ---------- threat model ----------
+
 
 def test_thieu_threat_model():
     o = _orch()
@@ -131,8 +180,14 @@ def test_thieu_threat_model():
     problems = o._check_plan([_task()], "P1")
     assert any("thiếu threat model" in p for p in problems)
 
-    o.bus.publish(Envelope(topic="review-results", key="SPEC-P1", actor="security",
-                            payload=ReviewResult(ticket_id="SPEC-P1", source="security", verdict="pass").model_dump()))
+    o.bus.publish(
+        Envelope(
+            topic="review-results",
+            key="SPEC-P1",
+            actor="security",
+            payload=ReviewResult(ticket_id="SPEC-P1", source="security", verdict="pass").model_dump(),
+        )
+    )
     problems = o._check_plan([_task()], "P1")
     assert not any("thiếu threat model" in p for p in problems)
 
@@ -147,10 +202,17 @@ def test_missing_threat_model_set_cung_chan():
 
 # ---------- blackboard architecture / api-contract ----------
 
+
 def test_thieu_architecture_tren_blackboard():
     o = _orch()
-    o.bus.publish(Envelope(topic="review-results", key="SPEC-P1", actor="security",
-                            payload=ReviewResult(ticket_id="SPEC-P1", source="security", verdict="pass").model_dump()))
+    o.bus.publish(
+        Envelope(
+            topic="review-results",
+            key="SPEC-P1",
+            actor="security",
+            payload=ReviewResult(ticket_id="SPEC-P1", source="security", verdict="pass").model_dump(),
+        )
+    )
     problems = o._check_plan([_task()], "P1")
     assert any("blackboard thiếu architecture" in p for p in problems)
     assert any("blackboard thiếu api-contract" in p for p in problems)
@@ -165,8 +227,14 @@ def test_khong_co_blackboard_thi_bo_qua_kiem_architecture():
     """Dự án không có blackboard (`o.blackboard is None`) → không kiểm `architecture`/`api-contract`, không sập."""
     o = _orch()
     o.blackboard = None  # dự án không có blackboard (đo được: khách không cấu hình lưu trữ chung)
-    o.bus.publish(Envelope(topic="review-results", key="SPEC-P1", actor="security",
-                            payload=ReviewResult(ticket_id="SPEC-P1", source="security", verdict="pass").model_dump()))
+    o.bus.publish(
+        Envelope(
+            topic="review-results",
+            key="SPEC-P1",
+            actor="security",
+            payload=ReviewResult(ticket_id="SPEC-P1", source="security", verdict="pass").model_dump(),
+        )
+    )
     problems = o._check_plan([_task()], "P1")
     assert not any("blackboard thiếu" in p for p in problems)
 
