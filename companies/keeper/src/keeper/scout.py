@@ -104,6 +104,8 @@ def scan(repo: Path, gh: GitHubLike) -> list[Signal]:
     dev_names = dev_package_names(repo)
     out: list[Signal] = []
     for alert in gh.dependabot_alerts():
+        if alert.state != "open":  # fixed/dismissed không phải việc phải làm — cùng luật audit.dependabot_findings
+            continue
         m = _BUMP_RE.search(alert.summary)
         if not m:
             continue
