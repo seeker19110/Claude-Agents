@@ -103,6 +103,8 @@ class OrchState:
 
     # --- chỉ sống trong phiên ---
     stats: Counter[str] = field(default_factory=Counter, metadata=_src(RAM_ONLY))
+    # event_id → monotonic của lần hoãn `transient:` ĐẦU TIÊN; quá `scheduler.transient_limit()` là escalation
+    transient_since: dict[str, float] = field(default_factory=dict, metadata=_src(RAM_ONLY))
     # `watch(reload=True)` bật: `run()` kiểm mã đổi GIỮA hai lô, không chỉ lúc rỗng
     reload_on_change: bool = field(default=False, metadata=_src(RAM_ONLY))
 

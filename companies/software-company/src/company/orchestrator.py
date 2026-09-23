@@ -143,6 +143,7 @@ class Orchestrator:
         project_repos: dict[str, Integration]
         bad_repos: set[str]
         stats: Counter[str]
+        transient_since: dict[str, float]
         reload_on_change: bool
 
     def __init__(self, bus: InMemoryBus, client: ModelClient, agents: dict[str, AgentSpec] | None = None,
@@ -296,6 +297,7 @@ class Orchestrator:
     _plan = ticket_fsm._plan
     _spec_runtime_missing = ticket_fsm._spec_runtime_missing
     _threat_model = ticket_fsm._threat_model
+    _assume_clarifications = ticket_fsm._assume_clarifications
     _check_plan = guards._check_plan  # tách sang orch/guards.py (2026-09-22): ticket_fsm.py chạm trần 400 dòng
     _dispatch_plan = ticket_fsm._dispatch_plan
 
@@ -430,6 +432,7 @@ class Orchestrator:
     # ---------- lỗi agent không nhánh nào nhận, quyết định gate (ADR-0034: orch/gates_flow.py) ----------
 
     _after_error = gates_flow._after_error
+    _mark_unhandled = gates_flow._mark_unhandled
     _rework_after_error = gates_flow._rework_after_error
     _stall = gates_flow._stall
     _retry_stalled = gates_flow._retry_stalled

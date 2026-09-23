@@ -976,8 +976,10 @@ def test_security_block_on_spec_stops_planning():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=blocker))
     _pub(bus, "approved-specs", "P1", "product", {"project_id": "P1", "status": "pending_human", "kind": "library", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
-    assert not orch.plans and not orch.gate.pending
+    assert not orch.plans and "SPEC-P1" not in orch.gate.pending
     assert any(e.payload["action"] == "spec_blocked_by_security" for e in bus.replay(topic="audit-log"))
+    # 2026-09-23: chặn không còn im lặng — gate escalation của dự án mở cho người (test_tu_van_hanh_khong_ket_im_lang)
+    assert orch.gate.pending["P1"].kind == "escalation"
 
 
 def test_clarifier_without_questions_goes_straight_to_spec_writer():

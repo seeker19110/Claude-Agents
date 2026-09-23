@@ -290,6 +290,13 @@ def _after_error(o: Orchestrator, env: Envelope, agent: str, error: Exception, r
     handled = o._stall(env, agent, error, res)
     handled = o._rework_after_error(env, r, error) or handled
     if handled: return
+    o._mark_unhandled(env, agent, error, res)
+
+def _mark_unhandled(o: Orchestrator, env: Envelope, agent: str, error: object, res: StepResult) -> None:
+    """Đường cuối cho MỌI lỗi không nhánh nào nhận: ghi `unhandled` (bền qua `agent_error_unhandled`), supervisor
+    escalate → gate `escalation` mở cho người; duyệt gate = chạy lại đúng event này (`_retry_unhandled`).
+    Gọi từ `_after_error`, từ `_plan` khi lượt lập kế hoạch lỗi, từ `_threat_model` khi security chặn spec, và
+    từ `_defer` khi một event hoãn `transient:` quá trần — bốn chỗ audit 2026-09-23 đo được là kết thúc im lặng."""
     subject = str(env.payload.get("ticket_id") or env.key)
     rec = {"agent": agent, "topic": env.topic, "event_id": env.event_id, "subject": subject, "error": str(error)[:300]}
     with o._lock: o.unhandled[subject] = rec

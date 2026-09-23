@@ -7,6 +7,9 @@ Mỗi hàm nhận `o: Orchestrator` làm tham số đầu, gán làm method trê
 """
 from __future__ import annotations
 
+import json
+import os
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from ..events import Envelope, Task
@@ -16,6 +19,7 @@ from ..llm import LLMError, TransientError
 from ..roles import PHASE, ROLE, SOURCE
 from ..runner import RunnerError
 from .fsm import Transition
+from .guards import pending_clarifications
 from .routes import PLAN_INPUTS, SPEC_RUNTIME_REWORKS, spec_route, spec_runtime_gap
 
 if TYPE_CHECKING:
@@ -93,6 +97,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     except (RunnerError, LLMError) as e:
         res.actions.append(f"error:{ROLE.PRODUCT}:{str(e)[:120]}")
         with o._lock: o.stats["errors"] += 1
+        o._mark_unhandled(env, ROLE.PRODUCT, e, res)  # trước 2026-09-23: _mark rồi im — dự án chết mà status xanh
         o._mark(env, res); return res
     if g.context_writes:  # C4, API contract lên blackboard TRƯỚC `_check_plan` để nó thấy được (ADR-0037)
         o.runner.write_context(ROLE.PRODUCT, env, g.context_writes)
@@ -175,9 +180,35 @@ def _spec_runtime_missing(o: Orchestrator, env: Envelope, project: str, gap: str
                                       checklist=["spec_runtime", "decision:retry|close"]))
     o._mark(env, res); return res
 
+def clarify_timeout() -> timedelta:
+    """Người im lặng bao lâu thì orchestrator tự lấy `default` của từng câu hỏi làm câu trả lời. Đọc mỗi lần gọi
+    để `COMPANY_CLARIFY_TIMEOUT_H` đổi được giữa chừng (như `COMPANY_GATE_AUTOAPPROVE`). Mặc định 24 giờ."""
+    return timedelta(hours=float(os.environ.get("COMPANY_CLARIFY_TIMEOUT_H") or 24))
+
+def _assume_clarifications(o: Orchestrator, now: datetime | None = None) -> list[StepResult]:
+    """Câu hỏi làm rõ không ai trả lời quá `clarify_timeout()` → ghi `clarification.assumed` (câu nào, default nào)
+    rồi chạy pha `spec` từ `requirements-draft` với `assumed_answers` — cùng đường `_act_clarification_fallback`
+    (vòng ≥ 2 đã là "assumption" theo thiết kế). Người vẫn ký gate `spec`, nên giả định không đi xa hơn một PRD
+    chờ người đọc. Trước 2026-09-23 dự án đứng vô hạn, chỉ hiện ở `status.clarifications_pending`."""
+    now = now or datetime.now(UTC)
+    from ..orchestrator import StepResult  # nhập lười, như scheduler._integrate_pending
+    out: list[StepResult] = []
+    for pid, p in pending_clarifications(o.bus).items():
+        if now - datetime.fromisoformat(p["since"]) <= clarify_timeout(): continue
+        draft = o.latest("requirements-draft", pid)
+        if draft is None: continue  # không có draft thì không có gì để viết spec; `_spec_ready` đã audit `spec_writer.no_draft`
+        assumed = [{"question_id": q["id"], "answer": q["default"], "text": q["text"]} for q in p["questions"]]
+        o._audit("clarification.assumed", {"project_id": pid, "event_id": p["event_id"], "round": p["round"],
+                                           "since": p["since"], "assumed": assumed}, project_id=pid)
+        res = StepResult(draft.event_id, draft.topic, draft.key)
+        inp = draft.model_copy(update={"payload": {**draft.payload, "assumed_answers": assumed}})
+        o._call(ROLE.PRODUCT, inp, spec_route("requirements-draft"), res)
+        out.append(res)
+    return out
+
 def _threat_model(o: Orchestrator, env: Envelope, sid: str, res: StepResult) -> bool:
     """Agent `security` đọc spec đã duyệt: threat model v1 lên blackboard + review-results key=SPEC-*.
-    Verdict block → không lập kế hoạch (người sửa spec rồi publish lại). Trả về True nếu được đi tiếp."""
+    Verdict block → không lập kế hoạch; mở gate escalation (người sửa spec rồi duyệt, hoặc publish lại). Trả về True nếu được đi tiếp."""
     prior = o.latest("review-results", sid)
     if prior is not None and prior.payload.get("verdict") != "block":
         return True
@@ -202,7 +233,10 @@ def _threat_model(o: Orchestrator, env: Envelope, sid: str, res: StepResult) -> 
         return True
     if p["verdict"] == "block":
         o._audit("spec_blocked_by_security", {"subject_id": sid, "findings": p.get("findings", [])}, project_id=env.payload.get("project_id"))
-        res.actions.append(f"spec_blocked:{sid}"); return False
+        res.actions.append(f"spec_blocked:{sid}")
+        # Hỏi người qua gate thay vì chỉ audit: duyệt escalation = chạy lại event spec (threat model chấm lại).
+        o._mark_unhandled(env, ROLE.SECURITY, f"security chặn spec: {json.dumps(p.get('findings', []), ensure_ascii=False)[:200]}", res)
+        return False
     res.actions.append(f"threat-model:{sid}:{p['verdict']}"); return True
 
 def _dispatch_plan(o: Orchestrator, plan_id: str, replaying: bool = False) -> list[str]:
