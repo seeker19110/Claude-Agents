@@ -183,12 +183,28 @@ class Lease:
         self.held = False
 
     def acquire(self) -> None:
-        if self.path.exists():
-            try: pid = int(self.path.read_text(encoding="utf-8").strip() or "0")
-            except (ValueError, OSError): pid = 0
-            if pid != os.getpid() and _alive(pid):
-                raise LeaseError(f"orchestrator khác (pid {pid}) đang chạy trên {self.path.with_suffix('')}: "
-                                 f"dừng nó trước, hoặc xoá {self.path} nếu chắc chắn nó đã chết")
+        # Tạo mới NGUYÊN TỬ (O_EXCL): kiểm-rồi-ghi để hai tiến trình cùng thấy "chưa có lock" và cùng giữ bus.
+        try:
+            fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            self._take_over()
+            return
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(str(os.getpid()))
+        self.held = True
+
+    def _take_over(self) -> None:
+        try: raw = self.path.read_text(encoding="utf-8").strip()
+        except OSError: raw = "0"
+        if not raw:   # tồn tại mà rỗng: kẻ khác vừa O_EXCL xong, chưa kịp ghi pid — không phải lock cũ
+            raise LeaseError(f"lock {self.path} đang được tạo bởi tiến trình khác; thử lại, hoặc xoá nó nếu "
+                             f"chắc chắn không còn orchestrator nào")
+        try: pid = int(raw)
+        except ValueError: pid = 0
+        if pid != os.getpid() and _alive(pid):
+            raise LeaseError(f"orchestrator khác (pid {pid}) đang chạy trên {self.path.with_suffix('')}: "
+                             f"dừng nó trước, hoặc xoá {self.path} nếu chắc chắn nó đã chết")
+        # no-ky-thuat: chiếm lock cũ (pid chết) vẫn là đọc-rồi-ghi, hai tiến trình cùng khởi động đúng lúc lock cũ còn nằm đó có thể cùng chiếm, quay lại khi gặp chạy trùng sau crash hoặc cần khoá mức OS (fcntl/msvcrt)
         self.path.write_text(str(os.getpid()), encoding="utf-8"); self.held = True
 
     def release(self) -> None:
