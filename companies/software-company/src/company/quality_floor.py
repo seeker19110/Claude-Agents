@@ -12,12 +12,17 @@ dữ liệu, không phải một phép kẹp có thể quên ở chỗ gọi (AD
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+import json
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
+
+from xagents_core.bus import is_human
 
 MACHINE_PR = "workspace"
 MACHINE_RUN = "orchestrator"
+#: `audit-log` action mang mức nâng người đặt lúc ký spec (`gate_cli approve SPEC-<pid> --quality-bar ...`).
+BAR_ACTION = "quality.bar_set"
 
 
 @dataclass(frozen=True)
@@ -111,3 +116,31 @@ def floor_gaps(ev: QualityEvidence, bar: QualityBar) -> list[str]:
             gaps.append("A2: không có deploy production do orchestrator chứng ở đúng sha đã staged")
         return gaps + _release_gaps(ev, bar)
     return [f"gate {ev.kind!r} không bao giờ tự duyệt (ADR-0043)"]
+
+
+class _Replayable(Protocol):
+    def replay(self, topic: str | None = None, key: str | None = None) -> Iterable[Any]: ...
+
+
+def project_bar(bus: _Replayable, project_id: str) -> QualityBar:
+    """Mức nâng hiện hành của dự án: bản ghi `quality.bar_set` MỚI NHẤT đáng tin (actor là người và khớp `by`).
+
+    Bản ghi không tin được bị BỎ QUA — bỏ qua không nới được gì, vì không có bản ghi nào nghĩa là chỉ có sàn.
+    Bản ghi của người mà hỏng (khoá lạ, không phải object) ⇒ `FAIL_CLOSED_BAR`: người đã định siết mà máy không
+    đọc được siết gì, nên đóng cả hai cửa tự duyệt thay vì đoán."""
+    bar = QualityBar()
+    for env in bus.replay(topic="audit-log"):
+        if env.payload.get("action") != BAR_ACTION or not is_human(env.actor):
+            continue
+        try:
+            d = json.loads(env.payload.get("evidence") or "{}")
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(d, dict) or d.get("project_id") != project_id or d.get("by") != env.actor:
+            continue
+        raw = d.get("bar")
+        try:
+            bar = parse_bar(raw) if isinstance(raw, dict) else FAIL_CLOSED_BAR
+        except ValueError:
+            bar = FAIL_CLOSED_BAR
+    return bar

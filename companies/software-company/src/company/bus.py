@@ -22,6 +22,7 @@ from .core import REVIEW_PRODUCERS as REVIEW_PRODUCERS
 from .core import TOPIC_PRODUCERS as TOPIC_PRODUCERS
 from .events import Envelope
 from .gate_risk import AUTOAPPROVE_ACTOR
+from .quality_floor import BAR_ACTION
 
 SCHEMA_DIR = CORE.schema_dir
 
@@ -47,3 +48,7 @@ class InMemoryBus(CoreInMemoryBus[Envelope]):
             # chỉ ghi khi `gate_risk.request_gate` tự động qua gate rủi ro thấp — cả hai bị `gate_cli._trusted`
             # kiểm tiếp ở bước REPLAY, chỗ này chỉ chặn actor lạ ghi thẳng lên bus)
             self._deny(env, f"agent {env.actor} không được ghi quyết định gate (gate.decide) — chỉ người (human:*)")
+        if env.topic == "audit-log" and env.payload.get("action") == BAR_ACTION and not is_human(env.actor):
+            # ADR-0043 §2: mức nâng chất lượng là quyết định của người ký spec — agent tự ghi được thì agent tự bỏ
+            # được `release: human` của dự án (bản ghi mới nhất thắng).
+            self._deny(env, f"agent {env.actor} không được ghi mức nâng chất lượng ({BAR_ACTION}) — chỉ người (human:*)")

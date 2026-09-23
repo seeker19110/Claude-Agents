@@ -96,8 +96,10 @@ không đổi gì ở runtime.
 
 Không có khoá nào nới sàn, nên "không bao giờ hạ dưới sàn" là tính chất của **kiểu dữ liệu**, không phải của một
 phép kiểm có thể quên. Khoá lạ → CLI từ chối. Bản ghi `quality.bar_set` chỉ được tin khi `env.actor` là người
-(`human:*`) và khớp `by` — cùng luật với `trusted_decision` (ADR-0002); bản ghi không tin được hoặc mang khoá lạ
-khi replay ⇒ coi như `release: human` + `acceptance: human` (hỏng thì đóng, không mở).
+(`human:*`) và khớp `by` — cùng luật với `trusted_decision` (ADR-0002) — và bus từ chối ngay lúc publish nếu
+actor không phải người. Bản ghi không tin được bị **bỏ qua** (bỏ qua không nới được gì: không có bản ghi nghĩa là
+chỉ có sàn); bản ghi của người mà hỏng (khoá lạ, không phải object) khi replay ⇒ coi như `release: human` +
+`acceptance: human` (hỏng thì đóng, không mở). Bản ghi mới nhất đáng tin thắng.
 
 Coverage **không** có khoá, vì không có bằng chứng coverage nào do máy sinh (`workspace.py:155`). Thêm khoá cho
 thứ không đo được thì khoá đó chỉ có một nghĩa là "luôn chờ người" — viết thẳng `release: human` thay vì giả vờ

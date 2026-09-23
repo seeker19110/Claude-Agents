@@ -24,9 +24,11 @@ from .bus import InMemoryBus
 from .events import AuditLog, Envelope
 from .gate_risk import AUTOAPPROVE_ACTOR, AUTOAPPROVE_REASON_PREFIX
 from .gates import GateKind, GateRequest, HumanGate, gate_approvers, gate_autoapprove_enabled
+from .quality_floor import BAR_ACTION, parse_bar
 from .roles import LEAD_ACTOR, LEGACY_GATE_ACTORS, ROLE
 
 DECISIONS: tuple[str, ...] = ("approve", "request_changes", "reject", "hold", "rollback")
+SPEC_PREFIX = "SPEC-"  # subject gate spec = SPEC-<project_id> (`orch/ticket_fsm.py`)
 
 # `SYSTEM_GATE_ACTOR` và `trusted_decision` ở `xagents_core.gate_cli` từ K3.7: cùng một allowlist tồn tại hai
 # bản ở hai công ty đã phải vá cùng một lỗ hổng hai lần (2026-09-09). Re-export giữ nguyên chỗ nhập của mọi
@@ -99,6 +101,8 @@ def main(argv: list[str] | None = None) -> int:
     rq.add_argument("--by", required=True); rq.add_argument("--checklist", default="")
     for d in DECISIONS:
         p = sub.add_parser(d); p.add_argument("subject_id"); p.add_argument("--by", required=True); p.add_argument("--reason", default="")
+        p.add_argument("--quality-bar", default="",
+                       help="chỉ với approve SPEC-<dự án>: mức nâng chất lượng k=v[,k=v] (ADR-0043 §2)")
     ns = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8")  # Windows console cp1252
 
@@ -123,12 +127,24 @@ def main(argv: list[str] | None = None) -> int:
         except PermissionError as e:
             print(str(e), file=sys.stderr); return 3
         print(f"requested {ns.kind} {ns.subject_id}"); return 0
+    bar: dict[str, str] | None = None
+    if ns.quality_bar:
+        # Kiểm TRƯỚC khi ký: mức nâng hỏng thì spec chưa ký — không để một chữ ký spec đi kèm mức nâng không ghi được.
+        if ns.cmd != "approve" or not ns.subject_id.startswith(SPEC_PREFIX):
+            print(f"--quality-bar chỉ đi cùng approve {SPEC_PREFIX}<dự án>", file=sys.stderr); return 2
+        try:
+            bar = dict(kv.split("=", 1) for kv in (x.strip() for x in ns.quality_bar.split(",")) if kv)
+            parse_bar(bar)
+        except ValueError as e:
+            print(f"--quality-bar không hợp lệ: {e}", file=sys.stderr); return 2
     try:
         done = gate.decide(ns.subject_id, ns.cmd, by=ns.by, reason=ns.reason)
     except KeyError:
         print(f"không có gate chờ: {ns.subject_id}", file=sys.stderr); return 2
     except PermissionError as e:
         print(str(e), file=sys.stderr); return 3
+    if bar is not None:
+        gate._log(ns.by, BAR_ACTION, {"project_id": ns.subject_id[len(SPEC_PREFIX):], "bar": bar, "by": ns.by}, by=ns.by)
     print(f"{done.subject_id}: {done.decision} by {done.decided_by}"); return 0
 
 
