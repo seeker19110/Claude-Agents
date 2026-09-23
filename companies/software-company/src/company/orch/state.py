@@ -72,6 +72,9 @@ class OrchState:
     # Về 0 khi người duyệt escalation cho chạy lại (`event.retried`).
     spec_runtime_reworks: Counter[str] = field(default_factory=Counter,
                                                metadata=_src("audit:spec.runtime_missing"))
+    # event nguồn (approved-specs/change-requests) → số lượt `product[plan]` đã chạy cho nó; quá `PLAN_REWORKS` mới
+    # hỏi người. Về 0 khi người duyệt escalation cho chạy lại (`event.retried`).
+    plan_reworks: Counter[str] = field(default_factory=Counter, metadata=_src("audit:plan.rework"))
 
     # --- release và bàn giao ---
     # release_id → sha ĐẦY ĐỦ của nhánh tích hợp lúc deploy staging: đúng nội dung QA đã hồi quy, và là sha được

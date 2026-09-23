@@ -68,6 +68,7 @@ SEED = {
     "conflict_retries": lambda bus, tmp: _audit(bus, "integration.conflict", {"ticket_id": "T1"}),
     "missing_threat_model": lambda bus, tmp: _audit(bus, "threat_model.missing", {"subject_id": "P1"}),
     "spec_runtime_reworks": lambda bus, tmp: _audit(bus, "spec.runtime_missing", {"project_id": "P1"}),
+    "plan_reworks": lambda bus, tmp: _audit(bus, "plan.rework", {"project_id": "P1", "source_event": E1, "attempt": 1}),
     "release_sha": lambda bus, tmp: _audit(bus, "release.staged", {"release_id": "REL-1", "sha": "a" * 40}),
     "delivered": lambda bus, tmp: _audit(bus, "delivery.done", {"release_id": "REL-1", "version": "0.1.0"}),
     "void_releases": lambda bus, tmp: _audit(bus, "release.void", {"release_id": "REL-1"}),

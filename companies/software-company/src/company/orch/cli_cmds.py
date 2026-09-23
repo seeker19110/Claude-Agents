@@ -167,7 +167,15 @@ def run(orch: Orchestrator, ns: argparse.Namespace) -> int:
     if rc: return rc
     if reload:
         argv = [sys.executable, "-u", "-m", "company.orchestrator", *sys.argv[1:]]  # -u: stdout không bị buffer (URL/token/log)
-        _reexec(argv)
+        try:
+            _reexec(argv)
+        except OSError as e:
+            # Audit 2026-09-23: execv hỏng ở đây là tiến trình chết SAU khi đã trả lease — cả đêm không ai chạy và
+            # không gì nói. Chạy tiếp bằng mã cũ, tắt reload tới lần khởi động sau, ghi audit để người thấy.
+            orch._audit("orchestrator.reload_failed", {"error": str(e)[:300], "argv": argv})
+            print(f"khởi động lại thất bại ({e}); chạy tiếp mã cũ, tắt tự reload", file=sys.stderr)
+            ns.no_reload = True
+            return run(orch, ns)
     print(json.dumps(orch.status(), ensure_ascii=False))
     return 0
 

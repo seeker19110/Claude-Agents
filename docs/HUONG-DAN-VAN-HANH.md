@@ -570,8 +570,10 @@ không được nạp skill review và không thấy diff (`BLIND_STRIP`), nên 
 ### 5.3 Duyệt human gate
 
 Vòng lặp dừng ở ba điểm: spec, release, và khách ký nghiệm thu (`GateKind` còn bốn giá trị — thêm `escalation` khi
-kẹt). Kế hoạch KHÔNG còn gate từ ADR-0037: `_check_plan` kiểm bằng code rồi giao ticket ngay; sai thì `plan_rejected`
-+ gate `escalation`. Xem và quyết định:
+kẹt). Kế hoạch KHÔNG còn gate từ ADR-0037: `_check_plan` kiểm bằng code rồi giao ticket ngay; sai thì orchestrator
+trả kế hoạch về `product[plan]` sửa **`PLAN_REWORKS` lần** (mặc định 1, audit `plan.rework`, lượt sửa mang `hint` là
+đúng danh sách lỗi) — vẫn sai thì `plan_rejected` + gate `escalation`; duyệt retry là cho thêm đúng chừng đó lượt tự
+sửa. Xem và quyết định:
 
 ```bash
 uv run python -m company.gate_cli list

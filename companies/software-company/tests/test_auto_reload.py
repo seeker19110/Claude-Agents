@@ -135,3 +135,26 @@ def test_reload_giua_hai_lo_khong_bi_watch_nuot_thanh_tick_error(tmp_path: Path,
         orch.watch(interval=0, max_ticks=1, reload=True)
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert acts.count("orchestrator.reload") == 1 and "tick_error" not in acts
+
+
+def test_execv_hong_thi_chay_tiep_ma_cu_khong_chet_im_lang(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Audit 2026-09-23: `_reexec` là `os.execv` không có đường lùi — exec hỏng (đường dẫn interpreter đổi, lỗi
+    Windows) thì tiến trình chết SAU khi đã trả lease, nên cả đêm không orchestrator nào chạy mà không gì nói.
+    Nay: exec hỏng → audit `orchestrator.reload_failed`, chạy tiếp vòng lặp bằng mã cũ với reload TẮT."""
+    from company.sqlite_bus import SQLiteBus
+    db = tmp_path / "c.sqlite"
+    monkeypatch.setenv("COMPANY_LLM_PROVIDER", "fake")
+    seen: list = []
+    def watch(self, interval, reload):
+        seen.append(reload)
+        if reload: raise ReloadRequested("x")
+    monkeypatch.setattr(om.Orchestrator, "watch", watch)
+    monkeypatch.setattr(ocli, "_reexec", lambda argv: (_ for _ in ()).throw(OSError("exec: No such file")))
+    monkeypatch.setattr(ocli.sys, "argv", ["orchestrator.py", "--db", str(db), "run", "--watch", "1"])
+    assert orch_main(["--db", str(db), "run", "--watch", "1"]) == 0
+    assert seen == [True, False], "reload hỏng → vòng lặp chạy lại với reload tắt, không thoát"
+    bus = SQLiteBus(db)
+    failed = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log")
+              if e.payload["action"] == "orchestrator.reload_failed"]
+    bus.close()
+    assert failed and "No such file" in failed[0]["error"]

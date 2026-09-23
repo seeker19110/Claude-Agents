@@ -42,6 +42,7 @@ FORGED = [
     ("release.finding_waived", {"release_id": "REL-9", "source": "qa"}),
     ("debt.escalated", {"project_id": "P9", "debt_id": "D1"}),
     ("spec.runtime_missing", {"project_id": "P9", "event_id": "E9"}),
+    ("plan.rework", {"project_id": "P9", "source_event": "E9", "attempt": 1}),
 ]
 
 
@@ -50,13 +51,13 @@ def _state(o: Orchestrator) -> dict:
             "lead.state": dict(o.lead.state), "missing_tm": set(o.missing_threat_model), "stalled": dict(o.stalled),
             "unhandled": dict(o.unhandled), "integrated": set(o.integrated), "conflicts": dict(o.conflict_retries),
             "waived": {k: set(v) for k, v in o.lead.release_waived.items() if v}, "debt": dict(o.debt_gate),
-            "runtime": dict(o.spec_runtime_reworks)}
+            "runtime": dict(o.spec_runtime_reworks), "plan_reworks": dict(o.plan_reworks)}
 
 
 # (`plan.proposed`, product) KHÔNG nằm trong bảng: product là người ghi thật của nó (orchestrator ghi dưới tên
 # product) — đường giả qua route product bị lớp 1 chặn (`test_route_change_request_ep_action_change_impact`).
 _CASES = [(a, ev, actor) for a, ev in FORGED for actor in (ROLE.QA, ROLE.PRODUCT, ROLE.OPS)
-          if (a, actor) != ("plan.proposed", ROLE.PRODUCT)]
+          if (a, actor) not in {("plan.proposed", ROLE.PRODUCT), ("plan.rework", ROLE.PRODUCT)}]
 
 
 @pytest.mark.parametrize(("action", "ev", "env_actor"), _CASES, ids=[f"{a}-{x}" for a, _, x in _CASES])

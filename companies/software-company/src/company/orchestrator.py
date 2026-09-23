@@ -131,6 +131,7 @@ class Orchestrator:
         conflict_retries: Counter[str]
         missing_threat_model: set[str]
         spec_runtime_reworks: Counter[str]
+        plan_reworks: Counter[str]
         release_sha: dict[str, str]
         delivered: dict[str, dict[str, Any]]
         void_releases: set[str]
