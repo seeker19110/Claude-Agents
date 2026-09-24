@@ -92,6 +92,10 @@ def test_event_khong_duoc_di_vao_run_khac() -> None:
     with pytest.raises(ExecutionTransitionError, match="khác run"):
         apply_event(spec, RunState.initial(spec), _event(ExecutionEventKind.RUN_STARTED, run_id="RUN-2"))
 
+    state_run_2 = RunState.initial(_spec("RUN-2"))
+    with pytest.raises(ExecutionTransitionError, match="khác run"):
+        apply_event(spec, state_run_2, _event(ExecutionEventKind.RUN_STARTED, run_id="RUN-2"))
+
 
 def test_task_event_bat_buoc_task_id_hop_le() -> None:
     spec = _spec()
@@ -113,10 +117,22 @@ def test_task_started_chi_khi_task_ready() -> None:
     state = apply_event(spec, RunState.initial(spec), _event(ExecutionEventKind.RUN_STARTED))
     with pytest.raises(ExecutionTransitionError, match="task phải READY"):
         apply_event(spec, state, _event(ExecutionEventKind.TASK_STARTED, "B"))
+    with pytest.raises(ExecutionTransitionError, match="task_succeeded: task phải RUNNING"):
+        apply_event(spec, state, _event(ExecutionEventKind.TASK_SUCCEEDED, "A"))
+    with pytest.raises(ExecutionTransitionError, match="task_failed: task phải RUNNING"):
+        apply_event(spec, state, _event(ExecutionEventKind.TASK_FAILED, "A"))
 
 
 def test_task_succeeded_mo_khoa_dependency_va_ket_thuc_run() -> None:
-    spec = _spec()
+    spec = RunSpec(
+        run_id="RUN-1",
+        objective="x",
+        tasks=(
+            TaskSpec("A", "a"),
+            TaskSpec("B", "b", dependencies=("A",)),
+            TaskSpec("C", "c", dependencies=("A", "B")),
+        ),
+    )
     state = RunState.replay(
         spec,
         (
@@ -126,13 +142,19 @@ def test_task_succeeded_mo_khoa_dependency_va_ket_thuc_run() -> None:
         ),
     )
     assert state.status is RunStatus.RUNNING
-    assert state.tasks == {"A": TaskStatus.SUCCEEDED, "B": TaskStatus.READY}
+    assert state.tasks == {
+        "A": TaskStatus.SUCCEEDED,
+        "B": TaskStatus.READY,
+        "C": TaskStatus.PENDING,
+    }
     assert state.attempts["A"] == 1
 
     state = apply_event(spec, state, _event(ExecutionEventKind.TASK_STARTED, "B"))
     state = apply_event(spec, state, _event(ExecutionEventKind.TASK_SUCCEEDED, "B"))
+    assert state.tasks["C"] is TaskStatus.READY
+    state = apply_event(spec, state, _event(ExecutionEventKind.TASK_STARTED, "C"))
+    state = apply_event(spec, state, _event(ExecutionEventKind.TASK_SUCCEEDED, "C"))
     assert state.status is RunStatus.SUCCEEDED
-    assert state.tasks["B"] is TaskStatus.SUCCEEDED
 
 
 def test_task_failed_block_run_va_retry_tiep_tuc_duoc() -> None:
@@ -270,6 +292,8 @@ def test_execution_event_json_roundtrip_giu_nguyen_identity() -> None:
         ts=datetime(2026, 9, 24, 15, 0, tzinfo=UTC),
     )
     assert ExecutionEvent.from_json(event.to_json()) == event
+    run_event = ExecutionEvent(run_id="RUN-1", kind=ExecutionEventKind.RUN_STARTED)
+    assert ExecutionEvent.from_json(run_event.to_json()).task_id is None
 
 
 def test_journal_dong_mo_lai_van_replay_duoc_run(tmp_path) -> None:
