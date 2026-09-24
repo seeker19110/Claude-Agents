@@ -320,3 +320,85 @@ def test_container_don_dep_that_bai_khong_nuot_ket_qua(tmp_path):
 
     r = ContainerSandbox("docker", "img:1", runner=runner, env_via_stdin=True).run(_spec(tmp_path, timeout=1))
     assert r.timed_out is True
+
+
+def test_subprocess_timeout_giet_ca_cay_tien_trinh_khong_treo_vi_chau_giu_ong(tmp_path):
+    """Lệnh của khách thường là một CÂY: `uv run pytest` → launcher `.venv/Scripts/python` → python thật. Hết giờ mà
+    chỉ giết con trực tiếp thì cháu sống tiếp và vẫn giữ ống stdout: trên Windows `subprocess.run` sau khi kill còn
+    `communicate()` KHÔNG trần → cả orchestrator treo tới khi cháu tự xong; trên POSIX không treo nhưng cháu thành
+    mồ côi chạy tiếp. Đo được 2026-09-24 (CAMPUS-UNI/TCK-002): `run test` quá 600s, pytest mồ côi ăn 1245s CPU,
+    orchestrator 0% CPU, 0 event suốt 20+ phút."""
+    marker = tmp_path / "chau-con-song.txt"
+    chau = f"import time, pathlib; time.sleep(4); pathlib.Path({str(marker)!r}).write_text('x')"
+    cha = f"import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {chau!r}]); time.sleep(30)"
+    import time
+    t0 = time.monotonic()
+    r = SubprocessSandbox().run(RunSpec(argv=[PY, "-c", cha], cwd=tmp_path, timeout=1.5))
+    assert r.timed_out and time.monotonic() - t0 < 3.5, "hết giờ phải trả về ngay, không chờ ống do cháu giữ"
+    time.sleep(max(0.0, 5.5 - (time.monotonic() - t0)))
+    assert not marker.exists(), "cháu phải chết cùng cây, không thành mồ côi chạy tiếp"
+
+
+class _Proc:
+    """Popen giả cho `_kill_tree`/`_run_tree`: ghi lại kill, `communicate` ném theo kịch bản."""
+    pid = 42
+    returncode = None
+
+    def __init__(self, raises: int = 0):
+        self.killed, self.raises = 0, raises
+
+    def kill(self) -> None:
+        self.killed += 1
+
+    def communicate(self, input: Any = None, timeout: float | None = None) -> tuple[str, str]:
+        if self.raises:
+            self.raises -= 1
+            raise subprocess.TimeoutExpired("x", timeout or 0)
+        return "", ""
+
+
+def test_kill_tree_tren_windows_goi_taskkill_ca_cay(monkeypatch):
+    import xagents_core.sandbox as SB
+    monkeypatch.setattr(SB.sys, "platform", "win32")
+    seen: list[list[str]] = []
+    p = _Proc()
+    SB._kill_tree(p, runner=lambda argv, **kw: seen.append(argv))
+    assert seen == [["taskkill", "/T", "/F", "/PID", "42"]] and p.killed == 1
+
+
+def test_kill_tree_tren_posix_giet_ca_nhom(monkeypatch):
+    import xagents_core.sandbox as SB
+    monkeypatch.setattr(SB.sys, "platform", "linux")
+    seen: list[tuple[int, int]] = []
+    monkeypatch.setattr(SB.os, "killpg", lambda pid, sig: seen.append((pid, sig)), raising=False)
+    monkeypatch.setattr(SB.signal, "SIGKILL", 9, raising=False)
+    p = _Proc()
+    SB._kill_tree(p)
+    assert seen == [(42, 9)] and p.killed == 1
+
+
+def test_kill_tree_giet_cay_that_bai_van_giet_con_truc_tiep(monkeypatch):
+    """Cây đã tự tan (`ProcessLookupError`) hay `taskkill` treo: không được che kết quả timeout."""
+    import xagents_core.sandbox as SB
+    monkeypatch.setattr(SB.sys, "platform", "win32")
+    def boom(argv, **kw):
+        raise subprocess.TimeoutExpired(argv, 30)
+    p = _Proc()
+    SB._kill_tree(p, runner=boom)
+    assert p.killed == 1
+
+
+def test_run_tree_ong_van_khong_dong_sau_khi_giet_thi_bo_cuoc_sau_5s():
+    """Sau khi giết cây, chờ ống tối đa 5s; quá nữa vẫn trả TimeoutExpired thay vì treo."""
+    import xagents_core.sandbox as SB
+    p, killed = _Proc(raises=2), []
+    with pytest.raises(subprocess.TimeoutExpired):
+        SB._run_tree(["x"], cwd=".", env={}, input=None, timeout=1, popen=lambda *a, **k: p, kill_tree=killed.append)
+    assert killed == [p] and p.raises == 0
+
+
+def test_subprocess_that_chay_xong_tra_exit_stdout_va_nhan_stdin(tmp_path):
+    """Đường thường của `_run_tree` (runner mặc định): chạy xong thì trả đúng như `subprocess.run` cũ."""
+    r = SubprocessSandbox().run(RunSpec(argv=[PY, "-c", "import sys; print(sys.stdin.read().upper())"], cwd=tmp_path,
+                                        env=clean_env() | {"PYTHONIOENCODING": "utf-8"}, stdin="tiếng việt"))
+    assert (r.exit_code, r.stdout.strip(), r.timed_out) == (0, "TIẾNG VIỆT", False)
