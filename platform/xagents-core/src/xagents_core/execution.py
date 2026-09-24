@@ -169,6 +169,48 @@ class RunSpec:
                 raise ValueError(f"dependency không tồn tại của {task.task_id}: {sorted(missing)}")
         _validate_acyclic(self.tasks)
 
+    def to_json(self) -> str:
+        return json.dumps(
+            {
+                "run_id": self.run_id,
+                "objective": self.objective,
+                "tasks": [
+                    {
+                        "task_id": task.task_id,
+                        "objective": task.objective,
+                        "dependencies": task.dependencies,
+                        "complexity": task.complexity.value,
+                        "acceptance": task.acceptance,
+                        "allowed_tools": task.allowed_tools,
+                        "write_scope": task.write_scope,
+                        "context_refs": task.context_refs,
+                    }
+                    for task in self.tasks
+                ],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+
+    @classmethod
+    def from_json(cls, data: str) -> RunSpec:
+        raw = cast(dict[str, Any], json.loads(data))
+        task_rows = cast(list[dict[str, Any]], raw["tasks"])
+        tasks = tuple(
+            TaskSpec(
+                task_id=str(row["task_id"]),
+                objective=str(row["objective"]),
+                dependencies=tuple(map(str, row["dependencies"])),
+                complexity=Complexity(str(row["complexity"])),
+                acceptance=tuple(map(str, row["acceptance"])),
+                allowed_tools=tuple(map(str, row["allowed_tools"])),
+                write_scope=tuple(map(str, row["write_scope"])),
+                context_refs=tuple(map(str, row["context_refs"])),
+            )
+            for row in task_rows
+        )
+        return cls(run_id=str(raw["run_id"]), objective=str(raw["objective"]), tasks=tasks)
+
 
 def _validate_acyclic(tasks: tuple[TaskSpec, ...]) -> None:
     remaining = {task.task_id: set(task.dependencies) for task in tasks}
@@ -364,6 +406,10 @@ class ExecutionJournalError(RuntimeError):
 
 
 _JOURNAL_DDL = """
+CREATE TABLE IF NOT EXISTS execution_runs (
+    run_id TEXT PRIMARY KEY,
+    body TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS execution_events (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
     event_id TEXT UNIQUE NOT NULL,
@@ -385,6 +431,30 @@ class ExecutionJournal:
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.executescript(_JOURNAL_DDL)
 
+    def register(self, spec: RunSpec) -> None:
+        body = spec.to_json()
+        with self._lock, self._db:
+            row = self._db.execute(
+                "SELECT body FROM execution_runs WHERE run_id = ?",
+                (spec.run_id,),
+            ).fetchone()
+            if row is None:
+                self._db.execute(
+                    "INSERT INTO execution_runs(run_id, body) VALUES (?,?)",
+                    (spec.run_id, body),
+                )
+                return
+            if row[0] != body:
+                raise ExecutionJournalError(f"run {spec.run_id} đã có RunSpec khác")
+
+    def load_spec(self, run_id: str) -> RunSpec | None:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT body FROM execution_runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+        return None if row is None else RunSpec.from_json(str(row[0]))
+
     def append(self, event: ExecutionEvent) -> None:
         try:
             with self._lock, self._db:
@@ -405,6 +475,12 @@ class ExecutionJournal:
 
     def replay(self, spec: RunSpec) -> RunState:
         return RunState.replay(spec, self.events(spec.run_id))
+
+    def resume(self, run_id: str) -> RunState:
+        spec = self.load_spec(run_id)
+        if spec is None:
+            raise ExecutionJournalError(f"run {run_id} chưa đăng ký RunSpec")
+        return self.replay(spec)
 
     def close(self) -> None:
         with self._lock:
