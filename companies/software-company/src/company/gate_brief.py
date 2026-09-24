@@ -299,7 +299,7 @@ def _endpoints(contract: str) -> list[str]:
 
 
 def _git(repo: Path, *args: str) -> str | None:
-    r = subprocess.run(["git", "-C", str(repo), *NO_HOOKS, *args], capture_output=True, text=True, encoding="utf-8",
+    r = subprocess.run(["git", "-C", str(repo), *NO_HOOKS, *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
                        env=clean_env())
     return r.stdout.strip() if r.returncode == 0 else None
 

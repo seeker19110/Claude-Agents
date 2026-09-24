@@ -36,7 +36,7 @@ NO_HOOKS: tuple[str, ...] = ("-c", "core.hooksPath=/dev/null")
 
 def _git(repo: Path, *args: str, stdin: str | None = None) -> str:
     # env đã lọc khoá (hook/filter/credential helper của khách không thấy secret của công ty), không hook.
-    r = subprocess.run(["git", "-C", str(repo), *NO_HOOKS, *args], capture_output=True, text=True, encoding="utf-8",
+    r = subprocess.run(["git", "-C", str(repo), *NO_HOOKS, *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
                        input=stdin, env=clean_env())
     if r.returncode != 0:
         raise WorkspaceError(f"git {' '.join(args)}: {r.stderr.strip()}")
@@ -280,7 +280,7 @@ class DeliveryResult:
 def _git_ok(repo: Path, *args: str, timeout: int = 120) -> tuple[bool, str]:
     """Như `_git` nhưng không ném: (ok, stdout hoặc stderr rút gọn). Dùng cho thao tác được phép thất bại (push)."""
     try:
-        r = subprocess.run(["git", "-C", str(repo), *NO_HOOKS, *args], capture_output=True, text=True, encoding="utf-8",
+        r = subprocess.run(["git", "-C", str(repo), *NO_HOOKS, *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
                            env=clean_env(), timeout=timeout)
     except subprocess.TimeoutExpired:
         return False, f"git {' '.join(args)}: quá {timeout}s"
@@ -423,7 +423,7 @@ class Integration:
         msg.write_text(message, encoding="utf-8", newline="\n")
         r = subprocess.run(["git", "-C", str(self.path), *NO_HOOKS, "-c", "user.name=delivery-lead",
                             "-c", "user.email=lead@company.local", "merge", "--no-ff", "-F", str(msg), ticket_branch],
-                           capture_output=True, text=True, encoding="utf-8", env=clean_env())
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", env=clean_env())
         msg.unlink(missing_ok=True)
         if r.returncode == 0:
             return MergeResult(ok=True, sha=self.sha())
