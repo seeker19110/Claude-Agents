@@ -336,3 +336,29 @@ def test_journal_mot_connection_ghi_duoc_tu_nhieu_worker_thread(tmp_path) -> Non
         assert {event.event_id for event in journal.events("RUN-1")} == {
             event.event_id for event in events
         }
+
+
+def test_journal_luu_runspec_de_resume_sau_khi_mat_context(tmp_path) -> None:
+    path = tmp_path / "journal.sqlite"
+    spec = _spec()
+    with ExecutionJournal(path) as journal:
+        journal.register(spec)
+        journal.register(spec)
+        journal.append(_event(ExecutionEventKind.RUN_STARTED))
+        journal.append(_event(ExecutionEventKind.TASK_STARTED, "A"))
+        conflict = RunSpec(
+            run_id="RUN-1",
+            objective="khác",
+            tasks=(TaskSpec("X", "x"),),
+        )
+        with pytest.raises(ExecutionJournalError, match="RunSpec khác"):
+            journal.register(conflict)
+
+    with ExecutionJournal(path) as journal:
+        assert journal.load_spec("MISSING") is None
+        assert journal.load_spec("RUN-1") == spec
+        state = journal.resume("RUN-1")
+        assert state.status is RunStatus.RUNNING
+        assert state.tasks["A"] is TaskStatus.RUNNING
+        with pytest.raises(ExecutionJournalError, match="chưa đăng ký"):
+            journal.resume("MISSING")
