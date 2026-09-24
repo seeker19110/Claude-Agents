@@ -225,7 +225,13 @@ class RunState:
     status: RunStatus
     tasks: dict[str, TaskStatus]
     attempts: dict[str, int]
-    blocked_reason: str = ""
+    failures: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def blocked_reason(self) -> str:
+        if len(self.failures) == 1:
+            return next(iter(self.failures.values()))
+        return "; ".join(f"{task_id}: {reason}" for task_id, reason in sorted(self.failures.items()))
 
     @classmethod
     def initial(cls, spec: RunSpec) -> RunState:
@@ -269,7 +275,7 @@ def _run_cancelled(_spec: RunSpec, state: RunState, _event: ExecutionEvent) -> R
         task_id: status if status is TaskStatus.SUCCEEDED else TaskStatus.CANCELLED
         for task_id, status in state.tasks.items()
     }
-    return replace(state, status=RunStatus.CANCELLED, tasks=tasks, blocked_reason="")
+    return replace(state, status=RunStatus.CANCELLED, tasks=tasks, failures={})
 
 
 def _task_started(_spec: RunSpec, state: RunState, event: ExecutionEvent) -> RunState:
@@ -314,7 +320,9 @@ def _task_failed(_spec: RunSpec, state: RunState, event: ExecutionEvent) -> RunS
     tasks = dict(state.tasks)
     tasks[task_id] = TaskStatus.FAILED
     reason = str(event.payload.get("reason") or "task thất bại")
-    return replace(state, status=RunStatus.BLOCKED, tasks=tasks, blocked_reason=reason)
+    failures = dict(state.failures)
+    failures[task_id] = reason
+    return replace(state, status=RunStatus.BLOCKED, tasks=tasks, failures=failures)
 
 
 def _task_retried(_spec: RunSpec, state: RunState, event: ExecutionEvent) -> RunState:
@@ -325,7 +333,10 @@ def _task_retried(_spec: RunSpec, state: RunState, event: ExecutionEvent) -> Run
         raise ExecutionTransitionError(f"task_retried: task phải FAILED, hiện là {status.value}")
     tasks = dict(state.tasks)
     tasks[task_id] = TaskStatus.READY
-    return replace(state, status=RunStatus.RUNNING, tasks=tasks, blocked_reason="")
+    failures = dict(state.failures)
+    failures.pop(task_id)
+    run_status = RunStatus.BLOCKED if failures else RunStatus.RUNNING
+    return replace(state, status=run_status, tasks=tasks, failures=failures)
 
 
 _HANDLER = {
