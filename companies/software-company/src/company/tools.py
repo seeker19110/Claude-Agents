@@ -218,7 +218,7 @@ class WorkspaceTools:
         tb.root = str(self.root)
         # Chỉ khai sandbox khi bảng THẬT SỰ chạy được lệnh: `allow_run=False` (researcher trên repo khách) mà ghi
         # `sandbox: subprocess` là nói một lớp bảo vệ không tồn tại vì không có gì để bảo vệ.
-        if self.allow_run: tb.sandbox = self.sandbox.name
+        if self.allow_run: tb.sandbox, tb.run_timeout = self.sandbox.name, float(self.timeout)
         def s(desc: str = "") -> dict[str, Any]:
             return {"type": "string", **({"description": desc} if desc else {})}
         tb.add(ToolSpec("read_file", "Đọc file trong worktree (có số dòng). Dùng start/end cho file dài.",

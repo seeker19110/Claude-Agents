@@ -471,3 +471,25 @@ def test_platform_env_chi_them_bien_tren_windows(monkeypatch):
 
     monkeypatch.setattr(mb.os, "environ", {})       # biến không có thì bỏ qua, không ném KeyError
     assert mb.platform_env() == {}
+
+
+def test_mcp_tran_thoi_gian_cli_chua_du_cho_tool_chay_lau(tmp_path, monkeypatch):
+    """Lượt MCP gói CẢ vòng tool trong một tiến trình `claude -p`, nên trần thời gian của tiến trình đó phải chứa được
+    thời gian tool chạy, không chỉ thời gian model nghĩ. Trước đây trần cứng 900s trong khi một lần `run test` được
+    phép 600s: builder chạy test hai lần là bị giết, mọi việc trong lượt mất trắng, rồi thử lại y hệt. Đo được
+    2026-09-24 (CAMPUS-UNI/TCK-002): 4 lượt × 900s bị giết liên tiếp, bus im lặng 1 giờ, 0 event."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    tb = WorkspaceTools(ws, timeout=600).toolbox()
+    seen: list[float] = []
+
+    def fake_run(args, **kw):
+        seen.append(kw["timeout"])
+        out = json.dumps({"result": json.dumps(_pr({"ticket_id": "T1"})), "stop_reason": "end_turn", "usage": {}})
+        return subprocess.CompletedProcess(args, 0, stdout=out, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    client = ClaudeCodeClient(LLMConfig(provider="claude-code", models={"strong": "m"}, mcp_tools=True))
+    client.bind_toolbox(tb)
+    client.complete(system="s", user="u", schema={}, model_tier="strong", tools=tb.specs(), workdir=tb.root)
+    client.complete(system="s", user="u", schema={}, model_tier="strong")   # không tool: trần cũ, không rò sang
+    assert seen == [900.0 + 3 * 600, 900.0]
