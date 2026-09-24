@@ -178,6 +178,34 @@ def test_retry_chi_task_da_failed() -> None:
         apply_event(spec, state, _event(ExecutionEventKind.TASK_RETRIED, "B"))
 
 
+def test_retry_mot_task_khong_mo_run_khi_con_task_failed_khac() -> None:
+    spec = RunSpec(
+        run_id="RUN-1",
+        objective="x",
+        tasks=(TaskSpec("A", "a"), TaskSpec("B", "b")),
+    )
+    state = RunState.replay(
+        spec,
+        (
+            _event(ExecutionEventKind.RUN_STARTED),
+            _event(ExecutionEventKind.TASK_STARTED, "A"),
+            _event(ExecutionEventKind.TASK_STARTED, "B"),
+            _event(ExecutionEventKind.TASK_FAILED, "A", reason="a hỏng"),
+            _event(ExecutionEventKind.TASK_FAILED, "B", reason="b hỏng"),
+        ),
+    )
+    assert state.status is RunStatus.BLOCKED
+    assert state.blocked_reason == "A: a hỏng; B: b hỏng"
+
+    state = apply_event(spec, state, _event(ExecutionEventKind.TASK_RETRIED, "A"))
+    assert state.status is RunStatus.BLOCKED
+    assert state.blocked_reason == "b hỏng"
+
+    state = apply_event(spec, state, _event(ExecutionEventKind.TASK_RETRIED, "B"))
+    assert state.status is RunStatus.RUNNING
+    assert state.blocked_reason == ""
+
+
 def test_cancel_giu_task_da_xong_va_huy_task_con_lai() -> None:
     spec = RunSpec(
         run_id="RUN-1",
