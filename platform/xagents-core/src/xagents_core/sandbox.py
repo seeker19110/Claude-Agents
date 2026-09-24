@@ -29,7 +29,9 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import signal
 import subprocess
+import sys
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -129,10 +131,47 @@ class _ProcHandle:
         return self._tail[-n:]
 
 
-class SubprocessSandbox:
-    """Hành vi hiện tại: tiến trình con của chính người vận hành, cô lập bằng cwd + env đã lọc khoá."""
+def _kill_tree(proc: Any, runner: Any = subprocess.run) -> None:
+    """Giết CẢ CÂY của `proc`, không chỉ con trực tiếp. Windows: `taskkill /T` đi theo quan hệ cha-con từ gốc (gốc
+    còn sống lúc hết giờ nên cây còn tìm được); POSIX: cả nhóm tiến trình (`start_new_session=True` lúc dựng).
+    Nỗ lực tốt nhất: cây đã tự tan hay `taskkill` treo không được che kết quả timeout — `proc.kill()` luôn chạy."""
+    try:
+        if sys.platform == "win32":
+            runner(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, timeout=30)
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    proc.kill()
 
-    def __init__(self, runner: Any = subprocess.run, popen: Any = subprocess.Popen):
+
+def _run_tree(argv: list[str], *, cwd: str, env: dict[str, str], input: str | None, timeout: float,
+              popen: Any = subprocess.Popen, kill_tree: Any = _kill_tree, **_: Any) -> subprocess.CompletedProcess[str]:
+    """Như `subprocess.run(capture_output=True, text=True, encoding="utf-8", errors="replace")`, trừ hai chỗ khi hết
+    giờ: giết CẢ CÂY (`_kill_tree`), và chờ ống tối đa 5s thay vì vô hạn. `subprocess.run` chỉ giết con trực tiếp,
+    rồi trên Windows `communicate()` không trần — cháu (`uv run` → launcher venv → python thật) còn giữ ống stdout
+    là treo tới khi cháu tự xong. Đo được 2026-09-24 (CAMPUS-UNI/TCK-002): orchestrator 0% CPU, 0 event 20+ phút
+    trong khi pytest mồ côi ăn 1245s CPU."""
+    extra: dict[str, Any] = {} if sys.platform == "win32" else {"start_new_session": True}
+    proc = popen(argv, cwd=cwd, env=env, stdin=None if input is None else subprocess.PIPE, stdout=subprocess.PIPE,
+                 stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", **extra)
+    try:
+        out, err = proc.communicate(input, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        kill_tree(proc)
+        try:
+            proc.communicate(timeout=5)
+        except (subprocess.TimeoutExpired, ValueError):
+            pass
+        raise
+    return subprocess.CompletedProcess(argv, proc.returncode, out, err)
+
+
+class SubprocessSandbox:
+    """Hành vi hiện tại: tiến trình con của chính người vận hành, cô lập bằng cwd + env đã lọc khoá. Hết giờ thì
+    giết cả cây tiến trình (`_run_tree`), không chỉ con trực tiếp."""
+
+    def __init__(self, runner: Any = _run_tree, popen: Any = subprocess.Popen):
         self.name = "subprocess"
         self._runner, self._popen = runner, popen
 
