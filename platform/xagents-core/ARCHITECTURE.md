@@ -8,7 +8,8 @@ companies/software-company, companies/keeper
 │  events.py (Envelope/AuditLog/SharedContext — 5 lớp chung, lớp con công ty thu hẹp)  │
 │  config.py (CoreConfig/TopicACL — chỗ DUY NHẤT core biết một công ty khác ở đâu)     │
 │                                                                                       │
-│  bus.py / sqlite_bus.py ── ACL + validate schema + bền vững trên đĩa                 │\n│  execution.py ── RunSpec/TaskSpec → state machine → evidence → SQLite journal          │
+│  bus.py / sqlite_bus.py ── ACL + validate schema + bền vững trên đĩa                 │
+│  execution.py ── RunSpec/TaskSpec → state machine → evidence → SQLite journal          │
 │  runner.py ── AgentRunner: build prompt → gọi model → tool loop → ghi audit          │
 │       │            │             │                                                  │
 │       ▼            ▼             ▼                                                  │
