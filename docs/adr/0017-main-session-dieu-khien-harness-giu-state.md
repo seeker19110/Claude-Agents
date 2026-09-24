@@ -22,7 +22,7 @@ contract máy đọc được và dựng lại state từ log append-only.
    - `RunState`: trạng thái thuần dựng lại từ event, không lấy object RAM làm nguồn sự thật;
    - `ExecutionEvent`: event identity bền; transition run/task bị code từ chối khi sai thứ tự;
    - `EvidenceReceipt`: hash output + command/cwd/exit code/git head để "pass" là dữ kiện máy sinh;
-   - `ExecutionJournal`: SQLite append-only, mở process mới replay ra cùng state.
+   - `ExecutionJournal`: lưu `RunSpec` + event SQLite append-only; mở process mới chỉ cần `run_id` để resume cùng state.
 3. **DAG phải hợp lệ ngay lúc tạo `RunSpec`**: không task id trùng, không dependency thiếu, không chu trình.
 4. Trạng thái vòng đầu:
    `PENDING → RUNNING → SUCCEEDED|BLOCKED|CANCELLED`; task:
