@@ -69,6 +69,9 @@ class ToolBox:
     # lệnh nào chạy được (`allow_run=False`). Đặt ở BẢNG chứ không ở từng vết gọi: `read_file`/`search` không chạy
     # lệnh gì, lặp chuỗi sandbox vào vết gọi của chúng làm người đọc audit tưởng chúng cũng đi qua sandbox.
     sandbox: str | None = None
+    # Trần giây MỖI lệnh mà bảng chạy (`None` = bảng không chạy lệnh). Provider gói cả vòng tool trong một tiến
+    # trình (claude-code MCP) cần nó để trần của tiến trình đó chứa được thời gian tool, không chỉ thời gian model.
+    run_timeout: float | None = None
     max_output: int | None = MAX_OUTPUT  # `None` = không cắt ở tầng bảng (xem docstring module)
     # ADR-0009: nơi phát span `tool.call`. `None` (mặc định) = không đo gì — span KHÔNG thay `ms` trong
     # `self.calls`: `ms` là bộ đệm phẳng cho audit `tools_trace` (4L-2), span thêm *liên kết cha* (lời gọi này

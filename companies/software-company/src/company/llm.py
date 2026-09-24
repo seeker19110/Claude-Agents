@@ -342,6 +342,12 @@ def cli_lacks_mcp(err: str) -> bool:
 # low, review-results có payload lớn/nhiều trường enum) — nâng 6 để còn dư khi model sửa JSON 2-3 lần.
 CLI_NO_TOOL_TURNS = 6
 
+# Lượt MCP gói CẢ vòng tool trong một tiến trình `claude -p`, nên trần của nó = thời gian model (`timeout` của
+# client) + chỗ cho ngần này lần tool chạy hết trần của chính nó (`ToolBox.run_timeout`, vd. `run test` 600s).
+# Trần 900s cứng cũ không đủ cho HAI lần test: đo được 2026-09-24 (CAMPUS-UNI/TCK-002) builder bị giết 4 lượt ×
+# 900s liên tiếp, mất trắng việc của cả lượt, bus im lặng 1 giờ. Vẫn là trần hữu hạn: CLI treo thật vẫn bị giết.
+MCP_SLOW_TOOL_RUNS = 3
+
 def cli_settings_json() -> str:
     """Settings tạm cho `claude -p`: chặn đọc/ghi file bí mật. `--restricted` bỏ qua settings user/project nhưng
     vẫn áp `--settings`, nên deny ở đây là lớp chặn thật, không phải lời dặn trong prompt."""
@@ -380,6 +386,16 @@ class ClaudeCodeClient(CoreClaudeCodeClient):
                  runner: Callable[..., str] | None = None):
         super().__init__(cfg, binary=binary, timeout=timeout, runner=runner)
         self._tls = threading.local()   # ToolBox thật do runner bind (ADR-0024), theo THREAD: mỗi worker một worktree
+
+    @property  # type: ignore[override]
+    def timeout(self) -> float:
+        """Trần giây của tiến trình `claude -p` ĐANG chạy trên thread này: lượt MCP nới ra (xem `MCP_SLOW_TOOL_RUNS`),
+        lượt khác giữ trần gốc. Theo thread như `_toolbox`: worker khác dùng chung client không bị nới theo."""
+        return float(getattr(self._tls, "timeout", None) or self._timeout)
+
+    @timeout.setter
+    def timeout(self, value: float) -> None:
+        self._timeout = value
 
     @property
     def _toolbox(self) -> Any | None:
@@ -467,6 +483,7 @@ class ClaudeCodeClient(CoreClaudeCodeClient):
                         "--allowedTools", bridge.allowed_tools(), "--settings", cli_settings_json(),
                         "--max-turns", str(self.cfg.mcp_max_turns), *sp_args]
                 check_argv(full)
+                self._tls.timeout = self._timeout + MCP_SLOW_TOOL_RUNS * (self._toolbox.run_timeout or 0.0)
                 try:
                     return self._run(full, stdin, workdir)
                 except LLMError as e:
@@ -478,6 +495,8 @@ class ClaudeCodeClient(CoreClaudeCodeClient):
                     # đúng dòng `with` thay vì "exit" (xem arc thật `(471, 463)` trong `.coverage`, không phải
                     # `(471, -463)`). Không phải lỗ hổng test — hành vi đã đo trực tiếp bằng script tay lẫn test.
                     if not cli_lacks_mcp(str(e)): raise  # pragma: no branch
+                finally:
+                    self._tls.timeout = None
                 self.cfg.mcp_tools = False
                 return None
 
