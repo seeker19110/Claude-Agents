@@ -38,7 +38,12 @@ def _spec(run_id: str = "RUN-1") -> RunSpec:
     )
 
 
-def _event(kind: ExecutionEventKind, task_id: str | None = None, run_id: str = "RUN-1", **payload: object) -> ExecutionEvent:
+def _event(
+    kind: ExecutionEventKind,
+    task_id: str | None = None,
+    run_id: str = "RUN-1",
+    **payload: object,
+) -> ExecutionEvent:
     return ExecutionEvent(run_id=run_id, kind=kind, task_id=task_id, payload=dict(payload))
 
 
@@ -239,9 +244,9 @@ def test_execution_event_json_roundtrip_giu_nguyen_identity() -> None:
     assert ExecutionEvent.from_json(event.to_json()) == event
 
 
-def test_journal_dong_mo_lai_van_replay_duoc_run() -> None:
+def test_journal_dong_mo_lai_van_replay_duoc_run(tmp_path) -> None:
     spec = _spec()
-    path = "journal.sqlite"
+    path = tmp_path / "journal.sqlite"
     with ExecutionJournal(path) as journal:
         journal.append(_event(ExecutionEventKind.RUN_STARTED))
         journal.append(_event(ExecutionEventKind.TASK_STARTED, "A"))
