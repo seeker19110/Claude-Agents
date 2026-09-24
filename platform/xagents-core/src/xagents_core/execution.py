@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import threading
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -379,12 +380,14 @@ class ExecutionJournal:
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
-        self._db = sqlite3.connect(self.path)
+        self._lock = threading.RLock()
+        self._db = sqlite3.connect(self.path, check_same_thread=False, timeout=30.0)
+        self._db.execute("PRAGMA journal_mode=WAL")
         self._db.executescript(_JOURNAL_DDL)
 
     def append(self, event: ExecutionEvent) -> None:
         try:
-            with self._db:
+            with self._lock, self._db:
                 self._db.execute(
                     "INSERT INTO execution_events(event_id, run_id, ts, body) VALUES (?,?,?,?)",
                     (event.event_id, event.run_id, event.ts.isoformat(), event.to_json()),
@@ -393,17 +396,19 @@ class ExecutionJournal:
             raise ExecutionJournalError(f"event_id trùng: {event.event_id}") from exc
 
     def events(self, run_id: str) -> tuple[ExecutionEvent, ...]:
-        rows = self._db.execute(
-            "SELECT body FROM execution_events WHERE run_id = ? ORDER BY seq",
-            (run_id,),
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT body FROM execution_events WHERE run_id = ? ORDER BY seq",
+                (run_id,),
+            ).fetchall()
         return tuple(ExecutionEvent.from_json(body) for (body,) in rows)
 
     def replay(self, spec: RunSpec) -> RunState:
         return RunState.replay(spec, self.events(spec.run_id))
 
     def close(self) -> None:
-        self._db.close()
+        with self._lock:
+            self._db.close()
 
     def __enter__(self) -> ExecutionJournal:
         return self
