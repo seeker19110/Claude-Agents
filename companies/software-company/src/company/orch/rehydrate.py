@@ -51,6 +51,7 @@ def rehydrate(o: Orchestrator) -> None:
     last_done: dict[str, int] = {}
     last_retry: dict[str, tuple[int, dict[str, Any]]] = {}   # event_id → (thứ tự trong log, bản ghi stalled)
     hen: dict[str, tuple[str, str]] = {}                     # event_id → (mốc hẹn ISO, lý do hoãn)
+    quyet: list[tuple[str, str]] = []                        # (event_id của gate.decide, subject_id)
     for i, env in enumerate(log):
         if env.topic == "audit-log" and _trusted_writer(env.payload.get("action"), env.actor):
             a = env.payload; d = _evidence(a)
@@ -119,7 +120,7 @@ def rehydrate(o: Orchestrator) -> None:
                 o.spec_runtime_reworks.pop(str(d.get("subject")), None)
                 o.plan_reworks.pop(str(d.get("event_id")), None)
             elif a["action"] == "gate.decide":
-                if d.get("subject_id"): o.escalation_decided[str(d["subject_id"])] += 1
+                if d.get("subject_id"): quyet.append((env.event_id, str(d["subject_id"])))
             elif a["action"] == "integration.conflict":
                 o.conflict_retries[str(d["ticket_id"])] += 1
             elif a["action"] == "release.finding_waived":
@@ -148,6 +149,11 @@ def rehydrate(o: Orchestrator) -> None:
     # `show`, console). Ghi bus từ đường đọc là mỗi lần xem trạng thái lại thêm một dòng rác — chính tôi
     # đã mắc và thấy nó trong log. Việc mở lại sẽ tự hiện ra ở dòng `orchestrated` khi event thật sự chạy.
     o.processed -= reopened
+    # Chỉ đếm quyết định ĐÃ xử lý: decide còn trong hàng đợi sẽ được `_on_gate_decide` đếm khi chạy — đếm cả hai
+    # nơi là bộ đếm sống lệch bộ đếm dựng lại, restart sau đó sinh khoá escalation trùng khoá cũ và gate bị nuốt
+    # (CAMPUS-UNI/TCK-001, 2026-09-24).
+    for eid, sid in quyet:
+        if eid in o.processed: o.escalation_decided[sid] += 1
     o.partial = {k: v for k, v in o.partial.items() if k not in o.processed}
     o.queue = [e for e in log if o._actionable(e) and e.event_id not in o.processed]
     o._nap_lai_hen(hen)
