@@ -90,7 +90,7 @@ def test_run_started_chuyen_run_sang_running() -> None:
 
 def test_event_khong_duoc_di_vao_run_khac() -> None:
     spec = _spec()
-    with pytest.raises(ExecutionTransitionError, match="khác run"):
+    with pytest.raises(ExecutionTransitionError, match="run khác"):
         apply_event(spec, RunState.initial(spec), _event(ExecutionEventKind.RUN_STARTED, run_id="RUN-2"))
 
     state_run_2 = RunState.initial(_spec("RUN-2"))
