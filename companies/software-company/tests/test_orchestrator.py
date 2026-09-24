@@ -565,6 +565,40 @@ def test_mo_lai_bus_khi_gate_decide_chua_duoc_xu_ly_khong_mo_gate_trung(tmp_path
     assert not orch2.gate.pending.get("T1") and orch2.lead.state["T1"] != "blocked", "quyết định phải được áp dụng"
 
 
+def test_chan_lai_sau_restart_van_mo_gate_khi_decide_tung_cho_trong_hang_doi(tmp_path):
+    """`_rehydrate` đếm MỌI `gate.decide` trong log vào `escalation_decided`, kể cả quyết định còn nằm trong hàng đợi;
+    khi decide đó được xử lý, `_on_gate_decide` đếm thêm lần nữa → bộ đếm sống lệch bộ đếm dựng lại. Restart sau đó
+    (decide đã xử lý) dựng lại số NHỎ hơn → khoá `escalation:<tid>:<n>:blocked:<k>` trùng khoá cũ trong `once` →
+    chặn lần sau không mở gate. Đo được 2026-09-24 (CAMPUS-UNI/TCK-001): khoá :0, :2, :3 đã dùng, restart dựng lại 3,
+    chặn lúc 10:09 sinh đúng khoá :3 → `gates_pending` rỗng, 38 ticket phụ thuộc đứng im."""
+
+    def hong_luon(system, user):
+        if _agent_of(system) in ENGINEERING:
+            raise LLMError("agent kỹ thuật hỏng")
+        return handler(system, user)
+
+    db = tmp_path / "c.sqlite"
+    bus = SQLiteBus(db)
+    orch = Orchestrator(bus, FakeClient(handler=hong_luon))
+    _drive_to_plan(bus, orch)
+    orch.run()
+    assert orch.lead.state["T1"] == "blocked" and orch.gate.pending.get("T1")
+    orch.gate.decide("T1", "approve", by="human:lead", reason="thử lại 1")  # restart TRƯỚC khi decide được xử lý
+    bus.close()
+
+    orch2 = Orchestrator(SQLiteBus(db), FakeClient(handler=hong_luon))
+    orch2.run()
+    assert orch2.lead.state["T1"] == "blocked" and orch2.gate.pending.get("T1"), "chặn lần hai phải mở gate"
+    orch2.gate.decide("T1", "approve", by="human:lead", reason="thử lại 2")
+    orch2.run(max_steps=1)  # chỉ xử lý decide, rồi tiến trình chết trước khi ticket chặn lại
+    orch2.bus.close()
+
+    orch3 = Orchestrator(SQLiteBus(db), FakeClient(handler=hong_luon))
+    orch3.run()
+    assert orch3.lead.state["T1"] == "blocked"
+    assert orch3.gate.pending.get("T1"), "chặn lần ba sau restart mà không mở gate = dự án đứng im không ai được hỏi"
+
+
 def test_status_canh_bao_khi_khong_con_viec_nao_chay_duoc(tmp_path):
     """`status` phải trả lời được "còn việc nào chạy được không", không chỉ liệt kê trạng thái.
 

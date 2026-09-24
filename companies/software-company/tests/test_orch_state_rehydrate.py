@@ -33,6 +33,14 @@ def _audit(bus, action, evidence, actor=ACTOR):
                          payload={"actor": actor, "action": action, "evidence": json.dumps(evidence)}))
 
 
+def _quyet_da_xu_ly(bus):
+    env = Envelope(topic="audit-log", key=ACTOR, actor=ACTOR,
+                   payload={"actor": ACTOR, "action": "gate.decide",
+                            "evidence": json.dumps({"subject_id": "T1", "decision": "approve"})})
+    bus.publish(env)
+    _audit(bus, "orchestrated", {"event_id": env.event_id, "topic": "audit-log", "actions": []})
+
+
 def _viec(bus, event_id=E1):
     """Một event actionable chưa `orchestrated` → nó phải nằm trong hàng đợi sau khi mở lại."""
     bus.publish(Envelope(topic="research-requests", key="P1", actor="human", event_id=event_id,
@@ -78,7 +86,8 @@ SEED = {
                                                                     "agent": "builder", "topic": "tasks"}),
     "unhandled": lambda bus, tmp: _audit(bus, "agent_error_unhandled", {"subject": "P1", "event_id": E1,
                                                                         "agent": "builder", "topic": "tasks"}),
-    "escalation_decided": lambda bus, tmp: _audit(bus, "gate.decide", {"subject_id": "T1", "decision": "approve"}),
+    # chỉ quyết định ĐÃ xử lý (`orchestrated`) mới được đếm lại — decide còn trong hàng đợi do `_on_gate_decide` đếm
+    "escalation_decided": lambda bus, tmp: _quyet_da_xu_ly(bus),
     "debt_gate": lambda bus, tmp: _audit(bus, "debt.escalated", {"project_id": "P1", "n": 3}),
     "paused": lambda bus, tmp: bus.publish(Envelope(topic="supervisor-actions", key="T1", actor="supervisor",
                                                     payload={"action": "pause", "target": "T1", "reason": "x"})),
