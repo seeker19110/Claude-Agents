@@ -378,3 +378,20 @@ def test_merge_hong_khong_phai_xung_dot_khong_xoa_nhanh_ticket_da_duyet(tmp_path
     assert acts.count("integration.failed") == 1, "mỗi nhịp watch gọi lại — chỉ ghi một lần"
     esc = [e for e in bus.replay(topic="supervisor-actions") if e.payload.get("action") == "escalate"]
     assert len(esc) == 1 and "untracked" in json.dumps(esc[0].payload, ensure_ascii=False)
+
+
+def test_git_khong_chet_khi_repo_khach_co_byte_khong_phai_utf8(tmp_path):
+    """Repo khách có tệp không phải UTF-8 (log console Windows cp1252 dán vào tài liệu) → `git show`/`diff` in ra byte
+    không giải mã được. Trước đây mọi lời gọi git giải mã `encoding="utf-8"` không kèm `errors=`: Linux ném
+    `UnicodeDecodeError`, Windows chết ở luồng đọc và trả `stdout=None` → `'NoneType' object has no attribute 'strip'`.
+    Đo được 2026-09-24 (CAMPUS-UNI/TCK-001): QA review PR lỗi handler, ticket rơi về escalation dù code không sai."""
+    from company import gate_brief, workspace
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "log.md").write_bytes(b"bootstrap: c\\u01a1 s\\u1edf d\xe3 s\xe0ng\n")  # nguyen van byte cp1252 cua log that
+    subprocess.run(["git", "-C", str(repo), "add", "log.md"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "log"],
+                   check=True, capture_output=True)
+    assert "bootstrap" in workspace._git(repo, "show", "HEAD")
+    ok, out = workspace._git_ok(repo, "show", "HEAD")
+    assert ok and "bootstrap" in out
+    assert "bootstrap" in (gate_brief._git(repo, "show", "HEAD") or "")

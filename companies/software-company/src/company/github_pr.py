@@ -64,7 +64,7 @@ def _gh(repo: Path, *args: str, timeout: int = 60) -> tuple[bool, str]:
     """`gh …` trong repo khách; không ném — (ok, stdout) hoặc (False, lý do rút gọn). Ngoại lệ có lý do của
     test quy ước `test_sandbox_noi_vao_cong_ty.py` (như git: argv do code ghép, không chạy mã của khách)."""
     try:
-        r = subprocess.run(["gh", *args], cwd=str(repo), capture_output=True, text=True, encoding="utf-8",
+        r = subprocess.run(["gh", *args], cwd=str(repo), capture_output=True, text=True, encoding="utf-8", errors="replace",
                            env=clean_env(), timeout=timeout)
     except FileNotFoundError:
         return False, "gh: không có trên máy (cài GitHub CLI rồi `gh auth login`)"
