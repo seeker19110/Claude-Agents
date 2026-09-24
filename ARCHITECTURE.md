@@ -19,7 +19,7 @@ thể: `CODEMAP.md`.
                        └────────────────────────────┬───────────────────────────┘
                                                      ▼
                     platform/xagents-core/  (package xagents_core)
-                    lõi chung: bus, llm, runner, guard, gate, trace, metrics, context, sandbox
+                    lõi chung: bus, llm, runner, guard, gate, execution state/journal, trace, metrics, context, sandbox
                                    ▲
                     ┌──────────────┴───────────┐
                     │  llm.yaml: backends      │
@@ -54,7 +54,7 @@ Năm nguyên tắc, mỗi cái có chỗ cắm trong code:
 | **Model quyết định – code hành động** | tính toán, kiểm định, render, deploy, đăng… là code xác định; model chỉ trả JSON | `tools.py`, `workspace.py`, `smoke.py` (company) |
 | **Prompt là code** | agent/skill có `version`, golden test, eval ghi/phát lại chạy trong CI không gọi model | `agents/*.md` front matter, `tests/golden/`, `evals/recordings/` |
 | **Guardrail có hạn mức** | ngân sách token, retry, timeout đều có ngưỡng; hết ngưỡng → escalate, không đi tiếp | `supervisor.py`, `guard.py`, `context.py` |
-| **Self-hosted, resume được** | bus SQLite; dừng và chạy tiếp ở bất kỳ điểm nào; state dựng lại từ log | `sqlite_bus.py`, `_rehydrate` trong orchestrator |
+| **Self-hosted, resume được** | bus SQLite + execution journal; dừng và chạy tiếp, state dựng lại từ log thay vì context | `sqlite_bus.py`, `execution.py`, `_rehydrate` trong orchestrator |
 | **Trung lập provider** | đổi model bằng `llm.yaml`/env, không đổi code hay prompt | `llm.py`, `routing.py`, `docs/DIEU-PHOI-MODEL.md` |
 
 ## Ranh giới tin cậy (quan trọng nhất để không tự lừa mình)
@@ -106,4 +106,4 @@ software-company AI agent framework")**; `d4abda1` cùng ngày gỡ MEP-Agents. 
 | Thi hành một đề bài lớn từ đặc tả tới PR merge, một lệnh | `docs/KHUON-THI-HANH.md`, `/thi-hanh` |
 | Bốn lớp Prompt/Agent/Loop/Graph: hiện trạng, tám việc, gói việc, điều phối subagent, khuôn công ty mới | `docs/KIEN-TRUC-4-LOP.md` |
 | Bảo mật: bí mật, phòng thủ, báo lỗi | `SECURITY.md` |
-| Vì sao quyết định thế này | Bốn dãy ADR, mỗi dãy đánh số riêng từ 0001, không tiền tố: `docs/adr/` gốc (0001–0014, quyết định cấp repo/quy trình), `companies/software-company/docs/adr/` (0001–0039), `platform/console/docs/adr/` (0001–0004), `platform/gateway/docs/adr/` (0001–0004) |
+| Vì sao quyết định thế này | Bốn dãy ADR, mỗi dãy đánh số riêng từ 0001, không tiền tố: `docs/adr/` gốc (0001–0017, quyết định cấp repo/quy trình), `companies/software-company/docs/adr/` (0001–0039), `platform/console/docs/adr/` (0001–0004), `platform/gateway/docs/adr/` (0001–0004) |

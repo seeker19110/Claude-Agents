@@ -9,6 +9,7 @@ companies/software-company, companies/keeper
 │  config.py (CoreConfig/TopicACL — chỗ DUY NHẤT core biết một công ty khác ở đâu)     │
 │                                                                                       │
 │  bus.py / sqlite_bus.py ── ACL + validate schema + bền vững trên đĩa                 │
+│  execution.py ── RunSpec/TaskSpec → state machine → evidence → SQLite journal          │
 │  runner.py ── AgentRunner: build prompt → gọi model → tool loop → ghi audit          │
 │       │            │             │                                                  │
 │       ▼            ▼             ▼                                                  │
@@ -38,9 +39,9 @@ platform/gateway (proxy) hoặc provider trả phí trực tiếp
 - **Vào**: hai công ty import trực tiếp (không qua HTTP) — đây là thư viện Python, không phải service.
 - **Ra**: `llm.py`/`routing.py` gọi model qua CLI (`claude -p`) hoặc HTTP OpenAI-compatible — có thể trỏ vào
   `platform/gateway` hoặc thẳng provider trả phí, core không phân biệt.
-- **Đĩa**: không tự ghi gì ngoài những gì `sandbox.py`/`sqlite_bus.py` được gọi để ghi (SQLite bus của công ty
-  gọi nó, log tiến trình con) — core không có state file riêng của chính nó.
-- **Test**: 477 ca (`uv run pytest --collect-only -q`, đo 2026-09-12), `branch=true` + `fail_under=100` đã bật
+- **Đĩa**: `sandbox.py`/`sqlite_bus.py` giữ state runtime cũ; từ ADR-0017, `ExecutionJournal` ghi append-only
+  khi harness được bật. File journal là state vận hành do caller chọn đường dẫn, không phải artifact Git.
+- **Test**: 542 ca sau ADR-0017 (23 ca execution mới), `branch=true` + `fail_under=100` đã bật
   từ ngày đầu, không phải mục tiêu đang tới.
 - **Tài liệu**: package này không có `docs/` riêng — ADR gốc `0001` ở `docs/adr/` cấp repo; mọi "vì sao" khác
   nằm trong docstring module, đọc trực tiếp thay vì tìm file riêng.
