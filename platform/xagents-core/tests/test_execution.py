@@ -6,6 +6,7 @@ nên một transition sai ở đây có thể làm task chạy hai lần hoặc 
 from __future__ import annotations
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 import pytest
@@ -318,3 +319,20 @@ def test_journal_tu_choi_event_id_trung(tmp_path) -> None:
         journal.append(event)
         with pytest.raises(ExecutionJournalError, match="event_id trùng"):
             journal.append(event)
+
+
+def test_journal_mot_connection_ghi_duoc_tu_nhieu_worker_thread(tmp_path) -> None:
+    with ExecutionJournal(tmp_path / "journal.sqlite") as journal:
+        events = [
+            ExecutionEvent(
+                run_id="RUN-1",
+                kind=ExecutionEventKind.TASK_STARTED,
+                task_id=f"T{i}",
+            )
+            for i in range(12)
+        ]
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(journal.append, events))
+        assert {event.event_id for event in journal.events("RUN-1")} == {
+            event.event_id for event in events
+        }
