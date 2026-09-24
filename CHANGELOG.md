@@ -6,6 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- feat(core): **execution harness kernel H1+H2 — RunSpec/TaskSpec DAG, state machine replay được, EvidenceReceipt và SQLite journal append-only** (#334). Phiên chính giữ intent/quyết định; execution state chuyển dần về code có type/test theo ADR-0017. PR này mới là foundation: `/thi-hanh` vẫn dùng state hiện tại cho tới bridge H7, không tuyên bố migration đã xong.
 - fix(core): **`SubprocessSandbox` hết giờ thì giết CẢ CÂY tiến trình, không treo vì cháu còn giữ ống** (#333). Đo thật CAMPUS-UNI/TCK-002 2026-09-24: tool `run test` (`uv run pytest`) quá 600s, `subprocess.run` chỉ giết `uv.exe` rồi trên Windows `communicate()` KHÔNG trần — pytest thật (cháu) còn giữ ống stdout nên orchestrator 0% CPU, 0 event suốt 20+ phút trong khi pytest mồ côi ăn 1245s CPU; trên POSIX không treo nhưng cháu thành mồ côi. Nay runner mặc định `_run_tree`: POSIX `start_new_session` + `killpg`, Windows `taskkill /T /F`, rồi chờ ống tối đa 5s. Test đỏ trước: `test_subprocess_timeout_giet_ca_cay_tien_trinh_khong_treo_vi_chau_giu_ong` (tiến trình thật: cha sinh cháu giữ ống). Họ lỗi cùng khuôn còn ở `xagents_core.llm` (`claude -p`/`codex exec` qua `subprocess.run(timeout=)`) — chưa treo thật vì cầu MCP tự thoát khi CLI chết; để PR riêng nếu gặp.
 - build(deps): bump `anthropic` 1.5.0 → 1.7.0 (dependabot) (#332)
 - build(deps): bump `ruff` 0.16.7 → 0.16.8 (dependabot) (#331)
