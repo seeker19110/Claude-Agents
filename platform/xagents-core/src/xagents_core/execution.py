@@ -302,7 +302,8 @@ def _task_succeeded(spec: RunSpec, state: RunState, event: ExecutionEvent) -> Ru
     tasks = dict(state.tasks)
     tasks[task_id] = TaskStatus.SUCCEEDED
     tasks = _unlock_ready(spec, tasks)
-    run_status = RunStatus.SUCCEEDED if all(status is TaskStatus.SUCCEEDED for status in tasks.values()) else state.status
+    complete = all(status is TaskStatus.SUCCEEDED for status in tasks.values())
+    run_status = RunStatus.SUCCEEDED if complete else state.status
     return replace(state, status=run_status, tasks=tasks)
 
 
