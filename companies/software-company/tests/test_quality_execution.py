@@ -79,7 +79,7 @@ def test_native_journal_restart_keeps_implementation_but_quality_remains_pending
         ]:
             event = ExecutionEvent(spec.run_id, kind, task_id)
             state = apply_event(spec, state, event)
-            journal.append(event)
+            journal._append_unchecked(event)
     with ExecutionJournal(path) as reopened:
         restored = reopened.resume(spec.run_id)
         assert restored == state
@@ -172,13 +172,13 @@ def test_native_failure_retry_and_completion_after_restart(bundle, tmp_path):
         for kind, task_id in events:
             event = ExecutionEvent(spec.run_id, kind, task_id)
             state = apply_event(spec, state, event)
-            journal.append(event)
+            journal._append_unchecked(event)
         rejected = evaluate_result(profile, source_result(), [], **expected(kwargs))
         assert rejected.status is TaskStatus.FAILED
         event = ExecutionEvent(spec.run_id, ExecutionEventKind.TASK_FAILED, QUALITY_TASK_ID,
                                payload={"reason": "; ".join(rejected.findings)})
         state = apply_event(spec, state, event)
-        journal.append(event)
+        journal._append_unchecked(event)
     with ExecutionJournal(path) as journal:
         state = journal.resume(spec.run_id)
         assert state.status is RunStatus.BLOCKED
@@ -186,14 +186,14 @@ def test_native_failure_retry_and_completion_after_restart(bundle, tmp_path):
         for kind in (ExecutionEventKind.TASK_RETRIED, ExecutionEventKind.TASK_STARTED):
             event = ExecutionEvent(spec.run_id, kind, QUALITY_TASK_ID)
             state = apply_event(spec, state, event)
-            journal.append(event)
+            journal._append_unchecked(event)
         result = replace(source_result(), attempt_id="attempt-2")
         accepted = evaluate_result(profile, result, receipts,
                                    **{**expected(kwargs), "expected_attempt_id": "attempt-2"})
         assert accepted.status is TaskStatus.SUCCEEDED
         event = ExecutionEvent(spec.run_id, ExecutionEventKind.TASK_SUCCEEDED, QUALITY_TASK_ID)
         state = apply_event(spec, state, event)
-        journal.append(event)
+        journal._append_unchecked(event)
         assert state.status is RunStatus.SUCCEEDED
         assert state.attempts["implementation"] == 1
         assert state.attempts[QUALITY_TASK_ID] == 2

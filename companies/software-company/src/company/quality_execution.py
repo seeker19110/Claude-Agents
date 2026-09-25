@@ -31,6 +31,7 @@ from xagents_core.execution import (
     TaskStatus,
 )
 
+from .delivery_contract import ApprovalLookup
 from .product_quality import ProjectProfile, Receipt, TrustedIssuer, assess, compile_contract, required_checks
 
 QUALITY_TASK_ID = "quality:accept"
@@ -81,6 +82,7 @@ def evaluate_result(
     trusted_issuers: dict[str, TrustedIssuer],
     evidence_root: Path,
     now: datetime | None = None,
+    approval_lookup: ApprovalLookup | None = None,
 ) -> TaskResult:
     """Fail-closed conversion to a native TaskResult, preserving evidence/artifacts.
 
@@ -100,7 +102,7 @@ def evaluate_result(
         profile, receipts, expected_contract_hash=expected_contract_hash,
         candidate_sha=candidate_sha, context_hash=context_hash,
         author_principals=author_principals, trusted_issuers=trusted_issuers,
-        evidence_root=evidence_root, now=now,
+        evidence_root=evidence_root, now=now, approval_lookup=approval_lookup,
     )
     blockers = [*result.findings, *assessment.blockers]
     if result.task_id != QUALITY_TASK_ID or result.attempt_id != expected_attempt_id:
@@ -144,11 +146,12 @@ def commit_quality_result(
     receipts: list[Receipt],
     *,
     event_id: str,
-    expected_count: int,
     bindings: QualityBindings,
     trusted_issuers: dict[str, TrustedIssuer],
     evidence_root: Path,
+    expected_count: int | None = None,
     now: datetime | None = None,
+    approval_lookup: ApprovalLookup | None = None,
 ) -> RunState:
     """Assess and persist a quality outcome on the native journal (ADR-0019).
 
@@ -157,6 +160,12 @@ def commit_quality_result(
     Keys are never persisted. Model, artifact and signature checks occur before
     the atomic compare-and-append; concurrent cancellation/retry makes it fail.
     Caller must protect this API, journal, trust registry and evidence store.
+
+    Decision and CAS use the SAME snapshot (pe2 P1, ADR-0019): `history` is read once,
+    right here, before evaluate() runs, and its length is the expected_count
+    handed to `journal.transition`. `expected_count` is only an optional
+    caller-side assertion of what that snapshot should be; a mismatch fails
+    closed before evaluate() ever runs, it never substitutes for the snapshot.
     """
     registered = journal.load_spec(profile.run_id)
     if registered is None:
@@ -167,6 +176,8 @@ def commit_quality_result(
     ))
     if registered != compile_execution(profile, work):
         raise ExecutionJournalError("registered execution contract does not match the product profile")
+    history = journal.events(profile.run_id)
+    count = len(history)
     pins = asdict(bindings)
     pins["author_principals"] = sorted(bindings.author_principals)
     receipt_documents = [receipt.model_dump(mode="json") for receipt in receipts]
@@ -174,22 +185,26 @@ def commit_quality_result(
     request_hash = hashlib.sha256(json.dumps(
         request, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False,
     ).encode("utf-8")).hexdigest()
-    history = journal.events(profile.run_id)
     prior = next((item for item in history if item.event_id == event_id), None)
     if prior is not None:
+        # Redelivery of an already-decided submission ACKs the stored outcome; it is not a
+        # fresh approval, so it does not go through the expected_count assertion below.
         if prior.payload.get("quality_result_version") != 1 or prior.payload.get("request_hash") != request_hash:
             raise ExecutionJournalError("quality submission ID collision")
-        return journal.transition(prior, expected_count=expected_count)
+        return journal.transition(prior, expected_count=count)
     started = next((item for item in reversed(history)
                     if item.task_id == QUALITY_TASK_ID and item.kind is ExecutionEventKind.TASK_STARTED), None)
     if started is None or started.payload.get("attempt_id") != bindings.expected_attempt_id:
         raise ExecutionJournalError("quality attempt is not the coordinator's active started attempt")
+    if expected_count is not None and expected_count != count:
+        raise ExecutionJournalError(f"stale event count: expected {expected_count}, actual {count}")
     verified = evaluate_result(
         profile, result, receipts, expected_attempt_id=bindings.expected_attempt_id,
         expected_base_sha=bindings.expected_base_sha, expected_diff_hash=bindings.expected_diff_hash,
         expected_contract_hash=bindings.expected_contract_hash, candidate_sha=bindings.candidate_sha,
         context_hash=bindings.context_hash, author_principals=bindings.author_principals,
         trusted_issuers=trusted_issuers, evidence_root=evidence_root, now=now,
+        approval_lookup=approval_lookup,
     )
     kind = (ExecutionEventKind.TASK_SUCCEEDED if verified.status is TaskStatus.SUCCEEDED
             else ExecutionEventKind.TASK_FAILED)
@@ -198,7 +213,7 @@ def commit_quality_result(
                "reason": "; ".join(verified.findings)}
     event = ExecutionEvent(profile.run_id, kind, QUALITY_TASK_ID, payload=payload, event_id=event_id,
                            ts=now if now is not None else datetime.now(UTC))
-    return journal.transition(event, expected_count=expected_count)
+    return journal.transition(event, expected_count=count)
 
 
 def main(argv: list[str] | None = None) -> int:

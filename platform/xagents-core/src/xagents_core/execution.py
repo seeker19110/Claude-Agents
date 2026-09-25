@@ -10,6 +10,7 @@ import hashlib
 import json
 import sqlite3
 import threading
+import warnings
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -461,6 +462,19 @@ class ExecutionJournal:
         return None if row is None else RunSpec.from_json(str(row[0]))
 
     def append(self, event: ExecutionEvent) -> None:
+        """Deprecated alias of `_append_unchecked`; new control paths must use `transition`.
+
+        Kept only for legacy imports outside this module. It bypasses the compare-and-swap
+        `transition` gives, so it must never be the write path for a decision (ADR-0019).
+        """
+        warnings.warn(
+            "ExecutionJournal.append is deprecated and bypasses CAS; use transition() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._append_unchecked(event)
+
+    def _append_unchecked(self, event: ExecutionEvent) -> None:
         """Low-level legacy import; new control paths must use validated transition."""
         try:
             with self._lock, self._db:
