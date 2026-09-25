@@ -274,3 +274,36 @@ def test_command_receipt_is_serialized_without_raw_output(bundle, tmp_path):
         payload = journal.events(profile.run_id)[-1].payload
         assert payload["result"]["evidence"][0]["started_at"] == command.started_at.isoformat()
         assert "private output" not in json.dumps(payload)
+
+
+def test_ket_qua_muon_cua_attempt_cu_bi_tu_choi_khong_danh_failed_attempt_moi(bundle, tmp_path):
+    """sc-security N5 #3: bindings đúng attempt mới nhất (CLI/driver đọc từ journal) nhưng kết quả mang attempt cũ
+    ⇒ từ chối, KHÔNG ghi gì. Trước đây nó thành finding `wrong_task_or_attempt` và đánh FAILED attempt mới, rồi
+    bộ đối chiếu chờ sha mới mãi."""
+    profile, receipts, kwargs = bundle
+    with ExecutionJournal(tmp_path / "run.sqlite") as journal:
+        count = begin(journal, profile)
+        commit(journal, profile, [], kwargs, count)
+        journal.transition(ExecutionEvent(profile.run_id, ExecutionEventKind.TASK_RETRIED, QUALITY_TASK_ID),
+                           expected_count=count + 1)
+        journal.transition(ExecutionEvent(profile.run_id, ExecutionEventKind.TASK_STARTED, QUALITY_TASK_ID,
+                                         payload={"attempt_id": "attempt-2"}), expected_count=count + 2)
+        current = replace(bindings(kwargs), expected_attempt_id="attempt-2")
+        with pytest.raises(ExecutionJournalError, match=r"attempt-1.*attempt-2"):
+            commit(journal, profile, receipts, kwargs, count + 3, event_id="late-old", pins=current)
+        assert len(journal.events(profile.run_id)) == count + 3, "không ghi event nào"
+        assert journal.resume(profile.run_id).tasks[QUALITY_TASK_ID] is TaskStatus.RUNNING
+        state = commit(journal, profile, receipts, kwargs, count + 3, event_id="submission-2", pins=current,
+                       result=replace(source_result(), attempt_id="attempt-2"))
+        assert state.status is RunStatus.SUCCEEDED, "attempt mới vẫn nộp được sau khi từ chối kết quả muộn"
+
+
+def test_sai_task_id_van_la_finding_khong_phai_tu_choi(bundle, tmp_path):
+    """Chỉ attempt cũ mới bị từ chối; kết quả sai task cho đúng attempt hiện tại vẫn được chấm FAILED như trước."""
+    profile, receipts, kwargs = bundle
+    with ExecutionJournal(tmp_path / "run.sqlite") as journal:
+        count = begin(journal, profile)
+        state = commit(journal, profile, receipts, kwargs, count,
+                       result=replace(source_result(), task_id="implementation"))
+        assert state.tasks[QUALITY_TASK_ID] is TaskStatus.FAILED
+        assert "execution:wrong_task_or_attempt" in state.blocked_reason

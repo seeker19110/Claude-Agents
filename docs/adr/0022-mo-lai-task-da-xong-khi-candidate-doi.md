@@ -60,6 +60,11 @@ vào giữa. Khi đó `succeeded` của sha cũ bị ghép với sha mới, và 
 hiện, có test tái hiện). `orch/quality_release.py` đọc mỗi run đúng một lần. Cache RAM `_quality_done` bị xoá khi một
 attempt khác đang mở.
 
+**Kết quả muộn của attempt cũ bị từ chối.** Driver và CLI `commit` đọc bindings của attempt mới nhất. Nếu kết quả
+mang `attempt_id` cũ, `commit_quality_result` ném lỗi và không ghi gì. Trước đây kết quả đó bị chấm thành finding
+`wrong_task_or_attempt` và đánh FAILED attempt đang chạy, rồi bộ đối chiếu chờ sha mới mãi. Kết quả sai `task_id` cho
+đúng attempt hiện tại vẫn được chấm FAILED như trước.
+
 R6 không đổi. Nó vẫn đòi `quality:accept` `succeeded` **ở đúng sha đã staged**. Giữa lúc mở lại và lúc có kết quả
 mới, trạng thái là `running`, nên R6 vẫn chặn.
 

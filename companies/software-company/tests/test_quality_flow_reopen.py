@@ -141,3 +141,41 @@ def test_cache_da_xong_bi_bo_khi_attempt_moi_dang_chay(tmp_path):
     quality_flow.sync_quality(o)  # rồi A được mở lại và chấm, không bị cache cũ nuốt
     assert driver.calls[-1][1] == f"{first}~2"
     assert quality_release.runs_for_release(o, rid_a) == ((RUN, "succeeded", o.release_sha[rid_a]),)
+
+
+def test_cli_commit_muon_cho_attempt_cu_bi_tu_choi_attempt_moi_van_chay(tmp_path, capsys):
+    """Đường thật của N5 #3: CLI nộp kết quả cho A, sync mở lại ở B (chờ CLI), rồi nộp lại đúng tệp kết quả cũ của A."""
+    import json
+
+    from company.quality_execution import _result_document
+    from company.quality_execution import main as qe_main
+    signers = _signers()
+    bus, o = _start(tmp_path, None, trust=write_trust(tmp_path / "trust.json", signers))
+    _sign_spec_with_profile(tmp_path, bus, o)
+    driver = FakeDriver(signers, o=o)
+    old_result, old_receipts = driver.run(RUN, ("goal.traceability",))  # kết quả driver cho attempt A
+    _stage(tmp_path, o, "REL-009")
+    quality_flow.sync_quality(o)  # đã RUNNING ở A nên chưa mở lại; driver None ⇒ A vẫn chờ
+    with _journal(tmp_path) as j:
+        before = j.events(RUN)
+    assert quality_flow.active_bindings(o, RUN).expected_attempt_id == old_result.attempt_id
+    # nộp đúng attempt A ⇒ A kết thúc; sync mở lại ở B
+    pf = tmp_path / "profile.json"
+    files = {"--result": tmp_path / "r.json", "--receipts": tmp_path / "rc.json"}
+    files["--result"].write_text(json.dumps(_result_document(old_result)), encoding="utf-8")
+    files["--receipts"].write_text(json.dumps([r.model_dump(mode="json") for r in old_receipts]), encoding="utf-8")
+    argv = ["commit", RUN, "--journal", str(tmp_path / "c.quality.sqlite"), "--profile", str(pf),
+            "--trust", str(tmp_path / "trust.json"), "--evidence-root", str(quality_flow.evidence_root(o, RUN)),
+            *[x for k, v in files.items() for x in (k, str(v))]]
+    assert qe_main(argv) == 0
+    quality_flow.sync_quality(o)
+    b = quality_flow.active_bindings(o, RUN)
+    assert b.expected_attempt_id.startswith("REL-009@")
+    with _journal(tmp_path) as j:
+        mid = j.events(RUN)
+    assert len(mid) > len(before)
+    capsys.readouterr()
+    assert qe_main(argv) != 0, "cùng tệp kết quả cũ nộp lại sau khi đã mở lại attempt B"
+    with _journal(tmp_path) as j:
+        assert j.events(RUN) == mid, "không ghi gì"
+        assert j.resume(RUN).tasks[QUALITY_TASK_ID] is TaskStatus.RUNNING

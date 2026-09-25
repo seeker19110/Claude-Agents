@@ -209,6 +209,11 @@ def commit_quality_result(
                     if item.task_id == QUALITY_TASK_ID and item.kind is ExecutionEventKind.TASK_STARTED), None)
     if started is None or started.payload.get("attempt_id") != bindings.expected_attempt_id:
         raise ExecutionJournalError("quality attempt is not the coordinator's active started attempt")
+    if result.attempt_id != bindings.expected_attempt_id:
+        # A late result for an older attempt (e.g. after a reopen, root ADR-0022) is refused, not scored: scoring
+        # it would mark the ACTIVE attempt FAILED for work that was never run on its candidate.
+        raise ExecutionJournalError(
+            f"stale result: attempt {result.attempt_id!r} is not the active attempt {bindings.expected_attempt_id!r}")
     if expected_count is not None and expected_count != count:
         raise ExecutionJournalError(f"stale event count: expected {expected_count}, actual {count}")
     verified = evaluate_result(
