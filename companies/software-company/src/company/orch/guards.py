@@ -316,6 +316,8 @@ def _check_plan(o: Orchestrator, tickets: list[Task], project: str) -> list[str]
     if len(ids) != len(tickets): problems.append("ticket_id trùng")
     for t in tickets:
         if t.ticket_id in o.lead.tickets: problems.append(f"{t.ticket_id} đã tồn tại")
+        # ADR gốc 0021 §d: `quality:` là namespace của nghiệm thu do trusted driver chạy — không agent nào được giao.
+        if t.ticket_id.startswith("quality:"): problems.append(f"{t.ticket_id} dùng tiền tố dành riêng quality:")
         if t.estimate_tokens is None: problems.append(f"{t.ticket_id} thiếu estimate_tokens")
         elif t.budget_tokens < t.estimate_tokens * BUDGET_FACTOR: problems.append(f"{t.ticket_id} budget < estimate×{BUDGET_FACTOR}")
         if not t.acceptance: problems.append(f"{t.ticket_id} thiếu acceptance")

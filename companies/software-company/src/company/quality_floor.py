@@ -25,6 +25,8 @@ MACHINE_PR = "workspace"
 MACHINE_RUN = "orchestrator"
 #: `audit-log` action mang mức nâng người đặt lúc ký spec (`gate_cli approve SPEC-<pid> --quality-bar ...`).
 BAR_ACTION = "quality.bar_set"
+#: `audit-log` action ghim ProjectProfile người ký kèm spec (`gate_cli approve SPEC-<pid> --quality-profile`, ADR gốc 0021).
+PROFILE_ACTION = "quality.profile_set"
 
 
 @dataclass(frozen=True)

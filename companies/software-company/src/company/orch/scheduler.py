@@ -19,6 +19,7 @@ from ..delivery import DONE_STATES
 from ..events import AuditLog, Envelope
 from .cli import _fmt, source_fingerprint
 from .guards import clarification_warnings
+from .quality_flow import note_env, sync_quality
 from .routes import ACTIVE_STATES, ACTOR, CONTROL_TOPICS, PAUSING, PLAN_INPUTS, REVIEW_AGENT, review_route
 
 if TYPE_CHECKING:
@@ -38,6 +39,7 @@ def _track_pause(o: Orchestrator, env: Envelope) -> None:
     elif act == "resume": o.paused.discard(target)
 
 def _on_event(o: Orchestrator, env: Envelope) -> None:
+    note_env(o, env)  # ADR gốc 0021: profile người ghim từ tiến trình khác (gate CLI) — chỉ ghi nhận, không chạy gì
     if env.topic == "supervisor-actions":
         o._track_pause(env)
         if env.payload["action"] == "resume": o._retry_deferred()
@@ -259,6 +261,9 @@ def _mark(o: Orchestrator, env: Envelope, res: StepResult) -> None:
     o._audit("orchestrated", {"event_id": env.event_id, "topic": env.topic, "actions": res.actions},
                 ticket_id=env.payload.get("ticket_id") or (env.key if env.topic == "tasks" else None),
                 project_id=env.payload.get("project_id"))
+    # ADR gốc 0021 §c: điểm gọi DUY NHẤT của nghiệm thu quality — mọi event xử lý xong đều qua đây. Dự án không
+    # có profile ⇒ trả về ngay, không mở journal, không audit (log `orchestrated` giữ nguyên từng byte).
+    sync_quality(o)
 
 def _remember(o: Orchestrator, key: str) -> None:
     """Ghi nhớ bền vững một việc chỉ làm một lần (khôi phục qua replay)."""

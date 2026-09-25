@@ -56,6 +56,7 @@ from typing import TYPE_CHECKING, Any
 from .blackboard import Blackboard
 from .bus import InMemoryBus
 from .delivery import DeliveryLead
+from .delivery_contract import ApprovalLookup
 from .deploy import deploy
 from .events import Envelope
 from .gate_cli import PersistentGate
@@ -70,6 +71,7 @@ from .orch.guards import _cycle as _cycle
 from .orch.guards import _dict_of, pending_clarifications
 from .orch.guards import _has_dispute as _has_dispute
 from .orch.guards import _test_scope_ok as _test_scope_ok
+from .orch.quality_flow import QualityPin, TrustedDriver
 from .orch.review_source import enforce_source as enforce_source
 
 # Không dùng trong file này nhưng là hợp đồng công khai của module (gate_brief.py, test) — giữ re-export tường
@@ -135,6 +137,7 @@ class Orchestrator:
         release_sha: dict[str, str]
         delivered: dict[str, dict[str, Any]]
         void_releases: set[str]
+        quality_profiles: dict[str, QualityPin]
         stalled: dict[str, dict[str, Any]]
         stall_count: Counter[str]
         unhandled: dict[str, dict[str, Any]]
@@ -154,8 +157,11 @@ class Orchestrator:
                  artifacts: Path | None = None, project_budget_usd: float | None = None,
                  deliver: bool = False, push_remote: str | None = None, release_branch: str = "company/release",
                  test_author: bool = False, sandbox: Sandbox | None = None, deliver_pr: bool = False,
-                 deploy_fn: Any = None):
+                 deploy_fn: Any = None, quality_driver: TrustedDriver | None = None,
+                 quality_trust: Path | None = None, quality_lookup: ApprovalLookup | None = None):
         self.bus = bus
+        self.quality_driver, self.quality_lookup = quality_driver, quality_lookup  # ADR gốc 0021; mặc định None → CLI commit
+        self.quality_trust, self._quality_lock = (Path(quality_trust) if quality_trust else None), threading.RLock()
         # ADR-0039 (D1b): dựng môi trường chạy thật của khách bằng `docker compose`. Tiêm được vì máy CI không có
         # docker daemon và ma trận còn `windows-latest` — test truyền `partial(deploy, run=…, which=…)` để đo cả
         # bốn nhánh kết luận mà không cần container thật. Mặc định là `deploy()` thật; nó tự đọc `COMPANY_DEPLOY`

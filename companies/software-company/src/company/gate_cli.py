@@ -10,11 +10,13 @@ Trạng thái gate không lưu riêng: dựng lại từ replay `audit-log` (act
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
 from typing import Any, cast, get_args
 
+from xagents_core.bus import is_human
 from xagents_core.gate_cli import SYSTEM_GATE_ACTOR as SYSTEM_GATE_ACTOR
 from xagents_core.gate_cli import PersistentGate as CorePersistentGate
 from xagents_core.gate_cli import trusted_decision as trusted_decision
@@ -24,7 +26,9 @@ from .bus import InMemoryBus
 from .events import AuditLog, Envelope
 from .gate_risk import AUTOAPPROVE_ACTOR, AUTOAPPROVE_REASON_PREFIX
 from .gates import GateKind, GateRequest, HumanGate, gate_approvers, gate_autoapprove_enabled
-from .quality_floor import BAR_ACTION, parse_bar
+from .product_quality import LEGACY_SCHEMES, ProjectProfile, allowed_schemes, compile_contract
+from .quality_execution import pinned_profile_path
+from .quality_floor import BAR_ACTION, PROFILE_ACTION, parse_bar
 from .roles import LEAD_ACTOR, LEGACY_GATE_ACTORS, ROLE
 
 DECISIONS: tuple[str, ...] = ("approve", "request_changes", "reject", "hold", "rollback")
@@ -116,6 +120,30 @@ class PersistentGate(CorePersistentGate[Envelope, AuditLog], HumanGate):
         super().__init__(bus, envelope_cls=Envelope, audit_cls=AuditLog, request_cls=GateRequest, **kw)
 
 
+def has_quality_profile(bus: InMemoryBus, project_id: str) -> bool:
+    """Dự án đã từng được người ghim quality profile chưa (ADR gốc 0021, quyết định 2)."""
+    return any(e.payload.get("action") == PROFILE_ACTION and is_human(e.actor)
+               and _json_evidence(e).get("project_id") == project_id for e in bus.replay(topic="audit-log"))
+
+
+def _pin_profile(db: Path, subject_id: str, path: Path, by: str) -> dict[str, Any]:
+    """Kiểm profile TRƯỚC khi ký rồi chép vào kho định danh theo nội dung; trả evidence cho `PROFILE_ACTION`.
+    Hỏng ở bất kỳ bước nào ⇒ `ValueError`/`OSError`, spec chưa ký."""
+    raw = path.read_bytes()
+    profile = ProjectProfile.model_validate_json(raw)
+    pid = subject_id[len(SPEC_PREFIX):]
+    if profile.project_id != pid:
+        raise ValueError(f"profile.project_id={profile.project_id!r} khác dự án {pid!r}")
+    if allowed_schemes(profile) == LEGACY_SCHEMES:
+        raise ValueError("run mới phải ghim evidence_policy.allowed_schemes (ADR-0020 §3)")
+    sha = hashlib.sha256(raw).hexdigest()
+    dest = pinned_profile_path(db, pid, sha)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(raw)
+    return {"project_id": pid, "run_id": profile.run_id, "profile_sha256": sha,
+            "contract_hash": compile_contract(profile)["contract_hash"], "by": by}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Human gate")
     ap.add_argument("--db", type=Path, default=Path("company.sqlite"))
@@ -127,6 +155,8 @@ def main(argv: list[str] | None = None) -> int:
         p = sub.add_parser(d); p.add_argument("subject_id"); p.add_argument("--by", required=True); p.add_argument("--reason", default="")
         p.add_argument("--quality-bar", default="",
                        help="chỉ với approve SPEC-<dự án>: mức nâng chất lượng k=v[,k=v] (ADR-0043 §2)")
+        p.add_argument("--quality-profile", type=Path, default=None,
+                       help="chỉ với approve SPEC-<dự án>: ProjectProfile người ký kèm spec (ADR gốc 0021)")
     ns = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8")  # Windows console cp1252
 
@@ -161,6 +191,19 @@ def main(argv: list[str] | None = None) -> int:
             parse_bar(bar)
         except ValueError as e:
             print(f"--quality-bar không hợp lệ: {e}", file=sys.stderr); return 2
+    pin: dict[str, Any] | None = None
+    spec_approve = ns.cmd == "approve" and ns.subject_id.startswith(SPEC_PREFIX)
+    if ns.quality_profile is not None:
+        if not spec_approve:
+            print(f"--quality-profile chỉ đi cùng approve {SPEC_PREFIX}<dự án>", file=sys.stderr); return 2
+        try:
+            pin = _pin_profile(ns.db, ns.subject_id, ns.quality_profile, ns.by)
+        except (OSError, ValueError) as e:
+            print(f"--quality-profile không hợp lệ: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr); return 2
+    elif spec_approve and has_quality_profile(bus, ns.subject_id[len(SPEC_PREFIX):]):
+        # Quyết định 2: không để một lần ký spec mới lọt qua mà không có hợp đồng nghiệm thu (hỏng thì đóng).
+        print(f"dự án đã có quality profile: approve {ns.subject_id} phải kèm --quality-profile", file=sys.stderr)
+        return 2
     try:
         done = gate.decide(ns.subject_id, ns.cmd, by=ns.by, reason=ns.reason)
     except KeyError:
@@ -169,6 +212,8 @@ def main(argv: list[str] | None = None) -> int:
         print(str(e), file=sys.stderr); return 3
     if bar is not None:
         gate._log(ns.by, BAR_ACTION, {"project_id": ns.subject_id[len(SPEC_PREFIX):], "bar": bar, "by": ns.by}, by=ns.by)
+    if pin is not None:
+        gate._log(ns.by, PROFILE_ACTION, pin, by=ns.by)
     print(f"{done.subject_id}: {done.decision} by {done.decided_by}"); return 0
 
 
