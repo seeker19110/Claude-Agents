@@ -61,3 +61,13 @@ phiên chính. Module này cung cấp contract/result adapter cho các bước �
 DB hỏng hoặc schema `execution_events` không đúng làm constructor ExecutionJournal ném SQLite error
 nhưng để kết nối sống. Hai test đỏ dùng SQLite thật tái hiện; sửa đóng kết nối khi PRAGMA/DDL lỗi, rồi
 ném lại chính lỗi đó. Không nuốt lỗi, không thay schema/state machine.
+
+## Nhãn miền không phải tên agent
+
+CI toàn company đã bắt các literal trùng agent cũ trong schema được port. Không mở rộng miễn trừ
+hoặc sửa bộ dò `test_roles.py`. Đổi surface thành `mobile_app`, chế độ đánh giá thành
+`independent_review`, các dimension thành `product_fitness`, `application_security`, `data_integrity`.
+Đây là nhãn sản phẩm/loại bằng chứng, không phải ID agent hoặc pha builder; không gán nhầm `ROLE.*`
+để ghép nghĩa không liên quan. Policy tăng thành `product-excellence/2` để contract/receipt cũ không
+được tái sử dụng dưới từ vựng mới. Profile và receipt của PR chưa phát hành nên không hỗ trợ alias
+v1; caller phải biên dịch lại hợp đồng. Không đổi bất kỳ agent, topic hay gate đang vận hành.

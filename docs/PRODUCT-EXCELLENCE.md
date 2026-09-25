@@ -158,7 +158,7 @@ check/mode; reviewer không là tác giả; run/contract/candidate/context khớ
 tại, không rỗng, không vượt giới hạn và đúng hash. Receipt giống hệt được xử lý idempotent; hai receipt
 khác nhau cho cùng check phải reconcile thay vì chọn tùy ý bản pass.
 
-**Các tham số 24 giờ tuổi bằng chứng và 64 MiB mỗi artifact là policy v1 nội bộ**, không phải chuẩn ngành.
+**Các tham số 24 giờ tuổi bằng chứng và 64 MiB mỗi artifact là policy `product-excellence/2` nội bộ**, không phải chuẩn ngành.
 Chúng nằm trong contract hash; dữ liệu lớn nên được chia thành artifact có manifest do driver kiểm. Thay
 policy cần version/contract mới. Đổi môi trường, config, lockfile, toolchain hoặc verifier làm context thay
 đổi và vô hiệu hóa bằng chứng liên quan.
@@ -192,6 +192,8 @@ uv run python -m company.product_quality verify profile.json receipts.json \
 `--author` lặp lại cho toàn bộ principal đã triển khai candidate, do coordinator xác định. Exit code 0:
 quality evidence pass; 1: blocked; 2: input lỗi, không có approval. Registry có dạng issuer →
 `{principal_id, mode, allowed_checks, key_file}`; key_file chỉ tới file nhị phân bí mật do coordinator cấp.
+`mode` là `runner` hoặc `independent_review`; bề mặt ứng dụng di động là `mobile_app`. Các nhãn này
+không phải ID agent hoặc pha builder; không thay đổi registry sáu agent đang vận hành.
 Không có signing CLI cho worker. Driver gọi API signing sau khi chạy thật; ví dụ và test không là driver
 production. `context_hash` phải bao gồm lockfile/toolchain/config/verifier/environment, không được chọn
 một chuỗi tùy ý chỉ để khớp receipts.

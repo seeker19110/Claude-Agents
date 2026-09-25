@@ -75,7 +75,7 @@ def bundle(tmp_path):
     contract = compile_contract(profile)["contract_hash"]
     issuers = {
         "ci": TrustedIssuer("runtime-ci", "runner", frozenset(k for k, c in CATALOG.items() if c.mode == "runner"), RUNNER_KEY),
-        "qa": TrustedIssuer("independent-qa", "reviewer", frozenset(k for k, c in CATALOG.items() if c.mode == "reviewer"), REVIEWER_KEY),
+        "qa": TrustedIssuer("independent-qa", "independent_review", frozenset(k for k, c in CATALOG.items() if c.mode == "independent_review"), REVIEWER_KEY),
     }
     receipts = []
     for check in required_checks(profile):
@@ -255,7 +255,7 @@ def test_contract_changes_invalidate_pin(bundle):
     assert compile_contract(profile) == compile_contract(make_profile())
 
 
-@pytest.mark.parametrize("surface", ["web", "mobile", "desktop"])
+@pytest.mark.parametrize("surface", ["web", "mobile_app", "desktop"])
 def test_ui_requires_project_design(surface):
     with pytest.raises(ValidationError):
         make_profile(surfaces=[surface])

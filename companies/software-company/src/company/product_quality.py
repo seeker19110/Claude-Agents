@@ -20,15 +20,15 @@ from typing import Annotated, Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-POLICY_VERSION = "product-excellence/1"
+POLICY_VERSION = "product-excellence/2"
 MAX_EVIDENCE_AGE = timedelta(hours=24)
 MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=12000)]
 Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 Revision = Annotated[str, StringConstraints(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")]
 Domain = Literal["general", "education", "healthcare", "finance", "commerce", "enterprise", "industrial", "content"]
-Surface = Literal["web", "mobile", "desktop", "api", "cli", "library"]
-Mode = Literal["runner", "reviewer"]
+Surface = Literal["web", "mobile_app", "desktop", "api", "cli", "library"]
+Mode = Literal["runner", "independent_review"]
 
 
 class StrictModel(BaseModel):
@@ -98,7 +98,7 @@ class ProjectProfile(StrictModel):
             identifiers = [item.id for item in items]
             if len(identifiers) != len(set(identifiers)):
                 raise ValueError("acceptance and target identifiers must be unique")
-        if set(self.surfaces) & {"web", "mobile", "desktop"} and self.design is None:
+        if set(self.surfaces) & {"web", "mobile_app", "desktop"} and self.design is None:
             raise ValueError("a graphical product requires a project-specific design brief")
         if self.completion_target in {"staging", "production"} and not self.operates_service:
             raise ValueError("deployment target requires operates_service=true")
@@ -118,44 +118,44 @@ def _checks(rows: list[tuple[str, str, Mode, str]]) -> tuple[Check, ...]:
 
 
 BASE_CHECKS = _checks([
-    ("goal.traceability", "product", "reviewer", "Every mandatory outcome has acceptance evidence; no stubs or scope drift."),
-    ("architecture.fitness", "architecture", "reviewer", "ADR explains boundaries, alternatives, evolution and minimal necessary complexity."),
-    ("technology.support", "technology", "reviewer", "Supported versions, licenses, dependencies, upgrade path and operating fit are verified."),
+    ("goal.traceability", "product_fitness", "independent_review", "Every mandatory outcome has acceptance evidence; no stubs or scope drift."),
+    ("architecture.fitness", "architecture", "independent_review", "ADR explains boundaries, alternatives, evolution and minimal necessary complexity."),
+    ("technology.support", "technology", "independent_review", "Supported versions, licenses, dependencies, upgrade path and operating fit are verified."),
     ("engineering.static", "engineering", "runner", "Applicable build/lint/type checks run on the candidate; omissions require contract justification."),
     ("testing.unit", "correctness", "runner", "Relevant unit and regression tests pass without weakened assertions or hidden failures."),
     ("testing.integration", "compatibility", "runner", "Component/API contracts and failure paths work with representative dependencies."),
-    ("testing.acceptance", "product", "runner", "Critical journeys complete against real outcomes, not just success messages."),
-    ("security.threat_model", "security", "reviewer", "Threat model and versioned applicable security requirements cover the actual attack surface."),
-    ("security.verification", "security", "runner", "Applicable authorization, input, secrets and dependency checks have no unresolved blocking findings."),
+    ("testing.acceptance", "product_fitness", "runner", "Critical journeys complete against real outcomes, not just success messages."),
+    ("security.threat_model", "application_security", "independent_review", "Threat model and versioned applicable security requirements cover the actual attack surface."),
+    ("security.verification", "application_security", "runner", "Applicable authorization, input, secrets and dependency checks have no unresolved blocking findings."),
     ("supply_chain.inventory", "supply_chain", "runner", "Dependency inventory, provenance and license evidence are traceable to the build."),
-    ("maintainability.review", "maintainability", "reviewer", "Independent review checks cohesion, duplication, complexity, tests and extension seams."),
+    ("maintainability.review", "maintainability", "independent_review", "Independent review checks cohesion, duplication, complexity, tests and extension seams."),
     ("performance.budget", "performance", "runner", "Representative load/device/data measurements meet the declared budgets."),
     ("reliability.failure_paths", "reliability", "runner", "Timeouts, retries, partial failure and recovery preserve stated invariants."),
-    ("documentation.handover", "operability", "reviewer", "Setup, configuration, troubleshooting and maintenance instructions match the candidate."),
-    ("domain.fitness", "domain", "reviewer", "Workflows, terminology and assumptions fit these users and industries, not a generic template."),
+    ("documentation.handover", "operability", "independent_review", "Setup, configuration, troubleshooting and maintenance instructions match the candidate."),
+    ("domain.fitness", "domain", "independent_review", "Workflows, terminology and assumptions fit these users and industries, not a generic template."),
 ])
 UI_CHECKS = _checks([
-    ("design.rationale", "ux", "reviewer", "Research status, task model, layout and visual direction are coherent for this project."),
-    ("design.system", "ui", "reviewer", "Tokens, typography, hierarchy, components and content are consistent with the design brief."),
-    ("design.visual", "ui", "reviewer", "Rendered screens with realistic content meet the project rubric; no universal aesthetic score."),
+    ("design.rationale", "ux", "independent_review", "Research status, task model, layout and visual direction are coherent for this project."),
+    ("design.system", "ui", "independent_review", "Tokens, typography, hierarchy, components and content are consistent with the design brief."),
+    ("design.visual", "ui", "independent_review", "Rendered screens with realistic content meet the project rubric; no universal aesthetic score."),
     ("design.responsive_states", "ux", "runner", "Target devices, locales, loading/empty/error/success/permission states are exercised."),
     ("accessibility.automated", "accessibility", "runner", "Automated checks cover applicable accessibility rules on critical journeys."),
-    ("accessibility.interaction", "accessibility", "reviewer", "Keyboard, focus, zoom, reading order and assistive interaction are checked; automated scans alone are insufficient."),
-    ("usability.journeys", "ux", "reviewer", "Task-based usability evaluation records evidence and separates simulated findings from real-user research."),
+    ("accessibility.interaction", "accessibility", "independent_review", "Keyboard, focus, zoom, reading order and assistive interaction are checked; automated scans alone are insufficient."),
+    ("usability.journeys", "ux", "independent_review", "Task-based usability evaluation records evidence and separates simulated findings from real-user research."),
 ])
 DATA_CHECKS = _checks([
-    ("data.integrity", "data", "runner", "Migration, constraints, concurrent updates and retry/idempotency preserve data invariants."),
+    ("data.integrity", "data_integrity", "runner", "Migration, constraints, concurrent updates and retry/idempotency preserve data invariants."),
     ("data.restore", "reliability", "runner", "A representative backup is actually restored and checked against stated recovery objectives."),
 ])
 SERVICE_CHECKS = _checks([
     ("operations.observability", "operability", "runner", "Health, logs, metrics and actionable alerts work without leaking sensitive data."),
-    ("operations.runbook", "operability", "reviewer", "Deployment, incident response, ownership, rollback and lifecycle costs are explicit."),
+    ("operations.runbook", "operability", "independent_review", "Deployment, incident response, ownership, rollback and lifecycle costs are explicit."),
     ("operations.recovery", "reliability", "runner", "Rollback or roll-forward recovery is rehearsed in an authorized environment."),
 ])
 EXTRA_CHECKS = _checks([
-    ("privacy.lifecycle", "privacy", "reviewer", "Minimization, retention, deletion, access and sensitive telemetry follow the project obligations."),
-    ("domain.obligations", "domain", "reviewer", "Jurisdiction, harm scenarios and applicable obligations are mapped; required external expertise is not fabricated."),
-    ("children.safeguards", "safety", "reviewer", "Age-appropriate flows, privacy and misuse risks are explicitly assessed."),
+    ("privacy.lifecycle", "privacy", "independent_review", "Minimization, retention, deletion, access and sensitive telemetry follow the project obligations."),
+    ("domain.obligations", "domain", "independent_review", "Jurisdiction, harm scenarios and applicable obligations are mapped; required external expertise is not fabricated."),
+    ("children.safeguards", "safety", "independent_review", "Age-appropriate flows, privacy and misuse risks are explicitly assessed."),
     ("ai.evaluation", "ai", "runner", "Task-specific evals cover factuality, unsafe input, injection, privacy, fallback, latency and cost."),
     ("integration.candidate", "delivery", "runner", "Required CI passes on the exact integrated candidate; old-branch green is not reused blindly."),
     ("release.receipt", "delivery", "runner", "Authorized deployment receipt and post-deploy health/smoke checks match the candidate and target."),
@@ -166,7 +166,7 @@ CATALOG = {check.id: check for check in (*BASE_CHECKS, *UI_CHECKS, *DATA_CHECKS,
 def required_checks(profile: ProjectProfile) -> tuple[Check, ...]:
     """Checks may be added by applicability, never removed by a worker verdict."""
     selected = list(BASE_CHECKS)
-    if set(profile.surfaces) & {"web", "mobile", "desktop"}:
+    if set(profile.surfaces) & {"web", "mobile_app", "desktop"}:
         selected.extend(UI_CHECKS)
     if profile.persists_data:
         selected.extend(DATA_CHECKS)
@@ -240,7 +240,7 @@ class TrustedIssuer:
     key: bytes = field(repr=False)
 
     def __post_init__(self) -> None:
-        if not self.principal_id.strip() or self.mode not in {"runner", "reviewer"} or len(self.key) < 32:
+        if not self.principal_id.strip() or self.mode not in {"runner", "independent_review"} or len(self.key) < 32:
             raise ValueError("invalid trust configuration")
         if not self.allowed_checks or not self.allowed_checks <= CATALOG.keys():
             raise ValueError("issuer must be scoped to known checks")
@@ -361,7 +361,7 @@ def assess(
             reason = "stale_candidate_or_context"
         elif not (evidence.created_at <= current < evidence.expires_at) or current - evidence.created_at > MAX_EVIDENCE_AGE:
             reason = "expired_or_future_evidence"
-        elif check.mode == "reviewer" and issuer.principal_id in author_principals:
+        elif check.mode == "independent_review" and issuer.principal_id in author_principals:
             reason = "self_approval"
         elif evidence.status != "pass":
             reason = f"status_{evidence.status}"
