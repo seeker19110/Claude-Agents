@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 jobs:
-  vocabulary-fix:
+  finalize-transfer:
     if: github.repository == 'seeker19110/Claude-Agents' && github.ref == 'refs/heads/feat/product-quality-harness'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -16,50 +16,27 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-      - name: Transfer only reviewed byte-verified vocabulary edits
+      - name: Verify documentation edit and remove one-time helpers
         run: |
           python - <<'PY'
           import hashlib
           from pathlib import Path
           def blob(b):
               return hashlib.sha1(b'blob ' + str(len(b)).encode() + b'\0' + b).hexdigest()
-          changes = [
-              ('companies/software-company/src/company/product_quality.py',
-               'e2823ce7e7419395cf5525d61438503764b76969', '82e463b077e3bad6b04425a6455341aa0a6aa093',
-               [('"product-excellence/1"', '"product-excellence/2"'), ('"mobile"', '"mobile_app"'),
-                ('"reviewer"', '"independent_review"'), ('"product"', '"product_fitness"'),
-                ('"security"', '"application_security"'), ('"data"', '"data_integrity"')]),
-              ('companies/software-company/tests/test_product_quality.py',
-               'a0b2dcb26ac3f4e39505fe05292c5f88fdb42347', 'f46bc53072ae0ea03f8e0afca6a018201734b814',
-               [('"reviewer"', '"independent_review"'), ('"mobile"', '"mobile_app"')]),
-          ]
-          for name, before, after, rules in changes:
-              path = Path(name)
-              assert blob(path.read_bytes()) == before
-              text = path.read_text(encoding='utf-8')
-              for old, new in rules:
-                  assert old in text
-                  text = text.replace(old, new)
-              assert blob(text.encode()) == after
-              path.write_bytes(text.encode())
-          path = Path('docs/adr/0018-product-quality-execution-adapter.md')
-          assert blob(path.read_bytes()) == '21ebffc3e5c80a4ac77fc4a0599b57bf0e07418b'
-          addition = '''
-          ## Nhãn miền không phải tên agent
-
-          CI toàn company đã bắt các literal trùng agent cũ trong schema được port. Không mở rộng miễn trừ
-          hoặc sửa bộ dò `test_roles.py`. Đổi surface thành `mobile_app`, chế độ đánh giá thành
-          `independent_review`, các dimension thành `product_fitness`, `application_security`, `data_integrity`.
-          Đây là nhãn sản phẩm/loại bằng chứng, không phải ID agent hoặc pha builder; không gán nhầm `ROLE.*`
-          để ghép nghĩa không liên quan. Policy tăng thành `product-excellence/2` để contract/receipt cũ không
-          được tái sử dụng dưới từ vựng mới. Profile và receipt của PR chưa phát hành nên không hỗ trợ alias
-          v1; caller phải biên dịch lại hợp đồng. Không đổi bất kỳ agent, topic hay gate đang vận hành.
-          '''
-          result = path.read_bytes() + addition.encode()
-          assert blob(result) == 'b213c92373e48ff3f5eb126d99dcbd71be417a99'
-          path.write_bytes(result)
+          p = Path('docs/PRODUCT-EXCELLENCE.md')
+          assert blob(p.read_bytes()) == '2bc05b6d0c5bf4b7f335439a7bbc8e22f1be376f'
+          s = p.read_text(encoding='utf-8')
+          old = 'là policy v1 nội bộ'
+          assert old in s
+          s = s.replace(old, 'là policy `product-excellence/2` nội bộ')
+          old = '`{principal_id, mode, allowed_checks, key_file}`; key_file chỉ tới file nhị phân bí mật do coordinator cấp.'
+          assert old in s
+          s = s.replace(old, old + '\n`mode` là `runner` hoặc `independent_review`; bề mặt ứng dụng di động là `mobile_app`. Các nhãn này\nkhông phải ID agent hoặc pha builder; không thay đổi registry sáu agent đang vận hành.')
+          assert blob(s.encode()) == '46a0ee799278a3935a9a5feaa4df905997e58238'
+          p.write_bytes(s.encode())
           PY
           git diff --check
-          git add -- companies/software-company/src/company/product_quality.py companies/software-company/tests/test_product_quality.py docs/adr/0018-product-quality-execution-adapter.md
-          git -c user.name=seeker19110 -c user.email=29851712+seeker19110@users.noreply.github.com commit -m 'fix(company): separate product schema vocabulary from agent identities'
+          git add -- docs/PRODUCT-EXCELLENCE.md
+          git rm -- .github/workflows/quality-source-snapshot.yml .integration/assemble.py .integration/transfer.json
+          git -c user.name=seeker19110 -c user.email=29851712+seeker19110@users.noreply.github.com commit -m 'docs: synchronize product policy vocabulary and remove one-time transfer helpers'
           git push origin HEAD:refs/heads/feat/product-quality-harness
