@@ -67,6 +67,15 @@ jobs:
           echo "Thêm vào thân PR: đụng bảng chuyển nào (TICKET_TRANSITIONS/RELEASE_TRANSITIONS), vì sao, và dẫn ADR-0034." >&2
           exit 1
 
+      # pe2 P0 (`docs/thi-hanh/pe2.md`): Definition of Done / BÁO CÁO XÁC THỰC không còn ô mở.
+      # Vì sao: #335 merge khi ô "Review độc lập trước merge" ở cả hai mục còn trống. Ô ghi rõ
+      # `(sau merge)` được miễn — việc thật sự chỉ làm được sau merge thì nói thẳng ra trong ô.
+      # Sửa thân PR là chạy lại bước này (sự kiện `edited` ở trên).
+      - name: Definition of Done / BÁO CÁO XÁC THỰC không còn ô mở
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: python3 scripts/pr_dod_check.py
+
       # K8.4 kịch bản B: CẢNH BÁO, không đỏ. Nhật ký phiên là luật cho người (AGENTS.md luật bắt buộc 9) — chặn
       # merge vì nó là phạt sai chỗ: PR có thể của một phiên chưa kết thúc, và người viết nhật ký cuối phiên chứ
       # không phải mỗi PR. Cảnh báo hiện ngay trong tab Checks nên vẫn nhắc được, mà không biến một luật mềm

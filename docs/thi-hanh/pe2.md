@@ -35,7 +35,7 @@ thay kế hoạch H3–H7 của ADR-0017.
 
 | Mã | Việc | Mảng | Hạng mục | Mức | Ưu | Nhược | Khi nào |
 |---|---|---|---|---|---|---|---|
-| P0 | pr-policy chặn DoD và khối xác thực còn `- [ ]`; rút gọn đoạn trong `AGENTS.md` | ci/docs | pe2-quytrinh | C1 | Rẻ, chặn lặp lại P2 của #335 | PR cũ đang mở phải sửa thân | chưa |
+| P0 | pr-policy chặn DoD và khối xác thực còn `- [ ]`; rút gọn đoạn trong `AGENTS.md` | ci/docs | pe2-quytrinh | C1 | Rẻ, chặn lặp lại P2 của #335 | PR cũ đang mở phải sửa thân | ◐ PR #PR |
 | P1 | CAS tự đếm từ snapshot; `append` thành `_append_unchecked` kèm alias deprecated; test cổng cấm `src/` gọi `append` | core/company | pe2-cung | C2 | Bỏ lệ thuộc kỷ luật caller | Đổi chữ ký công khai (giữ tương thích một vòng) | chưa |
 | P2 | `QualityTarget.check_id`; `evidence_policy` có trần trong profile; `POLICY_VERSION` `/3` chỉ khi có trường mới | company | pe2-cung | C2 | Target đúng driver; policy theo rủi ro | Thêm trường schema | chưa |
 | P3 | Ready thật: người duyệt không phải tác giả, `approved_at` hợp lệ, băm lại spec, `ApprovalLookup` | company | pe2-cung | C2 | Ready có nghĩa thật | Cần coordinator cấp lookup | chưa |
