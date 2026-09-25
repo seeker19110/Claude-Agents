@@ -69,9 +69,7 @@ def make_profile(**changes):
     return ProjectProfile.model_validate(profile_data(**changes))
 
 
-@pytest.fixture
-def bundle(tmp_path):
-    profile = make_profile()
+def _make_bundle(profile, tmp_path, *, extra_measurements=None):
     contract = compile_contract(profile)["contract_hash"]
     issuers = {
         "ci": TrustedIssuer("runtime-ci", "runner", frozenset(k for k, c in CATALOG.items() if c.mode == "runner"), RUNNER_KEY),
@@ -82,6 +80,9 @@ def bundle(tmp_path):
         artifact = tmp_path / f"{check.id}.txt"
         artifact.write_text(f"Synthetic fixture for {check.id}\n", encoding="utf-8")
         issuer_id = "ci" if check.mode == "runner" else "qa"
+        measurements = {"latency-p95": 100.0} if check.id == "performance.budget" else {}
+        if extra_measurements and check.id in extra_measurements:
+            measurements = {**measurements, **extra_measurements[check.id]}
         evidence = Evidence(schema_version=1, check_id=check.id, run_id=profile.run_id,
                             candidate_sha=SHA, context_hash=CONTEXT, contract_hash=contract,
                             issuer=issuer_id, status="pass", created_at=NOW - timedelta(minutes=1),
@@ -89,11 +90,37 @@ def bundle(tmp_path):
                             artifact_sha256=hashlib.sha256(artifact.read_bytes()).hexdigest(),
                             details="Synthetic unit-test evidence; not a real product test.",
                             covered_acceptance=["AC-1"] if check.id == "testing.acceptance" else [],
-                            measurements={"latency-p95": 100.0} if check.id == "performance.budget" else {})
+                            measurements=measurements)
         receipts.append(sign_evidence(evidence, issuers[issuer_id].key))
     kwargs = {"expected_contract_hash": contract, "candidate_sha": SHA, "context_hash": CONTEXT,
               "author_principals": frozenset({"implementation-worker"}), "trusted_issuers": issuers,
               "evidence_root": tmp_path, "now": NOW}
+    return receipts, kwargs
+
+
+@pytest.fixture
+def bundle(tmp_path):
+    profile = make_profile()
+    receipts, kwargs = _make_bundle(profile, tmp_path)
+    return profile, receipts, kwargs
+
+
+@pytest.fixture
+def ui_bundle(tmp_path):
+    data = profile_data(
+        surfaces=["web"], design=DESIGN,
+        quality_targets=[
+            {"id": "latency-p95", "unit": "ms", "operator": "lte", "value": 500.0,
+             "conditions": "Representative fixture workload; illustrative, not a universal SLO."},
+            {"id": "a11y-violations", "unit": "count", "operator": "lte", "value": 0.0,
+             "conditions": "No automated accessibility violations on critical journeys.",
+             "check_id": "accessibility.automated"},
+        ],
+    )
+    profile = ProjectProfile.model_validate(data)
+    receipts, kwargs = _make_bundle(
+        profile, tmp_path, extra_measurements={"accessibility.automated": {"a11y-violations": 0.0}}
+    )
     return profile, receipts, kwargs
 
 
@@ -452,6 +479,77 @@ def test_trust_registry_absolute_key_path(tmp_path):
     registry.write_text(json.dumps({"ci": {"principal_id": "runtime-ci", "mode": "runner",
                         "allowed_checks": ["testing.unit"], "key_file": str(key.resolve())}}), encoding="utf-8")
     assert _read_trust(registry)["ci"].key == RUNNER_KEY
+
+
+# v2 contract bytes must never change for a profile that does not use check_id/evidence_policy.
+EXAMPLE_V2_CONTRACT_HASH = "c52cc808a9c9e9c6f9a383038c0adf76ea2f18edf19f66ba3d13b0771c4e3f61"
+
+
+def test_example_profile_v2_hash_is_pinned():
+    example = Path(__file__).parents[1] / "examples" / "product-quality-profile.json"
+    profile = ProjectProfile.model_validate_json(example.read_text(encoding="utf-8"))
+    contract = compile_contract(profile)
+    assert contract["policy_version"] == "product-excellence/2"
+    assert contract["contract_hash"] == EXAMPLE_V2_CONTRACT_HASH
+
+
+def test_a11y_target_checked_on_a11y_receipt(ui_bundle):
+    profile, receipts, kwargs = ui_bundle
+    result = assess(profile, receipts, **kwargs)
+    assert result.quality_pass
+    assert "accessibility.automated" in result.passed
+    assert "performance.budget" in result.passed
+
+
+def test_a11y_target_missing_measurement_blocks_a11y_check_only(ui_bundle):
+    profile, receipts, kwargs = ui_bundle
+    index = next(i for i, r in enumerate(receipts) if r.evidence.check_id == "accessibility.automated")
+    key = kwargs["trusted_issuers"][receipts[index].evidence.issuer].key
+    receipts[index] = rewrite(receipts[index], key, measurements={})
+    result = assess(profile, receipts, **kwargs)
+    assert not result.quality_pass
+    assert "accessibility.automated:missing_or_unmet_quality_target" in result.blockers
+    assert "performance.budget" in result.passed
+
+
+def test_quality_target_check_id_must_be_a_required_check():
+    data = profile_data()
+    data["quality_targets"][0]["check_id"] = "accessibility.automated"
+    with pytest.raises(ValidationError):
+        ProjectProfile.model_validate(data)
+
+
+def test_evidence_policy_bounds_validated():
+    for max_age, max_bytes in [(3599, 4096), (604801, 4096), (86400, 0), (86400, 268435457)]:
+        with pytest.raises(ValidationError):
+            make_profile(evidence_policy={"max_age_seconds": max_age, "max_artifact_bytes": max_bytes})
+
+
+def test_profile_with_new_fields_uses_v3_policy_and_different_hash():
+    v2_hash = compile_contract(make_profile())["contract_hash"]
+    profile = make_profile(evidence_policy={"max_age_seconds": 7200, "max_artifact_bytes": 1024})
+    contract = compile_contract(profile)
+    assert contract["policy_version"] == "product-excellence/3"
+    assert contract["contract_hash"] != v2_hash
+    assert contract["evidence_policy"]["max_age_seconds"] == 7200
+    assert contract["evidence_policy"]["max_artifact_bytes"] == 1024
+
+
+def test_evidence_policy_shrinks_max_age(tmp_path):
+    profile = make_profile(evidence_policy={"max_age_seconds": 3600, "max_artifact_bytes": MAX_ARTIFACT_BYTES})
+    receipts, kwargs = _make_bundle(profile, tmp_path)
+    index = next(i for i, r in enumerate(receipts) if r.evidence.check_id == "performance.budget")
+    key = kwargs["trusted_issuers"][receipts[index].evidence.issuer].key
+    receipts[index] = rewrite(receipts[index], key, created_at=NOW - timedelta(hours=2), expires_at=NOW + timedelta(hours=1))
+    result = assess(profile, receipts, **kwargs)
+    assert "performance.budget:expired_or_future_evidence" in result.blockers
+
+
+def test_evidence_policy_shrinks_max_artifact_bytes(tmp_path):
+    profile = make_profile(evidence_policy={"max_age_seconds": 86400, "max_artifact_bytes": 16})
+    receipts, kwargs = _make_bundle(profile, tmp_path)
+    result = assess(profile, receipts, **kwargs)
+    assert "performance.budget:missing_changed_or_unsafe_artifact" in result.blockers
 
 
 def test_product_quality_module_entrypoint(monkeypatch, capsys):

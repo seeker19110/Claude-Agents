@@ -32,8 +32,10 @@ from pydantic import (
 from .delivery_contract import DeliveryContract, DeliveryReport, adopted_source, delivery_gaps
 
 POLICY_VERSION = "product-excellence/2"
+POLICY_VERSION_V3 = "product-excellence/3"
 MAX_EVIDENCE_AGE = timedelta(hours=24)
 MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
+DEFAULT_CHECK_ID = "performance.budget"
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=12000)]
 Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 Revision = Annotated[str, StringConstraints(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")]
@@ -75,6 +77,19 @@ class QualityTarget(StrictModel):
     operator: Literal["lte", "gte"]
     value: Annotated[float, Field(ge=0, allow_inf_nan=False)]
     conditions: Text
+    check_id: str = DEFAULT_CHECK_ID
+
+    @model_serializer(mode="wrap")
+    def serialize_target(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        document: dict[str, Any] = handler(self)
+        if self.check_id == DEFAULT_CHECK_ID:
+            document.pop("check_id", None)  # Preserve pre-adoption v2 contract bytes.
+        return document
+
+
+class EvidencePolicy(StrictModel):
+    max_age_seconds: int = Field(ge=3600, le=604800)
+    max_artifact_bytes: int = Field(ge=1, le=268435456)
 
 
 class ProjectProfile(StrictModel):
@@ -100,12 +115,15 @@ class ProjectProfile(StrictModel):
     completion_target: Literal["verified", "merged", "staging", "production"]
     design: DesignBrief | None = None
     delivery: DeliveryContract | None = None
+    evidence_policy: EvidencePolicy | None = None
 
     @model_serializer(mode="wrap")
     def serialize_profile(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         document: dict[str, Any] = handler(self)
         if self.delivery is None:
             document.pop("delivery", None)  # Preserve pre-adoption v2 contract bytes.
+        if self.evidence_policy is None:
+            document.pop("evidence_policy", None)  # Preserve pre-adoption v2 contract bytes.
         return document
 
     @model_validator(mode="after")
@@ -123,6 +141,10 @@ class ProjectProfile(StrictModel):
             raise ValueError("deployment target requires operates_service=true")
         if self.delivery is not None:
             self.delivery.validate_acceptance({a.id for a in self.acceptance_criteria})
+        allowed_check_ids = {check.id for check in required_checks(self)}
+        for target in self.quality_targets:
+            if target.check_id not in allowed_check_ids:
+                raise ValueError(f"quality target check_id must reference a required check: {target.check_id}")
         return self
 
 
@@ -218,11 +240,20 @@ def _canonical(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
 
 
+def _uses_v3_policy(profile: ProjectProfile) -> bool:
+    if profile.evidence_policy is not None:
+        return True
+    return any(target.check_id != DEFAULT_CHECK_ID for target in profile.quality_targets)
+
+
 def compile_contract(profile: ProjectProfile) -> dict[str, Any]:
     profile = ProjectProfile.model_validate(profile)
-    body = {"policy_version": POLICY_VERSION,
-            "evidence_policy": {"max_age_seconds": MAX_EVIDENCE_AGE.total_seconds(),
-                                "max_artifact_bytes": MAX_ARTIFACT_BYTES, "signature": "HMAC-SHA256"},
+    policy = profile.evidence_policy
+    max_age_seconds = policy.max_age_seconds if policy is not None else MAX_EVIDENCE_AGE.total_seconds()
+    max_artifact_bytes = policy.max_artifact_bytes if policy is not None else MAX_ARTIFACT_BYTES
+    body = {"policy_version": POLICY_VERSION_V3 if _uses_v3_policy(profile) else POLICY_VERSION,
+            "evidence_policy": {"max_age_seconds": max_age_seconds,
+                                "max_artifact_bytes": max_artifact_bytes, "signature": "HMAC-SHA256"},
             "profile": profile.model_dump(mode="json"),
             "checks": [asdict(check) for check in required_checks(profile)]}
     if profile.delivery is not None:
@@ -302,7 +333,7 @@ class Assessment:
     blockers: tuple[str, ...]
 
 
-def _artifact_valid(root: Path, evidence: Evidence) -> bool:
+def _artifact_valid(root: Path, evidence: Evidence, max_artifact_bytes: int = MAX_ARTIFACT_BYTES) -> bool:
     path = PurePosixPath(evidence.artifact_path)
     if path.is_absolute() or ".." in path.parts or "\\" in evidence.artifact_path or ":" in evidence.artifact_path:
         return False
@@ -312,7 +343,7 @@ def _artifact_valid(root: Path, evidence: Evidence) -> bool:
         if not artifact.is_relative_to(base) or not artifact.is_file():
             return False
         size = artifact.stat().st_size
-        if size <= 0 or size > MAX_ARTIFACT_BYTES:
+        if size <= 0 or size > max_artifact_bytes:
             return False
         digest = hashlib.sha256()
         with artifact.open("rb") as stream:
@@ -323,8 +354,17 @@ def _artifact_valid(root: Path, evidence: Evidence) -> bool:
         return False
 
 
-def _targets_met(profile: ProjectProfile, evidence: Evidence) -> bool:
+def _effective_policy(profile: ProjectProfile) -> tuple[timedelta, int]:
+    policy = profile.evidence_policy
+    if policy is None:
+        return MAX_EVIDENCE_AGE, MAX_ARTIFACT_BYTES
+    return timedelta(seconds=policy.max_age_seconds), policy.max_artifact_bytes
+
+
+def _targets_met(profile: ProjectProfile, evidence: Evidence, check_id: str) -> bool:
     for target in profile.quality_targets:
+        if target.check_id != check_id:
+            continue
         value = evidence.measurements.get(target.id)
         if value is None:
             return False
@@ -358,6 +398,8 @@ def assess(
         raise ValueError("now must be timezone-aware")
     contract_hash = str(compile_contract(profile)["contract_hash"])
     checks = {check.id: check for check in required_checks(profile)}
+    max_evidence_age, max_artifact_bytes = _effective_policy(profile)
+    targeted_check_ids = {target.check_id for target in profile.quality_targets}
     blockers: list[str] = []
     passed: list[str] = []
     if not hmac.compare_digest(contract_hash, expected_contract_hash):
@@ -396,7 +438,7 @@ def assess(
             reason = "wrong_run_or_contract"
         elif evidence.candidate_sha != candidate_sha or evidence.context_hash != context_hash:
             reason = "stale_candidate_or_context"
-        elif not (evidence.created_at <= current < evidence.expires_at) or current - evidence.created_at > MAX_EVIDENCE_AGE:
+        elif not (evidence.created_at <= current < evidence.expires_at) or current - evidence.created_at > max_evidence_age:
             reason = "expired_or_future_evidence"
         elif check.mode == "independent_review" and issuer.principal_id in author_principals:
             reason = "self_approval"
@@ -404,13 +446,13 @@ def assess(
             reason = f"status_{evidence.status}"
         elif check_id == "testing.acceptance" and set(evidence.covered_acceptance) != {c.id for c in profile.acceptance_criteria}:
             reason = "incomplete_acceptance_coverage"
-        elif check_id == "performance.budget" and not _targets_met(profile, evidence):
+        elif check_id in targeted_check_ids and not _targets_met(profile, evidence, check_id):
             reason = "missing_or_unmet_quality_target"
         elif check_id == DELIVERY_CHECK.id and profile.delivery is not None and (
             gaps := delivery_gaps(profile.delivery, evidence.delivery_report, profile.completion_target)
         ):
             reason = "delivery_unmet:" + ";".join(gaps)
-        elif not _artifact_valid(evidence_root, evidence):
+        elif not _artifact_valid(evidence_root, evidence, max_artifact_bytes):
             reason = "missing_changed_or_unsafe_artifact"
         if reason:
             blockers.append(f"{check_id}:{reason}")
