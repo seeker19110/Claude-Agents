@@ -60,7 +60,7 @@ ticket, `release-events`, `review-results` (lọc theo `causation_id`), `release
 
 - Người ký: `gate_cli approve SPEC-<pid> --by human:<x> --quality-profile <file>` (cùng khuôn `--quality-bar`,
   kiểm hợp lệ TRƯỚC khi ký). CLI validate `ProjectProfile`, đòi `profile.project_id == <pid>`, chép file vào
-  `<db>.artifacts/quality/<pid>/<sha256>.json` (định danh theo nội dung), rồi ghi audit
+  `<db>.artifacts/quality/profiles/<pid>/<sha256>.json` (định danh theo nội dung), rồi ghi audit
   `quality.profile_set {project_id, run_id, profile_sha256, contract_hash, by}`. Bus từ chối action này nếu actor
   không phải `human:*` (như `BAR_ACTION`, `bus.py:51`); `_rehydrate` chỉ tin nó với actor người.
 - Đọc: ngay khi `_check_plan` nhận kế hoạch đầu tiên của dự án từ `approved-specs` (`ticket_fsm.py:149`). Đọc lại
@@ -153,7 +153,7 @@ ghi rõ "không đụng bảng chuyển".
 - Journal, registry khoá công khai, evidence root và `ApprovalLookup` đều do coordinator giữ, nằm ngoài mọi
   worktree:
   - journal: `<db>.quality.sqlite` (cạnh `company.sqlite`, khớp `*.sqlite` trong `.gitignore`)
-  - evidence: `<db>.artifacts/quality/<run_id>/`
+  - evidence: `<db>.artifacts/quality/runs/<run_id>/` (N1.b: namespace tách khỏi `profiles/`; `pid`/`run_id` chỉ nhận `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
   - registry: đường dẫn do người trực cấp (`--quality-trust`)
 
   `register_quality_run` từ chối nếu bất kỳ đường dẫn nào ở trên resolve vào trong `<repo>/.worktrees/`. Registry

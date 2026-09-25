@@ -18,7 +18,7 @@ import json
 import sqlite3
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, TypedDict
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict
 
 from xagents_core.bus import is_human
 from xagents_core.execution import (
@@ -41,6 +41,7 @@ from ..product_quality import LEGACY_SCHEMES, ProjectProfile, Receipt, _read_tru
 from ..quality_execution import (
     QUALITY_TASK_ID,
     QualityBindings,
+    _safe_component,
     bindings_from_journal,
     commit_quality_result,
     compile_execution,
@@ -90,7 +91,8 @@ def journal_path(o: Orchestrator) -> Path:
 
 
 def evidence_root(o: Orchestrator, run_id: str) -> Path:
-    return _db(o).with_suffix(".artifacts") / "quality" / run_id
+    """`<db>.artifacts/quality/runs/<run_id>/` — namespace riêng với kho profile (`quality/profiles/<pid>/`)."""
+    return _db(o).with_suffix(".artifacts") / "quality" / "runs" / _safe_component(run_id)
 
 
 def _outside_worktrees(o: Orchestrator, *paths: Path) -> None:
@@ -144,8 +146,18 @@ def _plan_for(o: Orchestrator, pid: str) -> str | None:
     """Kế hoạch approved-specs ĐẦU TIÊN dự án nhận sau khi ghim (ADR gốc 0021 §a). CR/incident không vào run này."""
     plans = [p for p in o.plans.values() if p.get("project_id") == pid]
     for p in plans[o.quality_profiles[pid]["plans_before"]:]:
-        if p.get("source_topic") == "approved-specs": return str(p["plan_id"])
+        if p.get("source_topic") != "approved-specs": continue
+        if not p.get("plan_id"): raise ExecutionJournalError(f"kế hoạch approved-specs của {pid} thiếu plan_id")
+        return str(p["plan_id"])
     return None
+
+
+def _plan_tickets(o: Orchestrator, plan_id: str) -> list[Mapping[str, Any]]:
+    """Ticket của kế hoạch; ticket thiếu `ticket_id` ⇒ lỗi đồng bộ có thông điệp, không KeyError làm vỡ `_mark`."""
+    tickets = list(o.plans[plan_id].get("tickets") or [])
+    if any(not isinstance(t, Mapping) or not t.get("ticket_id") for t in tickets):
+        raise ExecutionJournalError(f"{plan_id}: có ticket thiếu ticket_id — không dựng được DAG của run")
+    return tickets
 
 
 # ---------- API ----------
@@ -159,7 +171,7 @@ def register_quality_run(o: Orchestrator, plan_id: str, profile: ProjectProfile)
         raise ValueError(f"profile của {profile.project_id!r}, kế hoạch của {plan.get('project_id')!r}")
     trust = (o.quality_trust,) if o.quality_trust is not None else ()
     _outside_worktrees(o, journal_path(o), evidence_root(o, profile.run_id), *trust)
-    tickets = list(plan.get("tickets") or [])
+    tickets = _plan_tickets(o, plan_id)
     ids = {str(t["ticket_id"]) for t in tickets}
     work = RunSpec(profile.run_id, profile.goal, tuple(
         TaskSpec(task_id=str(t["ticket_id"]), objective=str(t.get("title") or t["ticket_id"]),
@@ -233,12 +245,17 @@ def sync_quality(o: Orchestrator) -> None:
             try:
                 _sync_project(o, pid)
             except _SYNC_ERRORS as e:
-                run, kind = o.quality_profiles[pid]["run_id"] or pid, type(e).__name__
-                why = f"{kind}: {str(e)[:300]}"
-                o._audit("quality.sync_error", {"project_id": pid, "run_id": run, "error": why},
-                         project_id=pid, once=f"quality.sync_error:{run}:{kind}")
-                # Escalate theo run_id, không theo dự án: pause dự án là chặn vòng ticket; release bị chặn ở N2.
-                o.supervisor.escalate_gate(run, f"quality sync lỗi: {why[:200]}", once_key=f"quality.sync_error:{run}:{kind}")
+                _sync_error(o, pid, f"{type(e).__name__}: {str(e)[:300]}")
+
+
+def _sync_error(o: Orchestrator, pid: str, why: str) -> None:
+    """Một lần mỗi (run, thông điệp, lần người xử lý escalation). Không run_id ⇒ chỉ audit (không pause cả dự án)."""
+    run = o.quality_profiles[pid]["run_id"]
+    digest = hashlib.sha256(why.encode("utf-8")).hexdigest()[:16]
+    key = f"quality.sync_error:{run or pid}:{digest}:{o.escalation_decided[run] if run else 0}"
+    o._audit("quality.sync_error", {"project_id": pid, "run_id": run, "error": why}, project_id=pid, once=key)
+    if run:  # escalate theo run_id, không theo dự án: pause dự án là chặn vòng ticket; release bị chặn ở N2.
+        o.supervisor.escalate_gate(run, f"quality sync lỗi: {why[:200]}", once_key=key)
 
 
 def _sync_project(o: Orchestrator, pid: str) -> None:
@@ -246,26 +263,52 @@ def _sync_project(o: Orchestrator, pid: str) -> None:
     if plan_id is None: return
     profile = _load_profile(o, pid)
     if profile is None: return
-    register_quality_run(o, plan_id, profile)
     run = profile.run_id
+    cand = _candidate(o, [str(t["ticket_id"]) for t in _plan_tickets(o, plan_id)])
+    if cand is not None and o._quality_done.get(run) == _attempt_of(cand): return  # đã kết thúc ở đúng candidate này
+    register_quality_run(o, plan_id, profile)
     with ExecutionJournal(journal_path(o)) as journal:
-        spec = journal.load_spec(run)
-        assert spec is not None  # vừa register xong
+        spec = _registered(journal, run)
         emit = _emitter(journal, spec)
         emit(K.RUN_STARTED, None, f"{run}:run:start", {})
         work = [t.task_id for t in spec.tasks if t.task_id != QUALITY_TASK_ID]
         while any(_step_ticket(o, journal, spec, tid, emit) for tid in work):
             pass
         _step_quality(o, journal, spec, profile, plan_id, work, emit)
-        running = journal.resume(run).tasks[QUALITY_TASK_ID] is TaskStatus.RUNNING
-    if running and o.quality_driver is not None:
-        # Attempt đang RUNNING (vừa mở, hoặc mở trước lần restart) ⇒ driver chạy lại với CÙNG attempt/bindings.
-        checks = next(t.acceptance for t in spec.tasks if t.task_id == QUALITY_TASK_ID)
+        q = journal.resume(run).tasks[QUALITY_TASK_ID]
+        last = _last_started(journal, run, QUALITY_TASK_ID)
+        attempt = str(last.payload.get("attempt_id")) if last is not None else ""
+    _note_done(o, run, q, attempt, cand)
+    if q is not TaskStatus.RUNNING or o.quality_driver is None: return
+    # Attempt này đã hỏng ở driver/commit và escalation chưa được người xử lý ⇒ không chạy lại (tránh vòng vô hạn).
+    if o._quality_stuck.get(run) == attempt and run in o.paused: return
+    o._quality_stuck.pop(run, None)
+    # Attempt đang RUNNING (vừa mở, hoặc mở trước lần restart) ⇒ driver chạy lại với CÙNG attempt/bindings.
+    checks = next(t.acceptance for t in spec.tasks if t.task_id == QUALITY_TASK_ID)
+    try:
         try:
             result, receipts = o.quality_driver.run(run, checks)
         except Exception as e:  # driver là mã ngoài: lỗi của nó thành sync_error, không giết vòng _mark
             raise ExecutionJournalError(f"driver: {type(e).__name__}: {e}") from e
-        submit_quality(o, run, result, receipts)
+        state = submit_quality(o, run, result, receipts)
+    except _SYNC_ERRORS:
+        o._quality_stuck[run] = attempt
+        raise
+    _note_done(o, run, state.tasks[QUALITY_TASK_ID], attempt, cand)
+
+
+def _registered(journal: ExecutionJournal, run: str) -> RunSpec:
+    if (spec := journal.load_spec(run)) is None: raise ExecutionJournalError(f"run {run} chưa đăng ký ngay sau register")
+    return spec
+
+
+def _attempt_of(cand: tuple[str, str]) -> str: return f"{cand[0]}@{cand[1]}"
+
+
+def _note_done(o: Orchestrator, run: str, q: TaskStatus, attempt: str, cand: tuple[str, str] | None) -> None:
+    """Nhớ (trong RAM) run đã kết thúc ở đúng candidate hiện tại: các `_mark` sau không mở journal nữa."""
+    if q in {TaskStatus.SUCCEEDED, TaskStatus.FAILED} and cand is not None and attempt == _attempt_of(cand):
+        o._quality_done[run] = attempt
 
 
 def _emitter(journal: ExecutionJournal, spec: RunSpec) -> Emit:
@@ -326,7 +369,7 @@ def _step_quality(o: Orchestrator, journal: ExecutionJournal, spec: RunSpec, pro
     cand = _candidate(o, tickets)
     if cand is None: return
     rid, sha = cand
-    attempt = f"{rid}@{sha}"
+    attempt = _attempt_of(cand)
     if q is TaskStatus.FAILED:
         last = _last_started(journal, run, QUALITY_TASK_ID)
         prev = str(last.payload.get("attempt_id")) if last is not None else ""

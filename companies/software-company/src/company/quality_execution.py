@@ -229,13 +229,24 @@ def commit_quality_result(
     return journal.transition(event, expected_count=count)
 
 
+_SAFE_COMPONENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+
+
+def _safe_component(value: str) -> str:
+    """One path segment from an id (`project_id`, `run_id`): no separator, no `.`/`..`, bounded length."""
+    if _SAFE_COMPONENT.fullmatch(value) is None or value in {".", ".."}:
+        raise ValueError(f"unsafe path component: {value[:80]!r}")
+    return value
+
+
 def pinned_profile_path(db: Path, project_id: str, profile_sha256: str) -> Path:
     """Where `gate_cli approve SPEC-<pid> --quality-profile` pins the signed profile (root ADR-0021 §a).
 
-    Content-addressed, beside the bus (`<db>.artifacts/quality/<pid>/<sha256>.json`), never in a ticket worktree."""
+    Content-addressed, beside the bus (`<db>.artifacts/quality/profiles/<pid>/<sha256>.json`), never in a ticket
+    worktree; evidence lives under `quality/runs/`, so a project id equal to a run id cannot collide."""
     if re.fullmatch(r"[0-9a-f]{64}", profile_sha256) is None:
         raise ValueError("profile_sha256 must be a full sha256 digest")
-    return db.with_suffix(".artifacts") / "quality" / project_id / f"{profile_sha256}.json"
+    return db.with_suffix(".artifacts") / "quality" / "profiles" / _safe_component(project_id) / f"{profile_sha256}.json"
 
 
 def result_event_id(run_id: str, attempt_id: str) -> str:
@@ -277,12 +288,19 @@ def result_from_document(document: dict[str, Any]) -> TaskResult:
     )
 
 
+class CommitRefused(ValueError):
+    """The CLI cannot assess this profile faithfully; nothing is written to the journal."""
+
+
 def _commit_cli(args: argparse.Namespace) -> dict[str, Any]:
     if not args.journal.is_file():
         raise ValueError("journal does not exist; commit must not create an empty run")
     profile = ProjectProfile.model_validate_json(args.profile.read_text(encoding="utf-8"))
     if profile.run_id != args.run_id:
         raise ValueError("profile belongs to another run")
+    if profile.delivery is not None:
+        # Without an ApprovalLookup, delivery.definition always fails: refuse rather than burn the attempt as FAILED.
+        raise CommitRefused("commit CLI không có ApprovalLookup; để driver của orchestrator nộp")
     result = result_from_document(json.loads(args.result.read_text(encoding="utf-8")))
     raw = json.loads(args.receipts.read_text(encoding="utf-8"))
     if not isinstance(raw, list):
@@ -339,6 +357,9 @@ def main(argv: list[str] | None = None) -> int:
             output = {"quality_contract": compile_contract(profile), "execution_spec": json.loads(spec.to_json())}
         print(json.dumps(output, ensure_ascii=False, indent=2))
         return 0
+    except CommitRefused as error:
+        print(str(error), file=sys.stderr)
+        return 2
     except (OSError, ValueError, TypeError, KeyError, AttributeError, ExecutionJournalError, sqlite3.Error) as error:
         print(f"Invalid execution input ({type(error).__name__}); no task completion issued.", file=sys.stderr)
         return 2

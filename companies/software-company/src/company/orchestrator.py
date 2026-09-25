@@ -138,6 +138,9 @@ class Orchestrator:
         delivered: dict[str, dict[str, Any]]
         void_releases: set[str]
         quality_profiles: dict[str, QualityPin]
+        # run_id → attempt: đã hỏng ở driver/commit (chờ người/candidate mới); đã kết thúc ở candidate hiện tại.
+        _quality_stuck: dict[str, str]
+        _quality_done: dict[str, str]
         stalled: dict[str, dict[str, Any]]
         stall_count: Counter[str]
         unhandled: dict[str, dict[str, Any]]
@@ -162,6 +165,7 @@ class Orchestrator:
         self.bus = bus
         self.quality_driver, self.quality_lookup = quality_driver, quality_lookup  # ADR gốc 0021; mặc định None → CLI commit
         self.quality_trust, self._quality_lock = (Path(quality_trust) if quality_trust else None), threading.RLock()
+        self._quality_stuck, self._quality_done = {}, {}  # RAM, run_id → attempt (orch/quality_flow.py)
         # ADR-0039 (D1b): dựng môi trường chạy thật của khách bằng `docker compose`. Tiêm được vì máy CI không có
         # docker daemon và ma trận còn `windows-latest` — test truyền `partial(deploy, run=…, which=…)` để đo cả
         # bốn nhánh kết luận mà không cần container thật. Mặc định là `deploy()` thật; nó tự đọc `COMPANY_DEPLOY`

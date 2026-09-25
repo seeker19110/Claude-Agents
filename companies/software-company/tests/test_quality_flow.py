@@ -386,8 +386,12 @@ def test_driver_loi_thanh_sync_error_roi_driver_tot_nghiem_thu_duoc(tmp_path):
     assert "driver: RuntimeError" in _acts(bus, "quality.sync_error")[0]["error"]
     signers = _signers()
     o.quality_trust = write_trust(tmp_path / "trust.json", signers)
-    o.quality_driver = FakeDriver(signers, o=o)
+    o.quality_driver = good = FakeDriver(signers, o=o)
     quality_flow.sync_quality(o)
+    assert good.calls == [], "cùng attempt, escalation chưa xử lý ⇒ không chạy lại (N1.b)"
+    o.tick()
+    o.gate.decide(RUN, "approve", by="human:rm", reason="đã thay driver trình duyệt chết bằng driver chạy được")
+    o.run()
     rid = o.lead.releases[-1]
     assert quality_flow.runs_for_release(o, rid) == ((RUN, "succeeded", o.release_sha[rid]),)
 
@@ -494,3 +498,170 @@ def test_approve_spec_voi_profile_hong_thi_chua_ky(tmp_path, capsys, profile, ms
     assert msg in capsys.readouterr().err
     o.tick()
     assert "SPEC-P1" in o.gate.pending, "spec chưa ký"
+
+
+# ---------- N1.b: phát hiện review ----------
+
+def _mark_n(o, bus, n: int = 1) -> None:
+    """n event đi qua `scheduler._mark` thật (điểm gọi duy nhất của sync_quality)."""
+    from company.orchestrator import StepResult
+    for _ in range(n):
+        env = _task(bus)
+        o._mark(env, StepResult(env.event_id, env.topic, env.key))
+
+
+def _escalations(o, target: str) -> list:
+    return [a for a in o.supervisor.actions if a.target == target and a.action == "escalate"]
+
+
+@pytest.mark.parametrize("plan,msg", [
+    ({"project_id": "P1", "source_topic": "approved-specs", "tickets": [T1]}, "plan_id"),
+    ({**PLAN, "tickets": [{"title": "không có mã"}]}, "ticket_id"),
+])
+def test_ke_hoach_thieu_khoa_khong_lam_vo_mark(tmp_path, plan, msg):
+    bus, o = _unit(tmp_path)
+    _pin(o, tmp_path / "c.sqlite"); o.plans["PLAN-P1-1"] = plan
+    _mark_n(o, bus)
+    [err] = _acts(bus, "quality.sync_error")
+    assert err["error"].startswith("ExecutionJournalError") and msg in err["error"]
+    assert len(_escalations(o, RUN)) == 1
+
+
+def test_spec_bien_mat_sau_register_la_sync_error_khong_phai_assert(tmp_path, monkeypatch):
+    bus, o = _unit(tmp_path)
+    _pin(o, tmp_path / "c.sqlite"); o.plans["PLAN-P1-1"] = PLAN
+    monkeypatch.setattr(ExecutionJournal, "load_spec", lambda self, run_id: None)
+    _mark_n(o, bus)
+    [err] = _acts(bus, "quality.sync_error")
+    assert err["error"] == f"ExecutionJournalError: run {RUN} chưa đăng ký ngay sau register"
+
+
+def test_sync_error_escalate_theo_thong_diep_khong_theo_lop(tmp_path, monkeypatch):
+    from xagents_core.execution import ExecutionJournalError
+    bus, o = _unit(tmp_path)
+    _pin(o, tmp_path / "c.sqlite")
+    msgs = iter(["lỗi A", "lỗi A", "lỗi B"])
+
+    def boom(o, pid):
+        raise ExecutionJournalError(next(msgs))
+
+    monkeypatch.setattr(quality_flow, "_sync_project", boom)
+    for _ in range(3): quality_flow.sync_quality(o)
+    assert [e["error"] for e in _acts(bus, "quality.sync_error")] == ["ExecutionJournalError: lỗi A",
+                                                                     "ExecutionJournalError: lỗi B"]
+    assert len(_escalations(o, RUN)) == 2, "lỗi khác trên cùng run escalate lại; lỗi y hệt không spam"
+
+
+def test_sync_error_khong_co_run_id_thi_chi_audit_khong_pause_du_an(tmp_path, monkeypatch):
+    from xagents_core.execution import ExecutionJournalError
+    bus, o = _unit(tmp_path)
+    quality_flow.note_profile(o, {"project_id": "P1", "run_id": ""})
+
+    def boom(o, pid):
+        raise ExecutionJournalError("hỏng")
+
+    monkeypatch.setattr(quality_flow, "_sync_project", boom)
+    quality_flow.sync_quality(o); quality_flow.sync_quality(o)
+    [err] = _acts(bus, "quality.sync_error")
+    assert err["run_id"] == "" and err["project_id"] == "P1"
+    assert "P1" not in o.paused and not _escalations(o, "P1") and not _escalations(o, "")
+
+
+def test_commit_bi_tu_choi_thi_driver_khong_chay_lai_cung_attempt(tmp_path):
+    signers = _signers()
+    driver = FakeDriver(signers)
+    bus, o = _start(tmp_path, driver)  # không registry ⇒ submit bị từ chối, escalate
+    _sign_spec_with_profile(tmp_path, bus, o)
+    assert len(driver.calls) == 1
+    assert "registry" in _acts(bus, "quality.sync_error")[0]["error"] and RUN in o.paused
+    _mark_n(o, bus, 3)
+    assert len(driver.calls) == 1, "cùng attempt, escalation chưa xử lý ⇒ không chạy lại driver"
+    # người xử lý escalation (có registry rồi duyệt gate escalation) ⇒ chạy lại đúng một lần và nghiệm thu
+    o.quality_trust = write_trust(tmp_path / "trust.json", signers)
+    o.tick()
+    assert RUN in o.gate.pending
+    o.gate.decide(RUN, "approve", by="human:rm", reason="đã cấp registry khoá công khai cho quality")
+    o.run()
+    assert RUN not in o.paused and len(driver.calls) == 2
+    with _journal(tmp_path) as j:
+        assert j.resume(RUN).status is RunStatus.SUCCEEDED
+
+
+@pytest.mark.parametrize("drop", [frozenset(), frozenset({"goal.traceability"})])
+def test_run_da_ket_thuc_o_candidate_hien_tai_khong_mo_journal_nua(tmp_path, monkeypatch, drop):
+    signers = _signers()
+    driver = FakeDriver(signers, drop=drop)
+    bus, o = _start(tmp_path, driver, trust=write_trust(tmp_path / "trust.json", signers))
+    _sign_spec_with_profile(tmp_path, bus, o)
+    opened = [0]
+    orig = ExecutionJournal.__init__
+
+    def counting(self, *a, **k):
+        opened[0] += 1
+        orig(self, *a, **k)
+
+    monkeypatch.setattr(ExecutionJournal, "__init__", counting)
+    _mark_n(o, bus, 3)
+    assert opened[0] == 0
+    o._quality_done.clear()  # như restart: mất cache ⇒ đối chiếu lại một lần, không chấm lại cùng candidate
+    _mark_n(o, bus, 2)
+    assert opened[0] > 0 and len(driver.calls) == 1
+    opened[0] = 0
+    _mark_n(o, bus)
+    assert opened[0] == 0, "đối chiếu lại xong thì cache lại"
+
+
+def test_thanh_phan_duong_dan_duoc_kiem_va_tach_namespace(tmp_path):
+    from company.quality_execution import _safe_component, pinned_profile_path
+    db = tmp_path / "c.sqlite"
+    _bus, o = _unit(tmp_path)
+    for bad in ("../x", "..", ".", "a/b", "a\\b", "", "-x", "x" * 129):
+        with pytest.raises(ValueError):
+            _safe_component(bad)
+        with pytest.raises(ValueError):
+            pinned_profile_path(db, bad, "a" * 64)
+        with pytest.raises(ValueError):
+            quality_flow.evidence_root(o, bad)
+    assert _safe_component("run-P1.v2_x") == "run-P1.v2_x"
+    art = db.with_suffix(".artifacts") / "quality"
+    assert pinned_profile_path(db, "P1", "a" * 64) == art / "profiles" / "P1" / f"{'a' * 64}.json"
+    assert quality_flow.evidence_root(o, "P1") == art / "runs" / "P1", "pid == run_id không va chạm"
+    assert gate_main(["--db", str(db), "approve", "SPEC-../x", "--by", "human:po",
+                      "--quality-profile", str(tmp_path / "p.json")]) == 2
+    assert not (tmp_path / "x").exists() and not art.exists()
+
+
+def test_require_profile_for_spec_dung_chung(tmp_path):
+    from company.gate_cli import require_profile_for_spec
+    bus, o = _start(tmp_path, None)
+    _drive_to_spec_gate(bus, o)
+    assert require_profile_for_spec(bus, "SPEC-P1", "approve", has_profile_arg=False) is None, "chưa từng có profile"
+    pf = tmp_path / "profile.json"
+    pf.write_text(v4_profile().model_dump_json(), encoding="utf-8")
+    assert gate_main(["--db", str(tmp_path / "c.sqlite"), "approve", "SPEC-P1", "--by", "human:po",
+                      "--quality-profile", str(pf)]) == 0
+    why = require_profile_for_spec(bus, "SPEC-P1", "approve", has_profile_arg=False)
+    assert why is not None and "gate_cli approve SPEC-P1 --quality-profile" in why
+    assert require_profile_for_spec(bus, "SPEC-P1", "approve", has_profile_arg=True) is None
+    assert require_profile_for_spec(bus, "SPEC-P1", "reject", has_profile_arg=False) is None
+    assert require_profile_for_spec(bus, "REL-001", "approve", has_profile_arg=False) is None
+
+
+def test_cli_commit_profile_co_delivery_tu_choi_khong_ghi_failed(tmp_path, capsys):
+    from company.quality_execution import main
+    from test_delivery_contract import delivery_data
+    _to_running(tmp_path)
+    prof = tmp_path / "delivery.json"
+    prof.write_text(json.dumps({**json.loads(v4_profile().model_dump_json()), "delivery": delivery_data()}),
+                    encoding="utf-8")
+    with _journal(tmp_path) as j:
+        before = j.events(RUN)
+    for name in ("result", "receipts", "trust"):
+        (tmp_path / f"{name}.json").write_text("[]", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["commit", RUN, "--journal", str(tmp_path / "c.quality.sqlite"), "--profile", str(prof),
+                 "--result", str(tmp_path / "result.json"), "--receipts", str(tmp_path / "receipts.json"),
+                 "--trust", str(tmp_path / "trust.json"), "--evidence-root", str(tmp_path / "ev")]) == 2
+    assert "commit CLI không có ApprovalLookup; để driver của orchestrator nộp" in capsys.readouterr().err
+    with _journal(tmp_path) as j:
+        assert j.events(RUN) == before and j.resume(RUN).tasks[QUALITY_TASK_ID] is TaskStatus.RUNNING

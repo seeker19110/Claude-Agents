@@ -126,6 +126,15 @@ def has_quality_profile(bus: InMemoryBus, project_id: str) -> bool:
                and _json_evidence(e).get("project_id") == project_id for e in bus.replay(topic="audit-log"))
 
 
+def require_profile_for_spec(bus: InMemoryBus, subject_id: str, decision: str, has_profile_arg: bool) -> str | None:
+    """Quyết định 2 (ADR gốc 0021), MỘT chỗ cho cả `gate_cli` và console: dự án đã có profile mà ký SPEC không kèm
+    profile ⇒ trả lý do từ chối (hỏng thì đóng). None ⇒ được ký. Chỉ lần `approve SPEC-*` cần profile."""
+    if decision != "approve" or not subject_id.startswith(SPEC_PREFIX) or has_profile_arg: return None
+    if not has_quality_profile(bus, subject_id[len(SPEC_PREFIX):]): return None
+    return (f"dự án đã có quality profile: ký {subject_id} phải kèm profile — "
+            f"dùng `python -m company.gate_cli approve {subject_id} --quality-profile <file> --by human:<ai>`")
+
+
 def _pin_profile(db: Path, subject_id: str, path: Path, by: str) -> dict[str, Any]:
     """Kiểm profile TRƯỚC khi ký rồi chép vào kho định danh theo nội dung; trả evidence cho `PROFILE_ACTION`.
     Hỏng ở bất kỳ bước nào ⇒ `ValueError`/`OSError`, spec chưa ký."""
@@ -200,10 +209,9 @@ def main(argv: list[str] | None = None) -> int:
             pin = _pin_profile(ns.db, ns.subject_id, ns.quality_profile, ns.by)
         except (OSError, ValueError) as e:
             print(f"--quality-profile không hợp lệ: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr); return 2
-    elif spec_approve and has_quality_profile(bus, ns.subject_id[len(SPEC_PREFIX):]):
+    elif (why := require_profile_for_spec(bus, ns.subject_id, ns.cmd, has_profile_arg=False)) is not None:
         # Quyết định 2: không để một lần ký spec mới lọt qua mà không có hợp đồng nghiệm thu (hỏng thì đóng).
-        print(f"dự án đã có quality profile: approve {ns.subject_id} phải kèm --quality-profile", file=sys.stderr)
-        return 2
+        print(why, file=sys.stderr); return 2
     try:
         done = gate.decide(ns.subject_id, ns.cmd, by=ns.by, reason=ns.reason)
     except KeyError:
