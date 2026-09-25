@@ -1,0 +1,24 @@
+name: Quality integration source snapshot
+on:
+  push:
+    branches: [feat/product-quality-harness]
+    paths: [.github/workflows/quality-source-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: b84dcb76b9085a686dafae97f47c988ac872446a
+          persist-credentials: false
+      - name: Export tracked public source only
+        run: git archive --format=zip --output=/tmp/claude-agents-base.zip HEAD
+      - uses: actions/upload-artifact@v7
+        with:
+          name: quality-integration-base-source
+          path: /tmp/claude-agents-base.zip
+          retention-days: 1
+          if-no-files-found: error
