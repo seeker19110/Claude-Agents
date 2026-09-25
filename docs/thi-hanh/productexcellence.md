@@ -29,6 +29,7 @@ không coi còn đủ H3/H4/H5/H6/H7 hoặc driver browser/restore đã được
 | Q4 | Cleanup journal init thất bại | core | product-excellence | C2 | Không rò connection, giữ nguyên lỗi/schema | PR #335; hai test đỏ → xanh |
 | Q5 | Atomic transition/CAS và kết quả quality bền | core/company | product-excellence | C3 | Chặn ghi trùng/sai state, cần coordinator tin cậy | Bổ sung PR #335; kiểm thử mới đạt, chưa merge |
 | Q6 | Test symlink không skip theo quyền OS | company tests | product-excellence | C2 | Giữ test ranh giới trên Windows/Linux, không tăng trần | Bổ sung PR #335; guard skip xanh |
+| Q7 | Tiếp thu chọn lọc projects-template: Ready/Done/Complete và design provenance | company/docs | product-excellence | C3 | Chặn thiếu kiểm tra/nhầm mức hoàn tất, giữ nguyên contract cũ khi không bật | Bổ sung PR #335; 240 test nhóm đạt, chờ CI/review |
 
 Cố ý không làm: đổi 6 prompt/golden/eval; bật cờ tự duyệt; cấp quyền production; scheduler/lease/bridge H7
 thứ hai; chứng nhận ngành giả; dùng fixture receipt làm bằng chứng sản phẩm. Không migration run đang hoạt động.
@@ -91,6 +92,15 @@ không dùng nó như chứng nhận tự chủ hoặc security boundary hoàn c
 6. Bất biến: không skip/xfail thêm, hash nội dung ngoài khớp để chắc lỗi là path boundary.
 7. Test: hai nhánh real/fallback; guard skip fail trước, xanh sau.
 
+### Q7 — selective projects-template adoption
+1. Mục tiêu: nghiên cứu khung nguồn, chỉ đưa điểm còn thiếu vào pipeline quality hiện có.
+2. Scope: company delivery_contract/product_quality, tests, ví dụ và tài liệu; không sửa core/gate/agent registry.
+3. Input: nguồn `seeker19110/projects-template@23accce8a4b830eb07690cbd39dded8bf3bc94ce`, profile, hồ sơ phê duyệt thật do coordinator cấp.
+4. Output: Ready có AC/test mapping; receipt phân biệt Done/Complete, NOT_CONFIGURED và NOT_APPLICABLE; source lock trong contract hash.
+5. API: `DeliveryContract`, `DeliveryReport`, `delivery_gaps`; nối `compile_contract`/assess và journal hiện có, không tạo journal mới.
+6. Bất biến: exit0 nhưng không chạy check không là pass; không miễn 33 check cũ; không đổi hash/signature profile không bật tích hợp; metadata approval không tự cấp quyền.
+7. Test: 60 ca mới, nhóm quality/floor/role 240 ca đạt 100% ba module; ký receipt → lưu journal → restart/ACK thật. CI trên head mới vẫn là cổng riêng.
+
 ## D. Điều phối
 
 Q1 → Q2; Q3 độc lập khi API đã chốt; Q4 phát hiện từ integration test. Một PR cho cả hạng mục.
@@ -99,13 +109,19 @@ Phiên ChatGPT này không có công cụ spawn subagent thực thi; không ghi 
 
 ## E. Kiểm chứng và phần còn lại
 
-Core local: 544/544, 100% dòng/nhánh. Company đã collect 1569 ca; riêng modules mới + quality_floor cũ:
+Bằng chứng đợt đầu (lịch sử, không là kết luận của head mới): core local 544/544, 100% dòng/nhánh. Company đã collect 1569 ca; riêng modules mới + quality_floor cũ:
 158 ca đạt, 100% hai module mới. Một test integration cũ fail giống hệt khi chạy base và nhánh mới trong
 môi trường thiếu toolchain đầy đủ. Full company local bị timeout; không gọi đó là toàn suite đạt.
 Kết quả CI trên đúng SHA của PR là cổng độc lập và phải được cập nhật vào session/PR.
 
+Đợt Q7: 60 test mới; company collect 1641 ca / 93 file. Nhóm quality/floor/role: 240 đạt;
+repo/command guards: 111 đạt. Ba module quality/delivery: 596 statements, 236 branches, 100%.
+Full toolchain local chưa chạy được do thiếu wheel librt trong cache offline; kết quả CI trên head Q7
+phải cập nhật ở PR/session, không kế thừa dấu xanh của 74bd6de1. Bản đối chiếu nguồn:
+`docs/reports/2026-09-25-projects-template-adoption.md`.
+
 ## F. Lệnh thi hành
 
-`/thi-hanh productexcellence` — đọc bảng B/PR trước, tiếp phần chưa hoàn tất; không tạo lại Q1–Q4 đã có.
+`/thi-hanh productexcellence` — đọc bảng B/PR trước, tiếp phần chưa hoàn tất; không tạo lại Q1–Q7 đã có.
 `/thi-hanh productexcellence --dung-sau-ke-hoach` — chỉ đọc trạng thái. Nâng H3–H7 theo ADR-0017, không
 coi lệnh này tự cài worker daemon, driver browser, quyền deploy hoặc khóa ký.
