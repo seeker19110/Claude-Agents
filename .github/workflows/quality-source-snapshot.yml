@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 jobs:
-  metadata-fix:
+  vocabulary-fix:
     if: github.repository == 'seeker19110/Claude-Agents' && github.ref == 'refs/heads/feat/product-quality-harness'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -16,21 +16,50 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-      - name: Fix one verified documentation marker on the auxiliary branch
+      - name: Transfer only reviewed byte-verified vocabulary edits
         run: |
           python - <<'PY'
           import hashlib
           from pathlib import Path
-          p = Path('CHANGELOG.md')
           def blob(b):
               return hashlib.sha1(b'blob ' + str(len(b)).encode() + b'\0' + b).hexdigest()
-          assert blob(p.read_bytes()) == '6add57b58e01160be83cdfd6c1e27f8da6128fd6'
-          s = p.read_text(encoding='utf-8')
-          assert s.count('(ADR gốc 0018; #335)') == 1
-          p.write_text(s.replace('(ADR gốc 0018; #335)', '(ADR gốc 0018) (#335)', 1), encoding='utf-8')
-          assert blob(p.read_bytes()) == 'f51381e31326989ac22043700c13ba8e4d03200d'
+          changes = [
+              ('companies/software-company/src/company/product_quality.py',
+               'e2823ce7e7419395cf5525d61438503764b76969', '82e463b077e3bad6b04425a6455341aa0a6aa093',
+               [('"product-excellence/1"', '"product-excellence/2"'), ('"mobile"', '"mobile_app"'),
+                ('"reviewer"', '"independent_review"'), ('"product"', '"product_fitness"'),
+                ('"security"', '"application_security"'), ('"data"', '"data_integrity"')]),
+              ('companies/software-company/tests/test_product_quality.py',
+               'a0b2dcb26ac3f4e39505fe05292c5f88fdb42347', 'f46bc53072ae0ea03f8e0afca6a018201734b814',
+               [('"reviewer"', '"independent_review"'), ('"mobile"', '"mobile_app"')]),
+          ]
+          for name, before, after, rules in changes:
+              path = Path(name)
+              assert blob(path.read_bytes()) == before
+              text = path.read_text(encoding='utf-8')
+              for old, new in rules:
+                  assert old in text
+                  text = text.replace(old, new)
+              assert blob(text.encode()) == after
+              path.write_bytes(text.encode())
+          path = Path('docs/adr/0018-product-quality-execution-adapter.md')
+          assert blob(path.read_bytes()) == '21ebffc3e5c80a4ac77fc4a0599b57bf0e07418b'
+          addition = '''
+          ## Nhãn miền không phải tên agent
+
+          CI toàn company đã bắt các literal trùng agent cũ trong schema được port. Không mở rộng miễn trừ
+          hoặc sửa bộ dò `test_roles.py`. Đổi surface thành `mobile_app`, chế độ đánh giá thành
+          `independent_review`, các dimension thành `product_fitness`, `application_security`, `data_integrity`.
+          Đây là nhãn sản phẩm/loại bằng chứng, không phải ID agent hoặc pha builder; không gán nhầm `ROLE.*`
+          để ghép nghĩa không liên quan. Policy tăng thành `product-excellence/2` để contract/receipt cũ không
+          được tái sử dụng dưới từ vựng mới. Profile và receipt của PR chưa phát hành nên không hỗ trợ alias
+          v1; caller phải biên dịch lại hợp đồng. Không đổi bất kỳ agent, topic hay gate đang vận hành.
+          '''
+          result = path.read_bytes() + addition.encode()
+          assert blob(result) == 'b213c92373e48ff3f5eb126d99dcbd71be417a99'
+          path.write_bytes(result)
           PY
           git diff --check
-          git add -- CHANGELOG.md
-          git -c user.name=seeker19110 -c user.email=29851712+seeker19110@users.noreply.github.com commit -m 'docs: use the required changelog PR-reference format'
+          git add -- companies/software-company/src/company/product_quality.py companies/software-company/tests/test_product_quality.py docs/adr/0018-product-quality-execution-adapter.md
+          git -c user.name=seeker19110 -c user.email=29851712+seeker19110@users.noreply.github.com commit -m 'fix(company): separate product schema vocabulary from agent identities'
           git push origin HEAD:refs/heads/feat/product-quality-harness
