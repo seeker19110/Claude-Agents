@@ -22,7 +22,7 @@ from company.product_quality import (
     compile_contract,
     main,
     required_checks,
-    sign_evidence,
+    sign_evidence_hmac,
 )
 
 NOW = datetime(2026, 9, 24, 12, tzinfo=UTC)
@@ -91,7 +91,7 @@ def _make_bundle(profile, tmp_path, *, extra_measurements=None):
                             details="Synthetic unit-test evidence; not a real product test.",
                             covered_acceptance=["AC-1"] if check.id == "testing.acceptance" else [],
                             measurements=measurements)
-        receipts.append(sign_evidence(evidence, issuers[issuer_id].key))
+        receipts.append(sign_evidence_hmac(evidence, issuers[issuer_id].key))
     kwargs = {"expected_contract_hash": contract, "candidate_sha": SHA, "context_hash": CONTEXT,
               "author_principals": frozenset({"implementation-worker"}), "trusted_issuers": issuers,
               "evidence_root": tmp_path, "now": NOW}
@@ -127,7 +127,7 @@ def ui_bundle(tmp_path):
 def rewrite(receipt, key, **changes):
     data = receipt.evidence.model_dump()
     data.update(changes)
-    return sign_evidence(Evidence.model_validate(data), key)
+    return sign_evidence_hmac(Evidence.model_validate(data), key)
 
 
 def test_valid_bundle_and_idempotent_submit(bundle):
@@ -366,7 +366,7 @@ def test_bad_keys_and_trust():
 
 def test_short_signing_key(bundle):
     with pytest.raises(ValueError):
-        sign_evidence(bundle[1][0].evidence, b"short")
+        sign_evidence_hmac(bundle[1][0].evidence, b"short")
 
 
 def test_schema_and_plan_cli(tmp_path, capsys):

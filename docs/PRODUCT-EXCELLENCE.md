@@ -191,7 +191,7 @@ uv run python -m company.product_quality verify profile.json receipts.json \
 
 `--author` lặp lại cho toàn bộ principal đã triển khai candidate, do coordinator xác định. Exit code 0:
 quality evidence pass; 1: blocked; 2: input lỗi, không có approval. Registry có dạng issuer →
-`{principal_id, mode, allowed_checks, key_file}`; key_file chỉ tới file nhị phân bí mật do coordinator cấp.
+`{principal_id, mode, allowed_checks, keys: [{key_id, public_key_pem, not_after}]}`: registry chỉ chứa public key Ed25519 (ADR-0020), còn private key nằm ở signer của từng issuer. Dạng cũ `key_file` (HMAC) chỉ còn dùng để verify contract v2/v3.
 `mode` là `runner` hoặc `independent_review`; bề mặt ứng dụng di động là `mobile_app`. Các nhãn này
 không phải ID agent hoặc pha builder; không thay đổi registry sáu agent đang vận hành.
 Không có signing CLI cho worker. Driver gọi API signing sau khi chạy thật; ví dụ và test không là driver

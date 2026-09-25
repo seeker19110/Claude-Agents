@@ -32,7 +32,16 @@ from xagents_core.execution import (
 )
 
 from .delivery_contract import ApprovalLookup
-from .product_quality import ProjectProfile, Receipt, TrustedIssuer, assess, compile_contract, required_checks
+from .product_quality import (
+    LEGACY_SCHEMES,
+    ProjectProfile,
+    Receipt,
+    TrustedIssuer,
+    allowed_schemes,
+    assess,
+    compile_contract,
+    required_checks,
+)
 
 QUALITY_TASK_ID = "quality:accept"
 CONTRACT_PREFIX = "quality-contract:sha256:"
@@ -244,6 +253,9 @@ def main(argv: list[str] | None = None) -> int:
             work = RunSpec.from_json(args.work.read_text(encoding="utf-8"))
             spec = compile_execution(profile, work)
             if args.command == "register":
+                if allowed_schemes(profile) == LEGACY_SCHEMES:
+                    # ADR-0020 §3: legacy_hmac contracts are verify-only; a new run must pin Ed25519.
+                    raise ValueError("a new run must pin evidence_policy.allowed_schemes")
                 with ExecutionJournal(args.journal) as journal:
                     journal.register(spec)
             output = {"quality_contract": compile_contract(profile), "execution_spec": json.loads(spec.to_json())}
