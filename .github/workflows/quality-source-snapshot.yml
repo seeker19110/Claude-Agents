@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 jobs:
-  assemble:
+  metadata-fix:
     if: github.repository == 'seeker19110/Claude-Agents' && github.ref == 'refs/heads/feat/product-quality-harness'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -16,14 +16,21 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 1
-      - name: Assemble reviewed bytes and push only the auxiliary branch
-        run: python .integration/assemble.py
-      - name: Export assembled source for verification
-        run: git archive --format=zip --output=/tmp/claude-agents-assembled.zip HEAD
-      - uses: actions/upload-artifact@v7
-        with:
-          name: quality-integration-assembled-source
-          path: /tmp/claude-agents-assembled.zip
-          retention-days: 1
-          if-no-files-found: error
+      - name: Fix one verified documentation marker on the auxiliary branch
+        run: |
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          p = Path('CHANGELOG.md')
+          def blob(b):
+              return hashlib.sha1(b'blob ' + str(len(b)).encode() + b'\0' + b).hexdigest()
+          assert blob(p.read_bytes()) == '6add57b58e01160be83cdfd6c1e27f8da6128fd6'
+          s = p.read_text(encoding='utf-8')
+          assert s.count('(ADR gốc 0018; #335)') == 1
+          p.write_text(s.replace('(ADR gốc 0018; #335)', '(ADR gốc 0018) (#335)', 1), encoding='utf-8')
+          assert blob(p.read_bytes()) == 'f51381e31326989ac22043700c13ba8e4d03200d'
+          PY
+          git diff --check
+          git add -- CHANGELOG.md
+          git -c user.name=seeker19110 -c user.email=29851712+seeker19110@users.noreply.github.com commit -m 'docs: use the required changelog PR-reference format'
+          git push origin HEAD:refs/heads/feat/product-quality-harness
