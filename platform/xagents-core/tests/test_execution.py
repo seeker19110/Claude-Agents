@@ -301,9 +301,9 @@ def test_journal_dong_mo_lai_van_replay_duoc_run(tmp_path) -> None:
     spec = _spec()
     path = tmp_path / "journal.sqlite"
     with ExecutionJournal(path) as journal:
-        journal.append(_event(ExecutionEventKind.RUN_STARTED))
-        journal.append(_event(ExecutionEventKind.TASK_STARTED, "A"))
-        journal.append(_event(ExecutionEventKind.RUN_STARTED, run_id="RUN-OTHER"))
+        journal._append_unchecked(_event(ExecutionEventKind.RUN_STARTED))
+        journal._append_unchecked(_event(ExecutionEventKind.TASK_STARTED, "A"))
+        journal._append_unchecked(_event(ExecutionEventKind.RUN_STARTED, run_id="RUN-OTHER"))
         assert len(journal.events("RUN-1")) == 2
 
     with ExecutionJournal(path) as journal:
@@ -316,9 +316,9 @@ def test_journal_dong_mo_lai_van_replay_duoc_run(tmp_path) -> None:
 def test_journal_tu_choi_event_id_trung(tmp_path) -> None:
     event = ExecutionEvent(run_id="RUN-1", kind=ExecutionEventKind.RUN_STARTED, event_id="same")
     with ExecutionJournal(tmp_path / "journal.sqlite") as journal:
-        journal.append(event)
+        journal._append_unchecked(event)
         with pytest.raises(ExecutionJournalError, match="event_id trùng"):
-            journal.append(event)
+            journal._append_unchecked(event)
 
 
 def test_journal_mot_connection_ghi_duoc_tu_nhieu_worker_thread(tmp_path) -> None:
@@ -332,7 +332,7 @@ def test_journal_mot_connection_ghi_duoc_tu_nhieu_worker_thread(tmp_path) -> Non
             for i in range(12)
         ]
         with ThreadPoolExecutor(max_workers=4) as pool:
-            list(pool.map(journal.append, events))
+            list(pool.map(journal._append_unchecked, events))
         assert {event.event_id for event in journal.events("RUN-1")} == {
             event.event_id for event in events
         }
@@ -344,8 +344,8 @@ def test_journal_luu_runspec_de_resume_sau_khi_mat_context(tmp_path) -> None:
     with ExecutionJournal(path) as journal:
         journal.register(spec)
         journal.register(spec)
-        journal.append(_event(ExecutionEventKind.RUN_STARTED))
-        journal.append(_event(ExecutionEventKind.TASK_STARTED, "A"))
+        journal._append_unchecked(_event(ExecutionEventKind.RUN_STARTED))
+        journal._append_unchecked(_event(ExecutionEventKind.TASK_STARTED, "A"))
         conflict = RunSpec(
             run_id="RUN-1",
             objective="khác",
@@ -362,3 +362,24 @@ def test_journal_luu_runspec_de_resume_sau_khi_mat_context(tmp_path) -> None:
         assert state.tasks["A"] is TaskStatus.RUNNING
         with pytest.raises(ExecutionJournalError, match="chưa đăng ký"):
             journal.resume("MISSING")
+
+
+def test_append_phat_deprecation_warning_nhung_van_ghi(tmp_path) -> None:
+    """`append` là alias legacy: vẫn ghi được, nhưng phải la làng để không ai còn coi nó là đường ghi chính."""
+    event = _event(ExecutionEventKind.RUN_STARTED)
+    with ExecutionJournal(tmp_path / "journal.sqlite") as journal:
+        with pytest.warns(DeprecationWarning, match="transition"):
+            journal.append(event)
+        assert journal.events("RUN-1") == (event,)
+
+
+def test_append_unchecked_khong_phat_warning(tmp_path) -> None:
+    """Đường ghi nội bộ (`_append_unchecked`) không được tự cảnh báo về chính nó."""
+    import warnings
+
+    event = _event(ExecutionEventKind.RUN_STARTED)
+    with ExecutionJournal(tmp_path / "journal.sqlite") as journal:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            journal._append_unchecked(event)
+        assert journal.events("RUN-1") == (event,)

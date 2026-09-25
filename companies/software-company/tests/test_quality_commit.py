@@ -56,6 +56,14 @@ def commit(journal, profile, receipts, kwargs, count, *, result=None, event_id="
                                  approval_lookup=kwargs.get("approval_lookup"))
 
 
+def commit_no_expected_count(journal, profile, receipts, kwargs, *, result=None, event_id="submission-1",
+                              now=NOW, pins=None):
+    """Đường mặc định: không truyền `expected_count` — hàm tự lấy `len(history)` làm snapshot."""
+    return commit_quality_result(journal, profile, result or source_result(), receipts,
+                                 event_id=event_id, bindings=pins or bindings(kwargs),
+                                 trusted_issuers=kwargs["trusted_issuers"], evidence_root=kwargs["evidence_root"], now=now)
+
+
 def test_accepted_result_and_evidence_survive_restart_without_signer_keys(bundle, tmp_path):
     profile, receipts, kwargs = bundle
     path = tmp_path / "run.sqlite"
@@ -189,6 +197,68 @@ def test_contract_pin_and_plan_quality_barrier_cannot_be_removed(bundle, tmp_pat
         journal.register(broken)
         with pytest.raises(ExecutionJournalError, match="contract"):
             commit(journal, profile, receipts, kwargs, 0)
+
+
+def test_expected_count_is_optional_and_defaults_to_fresh_history_length(bundle, tmp_path):
+    """Không truyền expected_count vẫn commit được: hàm tự soi len(history) làm snapshot của chính nó."""
+    profile, receipts, kwargs = bundle
+    with ExecutionJournal(tmp_path / "run.sqlite") as journal:
+        begin(journal, profile)
+        state = commit_no_expected_count(journal, profile, receipts, kwargs)
+        assert state.status is RunStatus.SUCCEEDED
+
+
+def test_expected_count_mismatch_rejected_before_evaluate(bundle, tmp_path, monkeypatch):
+    """Truyền expected_count sai lệch với len(history) hiện tại phải hỏng NGAY, trước khi evaluate chạy."""
+    from company import quality_execution
+
+    profile, receipts, kwargs = bundle
+    with ExecutionJournal(tmp_path / "run.sqlite") as journal:
+        count = begin(journal, profile)
+
+        def must_not_run(*_a, **_kw):
+            raise AssertionError("evaluate_result must not run when expected_count is already stale")
+
+        monkeypatch.setattr(quality_execution, "evaluate_result", must_not_run)
+        with pytest.raises(ExecutionJournalError, match="stale event count"):
+            commit(journal, profile, receipts, kwargs, count + 1)
+        assert len(journal.events(profile.run_id)) == count
+
+
+def test_expected_count_matching_still_commits(bundle, tmp_path):
+    """Truyền đúng expected_count (khớp len(history)) vẫn chạy bình thường, không bị coi là stale."""
+    profile, receipts, kwargs = bundle
+    with ExecutionJournal(tmp_path / "run.sqlite") as journal:
+        count = begin(journal, profile)
+        state = commit(journal, profile, receipts, kwargs, count)
+        assert state.status is RunStatus.SUCCEEDED
+
+
+def test_race_during_evaluate_rejected_even_without_caller_supplied_count(bundle, tmp_path, monkeypatch):
+    """CAS phải tự bảo vệ dù caller không truyền expected_count: hàm tự đọc history đầu hàm, trước evaluate,
+    và cùng snapshot đó phải khớp lúc transition — chen một event qua connection khác giữa lúc evaluate chạy
+    phải làm commit hỏng, không phải âm thầm ghi đè lên state đã đổi."""
+    from company import quality_execution
+
+    profile, receipts, kwargs = bundle
+    path = tmp_path / "run.sqlite"
+    with ExecutionJournal(path) as journal:
+        begin(journal, profile)
+        original = quality_execution.evaluate_result
+
+        def racing_assessment(*args, **kw):
+            result = original(*args, **kw)
+            with ExecutionJournal(path) as racer:
+                count = len(racer.events(profile.run_id))
+                racer.transition(ExecutionEvent(profile.run_id, ExecutionEventKind.RUN_CANCELLED),
+                                 expected_count=count)
+            return result
+
+        monkeypatch.setattr(quality_execution, "evaluate_result", racing_assessment)
+        with pytest.raises(ExecutionJournalError, match="stale"):
+            commit_no_expected_count(journal, profile, receipts, kwargs)
+        assert journal.resume(profile.run_id).status is RunStatus.CANCELLED
+        assert all(e.event_id != "submission-1" for e in journal.events(profile.run_id))
 
 
 def test_command_receipt_is_serialized_without_raw_output(bundle, tmp_path):
