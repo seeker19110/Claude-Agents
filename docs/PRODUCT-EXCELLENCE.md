@@ -232,8 +232,9 @@ Repo này **đã có** `company.quality_floor` và cơ chế release/acceptance 
 không phải nền X-Agents cũ. Giữ nguyên `floor_gaps`, `QualityBar`, nguồn bằng chứng máy,
 causation của review, quyền ký spec và cờ kích hoạt hiện có. Product contract là lớp yêu cầu bổ sung;
 không dùng `quality_pass` để thay sàn, tự bật cờ, hoặc giả danh actor `code`/`human:*`.
-Đến khi coordinator runtime được nối đầy đủ, bộ assessor/adapter này chỉ được gọi rõ ràng theo profile,
-chưa tự chặn tất cả release của Orchestrator. Trạng thái `/thi-hanh` vẫn ở file A–F cho tới bridge H7
+Từ ADR-0021 (pe2-noi), dự án ký spec kèm `--quality-profile` được orchestrator nghiệm thu qua trusted driver,
+và release của dự án đó bị gap R6 chặn tự duyệt tới khi `quality:accept` đạt ở đúng sha đã staged. Dự án không có
+profile giữ nguyên hành vi cũ. Trạng thái `/thi-hanh` vẫn ở file A–F cho tới bridge H7
 (ADR-0017); quality journal không trở thành backlog cạnh tranh hoặc được công bố là migration đã xong.
 
 ## 8. Những phần CHƯA được kích hoạt bởi thay đổi này

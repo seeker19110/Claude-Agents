@@ -1,6 +1,6 @@
 # ADR-0018: chất lượng sản phẩm nối vào execution kernel, không fork harness
 
-Ngày: 2026-09-25. Trạng thái: Proposed (triển khai trên nhánh PR).
+Ngày: 2026-09-25. Trạng thái: Accepted. Đã nối runtime ở ADR-0021 (pe2-noi): orchestrator đăng ký run theo plan, chạy `quality:accept` qua trusted driver, và sàn ADR-0043 thêm gap R6.
 Cơ sở: `seeker19110/Claude-Agents@b84dcb76b9085a686dafae97f47c988ac872446a`, ADR-0017.
 
 ## Bối cảnh
