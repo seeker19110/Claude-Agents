@@ -60,7 +60,7 @@ def parse_bar(raw: Mapping[str, Any]) -> QualityBar:
     return QualityBar(**fields)
 
 
-ProductQuality = tuple[tuple[str, str | None, str | None], ...]
+ProductQuality = tuple[tuple[str, str | None, str | None, str], ...]
 #: Nguồn R6 cho một release: (các run chạm release, ticket của dự án có profile nằm ngoài mọi run).
 ReleaseQuality = tuple[ProductQuality, tuple[str, ...]]
 R6 = "R6: nghiệm thu quality contract chưa đạt ở sha đã staged"
@@ -82,7 +82,9 @@ class QualityEvidence:
     had_incident: bool
     release_approved: bool
     production_deploy: Mapping[str, Any] | None
-    #: R6 (ADR gốc 0021 §f): `(run_id, trạng thái quality:accept, candidate_sha)` của mọi run có ticket trong release.
+    #: R6 (ADR gốc 0021 §f): `(run_id, trạng thái quality:accept, candidate_sha, blockers)` của mọi run có ticket
+    #: trong release. `blockers` là lý do thất bại (`RunState.blocked_reason`/reason của `TASK_FAILED`, cắt ≤300 ký
+    #: tự), rỗng khi không có (đạt, hoặc chưa từng chạy tới lúc hỏng).
     product_quality: ProductQuality = ()
     #: R6 (quyết định 3): ticket của dự án có profile nằm ngoài mọi run — không ai nghiệm thu nó.
     quality_unrun: tuple[str, ...] = ()
@@ -122,9 +124,9 @@ def _release_gaps(ev: QualityEvidence, bar: QualityBar) -> list[str]:
 def _quality_gaps(ev: QualityEvidence) -> list[str]:
     """R6: chỉ `succeeded` ở ĐÚNG sha đã staged mới không là khoảng trống (quyết định 5: sha đổi sau khi đạt ⇒ chặn)."""
     gaps = [f"{R6} (journal: {ev.quality_error})"] if ev.quality_error is not None else []
-    for run_id, status, sha in ev.product_quality:
+    for run_id, status, sha, blockers in ev.product_quality:
         if status != "succeeded":
-            gaps.append(f"{R6} ({run_id}: quality:accept={status!r})")
+            gaps.append(f"{R6} ({run_id}: {blockers or f'quality:accept={status!r}'})")
         elif sha is None or sha != ev.staged_sha:
             gaps.append(f"{R6} ({run_id}: đạt ở {sha!r}, sha đã staged là {ev.staged_sha!r})")
     gaps += [f"{R6} ({tid}: ticket của dự án có profile không thuộc run nào)" for tid in ev.quality_unrun]

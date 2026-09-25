@@ -29,27 +29,33 @@ def _r6(gaps: list[str]) -> list[str]:
 # ---------- hàm thuần: floor_gaps ----------
 
 def test_r6_run_failed_thi_co_khoang_trong():
-    gaps = floor_gaps(_release_ev(product_quality=((RUN, "failed", SHA),)), QualityBar())
+    gaps = floor_gaps(_release_ev(product_quality=((RUN, "failed", SHA, ""),)), QualityBar())
     assert gaps == [f"R6: nghiệm thu quality contract chưa đạt ở sha đã staged ({RUN}: quality:accept='failed')"]
 
 
+def test_r6_run_failed_mang_blocker_tu_dac_ta():
+    """N2.b: gap phải mang ĐÚNG blocker (`<check>:missing`), không chỉ trạng thái chung chung."""
+    gaps = floor_gaps(_release_ev(product_quality=((RUN, "failed", SHA, "goal.traceability:missing"),)), QualityBar())
+    assert gaps == [f"R6: nghiệm thu quality contract chưa đạt ở sha đã staged ({RUN}: goal.traceability:missing)"]
+
+
 def test_r6_succeeded_nhung_khac_sha_staged_thi_co_khoang_trong():
-    gaps = floor_gaps(_release_ev(product_quality=((RUN, "succeeded", OTHER),)), QualityBar())
+    gaps = floor_gaps(_release_ev(product_quality=((RUN, "succeeded", OTHER, ""),)), QualityBar())
     assert _r6(gaps) == [f"R6: nghiệm thu quality contract chưa đạt ở sha đã staged ({RUN}: đạt ở {OTHER!r}, "
                          f"sha đã staged là {SHA!r})"]
 
 
 def test_r6_succeeded_ma_khong_co_sha_staged_thi_khong_khop():
-    gaps = floor_gaps(_release_ev(staged_sha=None, product_quality=((RUN, "succeeded", None),)), QualityBar())
+    gaps = floor_gaps(_release_ev(staged_sha=None, product_quality=((RUN, "succeeded", None, ""),)), QualityBar())
     assert len(_r6(gaps)) == 1
 
 
 def test_r6_succeeded_dung_sha_staged_thi_khong_co_khoang_trong():
-    assert floor_gaps(_release_ev(product_quality=((RUN, "succeeded", SHA),)), QualityBar()) == []
+    assert floor_gaps(_release_ev(product_quality=((RUN, "succeeded", SHA, ""),)), QualityBar()) == []
 
 
 def test_r6_ticket_cua_du_an_co_profile_nam_ngoai_moi_run():
-    gaps = floor_gaps(_release_ev(product_quality=((RUN, "succeeded", SHA),), quality_unrun=("T9",)), QualityBar())
+    gaps = floor_gaps(_release_ev(product_quality=((RUN, "succeeded", SHA, ""),), quality_unrun=("T9",)), QualityBar())
     assert gaps == ["R6: nghiệm thu quality contract chưa đạt ở sha đã staged "
                     "(T9: ticket của dự án có profile không thuộc run nào)"]
 
@@ -60,7 +66,7 @@ def test_r6_loi_doc_journal_thi_hong_thi_dong():
 
 
 def test_r6_ap_ca_cho_nghiem_thu_vi_nghiem_thu_doi_san_release():
-    ev = _release_ev(kind="acceptance", release_approved=True, product_quality=((RUN, "failed", SHA),),
+    ev = _release_ev(kind="acceptance", release_approved=True, product_quality=((RUN, "failed", SHA, ""),),
                      production_deploy={"ok": True, "verified_by": "orchestrator", "sha": SHA})
     assert len(_r6(floor_gaps(ev, QualityBar()))) == 1
 
@@ -82,8 +88,8 @@ def test_collect_khong_nguon_quality_thi_ket_qua_y_he_truoc():
 def test_collect_chep_run_va_ticket_ngoai_run_tu_nguon():
     from company.bus import InMemoryBus
     bus = InMemoryBus(enforce_owners=False); _full(bus)
-    ev = _collect(bus, quality=lambda: (((RUN, "failed", "f" * 40),), ("T1",)))
-    assert ev.product_quality == ((RUN, "failed", "f" * 40),) and ev.quality_unrun == ("T1",)
+    ev = _collect(bus, quality=lambda: (((RUN, "failed", "f" * 40, ""),), ("T1",)))
+    assert ev.product_quality == ((RUN, "failed", "f" * 40, ""),) and ev.quality_unrun == ("T1",)
     assert len(_r6(floor_gaps(ev, QualityBar()))) == 2
 
 
@@ -147,7 +153,7 @@ def test_e2e_quality_succeeded_dung_sha_thi_khong_r6(tmp_path):
     _sign_spec_with_profile(tmp_path, bus, o)
     rid = o.lead.releases[-1]
     ev, bar = o.lead._quality_evidence("release", rid)
-    assert ev.product_quality == ((RUN, "succeeded", o.release_sha[rid]),) and ev.quality_unrun == ()
+    assert ev.product_quality == ((RUN, "succeeded", o.release_sha[rid], ""),) and ev.quality_unrun == ()
     assert not _r6(floor_gaps(ev, bar or QualityBar()))
 
 
@@ -158,5 +164,27 @@ def test_e2e_quality_failed_thi_r6(tmp_path):
     _sign_spec_with_profile(tmp_path, bus, o)
     rid = o.lead.releases[-1]
     ev, bar = o.lead._quality_evidence("release", rid)
+    assert ev.product_quality == ((RUN, "failed", o.release_sha[rid], "goal.traceability:missing"),)
     assert _r6(floor_gaps(ev, bar or QualityBar())) == [
-        f"R6: nghiệm thu quality contract chưa đạt ở sha đã staged ({RUN}: quality:accept='failed')"]
+        f"R6: nghiệm thu quality contract chưa đạt ở sha đã staged ({RUN}: goal.traceability:missing)"]
+
+
+def test_e2e_restart_roi_moi_danh_gia_gate_van_co_r6_dung_blocker(tmp_path):
+    """N2.b (mục 2): sau restart, `quality_profiles` phải được dựng lại (từ audit-log, trong `rehydrate()`)
+    TRƯỚC KHI bất kỳ ai gọi được `_quality_evidence`/`release_quality` qua orchestrator mới — `rehydrate()` chạy
+    hết trong `Orchestrator.__init__` (`orchestrator.py:218`) nên bất biến này giữ được; đây là hồi quy khoá nó lại."""
+    signers = _signers()
+    driver = FakeDriver(signers, drop=frozenset({"goal.traceability"}))
+    trust = write_trust(tmp_path / "trust.json", signers)
+    bus, o = _start(tmp_path, driver, trust=trust)
+    _sign_spec_with_profile(tmp_path, bus, o)
+    rid = o.lead.releases[-1]
+    sha = o.release_sha[rid]
+    bus.close()
+
+    _bus2, o2 = _start(tmp_path, None, trust=trust)  # restart: KHÔNG driver, chỉ đọc lại journal đã có
+    assert o2.quality_profiles, "quality_profiles phải dựng lại được ngay sau __init__, trước mọi gate release"
+    ev, bar = o2.lead._quality_evidence("release", rid)
+    assert ev.product_quality == ((RUN, "failed", sha, "goal.traceability:missing"),)
+    assert _r6(floor_gaps(ev, bar or QualityBar())) == [
+        f"R6: nghiệm thu quality contract chưa đạt ở sha đã staged ({RUN}: goal.traceability:missing)"]
