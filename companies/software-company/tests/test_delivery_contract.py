@@ -281,6 +281,37 @@ def test_ready_gaps_wrong_principal_is_unverified(ready_ok):
     assert "approval_record_unverified" in _ready(contract_, root, WrongLookup())
 
 
+def _ready_ok_as(tmp_path, *, approved_by: str, approval_record: str = "fixture:decision-1"):
+    """Same shape as the `ready_ok` fixture, with a controllable `approved_by`/lookup key."""
+    artifact_ref, artifact_sha256 = _real_spec_artifact(tmp_path)
+    spec = {**delivery_data()["spec"], "artifact_ref": artifact_ref, "artifact_sha256": artifact_sha256,
+            "approved_by": approved_by, "approval_record": approval_record,
+            "approved_at": (NOW - timedelta(hours=2)).isoformat()}
+    lookup = FakeApprovalLookupForTest({(approval_record, artifact_sha256): approved_by})
+    return contract(spec=spec), tmp_path, lookup
+
+
+def test_ready_gaps_self_approval_case_insensitive(tmp_path):
+    contract_, root, lookup = _ready_ok_as(tmp_path, approved_by="alice")
+    assert "spec_self_approval" in _ready(contract_, root, lookup, authors=frozenset({"Alice"}))
+
+
+def test_ready_gaps_self_approval_ignores_surrounding_whitespace(tmp_path):
+    contract_, root, lookup = _ready_ok_as(tmp_path, approved_by="alice")
+    assert "spec_self_approval" in _ready(contract_, root, lookup, authors=frozenset({" alice "}))
+
+
+def test_ready_gaps_lookup_principal_normalized_is_verified(tmp_path):
+    artifact_ref, artifact_sha256 = _real_spec_artifact(tmp_path)
+    spec = {**delivery_data()["spec"], "artifact_ref": artifact_ref, "artifact_sha256": artifact_sha256,
+            "approved_by": "alice", "approval_record": "fixture:decision-1",
+            "approved_at": (NOW - timedelta(hours=2)).isoformat()}
+    lookup = FakeApprovalLookupForTest({(spec["approval_record"], artifact_sha256): "ALICE "})
+    contract_ = contract(spec=spec)
+    gaps = _ready(contract_, tmp_path, lookup, authors=AUTHORS)
+    assert "approval_record_unverified" not in gaps
+
+
 def test_assess_blocks_delivery_without_approval_lookup(delivery_bundle):
     profile, receipts, kwargs = delivery_bundle
     result = assess(profile, receipts, **{**kwargs, "approval_lookup": None})

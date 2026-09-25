@@ -1,6 +1,8 @@
 """Selective, offline projects-template adapter; no execution or approval authority.
 
-Ready is structural validation of coordinator-supplied records, NOT authentication.
+Ready now checks that the approver is not an author, that approval preceded evidence, that the
+spec artifact hash still matches under `evidence_root`, and that a coordinator-supplied
+ApprovalLookup confirms the approval record; a missing lookup fails closed, never open.
 Done/Complete is checked within the existing authenticated quality receipt pipeline.
 Commands and references are data only. Existing quality checks cannot be waived here.
 """
@@ -166,6 +168,11 @@ class ApprovalLookup(Protocol):
         ...
 
 
+def _principal(value: str) -> str:
+    """Normalize a principal identifier for comparison: trim, then case-fold."""
+    return value.strip().casefold()
+
+
 def ready_gaps(
     contract: DeliveryContract,
     *,
@@ -181,7 +188,7 @@ def ready_gaps(
     """
     spec = contract.spec
     gaps: list[str] = []
-    if spec.approved_by in authors:
+    if _principal(spec.approved_by) in {_principal(author) for author in authors}:
         gaps.append("spec_self_approval")
     if spec.approved_at > now:
         gaps.append("spec_approved_in_future")
@@ -190,7 +197,7 @@ def ready_gaps(
     if not artifact_matches(evidence_root, spec.artifact_ref, spec.artifact_sha256, _MAX_SPEC_ARTIFACT_BYTES):
         gaps.append("spec_artifact_changed")
     approver = None if lookup is None else lookup.approved(spec.approval_record, spec.artifact_sha256)
-    if lookup is None or approver is None or approver != spec.approved_by:
+    if lookup is None or approver is None or _principal(approver) != _principal(spec.approved_by):
         gaps.append("approval_record_unverified")
     return tuple(gaps)
 
