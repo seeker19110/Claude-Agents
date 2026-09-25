@@ -41,10 +41,11 @@ thay kế hoạch H3–H7 của ADR-0017.
 | P3 | Ready thật: người duyệt không phải tác giả, `approved_at` hợp lệ, băm lại spec, `ApprovalLookup` | company | pe2-cung | C2 | Ready có nghĩa thật | Cần coordinator cấp lookup | xong #338 |
 | K1 | ADR gốc 0020: chữ ký bất đối xứng, xoay khoá, lộ trình HMAC | docs | pe2-ky | C3 | Quyết định dependency trước code | Viết ADR tốn một vòng | ◐ PR #339 (ADR-0020 Accepted) |
 | K2 | Ed25519 + `key_id` + `not_after`; registry chỉ chứa public key; HMAC chỉ cho contract ghim `legacy_hmac` | company | pe2-ky | C3 | Verifier hết ký giả được | Thêm dependency `cryptography` | ◐ PR #339 |
-| N1 | ADR gốc 0021 và orchestrator: đăng ký RunSpec khi ticket có profile, giao `quality:accept` cho trusted driver, CLI `commit` | company | pe2-noi | C3 | Adapter có giá trị thật | Đụng runtime, rủi ro hồi quy | chưa |
+| N1 | ADR gốc 0021 và orchestrator: đăng ký RunSpec khi ticket có profile, giao `quality:accept` cho trusted driver, CLI `commit` | company | pe2-noi | C3 | Adapter có giá trị thật | Đụng runtime, rủi ro hồi quy | ◐ ADR-0021 Accepted (chủ dự án giao chốt chất lượng cao) |
 | N2 | `quality_floor`: gap R6 khi run có profile mà `quality:accept` chưa `succeeded` | company | pe2-noi | C3 | Release không lọt khi thiếu nghiệm thu | Thêm một nguồn bằng chứng | chưa |
 | N3 | Console hiển thị trạng thái `quality:accept` và blocker | console | pe2-noi | C2 | Người trực thấy lý do chặn | Thêm một view | chưa |
 | N4 | Ghi chú ADR-0018 "Accepted, đã nối runtime"; `CODEMAP.md` có dòng quality | docs | pe2-noi | C1 | Tài liệu khớp thực tế | — | chưa |
+| N5 | ADR core và code: `quality:accept` chạy lại được khi candidate sha đổi sau `SUCCEEDED` (attempt mới ràng sha mới, giữ lịch sử) | core/company | pe2-noi2 | C3 | Nghiệm thu lại không cần ký profile mới | Đổi máy trạng thái ADR-0017 | chưa (sau pe2-noi) |
 
 Bốn hạng mục, theo thứ tự PR: **pe2-quytrinh → pe2-cung → pe2-ky → pe2-noi**. Mỗi hạng mục ≤ 8 mã và ≤ 2 package.
 
