@@ -45,7 +45,8 @@ thay kế hoạch H3–H7 của ADR-0017.
 | N2 | `quality_floor`: gap R6 khi run có profile mà `quality:accept` chưa `succeeded` | company | pe2-noi | C3 | Release không lọt khi thiếu nghiệm thu | Thêm một nguồn bằng chứng | xong #340 |
 | N3 | Console hiển thị trạng thái `quality:accept` và blocker | console | pe2-noi | C2 | Người trực thấy lý do chặn | Thêm một view | xong #340 |
 | N4 | Ghi chú ADR-0018 "Accepted, đã nối runtime"; `CODEMAP.md` có dòng quality | docs | pe2-noi | C1 | Tài liệu khớp thực tế | — | xong #340 |
-| N5 | ADR core và code: `quality:accept` chạy lại được khi candidate sha đổi sau `SUCCEEDED` (attempt mới ràng sha mới, giữ lịch sử) | core/company | pe2-noi2 | C3 | Nghiệm thu lại không cần ký profile mới | Đổi máy trạng thái ADR-0017 | ◐ PR #342 (ADR-0022 Accepted) |
+| N5 | ADR core và code: `quality:accept` chạy lại được khi candidate sha đổi sau `SUCCEEDED` (attempt mới ràng sha mới, giữ lịch sử) | core/company | pe2-noi2 | C3 | Nghiệm thu lại không cần ký profile mới | Đổi máy trạng thái ADR-0017 | xong #342 (ADR-0022 Accepted) |
+| N6 | `BusApprovalLookup` (người ký gate `SPEC-*` là nguồn sự thật của Ready), `--quality-trust` cho CLI orchestrator, `commit --db`; bổ sung ADR-0021 | company | pe2-duyet | C2 | Profile có `delivery` nghiệm thu được thật | Lookup quét lại audit-log mỗi lần nộp | ◐ PR #PR |
 
 Bốn hạng mục, theo thứ tự PR: **pe2-quytrinh → pe2-cung → pe2-ky → pe2-noi**. Mỗi hạng mục ≤ 8 mã và ≤ 2 package.
 
