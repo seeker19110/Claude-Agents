@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "project_id": "example-education-product",
+  "run_id": "example-run-not-production",
+  "goal": "Tạo sản phẩm giáo dục bền vững, chất lượng cao, dễ vận hành và bảo trì; UI/UX phù hợp người học và giáo viên.",
+  "domains": [
+    "education"
+  ],
+  "surfaces": [
+    "web"
+  ],
+  "audiences": [
+    "Người học trưởng thành",
+    "Giáo viên"
+  ],
+  "critical_journeys": [
+    "Tìm bài phù hợp, hoàn thành bài học và tiếp tục đúng tiến độ."
+  ],
+  "non_goals": [
+    "Do not rewrite unrelated systems."
+  ],
+  "constraints": [
+    "No weakening security or acceptance criteria."
+  ],
+  "technology_rationale": "Prefer supported compatible technology with a documented upgrade path.",
+  "scale_and_slo": "Validate the declared project workload and recovery objectives.",
+  "data_classification": "sensitive",
+  "persists_data": true,
+  "operates_service": true,
+  "serves_children": false,
+  "uses_ai": true,
+  "completion_target": "verified",
+  "design": {
+    "research_basis": "Repository evidence plus explicit hypotheses; no user study claimed.",
+    "research_status": "hypothesis",
+    "primary_tasks": "Find and complete the next lesson.",
+    "layout_rationale": "Task-first hierarchy, not an administrative dashboard.",
+    "visual_direction": "Calm, legible and consistent with the actual project brand.",
+    "information_density": "Progressive disclosure for learners; denser review for teachers.",
+    "content_tone": "Clear and respectful.",
+    "component_system": "Reuse accessible components and semantic tokens.",
+    "interaction_states": "Loading, empty, error, success, disabled and permission denied.",
+    "accessibility_plan": "WCAG 2.2 AA mapping, keyboard, focus, zoom and reading-order checks.",
+    "validation_plan": "Device and task-based review with real content; label simulated findings.",
+    "devices": [
+      "phone",
+      "desktop"
+    ],
+    "locales": [
+      "vi-VN"
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "id": "AC-LEARN-1",
+      "outcome": "Hoàn thành bài học và đọc lại đúng tiến độ đã lưu.",
+      "verification": "E2E kiểm UI, API và dữ liệu; tải lại trang không mất tiến độ."
+    },
+    {
+      "id": "AC-ACCESS-1",
+      "outcome": "Người học không đọc hoặc sửa dữ liệu của người học khác.",
+      "verification": "Kiểm API phủ định quyền truy cập với hai tài khoản thử nghiệm độc lập."
+    }
+  ],
+  "quality_targets": [
+    {
+      "id": "lesson-api-p95",
+      "unit": "ms",
+      "operator": "lte",
+      "value": 500.0,
+      "conditions": "Ngưỡng minh họa cho môi trường staging, 50 người dùng đồng thời và dữ liệu thử nghiệm đại diện; phải hiệu chỉnh theo dự án thực."
+    }
+  ]
+}
