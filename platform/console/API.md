@@ -103,6 +103,12 @@ công ty đó bao giờ).
                   "tickets":["QLKH-012"],"sha":"964b704","gate":null,"at":"10:06","summary":"…","runbook":"…",
                   "next":"Agent tự dừng, KHÔNG gate nào mở: …"}]
   },
+  // ADR-0021 §f (N3): nghiệm thu contract chất lượng, đọc `<db>.quality.sqlite` CHỈ ĐỌC (console/quality.py).
+  // `null` = chưa ai ký profile nào (chưa có file journal) — trang hiện "không có profile", KHÔNG tự tạo file.
+  // Có journal thì LUÔN là list, kể cả rỗng; độc lập với `sources.software-company.ok` (journal là nguồn riêng).
+  "quality": [{"run_id":"RUN-2026-09-25-P1","status":"failed",   // trạng thái task `quality:accept` trong journal
+               "checks_total":["lint","tests"],"checks_passed":["lint"],   // suy từ blockers `<check>:<lý do>` của lần chấm gần nhất
+               "blocker":"tests:missing"}],                       // `RunState.blocked_reason` của core, "" khi không bị chặn
   "pending_decisions": [{"id":"REL-020","decision":"approve","by":"human:lead","kind":"escalation","minutes":12,"reason":"…"}],
   "running": {"queue": 7, "head": {"topic":"tasks","key":"TCK-…","minutes": 5}, "last_event_minutes": 1, "topics": ["tasks"]},
   "deadlocks": [{"kind":"ticket|release|idle","id":"QLKH-010","state":"blocked","why":"…","integrated":true}],
@@ -134,6 +140,7 @@ Nguồn của từng phần:
 | `backends` | `routing.status()` nếu đọc được `llm.yaml`, nếu không thì gateway `/auth/status` |
 | `log` | `audit-log`, mới nhất trước, tối đa 200 bản ghi |
 | `delivery`, `pending_decisions`, `running`, `deadlocks` | `truth.py`: `release-candidates` + `release-events` + audit (`delivery.done`, `release.void`, `release.staged`, `integration.merged`, `orchestrated`, `gate.decide`) + `gate.pending/history` |
+| `quality` | `console/quality.py`: `<db>.quality.sqlite` (ADR gốc 0021 §f), đọc bằng `RunSpec`/`ExecutionEvent`/`RunState` của `xagents_core.execution`, KHÔNG dùng `ExecutionJournal` (constructor của nó ghi/tạo file) |
 | `tickets[].integrated/sha/human_hint/hint/gate`, `reviews[].trim/at`, `gates[].effect` | `truth.py` — sự thật git (merge commit), hint agent đang cầm, ngữ cảnh bị cắt khi chấm, hậu quả khi duyệt |
 | `keeper` | `maintenance-tickets` + `debt-ledger` (`keeper.ledger.Ledger.overdue`) + `release-notes` + `PersistentGate` của `keeper`; hạn mức tuần từ `keeper.budget.max_pr_per_week()` (`KEEPER_MAX_PR_PER_WEEK`). Số PR đang mở THẬT là câu trả lời của `gh` — console không gọi `gh` nên không nói con số đó |
 | `loops` | `company.metrics.collect(bus)["loops"]` — audit `tools_used` (`turns`, `capped`, `max_turns`) + `ticket.blocked` trên ticket có `tasks` |

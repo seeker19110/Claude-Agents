@@ -22,7 +22,7 @@ from .core import REVIEW_PRODUCERS as REVIEW_PRODUCERS
 from .core import TOPIC_PRODUCERS as TOPIC_PRODUCERS
 from .events import Envelope
 from .gate_risk import AUTOAPPROVE_ACTOR
-from .quality_floor import BAR_ACTION
+from .quality_floor import BAR_ACTION, PROFILE_ACTION
 
 SCHEMA_DIR = CORE.schema_dir
 
@@ -52,3 +52,6 @@ class InMemoryBus(CoreInMemoryBus[Envelope]):
             # ADR-0043 §2: mức nâng chất lượng là quyết định của người ký spec — agent tự ghi được thì agent tự bỏ
             # được `release: human` của dự án (bản ghi mới nhất thắng).
             self._deny(env, f"agent {env.actor} không được ghi mức nâng chất lượng ({BAR_ACTION}) — chỉ người (human:*)")
+        if env.topic == "audit-log" and env.payload.get("action") == PROFILE_ACTION and not is_human(env.actor):
+            # ADR gốc 0021 §a: profile là hợp đồng nghiệm thu người ký — agent ghi được thì agent tự đổi được thứ chấm mình.
+            self._deny(env, f"agent {env.actor} không được ghim quality profile ({PROFILE_ACTION}) — chỉ người (human:*)")

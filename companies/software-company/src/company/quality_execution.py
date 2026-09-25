@@ -19,7 +19,10 @@ from pathlib import Path
 from typing import Any
 
 from xagents_core.execution import (
+    ArtifactRef,
     Complexity,
+    DecisionRequest,
+    EvidenceReceipt,
     ExecutionEvent,
     ExecutionEventKind,
     ExecutionJournal,
@@ -37,6 +40,7 @@ from .product_quality import (
     ProjectProfile,
     Receipt,
     TrustedIssuer,
+    _read_trust,
     allowed_schemes,
     assess,
     compile_contract,
@@ -225,6 +229,92 @@ def commit_quality_result(
     return journal.transition(event, expected_count=count)
 
 
+_SAFE_COMPONENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+
+
+def _safe_component(value: str) -> str:
+    """One path segment from an id (`project_id`, `run_id`): no separator, no `.`/`..`, bounded length."""
+    if _SAFE_COMPONENT.fullmatch(value) is None or value in {".", ".."}:
+        raise ValueError(f"unsafe path component: {value[:80]!r}")
+    return value
+
+
+def pinned_profile_path(db: Path, project_id: str, profile_sha256: str) -> Path:
+    """Where `gate_cli approve SPEC-<pid> --quality-profile` pins the signed profile (root ADR-0021 §a).
+
+    Content-addressed, beside the bus (`<db>.artifacts/quality/profiles/<pid>/<sha256>.json`), never in a ticket
+    worktree; evidence lives under `quality/runs/`, so a project id equal to a run id cannot collide."""
+    if re.fullmatch(r"[0-9a-f]{64}", profile_sha256) is None:
+        raise ValueError("profile_sha256 must be a full sha256 digest")
+    return db.with_suffix(".artifacts") / "quality" / "profiles" / _safe_component(project_id) / f"{profile_sha256}.json"
+
+
+def result_event_id(run_id: str, attempt_id: str) -> str:
+    """One submission identity per attempt: the in-process driver and the `commit` CLI ACK each other (ADR-0019)."""
+    return f"{run_id}:quality:result:{attempt_id}"
+
+
+def bindings_from_journal(journal: ExecutionJournal, run_id: str) -> QualityBindings:
+    """Pins of the LATEST `quality:accept` attempt, exactly as the coordinator wrote them into TASK_STARTED.
+
+    Never taken from arguments or worker output (root ADR-0021 §b). Whether that attempt is still the active
+    one is checked again, atomically, by `commit_quality_result`."""
+    started = next((item for item in reversed(journal.events(run_id))
+                    if item.task_id == QUALITY_TASK_ID and item.kind is ExecutionEventKind.TASK_STARTED), None)
+    if started is None or not isinstance(started.payload.get("bindings"), dict):
+        raise ExecutionJournalError("no coordinator-bound quality attempt in the journal")
+    raw = started.payload["bindings"]
+    try:
+        bindings = QualityBindings(**{**raw, "author_principals": frozenset(map(str, raw["author_principals"]))})
+    except (KeyError, TypeError) as error:
+        raise ExecutionJournalError("malformed coordinator bindings") from error
+    if bindings.expected_attempt_id != started.payload.get("attempt_id"):
+        raise ExecutionJournalError("bindings do not belong to the started attempt")
+    return bindings
+
+
+def result_from_document(document: dict[str, Any]) -> TaskResult:
+    """Inverse of `_result_document`: a TaskResult from JSON (the `commit` CLI input)."""
+    return TaskResult(
+        task_id=str(document["task_id"]), attempt_id=str(document["attempt_id"]),
+        status=TaskStatus(document["status"]), base_sha=str(document["base_sha"]),
+        head_sha=str(document["head_sha"]), diff_hash=str(document["diff_hash"]),
+        artifacts=tuple(ArtifactRef(**item) for item in document.get("artifacts", ())),
+        evidence=tuple(EvidenceReceipt(**{**item, "started_at": datetime.fromisoformat(item["started_at"])})
+                       for item in document.get("evidence", ())),
+        findings=tuple(map(str, document.get("findings", ()))),
+        unresolved=tuple(DecisionRequest(**{**item, "options": tuple(item.get("options", ()))})
+                         for item in document.get("unresolved", ())),
+    )
+
+
+class CommitRefused(ValueError):
+    """The CLI cannot assess this profile faithfully; nothing is written to the journal."""
+
+
+def _commit_cli(args: argparse.Namespace) -> dict[str, Any]:
+    if not args.journal.is_file():
+        raise ValueError("journal does not exist; commit must not create an empty run")
+    profile = ProjectProfile.model_validate_json(args.profile.read_text(encoding="utf-8"))
+    if profile.run_id != args.run_id:
+        raise ValueError("profile belongs to another run")
+    if profile.delivery is not None:
+        # Without an ApprovalLookup, delivery.definition always fails: refuse rather than burn the attempt as FAILED.
+        raise CommitRefused("commit CLI không có ApprovalLookup; để driver của orchestrator nộp")
+    result = result_from_document(json.loads(args.result.read_text(encoding="utf-8")))
+    raw = json.loads(args.receipts.read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        raise ValueError("receipts must be an array")
+    receipts = [Receipt.model_validate_json(json.dumps(item)) for item in raw]
+    with ExecutionJournal(args.journal) as journal:
+        bindings = bindings_from_journal(journal, args.run_id)
+        state = commit_quality_result(
+            journal, profile, result, receipts, event_id=result_event_id(args.run_id, bindings.expected_attempt_id),
+            bindings=bindings, trusted_issuers=_read_trust(args.trust), evidence_root=args.evidence_root)
+    return {"run_id": state.run_id, "status": state.status.value,
+            "tasks": {key: value.value for key, value in state.tasks.items()}, "blocked_reason": state.blocked_reason}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Bind product quality to the native execution kernel")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -237,10 +327,16 @@ def main(argv: list[str] | None = None) -> int:
     status = sub.add_parser("status")
     status.add_argument("run_id")
     status.add_argument("--journal", type=Path, required=True)
+    commit = sub.add_parser("commit", help="coordinator: submit a trusted driver's result; bindings come from the journal")
+    commit.add_argument("run_id")
+    for flag in ("--journal", "--profile", "--result", "--receipts", "--trust", "--evidence-root"):
+        commit.add_argument(flag, type=Path, required=True)
     args = parser.parse_args(argv)
     try:
         output: dict[str, Any]
-        if args.command == "status":
+        if args.command == "commit":
+            output = _commit_cli(args)
+        elif args.command == "status":
             if not args.journal.is_file():
                 raise ValueError("journal does not exist; status must not create an empty run")
             with ExecutionJournal(args.journal) as journal:
@@ -261,6 +357,9 @@ def main(argv: list[str] | None = None) -> int:
             output = {"quality_contract": compile_contract(profile), "execution_spec": json.loads(spec.to_json())}
         print(json.dumps(output, ensure_ascii=False, indent=2))
         return 0
+    except CommitRefused as error:
+        print(str(error), file=sys.stderr)
+        return 2
     except (OSError, ValueError, TypeError, KeyError, AttributeError, ExecutionJournalError, sqlite3.Error) as error:
         print(f"Invalid execution input ({type(error).__name__}); no task completion issued.", file=sys.stderr)
         return 2

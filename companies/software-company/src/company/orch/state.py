@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from ..events import Envelope
     from ..integration import Integration
+    from .quality_flow import QualityPin
 
 RAM_ONLY = "ram-only"
 
@@ -83,6 +84,9 @@ class OrchState:
     # release_id → {version, tag, sha, short, branch, previous}: bản đã giao (ADR-0027)
     delivered: dict[str, dict[str, Any]] = field(default_factory=dict, metadata=_src("audit:delivery.done"))
     void_releases: set[str] = field(default_factory=set, metadata=_src("audit:release.void"))
+    # project_id → ProjectProfile người ghim lúc ký spec (ADR gốc 0021 §a): run_id, profile_sha256, contract_hash và
+    # `plans_before` (số kế hoạch dự án đã có lúc ghim — run lấy kế hoạch approved-specs ĐẦU TIÊN sau mốc đó)
+    quality_profiles: dict[str, QualityPin] = field(default_factory=dict, metadata=_src("audit:quality.profile_set"))
 
     # --- chờ người ---
     # project_id → {event_id, agent, topic, error}: dự án kẹt chờ người

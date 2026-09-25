@@ -71,6 +71,10 @@ def decide(company_db: Path | None, keeper_db: Path | None = None, *,
 
     bus = _bus(xuong, Path(db))
     try:
+        # ADR gốc 0021 quyết định 2: console không nhận file profile ⇒ dự án đã có profile thì không ký SPEC ở đây.
+        if xuong == COMPANY and (why := company_gate_cli.require_profile_for_spec(
+                bus, subject_id, decision, has_profile_arg=False)) is not None:
+            raise GateError(why)
         gate = {COMPANY: _company_gate, KEEPER: _keeper_gate}[xuong](bus)
         written: list[Any] = []
         bus.subscribe("audit-log", written.append)  # bắt chính envelope gate.decide mà gate vừa ghi

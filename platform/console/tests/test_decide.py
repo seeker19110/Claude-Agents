@@ -84,3 +84,36 @@ def test_thieu_nguoi_duyet(company_db: Path) -> None:
         decide(company_db, subject_id="REL-001", xuong=COMPANY, decision="approve", by="  ", reason="")
     with pytest.raises(ValueError, match="subject_id"):
         decide(company_db, subject_id="", xuong=COMPANY, decision="approve", by="human:pm", reason="")
+
+
+def _spec_gate(db: Path, *, pinned: bool) -> None:
+    """Gate SPEC-P9 đang chờ; `pinned` ⇒ dự án đã có quality profile người ghim (ADR gốc 0021, quyết định 2)."""
+    from company.gates import GateRequest
+    from company.quality_floor import PROFILE_ACTION
+    bus = CompanySQLiteBus(db)
+    try:
+        gate = CompanyGate(bus)
+        gate.request(GateRequest(kind="spec", subject_id="SPEC-P9", created_by="product", checklist=["prd"]))
+        if pinned:
+            gate._log("human:po", PROFILE_ACTION, {"project_id": "P9", "run_id": "run-P9",
+                                                   "profile_sha256": "a" * 64, "contract_hash": "b", "by": "human:po"},
+                      by="human:po")
+    finally:
+        bus.close()
+
+
+def test_duyet_spec_du_an_da_co_profile_bi_tu_choi_huong_sang_cli(company_db: Path) -> None:
+    _spec_gate(company_db, pinned=True)
+    with pytest.raises(GateError) as e:
+        decide(company_db, subject_id="SPEC-P9", xuong=COMPANY, decision="approve", by="human:pm", reason="ok")
+    assert "gate_cli approve SPEC-P9 --quality-profile" in str(e.value)
+    assert "SPEC-P9" in {g["id"] for g in collect(company_db, gateway_url=DEAD_GATEWAY)["gates"]}, "chưa ký"
+    out = decide(company_db, subject_id="SPEC-P9", xuong=COMPANY, decision="request_changes", by="human:pm",
+                 reason="thiếu mục tiêu đo được")
+    assert out["ok"], "chỉ lần KÝ spec cần profile"
+
+
+def test_duyet_spec_du_an_chua_tung_co_profile_giu_hanh_vi_cu(company_db: Path) -> None:
+    _spec_gate(company_db, pinned=False)
+    out = decide(company_db, subject_id="SPEC-P9", xuong=COMPANY, decision="approve", by="human:pm", reason="ok")
+    assert out["ok"]

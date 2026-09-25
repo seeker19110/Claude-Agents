@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from functools import partial
 
 from .bus import InMemoryBus
 from .events import BUDGET_FACTOR, AcceptanceResult, AuditLog, Envelope, ReviewResult, Task, can_transition
 from .gate_cli import PersistentGate
 from .gate_risk import request_gate
 from .gates import GateRequest
-from .quality_floor import QualityBar, QualityEvidence, collect_evidence, project_bar
+from .quality_floor import QualityBar, QualityEvidence, ReleaseQuality, collect_evidence, project_bar
 from .roles import LEAD_ACTOR, SOURCE
 
 DONE_STATES = frozenset({"approved", "merged", "released", "closed"})
@@ -46,6 +48,8 @@ class DeliveryLead:
         # (orchestrator ghi plan_id vào đây ngay sau khi kiểm không ra problem nào). Vẫn là guard bằng CODE:
         # `dispatch` một plan_id lạ vẫn `PermissionError`, không phải "ai gọi cũng giao".
         self.plans_ok: set[str] = set()
+        # R6 (ADR gốc 0021 §f): nguồn đọc journal quality theo release, orchestrator gắn (`quality_flow.release_quality`).
+        self.quality_source: Callable[[str], ReleaseQuality] | None = None
         self.reviews: dict[str, dict[str, ReviewResult]] = defaultdict(dict)
         self.review_since: dict[str, datetime] = {}
         self.releases: list[str] = []
@@ -343,7 +347,8 @@ class DeliveryLead:
         tickets = self.release_tickets.get(rid, [])
         pid = next((self.tickets[t].project_id for t in tickets if t in self.tickets), None)
         ev = collect_evidence(self.bus, kind, rid, tickets=tickets, needs_security=self.release_needs_security(rid),
-                              waived=sorted(self.release_waived.get(rid, set())), history=self.gate.history)
+                              waived=sorted(self.release_waived.get(rid, set())), history=self.gate.history,
+                              quality=partial(self.quality_source, rid) if self.quality_source is not None else None)
         return ev, (project_bar(self.bus, pid) if pid else None)
 
     def _maybe_open_release_gate(self, rid: str) -> None:

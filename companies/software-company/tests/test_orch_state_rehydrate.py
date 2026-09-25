@@ -80,6 +80,10 @@ SEED = {
     "release_sha": lambda bus, tmp: _audit(bus, "release.staged", {"release_id": "REL-1", "sha": "a" * 40}),
     "delivered": lambda bus, tmp: _audit(bus, "delivery.done", {"release_id": "REL-1", "version": "0.1.0"}),
     "void_releases": lambda bus, tmp: _audit(bus, "release.void", {"release_id": "REL-1"}),
+    # ADR gốc 0021: chỉ NGƯỜI ghim được profile — bus chặn agent, replay kiểm lại actor
+    "quality_profiles": lambda bus, tmp: _audit(bus, "quality.profile_set",
+                                                {"project_id": "P1", "run_id": "run-P1", "profile_sha256": "a" * 64,
+                                                 "contract_hash": "b" * 64, "by": "human:po"}, actor="human:po"),
     "stalled": lambda bus, tmp: _audit(bus, "project.stalled", {"project_id": "P1", "event_id": E1,
                                                                 "agent": "builder", "topic": "tasks"}),
     "stall_count": lambda bus, tmp: _audit(bus, "project.stalled", {"project_id": "P1", "event_id": E1,

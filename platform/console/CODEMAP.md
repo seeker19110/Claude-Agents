@@ -10,6 +10,7 @@ Hợp đồng nội bộ giữa các lớp (hình dạng dữ liệu, route, has
 | Hậu quả gate CẢ HAI CHIỀU (duyệt → agent nào; từ chối → về đâu) | `src/console/truth.py` `gate_effect` / `gate_reject_effect` / `gate_next_agent` | mỗi xưởng tự khai; không biết thì trả `""`, không đoán |
 | Cảnh báo bế tắc im lặng riêng ở đầu trang | `truth.py` `silent_ticket_deadlocks()`; `#s-silent` trong `index.html` | ticket kẹt **không gate nào chờ** ≠ "đang chờ người" |
 | Cột "commit vượt integration" | `src/console/git_truth.py` (+ `CompanyView._ahead` trong `collect.py`) | `git rev-list --count`, KHÔNG `branch --contains`; repo đọc từ audit `project.repo` |
+| Quality contract (`quality:accept`, check đã pass, blocker) | `src/console/quality.py` `contracts()`, gọi từ `CompanyView.quality()` | ADR gốc 0021 §f: đọc `<db>.quality.sqlite` CHỈ ĐỌC (URI `mode=ro`), KHÔNG dùng `ExecutionJournal` (ghi/tạo file); không có file ⇒ `None` ⇒ "không có profile" |
 | Hồ sơ `gate_brief` trong ngăn kéo gate | `src/console/brief.py`; route `GET /api/gate/brief` | gọi thẳng `company.gate_brief`; không chép lại logic, không cần `--allow-decide` |
 | Duyệt / từ chối gate, kiểm lý do, four-eyes | `src/console/decide.py` | gọi `HumanGate` của công ty; không tự dựng event |
 | Form giao việc (yêu cầu phần mềm + repo, trả lời làm rõ) | `src/console/submit.py` | publish qua `SQLiteBus` công ty → JSON Schema kiểm |
