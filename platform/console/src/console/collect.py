@@ -49,6 +49,7 @@ from keeper.gates import PersistentGate as KeeperGate
 from keeper.ledger import Ledger
 
 from console.git_truth import INTEGRATION_BRANCH, ahead_count
+from console.quality import contracts as quality_contracts
 from console.truth import Truth, gate_effect, gate_next_agent, gate_reject_effect
 
 _LOOPS_EMPTY = {"turns_p50": None, "turns_p90": None, "turns_max": None, "capped_ratio": None,
@@ -423,16 +424,22 @@ class CompanyView(_View):
                         "at": e.ts.astimezone().strftime("%H:%M")})
         return out
 
+    def quality(self) -> list[dict[str, Any]] | None:
+        """Quality contract (ADR-0021 §f): đọc `<db>.quality.sqlite` CHỈ ĐỌC, cạnh bus, độc lập với việc bus của
+        công ty có replay được hay không — journal là nguồn riêng của nó. `None` = chưa có profile nào được ký
+        (chưa có file), trang hiện "không có profile"; console không tự tạo file để trả lời câu hỏi này."""
+        return quality_contracts(Path(self.db).with_suffix(".quality.sqlite")) if self.db else None
+
     def truth_block(self) -> dict[str, Any]:
         """Sự thật giao hàng (console/truth.py). Xưởng chưa đọc được → mọi phần rỗng nhưng vẫn đủ khoá."""
         if not self.ok:
             return {"delivery": None, "pending_decisions": [], "running": None, "deadlocks": [],
-                    "product_funnel": [], "silent_deadlocks": [], "sandbox": None}
+                    "product_funnel": [], "silent_deadlocks": [], "sandbox": None, "quality": self.quality()}
         return {"delivery": self.truth.delivery(), "pending_decisions": self.truth.pending_decisions(),
                 "running": self.truth.running(), "deadlocks": self.truth.deadlocks(),
                 "product_funnel": self.truth.product_funnel(),
                 "silent_deadlocks": self.truth.silent_ticket_deadlocks(),
-                "sandbox": self.truth.sandbox()}
+                "sandbox": self.truth.sandbox(), "quality": self.quality()}
 
     def stuck(self) -> int:
         return sum(1 for st in self.lead.state.values() if st in STUCK_STATES) if self.ok else 0

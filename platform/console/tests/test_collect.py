@@ -15,6 +15,7 @@ from company.events import Envelope as CompanyEnvelope
 from company.events import Task
 from company.gates import HumanGate as CompanyHumanGate
 from company.sqlite_bus import SQLiteBus as CompanySQLiteBus
+from xagents_core.execution import ExecutionEvent, ExecutionEventKind, ExecutionJournal, RunSpec, TaskSpec
 
 import console.collect as collect_mod
 from conftest import gate_decide
@@ -25,6 +26,23 @@ DEAD_GATEWAY = "http://127.0.0.1:9"  # cổng 9 (discard) không có ai nghe →
 
 def state(company_db: Path | None) -> dict:
     return collect(company_db, gateway_url=DEAD_GATEWAY)
+
+
+def _build_quality_journal(path: Path, run_id: str = "RUN-OK") -> None:
+    """Journal `quality:accept` succeeded tối thiểu — ghi bằng chính `ExecutionJournal` như coordinator thật."""
+    spec = RunSpec(run_id, "mục tiêu", (
+        TaskSpec(task_id="T1", objective="làm T1"),
+        TaskSpec(task_id="quality:accept", objective="nghiệm thu", dependencies=("T1",), acceptance=("tests",)),
+    ))
+    with ExecutionJournal(path) as journal:
+        journal.register(spec)
+        for kind, task_id in ((ExecutionEventKind.RUN_STARTED, None), (ExecutionEventKind.TASK_STARTED, "T1"),
+                              (ExecutionEventKind.TASK_SUCCEEDED, "T1"),
+                              (ExecutionEventKind.TASK_STARTED, "quality:accept"),
+                              (ExecutionEventKind.TASK_SUCCEEDED, "quality:accept")):
+            n = len(journal.events(run_id))
+            journal.transition(ExecutionEvent(run_id, kind, task_id, payload={"result": {"findings": []}},
+                                              event_id=f"{run_id}:{task_id}:{kind.value}:{n}"), expected_count=n)
 
 
 def test_xuong_co_du_lieu(company_db: Path) -> None:
@@ -483,3 +501,32 @@ def test_cau_hoi_lam_ro_dang_cho_hien_trong_hang_doi_gate(company_db: Path) -> N
     assert all(x["decidable"] is True for x in s["gates"] if x["id"] != "CLARIFY-P1"), "gate thật vẫn duyệt được"
     _hoi_lam_ro(company_db, answers=[{"question_id": "Q-01", "answer": "A"}])  # trả lời đủ → biến mất
     assert "CLARIFY-P1" not in {g["id"] for g in state(company_db)["gates"]}
+
+
+def test_khong_co_quality_journal_thi_khong_co_profile(company_db: Path) -> None:
+    """ADR-0021 §f: chưa ai ký profile ⇒ không có `<db>.quality.sqlite` ⇒ trang hiện "không có profile" (`None`),
+    và console tuyệt đối không tự tạo file để trả lời câu hỏi này."""
+    journal = company_db.with_suffix(".quality.sqlite")
+    assert not journal.exists()
+    s = state(company_db)
+    assert s["quality"] is None
+    assert not journal.exists(), "console chỉ đọc — không được tạo journal"
+
+
+def test_co_quality_journal_thi_hien_run_va_check(company_db: Path) -> None:
+    """Có journal cạnh bus ⇒ `state["quality"]` liệt kê run kèm trạng thái `quality:accept` và check đã pass."""
+    journal = company_db.with_suffix(".quality.sqlite")
+    _build_quality_journal(journal)
+    s = state(company_db)
+    assert s["quality"] == [{"run_id": "RUN-OK", "status": "succeeded",
+                             "checks_total": ["tests"], "checks_passed": ["tests"], "blocker": ""}]
+
+
+def test_khong_doc_duoc_bus_van_doc_duoc_quality(tmp_path: Path) -> None:
+    """Journal là nguồn riêng của nó (cạnh bus, không phụ thuộc bus replay được hay không, §f)."""
+    db = tmp_path / "khong-ton-tai.sqlite"
+    _build_quality_journal(db.with_suffix(".quality.sqlite"))
+    s = state(db)
+    assert s["sources"][COMPANY]["ok"] is False
+    assert s["quality"] == [{"run_id": "RUN-OK", "status": "succeeded",
+                             "checks_total": ["tests"], "checks_passed": ["tests"], "blocker": ""}]

@@ -12,7 +12,7 @@ import {SC, srcOk, st} from "./state.js";
 import {connect, freshLabel, load, mode, skeleton} from "./stream.js";
 import {renderBackends, renderBoards, renderTables} from "./tables.js";
 import {filter, renderStreams, renderTiles} from "./tiles.js";
-import {renderDeadlocks, renderDelivery, renderProductFunnel, renderRunning, renderSandbox, renderSilent} from "./truth.js";
+import {renderDeadlocks, renderDelivery, renderProductFunnel, renderQuality, renderRunning, renderSandbox, renderSilent} from "./truth.js";
 import {$, fold, setQ} from "./util.js";
 import {renderGuide, renderSubmit} from "./submit.js";
 import "./drawer.js";   // chỉ để chạy phần gắn sự kiện ở top-level
@@ -23,7 +23,7 @@ export function render(){
   $("#brand-sub").textContent=`${okCount}/1 xưởng đọc được · ${st().backends.length} gói tài khoản`
     +(READONLY?" · chỉ đọc":" · duyệt được");
   $("#mode-pill").innerHTML=READONLY?'<span class="pill calm">chỉ đọc</span>':'<span class="pill accent">duyệt được</span>';
-  renderSilent(); renderSandbox(); renderEngine(); renderDeadlocks(); renderDelivery(); renderRunning(); renderQueue(); renderKeeper(); renderTiles(); renderLoops(); renderBackends(); renderBoards(); renderTables(); renderProductFunnel(); renderStreams();
+  renderSilent(); renderSandbox(); renderEngine(); renderDeadlocks(); renderDelivery(); renderQuality(); renderRunning(); renderQueue(); renderKeeper(); renderTiles(); renderLoops(); renderBackends(); renderBoards(); renderTables(); renderProductFunnel(); renderStreams();
   costChart(); agentChart();
   titles(); freshLabel();
 }

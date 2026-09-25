@@ -90,6 +90,20 @@ export function renderDelivery(){
         <span class="bar"><i style="width:${Math.round(f.n/max*100)}%"></i></span><span class="n">${num(f.n)}</span>
         ${f.n&&f.ids.length<=8?`<span class="ids">${f.ids.map(esc).join(" · ")}</span>`:""}</div>`).join("")}</div></div>`;
 }
+/* ADR-0021 §f (N3): journal `quality:accept` là nguồn RIÊNG của nó (cạnh bus) — hiện độc lập với `srcOk(SC)`.
+   `state().quality` null = chưa ai ký profile nào (chưa có file journal), KHÔNG PHẢI xưởng đọc hỏng. */
+export function renderQuality(){
+  const list=st().quality, host=$("#quality"); if(!host) return;
+  if(list==null){host.innerHTML='<div class="empty"><b>Không có profile</b>Chưa ai ký quality profile cho dự án nào — chưa có hợp đồng chất lượng để chấm.</div>';return;}
+  if(!list.length){host.innerHTML='<div class="empty"><b>Không có run nào</b>Journal đã có nhưng chưa run nào được đăng ký.</div>';return;}
+  host.innerHTML=list.map(r=>{
+    const tone=r.status==="succeeded"?"ok":r.status==="failed"?"bad":"warn";
+    const total=r.checks_total||[], passed=new Set(r.checks_passed||[]);
+    return `<div class="row"><code>${esc(r.run_id)} · <span class="tag ${tone}">${esc(r.status)}</span></code>
+      <span>${total.map(c=>`<span class="tag ${passed.has(c)?"ok":"bad"}">${esc(c)}${passed.has(c)?" ✓":" ✗"}</span>`).join(" ")}
+      ${r.blocker?`<div class="note" style="margin-top:4px;color:var(--crit-ink)">chặn: ${esc(r.blocker)}</div>`:""}</span></div>`;
+  }).join("");
+}
 export function renderRunning(){
   const r=srcOk(SC)?st().running:null, pend=listOf(SC,st().pending_decisions), host=$("#running");
   if(!r){host.innerHTML=emptyBox(SC,"Chưa đọc được xưởng phần mềm");return;}
