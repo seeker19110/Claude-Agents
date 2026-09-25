@@ -109,6 +109,9 @@ def main(argv: list[str] | None = None, environ: dict[str, str] | None = None) -
     items = open_items(body)
 
     if items:
+        # Runner Windows để stderr ở cp1252: ô tiếng Việt thành `\\u0111` trong log. Luôn ghi UTF-8.
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8")
         for item in items:
             print(item, file=sys.stderr)
         return 1

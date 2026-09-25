@@ -6,6 +6,7 @@ trừ ô có nhãn `(sau merge)`. Workflow pr-policy chạy script này qua env 
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -171,9 +172,11 @@ def test_script_exit_code_qua_subprocess():
 """
     result = subprocess.run(
         [sys.executable, str(SCRIPT)],
-        env={"BODY": body, "PATH": "/usr/bin:/bin"},
+        # Ép stderr mặc định về ASCII để tái hiện runner Windows (cp1252): script phải tự ghi UTF-8,
+        # không để ô tiếng Việt thành `\\u0111` trong log CI (đỏ thật ở #337, console-unit windows).
+        env={**os.environ, "BODY": body, "PYTHONIOENCODING": "ascii:backslashreplace"},
         capture_output=True,
-        text=True,
+        encoding="utf-8",
     )
     assert result.returncode == 1
     assert "Review độc lập." in result.stderr
@@ -188,9 +191,9 @@ def test_script_exit_code_0_khi_khong_co_o_mo():
 """
     result = subprocess.run(
         [sys.executable, str(SCRIPT)],
-        env={"BODY": body, "PATH": "/usr/bin:/bin"},
+        env={**os.environ, "BODY": body},
         capture_output=True,
-        text=True,
+        encoding="utf-8",
     )
     assert result.returncode == 0
 
