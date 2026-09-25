@@ -1,0 +1,36 @@
+{
+  "run_id": "example-run-not-production",
+  "objective": "Tạo sản phẩm giáo dục bền vững, chất lượng cao, dễ vận hành và bảo trì; UI/UX phù hợp người học và giáo viên.",
+  "tasks": [
+    {
+      "task_id": "implementation",
+      "objective": "Implement the accepted project and design brief in the client repository.",
+      "dependencies": [],
+      "complexity": "c3",
+      "acceptance": [
+        "AC-LEARN-1",
+        "AC-ACCESS-1"
+      ],
+      "allowed_tools": [],
+      "write_scope": [
+        "src/**",
+        "tests/**"
+      ],
+      "context_refs": [
+        "project-profile:example-education-product"
+      ]
+    },
+    {
+      "task_id": "integrate",
+      "objective": "Integrate the candidate and run the project checks on the exact revision.",
+      "dependencies": [
+        "implementation"
+      ],
+      "complexity": "c3",
+      "acceptance": [],
+      "allowed_tools": [],
+      "write_scope": [],
+      "context_refs": []
+    }
+  ]
+}

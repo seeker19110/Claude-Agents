@@ -47,6 +47,8 @@ chặn commit khi đứng trên `main`, staged có file cấm, diff hạ `fail_u
   góc nhìn chuyên môn về một PR/spec/release. Chúng **chỉ đọc**, không quyết định.
 - `.claude/launch.json` — cấu hình dev server cho browser pane.
 
+- `/product-goal <mã> <mục tiêu>` — hợp đồng chất lượng theo dự án/ngành, nối `/thi-hanh`; xem `docs/PRODUCT-EXCELLENCE.md`. Không che `/goal` native.
+
 ## Thao tác trên Windows
 
 - Shell chính là PowerShell 7; Bash tool là Git Bash. `cd` trong Bash **không giữ** qua lệnh sau — dùng đường dẫn

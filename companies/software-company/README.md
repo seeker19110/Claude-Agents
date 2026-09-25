@@ -40,7 +40,7 @@ research-requests → product[intake] → product[research] → product[spec] �
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0044); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0045); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
 agents/        system prompt 6 agent (có version), nhóm theo khối; agent nhiều việc khai `phases:` — skill của pha
                chỉ nạp ở lượt chạy pha đó (ADR-0037), thân bài có tiểu mục `### Pha <tên>` / `### Stack <tên>`
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
@@ -65,11 +65,22 @@ examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--rela
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng pha `intake` cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 6 agent, mỗi agent ≥ 2 ca (agent nhiều pha: ≥ 2 ca mỗi pha); recordings/ = phản hồi model đã ghi
-tests/         pytest 1455 ca / 89 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+tests/         pytest 1641 ca / 93 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, release tự dừng → gate, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
                guard/blackboard, schema consistency, golden 6 agent + 4 hồ sơ gate, bộ sinh subagent, hồ sơ gate, deploy compose (runner tiêm được), rà soát bảo mật);
                coverage fail_under=100 (phủ 100% dòng VÀ 100% nhánh, `branch = true` từ 2026-09-13)
 ```
+
+## Product-quality contract và execution adapter
+
+`product_quality.py` biên dịch profile/Design Brief thành các check theo tính áp dụng và xác minh receipt.
+`quality_execution.py` nối vào `xagents_core.execution` (RunSpec/TaskResult/journal), không fork kernel.
+Dùng `uv run python -m company.quality_execution plan examples/product-quality-profile.json examples/product-quality-work.json`.
+`plan/register/status` là điểm nối kernel, chưa là worker daemon hoặc gate bắt buộc của mọi Orchestrator run.
+`commit_quality_result` lưu kết quả/receipt cùng transition CAS (ADR gốc 0019), phục hồi và ACK lại
+không chạy lại việc; phải gọi từ coordinator đáng tin, không từ worker trực tiếp.
+Sàn tự duyệt `quality_floor` ADR-0043 được giữ nguyên. Xem [`hợp đồng chất lượng`](../../docs/PRODUCT-EXCELLENCE.md)
+và [`ADR gốc 0018`](../../docs/adr/0018-product-quality-execution-adapter.md).
 
 ## Chạy
 
@@ -159,7 +170,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-08)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0044; 6 system prompt có version (5 công đoạn + supervisor, ADR-0037); 45 skill có version; 14 template; checklist 3 gate + escalation.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0045; 6 system prompt có version (5 công đoạn + supervisor, ADR-0037); 45 skill có version; 14 template; checklist 3 gate + escalation.
 - 19 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   `delivery.py` (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate release → production → nghiệm thu;
@@ -307,3 +318,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 5. Bật supervisor ngay khi chi phí token vượt dự tính
 
 Đọc `docs/architecture.md` trước, sau đó `docs/standards.md` và `docs/adr/`.
+
+`delivery_contract.py` tiếp thu Ready/Done/Complete và gate no-op-safe từ projects-template,
+opt-in qua `ProjectProfile.delivery`; nguồn được ghim, không copy dispatcher hoặc sửa journal.
+Xem `docs/adr/0045-selective-template-delivery.md`; file ví dụ là fixture, không approval thật.

@@ -25,6 +25,20 @@ một `uv.lock`, một `.venv` ở gốc):
 Nguyên tắc chung (chi tiết ở `ARCHITECTURE.md`): model quyết định – code hành động; prompt là code; guardrail có
 hạn mức; self-hosted, resume được; trung lập provider.
 
+## Mục tiêu chất lượng sản phẩm
+
+Khi giao một mục tiêu sản phẩm, áp dụng `docs/PRODUCT-EXCELLENCE.md`: đúng người dùng/ngành,
+kiến trúc và công nghệ bền vững, bảo mật/dữ liệu, hiệu năng, vận hành/bảo trì và UI/UX phù hợp dự án.
+Phiên chính tự lập profile/Design Brief và tiêu chí đo; không bắt người dùng điều hành từng bước.
+Dùng `/product-goal` hoặc nối hợp đồng vào `/thi-hanh`; không tạo command che `/goal` native.
+`company.quality_execution` nối contract vào RunSpec/TaskResult/ExecutionJournal có sẵn (ADR-0018).
+Không coi adapter là daemon đã chạy hay quyền thay HumanGate/sàn tự duyệt ADR-0043. Không hạ chuẩn
+để kết thúc; kết quả thiếu bằng chứng vẫn chưa đạt. Các giới hạn triển khai nằm trong tài liệu nêu trên.
+
+Nguồn template được tiếp thu có chọn lọc theo `docs/reports/2026-09-25-projects-template-adoption.md`;
+không copy dispatcher/PROGRESS/CI. Goal mới phân biệt Ready/Done/Complete, ghim phiên bản chuẩn;
+thiếu phép kiểm không được ghi PASS. Giữ mô hình quyền và trạng thái hiện hành.
+
 ## Luật cấm
 
 1. **Không commit thẳng `main`.** Mọi thay đổi: nhánh → PR → CI xanh → squash merge. `git push` lên `main` bị

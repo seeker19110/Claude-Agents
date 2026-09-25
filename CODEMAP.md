@@ -14,7 +14,9 @@ từng package ở `<pkg>/CODEMAP.md`.
 | Đổi quy trình git | `docs/QUY-TRINH-GIT.md` | — |
 | Thêm bẫy đã mắc | `TRAPS.md` (hub) hoặc `<pkg>/TRAPS.md` | — |
 | Ghi việc đã đổi | `CHANGELOG.md` | — |
-| Đổi execution harness: run/task DAG, transition, evidence, journal | `platform/xagents-core/src/xagents_core/execution.py` + ADR-0017 | `scripts/dev-task.sh gate core` |
+| Đổi execution harness: run/task DAG, atomic transition/CAS, evidence, journal (ADR-0019) | `platform/xagents-core/src/xagents_core/execution.py` + ADR-0017 | `scripts/dev-task.sh gate core` |
+| Đổi Ready/Done/Complete và pin chuẩn template | `companies/software-company/src/company/delivery_contract.py`, `docs/integrations/projects-template.lock.json` | `scripts/dev-task.sh gate company` |
+| Đổi hợp đồng chất lượng sản phẩm/thiết kế và adapter execution | `companies/software-company/src/company/product_quality.py`, `quality_execution.py`, `docs/PRODUCT-EXCELLENCE.md`, ADR-0018 | `scripts/dev-task.sh gate company`, `scripts/dev-task.sh gate core` |
 | Cấu hình dev server cho browser pane | `.claude/launch.json` | — |
 | Thêm slash command cho Claude Code | `.claude/commands/<tên>.md` | `platform/console/tests/test_cong_khung.py` (canh frontmatter + đường dẫn) |
 | Đổi lệnh cổng cục bộ | `scripts/dev-task.sh` — phải khớp đúng `.github/workflows/ci.yml`, lệch là cổng cục bộ khác cổng CI | `uv run pytest tests/test_cong_khung.py` (console) |

@@ -1,0 +1,13 @@
+{
+  "repository": "seeker19110/projects-template",
+  "repository_id": 1283493926,
+  "revision": "23accce8a4b830eb07690cbd39dded8bf3bc94ce",
+  "adapter_policy": "template-delivery/1",
+  "documents": {
+    "docs/framework/adopt-from-outside.md": "bad5c8f0ea6bd761ef1a578e11064a28a257f1b6",
+    "docs/framework/quality-gates-by-profile.md": "094d17f6acaa255097266d73777056bc8bb53826",
+    "docs/framework/standard-delivery.md": "a238bac5c0c44bda14eb4c12e77a4c7c8b664334",
+    "docs/framework/templates/FEATURE-SPEC.template.md": "e5985682e122cea2720d8a9041c6df8e620b7f78",
+    "docs/framework/ui-ux-intelligence-provider.md": "ed8c161c928257a592a6cc6965f65d05f876f17f"
+  }
+}
