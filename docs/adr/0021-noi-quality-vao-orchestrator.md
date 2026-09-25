@@ -1,6 +1,6 @@
 # ADR-0021: nối nghiệm thu quality contract vào orchestrator của software-company
 
-Ngày: 2026-09-25. Trạng thái: **Proposed** — người phải duyệt (mục "Câu hỏi cho người") trước khi viết code N1.
+Ngày: 2026-09-25. Trạng thái: **Accepted** 2026-09-25. Chủ dự án giao phiên chính chốt theo hướng chất lượng cao; xem mục "Quyết định của người".
 Mở rộng ADR-0018 và ADR-0019; dùng chữ ký receipt của ADR-0020 (pe2-ky, `docs/adr/0020-chu-ky-bat-doi-xung-receipt.md`
 trên nhánh `wt/pe2-ky`, chưa merge). Gói N1 của `docs/thi-hanh/pe2.md`. Chạm hai package (`company` gọi
 `xagents_core.execution`) nên nằm ở dãy ADR gốc. Không có code trong ADR này.
@@ -209,6 +209,28 @@ ghi rõ "không đụng bảng chuyển".
    lúc ticket cuối được integrate?
 5. **Sha đổi sau `SUCCEEDED`.** Chấp nhận trần (1) ở mục Hệ quả, tức phải ký profile/run mới, hay mở ADR core
    riêng cho phép `quality:accept` chạy lại (đổi state machine ADR-0017)?
+
+## Quyết định của người (2026-09-25)
+
+Chủ dự án yêu cầu "chốt phương án chất lượng cao". Nguyên tắc chọn: hỏng thì đóng, không để cửa sổ hở, và
+không mở rộng gói mà không có ADR.
+
+1. **Hạt run: `plan_id`.** Mỗi profile có một run. Hệ quả này buộc phải theo, vì `run_id` nằm trong
+   `contract_hash`. Chữ ký gói N1 đổi thành `register_quality_run(o, plan_id, profile)`.
+2. **Chỗ ký: `--quality-profile` đi kèm `approve SPEC-<pid>`**, trong cùng một lần ký. Tách thành lệnh riêng thì
+   có cửa sổ ticket được dispatch khi chưa có profile. Dự án đã có profile mà thiếu cờ này thì lệnh ký bị từ
+   chối. Dự án chưa từng có profile thì giữ hành vi cũ.
+3. **Ticket ngoài run: N2 báo R6**, hỏng thì đóng. RC nào của dự án có profile mà chứa ticket không thuộc run
+   nào thì không được tự duyệt. Người ký profile mới, hoặc tự duyệt gate như trước khi có ADR-0043.
+4. **Candidate: sha đã staged của RC**, khớp R6 và khớp thứ người trực thật sự thả ra. Không dùng đầu nhánh
+   tích hợp, vì nó còn đổi sau khi ticket cuối được integrate.
+5. **Sha đổi sau `SUCCEEDED`: nghiệm thu lại được, nhưng không nhét vào N1.**
+   - Trong N1–N4: sha staged khác sha đã `SUCCEEDED` thì R6 chặn. Hỏng thì đóng, không bao giờ cho qua.
+   - Làm tiếp: mã **N5** (bảng B của `docs/thi-hanh/pe2.md`) mở ADR core riêng cho phép `quality:accept` chạy
+     lại khi candidate đổi. Mỗi attempt mới ràng sha mới, lịch sử attempt cũ giữ nguyên. Việc này đổi máy
+     trạng thái của ADR-0017, nên phải có ADR trước code.
+   - Loại phương án "ký profile/run mới mỗi lần sha đổi" làm đường chính: đúng nhưng đẩy việc thường ngày
+     sang người và tạo run rác.
 
 ## Liên quan
 
