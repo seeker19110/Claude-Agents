@@ -428,8 +428,12 @@ class ExecutionJournal:
         self.path = Path(path)
         self._lock = threading.RLock()
         self._db = sqlite3.connect(self.path, check_same_thread=False, timeout=30.0)
-        self._db.execute("PRAGMA journal_mode=WAL")
-        self._db.executescript(_JOURNAL_DDL)
+        try:
+            self._db.execute("PRAGMA journal_mode=WAL")
+            self._db.executescript(_JOURNAL_DDL)
+        except sqlite3.Error:
+            self._db.close()
+            raise
 
     def register(self, spec: RunSpec) -> None:
         body = spec.to_json()
