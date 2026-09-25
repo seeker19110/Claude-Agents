@@ -7,7 +7,7 @@ from pathlib import Path
 
 from xagents_core.execution import ExecutionEventKind, RunStatus, TaskStatus
 
-from company.orch import quality_flow
+from company.orch import quality_flow, quality_release
 from company.quality_execution import QUALITY_TASK_ID
 from test_quality_flow import RUN, FakeDriver, _journal, _sign_spec_with_profile, _signers, _start, write_trust
 
@@ -46,7 +46,7 @@ def test_sha_doi_sau_succeeded_thi_mo_lai_va_cham_lai_o_sha_moi(tmp_path):
     assert state.status is RunStatus.SUCCEEDED and state.attempts[QUALITY_TASK_ID] == 2
     assert reopened.event_id == f"{RUN}:quality:reopen:{first}"
     assert first in reopened.payload["reason"] and f"REL-009@{sha}" in reopened.payload["reason"]
-    assert quality_flow.runs_for_release(o, "REL-009") == ((RUN, "succeeded", sha),)
+    assert quality_release.runs_for_release(o, "REL-009") == ((RUN, "succeeded", sha),)
 
 
 def test_mo_lai_ma_chua_co_ket_qua_moi_thi_r6_van_thay_running(tmp_path):
@@ -57,7 +57,7 @@ def test_mo_lai_ma_chua_co_ket_qua_moi_thi_r6_van_thay_running(tmp_path):
     o.quality_driver = None  # attempt mới chờ CLI commit
     sha = _stage(tmp_path, o, "REL-009")
     quality_flow.sync_quality(o)
-    assert quality_flow.runs_for_release(o, "REL-009") == ((RUN, "running", sha),)
+    assert quality_release.runs_for_release(o, "REL-009") == ((RUN, "running", sha),)
 
 
 def test_candidate_quay_ve_rc_da_cham_thi_van_mo_duoc_attempt_moi(tmp_path):
@@ -94,4 +94,50 @@ def test_succeeded_roi_quay_ve_candidate_cu_cung_mo_lai_duoc(tmp_path):
     quality_flow.sync_quality(o)
     assert [c[1] for c in driver.calls][-1] == f"{first}~2"
     assert [k for k, _ in _kinds(tmp_path)].count("task.reopened") == 2
-    assert quality_flow.runs_for_release(o, o.lead.releases[0])[0][1] == "succeeded"
+    assert quality_release.runs_for_release(o, o.lead.releases[0])[0][1] == "succeeded"
+
+
+def test_r6_doc_trang_thai_va_candidate_tu_cung_mot_snapshot(tmp_path, monkeypatch):
+    """sc-security N5 #1: đọc trạng thái rồi mới đọc candidate thì một lần mở lại chen giữa ghép `succeeded` cũ với
+    sha mới ⇒ R6 cho qua sha chưa ai chấm. Cặp trả về phải cùng một snapshot của journal."""
+    from xagents_core.execution import ExecutionJournal
+    signers = _signers()
+    bus, o = _start(tmp_path, FakeDriver(signers), trust=write_trust(tmp_path / "trust.json", signers))
+    _sign_spec_with_profile(tmp_path, bus, o)
+    old = o.release_sha[o.lead.releases[-1]]
+    o.quality_driver = None
+    sha = _stage(tmp_path, o, "REL-009")
+    orig, fired = ExecutionJournal.events, [False]
+
+    def racing(self, run_id):
+        out = orig(self, run_id)
+        if not fired[0]:  # lần đọc đầu của runs_for_release xong thì luồng khác mở lại và start REL-009
+            fired[0] = True
+            quality_flow.sync_quality(o)
+        return out
+
+    monkeypatch.setattr(ExecutionJournal, "events", racing)
+    [(_, status, cand)] = quality_release.runs_for_release(o, "REL-009")
+    assert (status, cand) != ("succeeded", sha)
+    assert (status, cand) == ("succeeded", old)
+
+
+def test_cache_da_xong_bi_bo_khi_attempt_moi_dang_chay(tmp_path):
+    """sc-security N5 #2: đạt ở A (cache A) → mở lại ở B → B bị huỷ khi đang chạy ⇒ candidate về A. Cache cũ không
+    được làm `_sync_project` bỏ qua: A phải được mở lại để chấm."""
+    signers = _signers()
+    driver = FakeDriver(signers)
+    bus, o = _start(tmp_path, driver, trust=write_trust(tmp_path / "trust.json", signers))
+    _sign_spec_with_profile(tmp_path, bus, o)
+    [(_, first, _)] = driver.calls
+    o.quality_driver = None
+    _stage(tmp_path, o, "REL-009")
+    quality_flow.sync_quality(o)  # B đang chạy, chờ CLI
+    o.void_releases.add("REL-009")
+    o.quality_driver = driver
+    quality_flow.sync_quality(o)  # attempt B đang RUNNING được chấm nốt (core không huỷ được attempt đang chạy)
+    rid_a = first.split("@")[0]
+    assert quality_release.runs_for_release(o, rid_a)[0][2] != o.release_sha[rid_a], "R6 vẫn chặn A"
+    quality_flow.sync_quality(o)  # rồi A được mở lại và chấm, không bị cache cũ nuốt
+    assert driver.calls[-1][1] == f"{first}~2"
+    assert quality_release.runs_for_release(o, rid_a) == ((RUN, "succeeded", o.release_sha[rid_a]),)

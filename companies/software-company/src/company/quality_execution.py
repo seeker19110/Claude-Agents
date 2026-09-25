@@ -285,7 +285,13 @@ def bindings_from_journal(journal: ExecutionJournal, run_id: str) -> QualityBind
 
     Never taken from arguments or worker output (root ADR-0021 §b). Whether that attempt is still the active
     one is checked again, atomically, by `commit_quality_result`."""
-    started = next((item for item in reversed(journal.events(run_id))
+    return bindings_from_events(journal.events(run_id))
+
+
+def bindings_from_events(events: tuple[ExecutionEvent, ...]) -> QualityBindings:
+    """`bindings_from_journal` on a snapshot the caller already read, so status and candidate come from the SAME
+    history (root ADR-0022: after a reopen, two reads can pair an old SUCCEEDED with the new candidate)."""
+    started = next((item for item in reversed(events)
                     if item.task_id == QUALITY_TASK_ID and item.kind is ExecutionEventKind.TASK_STARTED), None)
     if started is None or not isinstance(started.payload.get("bindings"), dict):
         raise ExecutionJournalError("no coordinator-bound quality attempt in the journal")

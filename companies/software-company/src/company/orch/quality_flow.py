@@ -220,24 +220,6 @@ def submit_quality(o: Orchestrator, run_id: str, result: TaskResult, receipts: l
     return state
 
 
-def runs_for_release(o: Orchestrator, rid: str) -> tuple[tuple[str, str | None, str | None], ...]:
-    """Cho N2 (R6): (run_id, trạng thái `quality:accept`, candidate_sha) của run có ticket nằm trong RC — chỉ đọc."""
-    tickets = set(o.lead.release_tickets.get(rid, []))
-    if not tickets or not o.quality_profiles or not journal_path(o).is_file(): return ()
-    out: list[tuple[str, str | None, str | None]] = []
-    with ExecutionJournal(journal_path(o)) as journal:
-        for run_id in sorted({pin["run_id"] for pin in o.quality_profiles.values()}):
-            spec = journal.load_spec(run_id)
-            if spec is None or not tickets & {t.task_id for t in spec.tasks}: continue
-            state = journal.replay(spec)
-            try:
-                cand: str | None = bindings_from_journal(journal, run_id).candidate_sha
-            except ExecutionJournalError:
-                cand = None
-            out.append((run_id, state.tasks[QUALITY_TASK_ID].value, cand))
-    return tuple(out)
-
-
 # ---------- bộ đối chiếu ----------
 
 def sync_quality(o: Orchestrator) -> None:
@@ -307,8 +289,10 @@ def _registered(journal: ExecutionJournal, run: str) -> RunSpec:
 
 def _note_done(o: Orchestrator, run: str, q: TaskStatus, attempt: str, cand: tuple[str, str] | None) -> None:
     """Nhớ (trong RAM) run đã kết thúc ở đúng candidate hiện tại: các `_mark` sau không mở journal nữa."""
-    if q in {TaskStatus.SUCCEEDED, TaskStatus.FAILED} and cand is not None and base_attempt_id(attempt) == candidate_attempt_id(*cand):
-        o._quality_done[run] = candidate_attempt_id(*cand)
+    key = candidate_attempt_id(*cand) if cand is not None else None
+    if q in {TaskStatus.SUCCEEDED, TaskStatus.FAILED} and base_attempt_id(attempt) == key:
+        o._quality_done[run] = key
+    else: o._quality_done.pop(run, None)  # attempt khác đang mở (ADR gốc 0022): cache cũ không còn đúng
 
 
 def _emitter(journal: ExecutionJournal, spec: RunSpec) -> Emit:

@@ -54,6 +54,12 @@ Trong `_step_quality`:
   đã start. So sánh "cùng candidate" dùng phần gốc (bỏ `~<n>`), nên RAM cache `_quality_done` và nhánh "đã chấm hỏng
   đúng candidate này" vẫn đúng.
 
+**Một snapshot cho R6.** Mở lại làm `SUCCEEDED` không còn là trạng thái cuối, nên người đọc journal phải lấy trạng
+thái và candidate từ **cùng một lần đọc** event. Hai lần đọc riêng có thể bị `task.reopened` + `task.started` chen
+vào giữa. Khi đó `succeeded` của sha cũ bị ghép với sha mới, và R6 cho qua một sha chưa ai chấm (`sc-security` phát
+hiện, có test tái hiện). `orch/quality_release.py` đọc mỗi run đúng một lần. Cache RAM `_quality_done` bị xoá khi một
+attempt khác đang mở.
+
 R6 không đổi. Nó vẫn đòi `quality:accept` `succeeded` **ở đúng sha đã staged**. Giữa lúc mở lại và lúc có kết quả
 mới, trạng thái là `running`, nên R6 vẫn chặn.
 
