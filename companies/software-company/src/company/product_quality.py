@@ -18,7 +18,18 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Annotated, Any, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    StringConstraints,
+    model_serializer,
+    model_validator,
+)
+
+from .delivery_contract import DeliveryContract, DeliveryReport, adopted_source, delivery_gaps
 
 POLICY_VERSION = "product-excellence/2"
 MAX_EVIDENCE_AGE = timedelta(hours=24)
@@ -88,6 +99,14 @@ class ProjectProfile(StrictModel):
     uses_ai: bool
     completion_target: Literal["verified", "merged", "staging", "production"]
     design: DesignBrief | None = None
+    delivery: DeliveryContract | None = None
+
+    @model_serializer(mode="wrap")
+    def serialize_profile(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        document: dict[str, Any] = handler(self)
+        if self.delivery is None:
+            document.pop("delivery", None)  # Preserve pre-adoption v2 contract bytes.
+        return document
 
     @model_validator(mode="after")
     def coherent(self) -> ProjectProfile:
@@ -102,6 +121,8 @@ class ProjectProfile(StrictModel):
             raise ValueError("a graphical product requires a project-specific design brief")
         if self.completion_target in {"staging", "production"} and not self.operates_service:
             raise ValueError("deployment target requires operates_service=true")
+        if self.delivery is not None:
+            self.delivery.validate_acceptance({a.id for a in self.acceptance_criteria})
         return self
 
 
@@ -160,7 +181,9 @@ EXTRA_CHECKS = _checks([
     ("integration.candidate", "delivery", "runner", "Required CI passes on the exact integrated candidate; old-branch green is not reused blindly."),
     ("release.receipt", "delivery", "runner", "Authorized deployment receipt and post-deploy health/smoke checks match the candidate and target."),
 ])
-CATALOG = {check.id: check for check in (*BASE_CHECKS, *UI_CHECKS, *DATA_CHECKS, *SERVICE_CHECKS, *EXTRA_CHECKS)}
+DELIVERY_CHECK = Check("delivery.definition", "delivery", "runner",
+                       "Pinned Ready/Done/Complete contract is met; every applicable gate actually ran; no false-green no-op.")
+CATALOG = {check.id: check for check in (*BASE_CHECKS, *UI_CHECKS, *DATA_CHECKS, *SERVICE_CHECKS, *EXTRA_CHECKS, DELIVERY_CHECK)}
 
 
 def required_checks(profile: ProjectProfile) -> tuple[Check, ...]:
@@ -185,6 +208,8 @@ def required_checks(profile: ProjectProfile) -> tuple[Check, ...]:
         extra.append("integration.candidate")
     if profile.completion_target in {"staging", "production"}:
         extra.append("release.receipt")
+    if profile.delivery is not None:
+        extra.append(DELIVERY_CHECK.id)
     selected.extend(CATALOG[name] for name in extra)
     return tuple(sorted(selected, key=lambda check: check.id))
 
@@ -194,11 +219,14 @@ def _canonical(value: Any) -> bytes:
 
 
 def compile_contract(profile: ProjectProfile) -> dict[str, Any]:
+    profile = ProjectProfile.model_validate(profile)
     body = {"policy_version": POLICY_VERSION,
             "evidence_policy": {"max_age_seconds": MAX_EVIDENCE_AGE.total_seconds(),
                                 "max_artifact_bytes": MAX_ARTIFACT_BYTES, "signature": "HMAC-SHA256"},
             "profile": profile.model_dump(mode="json"),
             "checks": [asdict(check) for check in required_checks(profile)]}
+    if profile.delivery is not None:
+        body["template_source"] = adopted_source()
     return {**body, "contract_hash": hashlib.sha256(_canonical(body)).hexdigest()}
 
 
@@ -218,6 +246,15 @@ class Evidence(StrictModel):
     details: Text
     covered_acceptance: list[Text] = Field(default_factory=list)
     measurements: dict[str, Annotated[float, Field(allow_inf_nan=False)]] = Field(default_factory=dict)
+
+    delivery_report: DeliveryReport | None = None
+
+    @model_serializer(mode="wrap")
+    def serialize_evidence(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        document: dict[str, Any] = handler(self)
+        if self.delivery_report is None:
+            document.pop("delivery_report", None)  # Preserve signatures and lost-ACK fingerprints for old runs.
+        return document
 
     @model_validator(mode="after")
     def valid_window(self) -> Evidence:
@@ -369,6 +406,10 @@ def assess(
             reason = "incomplete_acceptance_coverage"
         elif check_id == "performance.budget" and not _targets_met(profile, evidence):
             reason = "missing_or_unmet_quality_target"
+        elif check_id == DELIVERY_CHECK.id and profile.delivery is not None and (
+            gaps := delivery_gaps(profile.delivery, evidence.delivery_report, profile.completion_target)
+        ):
+            reason = "delivery_unmet:" + ";".join(gaps)
         elif not _artifact_valid(evidence_root, evidence):
             reason = "missing_changed_or_unsafe_artifact"
         if reason:

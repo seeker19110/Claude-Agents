@@ -22,3 +22,19 @@ Không dùng tên command `/goal`: đó là chức năng tích hợp của Claud
    thiếu quyền/tài nguyên thì ghi checkpoint và báo đúng phần còn thiếu, không đổi đích để nói đã xong.
 7. Báo kết quả bằng artifact/PR/revision và lệnh thực sự chạy. Không coi CI của harness là nghiệm thu mọi
    sản phẩm do harness tạo, không coi kiểm mô phỏng là nghiên cứu người dùng hoặc kiểm browser thực tế.
+
+## Tiếp thu Standard Delivery cho goal mới
+
+Áp `company.delivery_contract` theo ADR company 0045 và
+`docs/reports/2026-09-25-projects-template-adoption.md`. Phiên chính tự lập phần `delivery` từ spec,
+quyết định có thật, baseline brownfield, research và AC→test; mặc định goal sản phẩm là `complete`,
+không đổi xuống `done` để kết thúc. Không tạo approval giả chỉ để vượt schema. Giữ run cũ không opt-in.
+Chốt argv/check theo stack và tính áp dụng trước chạy; thiếu cấu hình không là PASS. Đọc schema qua
+`company.product_quality schema` và dùng CLI plan/register hiện có; không khởi chạy template dispatcher.
+
+Khi chọn layout/UI/UX: ghi mục tiêu cho từng surface (thao tác, đọc/học, khám phá/lựa chọn, trải nghiệm),
+tái dùng token/component đã chọn; nguồn design ngoài chỉ tham khảo. Không redesign cả hệ để sửa một state,
+không auto-install provider hoặc tạo PRODUCT/DESIGN/UI_SPEC song song. Ghi quyết định trong DesignBrief.
+Trước lần sửa thứ hai cùng failure, xác định tầng lỗi bằng bằng chứng: spec, design/contract, code,
+verifier/environment hoặc knowledge. Tự gọi chuyên môn trong quyền và ngân sách; giữ phần đã đúng,
+không bắt người dùng điều hành retry và không tự nới quyền khi kẹt.

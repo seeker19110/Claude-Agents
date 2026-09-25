@@ -70,5 +70,54 @@
       "value": 500.0,
       "conditions": "Ngưỡng minh họa cho môi trường staging, 50 người dùng đồng thời và dữ liệu thử nghiệm đại diện; phải hiệu chỉnh theo dự án thực."
     }
-  ]
+  ],
+  "delivery": {
+    "source_revision": "23accce8a4b830eb07690cbd39dded8bf3bc94ce",
+    "adoption": "greenfield",
+    "completion_level": "complete",
+    "spec": {
+      "state": "Approved for implementation",
+      "artifact_ref": "fixture:education-spec-not-a-real-approval",
+      "artifact_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "approval_record": "fixture:decision-not-real",
+      "approved_by": "director:fixture",
+      "approved_at": "2026-09-24T12:00:00+00:00"
+    },
+    "research_refs": [
+      "fixture:repository-survey"
+    ],
+    "no_change_rationale": "Illustration only: compare keeping the current learning workflow against adding progress recovery.",
+    "alternatives_and_tradeoffs": "Illustration only: compare an incremental learning journey with a larger platform rewrite; preserve data and accessibility.",
+    "baseline_ref": null,
+    "blocking_decisions": [],
+    "acceptance_tests": [
+      {
+        "acceptance_id": "AC-LEARN-1",
+        "test_ref": "fixture:ac-learn-1"
+      },
+      {
+        "acceptance_id": "AC-ACCESS-1",
+        "test_ref": "fixture:ac-access-1"
+      }
+    ],
+    "gates": [
+      {
+        "id": "app-tests",
+        "phase": "done",
+        "mechanism": "command",
+        "applicable": true,
+        "command": [
+          "python",
+          "-m",
+          "pytest"
+        ]
+      },
+      {
+        "id": "learning-outcomes",
+        "phase": "complete",
+        "mechanism": "inspection",
+        "applicable": true
+      }
+    ]
+  }
 }

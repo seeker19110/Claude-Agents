@@ -35,6 +35,10 @@ Dùng `/product-goal` hoặc nối hợp đồng vào `/thi-hanh`; không tạo 
 Không coi adapter là daemon đã chạy hay quyền thay HumanGate/sàn tự duyệt ADR-0043. Không hạ chuẩn
 để kết thúc; kết quả thiếu bằng chứng vẫn chưa đạt. Các giới hạn triển khai nằm trong tài liệu nêu trên.
 
+Nguồn template được tiếp thu có chọn lọc theo `docs/reports/2026-09-25-projects-template-adoption.md`;
+không copy dispatcher/PROGRESS/CI. Goal mới phân biệt Ready/Done/Complete, ghim phiên bản chuẩn;
+thiếu phép kiểm không được ghi PASS. Giữ mô hình quyền và trạng thái hiện hành.
+
 ## Luật cấm
 
 1. **Không commit thẳng `main`.** Mọi thay đổi: nhánh → PR → CI xanh → squash merge. `git push` lên `main` bị

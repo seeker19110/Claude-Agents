@@ -289,3 +289,24 @@ các cải tiến không thiết yếu vào backlog với căn cứ. Không bi�
 Nguồn là cơ sở lựa chọn phương pháp; các policy, gợi ý theo ngành và giới hạn assessor ở trên là thiết kế
 của X-Agents. Không tuyên bố đã mua/đọc toàn văn ISO, được tổ chức tiêu chuẩn công nhận, hay thay thế việc
 xác định nghĩa vụ chuyên ngành bằng một checklist chung.
+
+## Tiếp thu projects-template có chọn lọc (ADR company 0045)
+
+Phần `delivery` tùy chọn của ProjectProfile nối Standard Delivery vào luồng compile/assess/journal
+hiện có: Ready cấu trúc, Done theo task, Complete theo goal. Goal sản phẩm mới qua `/product-goal`
+chọn Complete, chỉ goal task rõ ràng mới chọn Done; run cũ không bị migration ngầm.
+Nguồn canonical, repository ID, full commit và blob pin ở
+`docs/integrations/projects-template.lock.json`; pin được hash vào contract khi opt-in.
+
+Receipt `delivery.definition` do trusted runner tổng hợp cần `delivery_report` có gate theo đúng
+plan. PASS command đòi đúng argv + exit0 + checks_executed>0; FAIL/NOT_CONFIGURED chặn; N/A chỉ khi
+contract đã khai không áp dụng và có lý do. Không dùng N/A để bớt bất kỳ 33 check cũ nào.
+Complete cần đúng target, không required work/blocking finding còn mở, goal được đo và guardrail
+đạt. Đây là metadata có chữ ký, không thay phép đo và kiểm artifact thật. Approval record phải
+được coordinator xác thực; schema Approved không cấp quyền, signer hoặc runtime mới.
+
+Chọn thiết kế theo từng surface và người dùng, không một phong cách cho cả ngành. Tôn trọng
+quyết định dự án, token/component hiện hữu và accessibility; nguồn ngoài chỉ là recommendation.
+Trước lần sửa lặp thứ hai, chẩn đoán tầng gốc (spec/design/code/verifier/knowledge) rồi mới tiếp,
+không khởi tạo lại mọi phần đã đúng. Phân tích, ví dụ theo ngành và phần không nhập:
+`docs/reports/2026-09-25-projects-template-adoption.md`.
