@@ -67,7 +67,11 @@ provider trước**, rồi mới dọn lịch sử. Đổi khóa quan trọng h�
   chính nó; tool nó xin chạy vẫn quay về `tools.py` qua cầu MCP nên vẫn trong sandbox; (3) `subprocess` (kể cả khi
   `auto` chọn nó vì máy không có docker) vẫn là mã của khách chạy bằng quyền người vận hành và thấy `HOME`
   (`~/.ssh`, `~/.claude`) — repo khách không tin cậy thì đặt `COMPANY_SANDBOX=container`, hoặc chạy cả orchestrator
-  trong container/user riêng.
+  trong container/user riêng. Nó cũng ghi thẳng được vào `company.sqlite`: ACL của bus chỉ chạy lúc `publish`,
+  nên một dòng `gate.decide` mang actor `human:*` (hay `orchestrator` trên gate `UAT-*`) do mã khách tự chèn vào
+  file vẫn được tin như quyết định thật. Ở chế độ này, human gate **không** phải ranh giới chống mã khách. Đã tái
+  hiện có đối chứng; phương án sửa đang chờ người chọn ở ADR gốc 0023
+  (`docs/adr/0023-ma-khach-khong-chay-cung-quyen-ghi-bus.md`).
 - **Guardrail chi phí**: ước lượng token trước khi dispatch, ngân sách theo việc, supervisor cắt khi vượt hạn mức;
   audit-log ghi token thật và quy ra USD.
 - **Trần quyền theo agent**: mỗi agent chỉ được đọc/ghi những topic đã khai trong registry; ghi sai topic là lỗi

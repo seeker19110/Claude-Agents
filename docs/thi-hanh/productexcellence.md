@@ -23,13 +23,13 @@ không coi còn đủ H3/H4/H5/H6/H7 hoặc driver browser/restore đã được
 
 | Mã | Việc | Mảng | Hạng mục | Mức | Lợi ích / đánh đổi | Khi nào |
 |---|---|---|---|---|---|---|
-| Q1 | Profile, design, policy và receipt checker | company | product-excellence | C2 | Chuẩn rõ, cần trusted driver cung cấp bằng chứng | Đã có trong PR #335; chờ CI/review |
-| Q2 | RunSpec/TaskResult/journal adapter | company/core API | product-excellence | C3 | Tái dùng kernel, chưa thay worker/scheduler | PR #335; native replay đạt, chờ CI/review |
-| Q3 | Command, charter, indexes và bản ghi tích hợp | docs | product-excellence | C1 | Một đường vào, thêm tài liệu cần giữ đồng bộ | PR #335; command/README guards đạt |
-| Q4 | Cleanup journal init thất bại | core | product-excellence | C2 | Không rò connection, giữ nguyên lỗi/schema | PR #335; hai test đỏ → xanh |
-| Q5 | Atomic transition/CAS và kết quả quality bền | core/company | product-excellence | C3 | Chặn ghi trùng/sai state, cần coordinator tin cậy | Bổ sung PR #335; kiểm thử mới đạt, chưa merge |
-| Q6 | Test symlink không skip theo quyền OS | company tests | product-excellence | C2 | Giữ test ranh giới trên Windows/Linux, không tăng trần | Bổ sung PR #335; guard skip xanh |
-| Q7 | Tiếp thu chọn lọc projects-template: Ready/Done/Complete và design provenance | company/docs | product-excellence | C3 | Chặn thiếu kiểm tra/nhầm mức hoàn tất, giữ nguyên contract cũ khi không bật | Bổ sung PR #335; 240 test nhóm đạt, chờ CI/review |
+| Q1 | Profile, design, policy và receipt checker | company | product-excellence | C2 | Chuẩn rõ, cần trusted driver cung cấp bằng chứng | xong #335 |
+| Q2 | RunSpec/TaskResult/journal adapter | company/core API | product-excellence | C3 | Tái dùng kernel, chưa thay worker/scheduler | xong #335 |
+| Q3 | Command, charter, indexes và bản ghi tích hợp | docs | product-excellence | C1 | Một đường vào, thêm tài liệu cần giữ đồng bộ | xong #335 |
+| Q4 | Cleanup journal init thất bại | core | product-excellence | C2 | Không rò connection, giữ nguyên lỗi/schema | xong #335 |
+| Q5 | Atomic transition/CAS và kết quả quality bền | core/company | product-excellence | C3 | Chặn ghi trùng/sai state, cần coordinator tin cậy | xong #335 |
+| Q6 | Test symlink không skip theo quyền OS | company tests | product-excellence | C2 | Giữ test ranh giới trên Windows/Linux, không tăng trần | xong #335 |
+| Q7 | Tiếp thu chọn lọc projects-template: Ready/Done/Complete và design provenance | company/docs | product-excellence | C3 | Chặn thiếu kiểm tra/nhầm mức hoàn tất, giữ nguyên contract cũ khi không bật | xong #335 |
 
 Cố ý không làm: đổi 6 prompt/golden/eval; bật cờ tự duyệt; cấp quyền production; scheduler/lease/bridge H7
 thứ hai; chứng nhận ngành giả; dùng fixture receipt làm bằng chứng sản phẩm. Không migration run đang hoạt động.
