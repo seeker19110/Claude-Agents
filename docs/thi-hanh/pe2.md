@@ -39,8 +39,8 @@ thay kế hoạch H3–H7 của ADR-0017.
 | P1 | CAS tự đếm từ snapshot; `append` thành `_append_unchecked` kèm alias deprecated; test cổng cấm `src/` gọi `append` | core/company | pe2-cung | C2 | Bỏ lệ thuộc kỷ luật caller | Đổi chữ ký công khai (giữ tương thích một vòng) | ◐ PR #PR |
 | P2 | `QualityTarget.check_id`; `evidence_policy` có trần trong profile; `POLICY_VERSION` `/3` chỉ khi có trường mới | company | pe2-cung | C2 | Target đúng driver; policy theo rủi ro | Thêm trường schema | ◐ PR #PR |
 | P3 | Ready thật: người duyệt không phải tác giả, `approved_at` hợp lệ, băm lại spec, `ApprovalLookup` | company | pe2-cung | C2 | Ready có nghĩa thật | Cần coordinator cấp lookup | ◐ PR #PR |
-| K1 | ADR gốc 0020: chữ ký bất đối xứng, xoay khoá, lộ trình HMAC | docs | pe2-ky | C3 | Quyết định dependency trước code | Viết ADR tốn một vòng | ◐ ADR-0020 Accepted (người đồng ý `cryptography`) |
-| K2 | Ed25519 + `key_id` + `not_after`; registry chỉ chứa public key; HMAC chỉ cho contract ghim `legacy_hmac` | company | pe2-ky | C3 | Verifier hết ký giả được | Thêm dependency `cryptography` | ◐ đang làm |
+| K1 | ADR gốc 0020: chữ ký bất đối xứng, xoay khoá, lộ trình HMAC | docs | pe2-ky | C3 | Quyết định dependency trước code | Viết ADR tốn một vòng | ◐ PR #PR (ADR-0020 Accepted) |
+| K2 | Ed25519 + `key_id` + `not_after`; registry chỉ chứa public key; HMAC chỉ cho contract ghim `legacy_hmac` | company | pe2-ky | C3 | Verifier hết ký giả được | Thêm dependency `cryptography` | ◐ PR #PR |
 | N1 | ADR gốc 0021 và orchestrator: đăng ký RunSpec khi ticket có profile, giao `quality:accept` cho trusted driver, CLI `commit` | company | pe2-noi | C3 | Adapter có giá trị thật | Đụng runtime, rủi ro hồi quy | chưa |
 | N2 | `quality_floor`: gap R6 khi run có profile mà `quality:accept` chưa `succeeded` | company | pe2-noi | C3 | Release không lọt khi thiếu nghiệm thu | Thêm một nguồn bằng chứng | chưa |
 | N3 | Console hiển thị trạng thái `quality:accept` và blocker | console | pe2-noi | C2 | Người trực thấy lý do chặn | Thêm một view | chưa |

@@ -18,6 +18,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -41,6 +44,7 @@ from .delivery_contract import (
 
 POLICY_VERSION = "product-excellence/2"
 POLICY_VERSION_V3 = "product-excellence/3"
+POLICY_VERSION_V4 = "product-excellence/4"
 MAX_EVIDENCE_AGE = timedelta(hours=24)
 MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
 DEFAULT_CHECK_ID = "performance.budget"
@@ -50,6 +54,8 @@ Revision = Annotated[str, StringConstraints(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{
 Domain = Literal["general", "education", "healthcare", "finance", "commerce", "enterprise", "industrial", "content"]
 Surface = Literal["web", "mobile_app", "desktop", "api", "cli", "library"]
 Mode = Literal["runner", "independent_review"]
+Scheme = Literal["hmac-sha256", "ed25519"]
+LEGACY_SCHEMES: frozenset[str] = frozenset({"hmac-sha256"})
 
 
 class StrictModel(BaseModel):
@@ -98,6 +104,15 @@ class QualityTarget(StrictModel):
 class EvidencePolicy(StrictModel):
     max_age_seconds: int = Field(ge=3600, le=604800)
     max_artifact_bytes: int = Field(ge=1, le=268435456)
+    # ADR-0020 §3: the ONLY value a new contract may pin; HMAC is not selectable here.
+    allowed_schemes: list[Literal["ed25519"]] | None = Field(default=None, min_length=1, max_length=1)
+
+    @model_serializer(mode="wrap")
+    def serialize_policy(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        document: dict[str, Any] = handler(self)
+        if self.allowed_schemes is None:
+            document.pop("allowed_schemes", None)  # Preserve v3 contract bytes.
+        return document
 
 
 class ProjectProfile(StrictModel):
@@ -248,6 +263,14 @@ def _canonical(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
 
 
+def allowed_schemes(profile: ProjectProfile) -> frozenset[str]:
+    """Schemes pinned by the contract; a profile without them is legacy_hmac (ADR-0020 §3)."""
+    policy = profile.evidence_policy
+    if policy is None or policy.allowed_schemes is None:
+        return LEGACY_SCHEMES
+    return frozenset(policy.allowed_schemes)
+
+
 def _uses_v3_policy(profile: ProjectProfile) -> bool:
     if profile.evidence_policy is not None:
         return True
@@ -259,9 +282,14 @@ def compile_contract(profile: ProjectProfile) -> dict[str, Any]:
     policy = profile.evidence_policy
     max_age_seconds = policy.max_age_seconds if policy is not None else MAX_EVIDENCE_AGE.total_seconds()
     max_artifact_bytes = policy.max_artifact_bytes if policy is not None else MAX_ARTIFACT_BYTES
-    body = {"policy_version": POLICY_VERSION_V3 if _uses_v3_policy(profile) else POLICY_VERSION,
-            "evidence_policy": {"max_age_seconds": max_age_seconds,
-                                "max_artifact_bytes": max_artifact_bytes, "signature": "HMAC-SHA256"},
+    schemes = allowed_schemes(profile)
+    evidence_policy: dict[str, Any] = {"max_age_seconds": max_age_seconds,
+                                       "max_artifact_bytes": max_artifact_bytes, "signature": "HMAC-SHA256"}
+    version = POLICY_VERSION_V3 if _uses_v3_policy(profile) else POLICY_VERSION
+    if schemes != LEGACY_SCHEMES:
+        evidence_policy.update(signature="Ed25519", allowed_schemes=sorted(schemes))
+        version = POLICY_VERSION_V4
+    body = {"policy_version": version, "evidence_policy": evidence_policy,
             "profile": profile.model_dump(mode="json"),
             "checks": [asdict(check) for check in required_checks(profile)]}
     if profile.delivery is not None:
@@ -304,30 +332,124 @@ class Evidence(StrictModel):
 
 class Receipt(StrictModel):
     evidence: Evidence
-    signature: Digest
+    signature: Annotated[str, StringConstraints(pattern=r"^(?:[0-9a-f]{64}|[0-9a-f]{128})$")]
+    signature_scheme: Scheme = "hmac-sha256"
+    key_id: Digest | None = None
+
+    @model_serializer(mode="wrap")
+    def serialize_receipt(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        document: dict[str, Any] = handler(self)
+        if self.signature_scheme == "hmac-sha256":
+            # Preserve byte-identical v2 receipts and lost-ACK fingerprints (ADR-0020 §2, ADR-0019).
+            document.pop("signature_scheme", None)
+            document.pop("key_id", None)
+        return document
+
+    @model_validator(mode="after")
+    def scheme_shape(self) -> Receipt:
+        if self.signature_scheme == "hmac-sha256" and (self.key_id is not None or len(self.signature) != 64):
+            raise ValueError("an HMAC-SHA256 receipt has a 64-hex signature and no key_id")
+        if self.signature_scheme == "ed25519" and (self.key_id is None or len(self.signature) != 128):
+            raise ValueError("an Ed25519 receipt has a 128-hex signature and a key_id")
+        return self
+
+
+def _raw_public(public_key: Ed25519PublicKey) -> bytes:
+    return public_key.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+
+
+@dataclass(frozen=True)
+class IssuerKey:
+    """One Ed25519 public key of an issuer; public, never a secret (ADR-0020 §1)."""
+    key_id: str
+    public_key: bytes  # 32 raw bytes; compared raw, never as PEM text (ADR-0020 §6)
+    not_after: datetime
+
+    def __post_init__(self) -> None:
+        if len(self.public_key) != 32:
+            raise ValueError("an Ed25519 public key is exactly 32 bytes")
+        if self.key_id != hashlib.sha256(self.public_key).hexdigest():
+            raise ValueError("key_id must be the sha256 of the raw public key")
+        if self.not_after.tzinfo is None or self.not_after.utcoffset() is None:
+            raise ValueError("not_after must be timezone-aware")
+
+    @classmethod
+    def from_pem(cls, key_id: str, public_key_pem: str, not_after: datetime) -> IssuerKey:
+        public_key = serialization.load_pem_public_key(public_key_pem.encode("ascii"))
+        if not isinstance(public_key, Ed25519PublicKey):
+            raise ValueError("registry keys must be Ed25519 SubjectPublicKeyInfo")
+        return cls(key_id, _raw_public(public_key), not_after)
+
+    @property
+    def public_key_pem(self) -> str:
+        return Ed25519PublicKey.from_public_bytes(self.public_key).public_bytes(
+            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode("ascii")
 
 
 @dataclass(frozen=True)
 class TrustedIssuer:
-    """Provisioned out-of-band, not accepted from worker receipts or prompts."""
+    """Provisioned out-of-band, not accepted from worker receipts or prompts.
+
+    `key` is a legacy HMAC secret, verified only for legacy_hmac contracts; `public_keys`
+    are Ed25519 keys. An issuer may hold both during the transition (ADR-0020 §1, §7).
+    """
     principal_id: str
     mode: Mode
     allowed_checks: frozenset[str]
-    key: bytes = field(repr=False)
+    key: bytes | None = field(default=None, repr=False)
+    public_keys: tuple[IssuerKey, ...] = ()
 
     def __post_init__(self) -> None:
-        if not self.principal_id.strip() or self.mode not in {"runner", "independent_review"} or len(self.key) < 32:
+        if not self.principal_id.strip() or self.mode not in {"runner", "independent_review"}:
+            raise ValueError("invalid trust configuration")
+        if (self.key is None and not self.public_keys) or (self.key is not None and len(self.key) < 32):
             raise ValueError("invalid trust configuration")
         if not self.allowed_checks or not self.allowed_checks <= CATALOG.keys():
             raise ValueError("issuer must be scoped to known checks")
 
 
-def sign_evidence(evidence: Evidence, key: bytes) -> Receipt:
-    """For a trusted driver AFTER checking the real outcome, not for workers."""
+def sign_evidence(evidence: Evidence, private_key: Ed25519PrivateKey, key_id: str) -> Receipt:
+    """For a trusted driver AFTER checking the real outcome, not for workers (ADR-0020)."""
+    if key_id != hashlib.sha256(_raw_public(private_key.public_key())).hexdigest():
+        raise ValueError("key_id does not match the signing key")
+    signature = private_key.sign(_canonical(evidence.model_dump(mode="json"))).hex()
+    return Receipt(evidence=evidence, signature=signature, signature_scheme="ed25519", key_id=key_id)
+
+
+def sign_evidence_hmac(evidence: Evidence, key: bytes) -> Receipt:
+    """Legacy HMAC-SHA256 signing, only for legacy_hmac contracts (ADR-0020 §7, phase 1)."""
     if len(key) < 32:
         raise ValueError("signing key requires at least 32 bytes")
     signature = hmac.new(key, _canonical(evidence.model_dump(mode="json")), hashlib.sha256).hexdigest()
     return Receipt(evidence=evidence, signature=signature)
+
+
+def verify_receipt(receipt: Receipt, issuer: TrustedIssuer, *, now: datetime, allowed_schemes: frozenset[str]) -> str:
+    """Return "" if the signature binds this evidence to this issuer, else a blocker reason.
+
+    Offline: only the registry's own key material is used. Scheme and key are chosen by
+    the contract and registry; the receipt's claims only select among them.
+    A key is valid for evidence created before its not_after and not after `now`.
+    """
+    if receipt.signature_scheme not in allowed_schemes:
+        return "scheme_not_allowed"
+    message = _canonical(receipt.evidence.model_dump(mode="json"))
+    if receipt.signature_scheme == "hmac-sha256":
+        if issuer.key is None:
+            return "invalid_signature"
+        expected = hmac.new(issuer.key, message, hashlib.sha256).hexdigest()
+        return "" if hmac.compare_digest(receipt.signature, expected) else "invalid_signature"
+    key = next((item for item in issuer.public_keys if item.key_id == receipt.key_id), None)
+    if key is None:
+        return "unknown_key"
+    created = receipt.evidence.created_at
+    if not (created < key.not_after and created <= now):
+        return "key_expired"
+    try:
+        Ed25519PublicKey.from_public_bytes(key.public_key).verify(bytes.fromhex(receipt.signature), message)
+    except InvalidSignature:
+        return "invalid_signature"
+    return ""
 
 
 @dataclass(frozen=True)
@@ -398,11 +520,14 @@ def assess(
         blockers.append("contract:changed_or_unpinned")
     if not author_principals or any(not principal.strip() for principal in author_principals):
         blockers.append("identity:missing_author_set")
-    seen_keys: dict[bytes, str] = {}
+    schemes = allowed_schemes(profile)
+    seen_keys: dict[tuple[str, bytes], str] = {}
     for trusted in trusted_issuers.values():
-        if trusted.key in seen_keys and seen_keys[trusted.key] != trusted.principal_id:
-            blockers.append("identity:shared_key_across_principals")
-        seen_keys[trusted.key] = trusted.principal_id
+        material = [("hmac-sha256", trusted.key)] if trusted.key is not None else []
+        material += [("ed25519", item.public_key) for item in trusted.public_keys]
+        for marker in material:
+            if seen_keys.setdefault(marker, trusted.principal_id) != trusted.principal_id:
+                blockers.append("identity:shared_key_across_principals")
     by_check: dict[str, list[Receipt]] = defaultdict(list)
     seen_receipts: set[bytes] = set()
     for receipt in receipts:
@@ -426,8 +551,8 @@ def assess(
         reason = ""
         if issuer is None or issuer.mode != check.mode or check_id not in issuer.allowed_checks:
             reason = "unauthorized_issuer"
-        elif not hmac.compare_digest(receipt.signature, sign_evidence(evidence, issuer.key).signature):
-            reason = "invalid_signature"
+        elif signature_error := verify_receipt(receipt, issuer, now=current, allowed_schemes=schemes):
+            reason = signature_error
         elif evidence.run_id != profile.run_id or evidence.contract_hash != contract_hash:
             reason = "wrong_run_or_contract"
         elif evidence.candidate_sha != candidate_sha or evidence.context_hash != context_hash:
@@ -461,22 +586,47 @@ def assess(
                       tuple(checks), tuple(passed), tuple(blockers))
 
 
+_TRUST_FIELDS = frozenset({"principal_id", "mode", "allowed_checks"})
+_KEY_FIELDS = frozenset({"key_id", "public_key_pem", "not_after"})
+
+
+def _read_keys(entries: Any) -> tuple[IssuerKey, ...]:
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("keys must be a nonempty list")
+    keys: list[IssuerKey] = []
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != _KEY_FIELDS:
+            raise ValueError("invalid registry key entry")
+        keys.append(IssuerKey.from_pem(entry["key_id"], entry["public_key_pem"],
+                                       datetime.fromisoformat(entry["not_after"])))
+    return tuple(keys)
+
+
 def _read_trust(path: Path) -> dict[str, TrustedIssuer]:
-    """Registry and key files are coordinator-owned, outside worker sandboxes."""
+    """Public-key registry (ADR-0020 §1); legacy `key_file` HMAC secrets are still read.
+
+    A `keys`-only registry holds no secret. A legacy `key_file` is coordinator-owned and
+    outside worker sandboxes; it only verifies legacy_hmac contracts.
+    """
     raw = json.loads(path.read_text(encoding="utf-8"))
     result: dict[str, TrustedIssuer] = {}
     if not isinstance(raw, dict):
         raise ValueError("trust registry must be an object")
     for issuer_id, config in raw.items():
-        if not isinstance(config, dict) or set(config) != {"principal_id", "mode", "allowed_checks", "key_file"}:
+        if (not isinstance(config, dict) or not _TRUST_FIELDS <= set(config)
+                or not set(config) - _TRUST_FIELDS or not set(config) - _TRUST_FIELDS <= {"key_file", "keys"}):
             raise ValueError("invalid trust registry entry")
         if not isinstance(config["allowed_checks"], list):
             raise ValueError("allowed_checks must be a list")
-        key_path = Path(config["key_file"])
-        if not key_path.is_absolute():
-            key_path = path.parent / key_path
+        secret = None
+        if "key_file" in config:
+            key_path = Path(config["key_file"])
+            if not key_path.is_absolute():
+                key_path = path.parent / key_path
+            secret = key_path.read_bytes()
+        public_keys = _read_keys(config["keys"]) if "keys" in config else ()
         result[issuer_id] = TrustedIssuer(config["principal_id"], config["mode"],
-                                         frozenset(config["allowed_checks"]), key_path.read_bytes())
+                                         frozenset(config["allowed_checks"]), secret, public_keys)
     return result
 
 

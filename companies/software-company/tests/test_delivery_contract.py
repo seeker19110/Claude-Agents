@@ -20,7 +20,7 @@ from company.delivery_contract import (
     delivery_gaps,
     ready_gaps,
 )
-from company.product_quality import Evidence, ProjectProfile, assess, compile_contract, main, sign_evidence
+from company.product_quality import Evidence, ProjectProfile, assess, compile_contract, main, sign_evidence_hmac
 from company.quality_execution import compile_execution
 from test_product_quality import NOW, RUNNER_KEY, profile_data, rewrite
 from test_product_quality import bundle as bundle
@@ -330,7 +330,7 @@ def delivery_bundle(bundle, tmp_path):
     receipts = [rewrite(r, kwargs["trusted_issuers"][r.evidence.issuer].key, contract_hash=digest) for r in old_receipts]
     data = receipts[0].evidence.model_dump()
     data.update(check_id="delivery.definition", issuer="ci", delivery_report=report())
-    receipts.append(sign_evidence(Evidence.model_validate(data), RUNNER_KEY))
+    receipts.append(sign_evidence_hmac(Evidence.model_validate(data), RUNNER_KEY))
     lookup = FakeApprovalLookupForTest({(spec["approval_record"], artifact_sha256): spec["approved_by"]})
     return profile, receipts, {**kwargs, "expected_contract_hash": digest, "approval_lookup": lookup}
 

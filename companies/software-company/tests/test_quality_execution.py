@@ -201,8 +201,11 @@ def test_native_failure_retry_and_completion_after_restart(bundle, tmp_path):
         assert journal.resume(spec.run_id) == state
 
 
+ED25519_POLICY = {"max_age_seconds": 86400, "max_artifact_bytes": 64 * 1024 * 1024, "allowed_schemes": ["ed25519"]}
+
+
 def cli_files(tmp_path):
-    profile = make_profile()
+    profile = make_profile(evidence_policy=ED25519_POLICY)
     profile_path = tmp_path / "profile.json"
     work_path = tmp_path / "work.json"
     profile_path.write_text(profile.model_dump_json(), encoding="utf-8")
@@ -224,9 +227,23 @@ def test_cli_plan_register_resume_and_contract_change(tmp_path, capsys):
     status = json.loads(capsys.readouterr().out)
     assert status["status"] == "pending" and status["tasks"][QUALITY_TASK_ID] == "pending"
     assert status["attempts"]["implementation"] == 0
-    profile_path.write_text(make_profile(technology_rationale="Another contract version").model_dump_json(), encoding="utf-8")
+    profile_path.write_text(make_profile(technology_rationale="Another contract version",
+                                         evidence_policy=ED25519_POLICY).model_dump_json(), encoding="utf-8")
     assert main(["register", *args, "--journal", str(journal_path)]) == 2
     assert "ExecutionJournalError" in capsys.readouterr().err
+
+
+def test_cli_register_refuses_new_legacy_hmac_contract(tmp_path, capsys):
+    """ADR-0020 §3: a run registered after K2 must pin Ed25519; plan still shows the legacy contract."""
+    _, profile_path, work_path = cli_files(tmp_path)
+    profile_path.write_text(make_profile().model_dump_json(), encoding="utf-8")
+    args = [str(profile_path), str(work_path)]
+    assert main(["plan", *args]) == 0
+    capsys.readouterr()
+    journal_path = tmp_path / "legacy.sqlite"
+    assert main(["register", *args, "--journal", str(journal_path)]) == 2
+    assert "ValueError" in capsys.readouterr().err
+    assert not journal_path.exists()
 
 
 @pytest.mark.parametrize("case", ["missing_journal", "missing_run", "corrupt_journal", "invalid_json", "missing_profile"])
