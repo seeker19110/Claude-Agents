@@ -31,6 +31,7 @@ from xagents_core.execution import (
     TaskStatus,
 )
 
+from .delivery_contract import ApprovalLookup
 from .product_quality import ProjectProfile, Receipt, TrustedIssuer, assess, compile_contract, required_checks
 
 QUALITY_TASK_ID = "quality:accept"
@@ -81,6 +82,7 @@ def evaluate_result(
     trusted_issuers: dict[str, TrustedIssuer],
     evidence_root: Path,
     now: datetime | None = None,
+    approval_lookup: ApprovalLookup | None = None,
 ) -> TaskResult:
     """Fail-closed conversion to a native TaskResult, preserving evidence/artifacts.
 
@@ -100,7 +102,7 @@ def evaluate_result(
         profile, receipts, expected_contract_hash=expected_contract_hash,
         candidate_sha=candidate_sha, context_hash=context_hash,
         author_principals=author_principals, trusted_issuers=trusted_issuers,
-        evidence_root=evidence_root, now=now,
+        evidence_root=evidence_root, now=now, approval_lookup=approval_lookup,
     )
     blockers = [*result.findings, *assessment.blockers]
     if result.task_id != QUALITY_TASK_ID or result.attempt_id != expected_attempt_id:
@@ -149,6 +151,7 @@ def commit_quality_result(
     trusted_issuers: dict[str, TrustedIssuer],
     evidence_root: Path,
     now: datetime | None = None,
+    approval_lookup: ApprovalLookup | None = None,
 ) -> RunState:
     """Assess and persist a quality outcome on the native journal (ADR-0019).
 
@@ -190,6 +193,7 @@ def commit_quality_result(
         expected_contract_hash=bindings.expected_contract_hash, candidate_sha=bindings.candidate_sha,
         context_hash=bindings.context_hash, author_principals=bindings.author_principals,
         trusted_issuers=trusted_issuers, evidence_root=evidence_root, now=now,
+        approval_lookup=approval_lookup,
     )
     kind = (ExecutionEventKind.TASK_SUCCEEDED if verified.status is TaskStatus.SUCCEEDED
             else ExecutionEventKind.TASK_FAILED)

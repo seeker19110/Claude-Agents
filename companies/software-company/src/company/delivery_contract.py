@@ -6,9 +6,16 @@ Commands and references are data only. Existing quality checks cannot be waived 
 """
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+import hashlib
+import hmac
+from datetime import datetime
+from pathlib import Path, PurePosixPath
+from typing import Annotated, Any, Literal, Protocol
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
+
+# Ceiling for the spec artifact readability check; independent of any evidence policy.
+_MAX_SPEC_ARTIFACT_BYTES = 64 * 1024 * 1024
 
 TEMPLATE_REVISION = "23accce8a4b830eb07690cbd39dded8bf3bc94ce"
 _SOURCE_DOCUMENTS = {
@@ -127,6 +134,65 @@ class DeliveryReport(_Strict):
         if len(ids) != len(set(ids)):
             raise ValueError("duplicate gate observations must be reconciled")
         return self
+
+
+def artifact_matches(root: Path, rel_path: str, sha256: str, max_bytes: int) -> bool:
+    """Shared path-safety + digest check used for both evidence and spec artifacts."""
+    path = PurePosixPath(rel_path)
+    if path.is_absolute() or ".." in path.parts or "\\" in rel_path or ":" in rel_path:
+        return False
+    try:
+        base = root.resolve(strict=True)
+        artifact = (base / str(path)).resolve(strict=True)
+        if not artifact.is_relative_to(base) or not artifact.is_file():
+            return False
+        size = artifact.stat().st_size
+        if size <= 0 or size > max_bytes:
+            return False
+        digest = hashlib.sha256()
+        with artifact.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(65536), b""):
+                digest.update(chunk)
+        return hmac.compare_digest(digest.hexdigest(), sha256)
+    except (OSError, ValueError, RuntimeError):
+        return False
+
+
+class ApprovalLookup(Protocol):
+    """Trusted, out-of-band source of truth for who actually approved a spec record."""
+
+    def approved(self, record: str, artifact_sha256: str) -> str | None:
+        """Return the approving principal for this record+artifact, or None if unverifiable."""
+        ...
+
+
+def ready_gaps(
+    contract: DeliveryContract,
+    *,
+    authors: frozenset[str],
+    now: datetime,
+    earliest_evidence: datetime,
+    evidence_root: Path,
+    lookup: ApprovalLookup | None,
+) -> tuple[str, ...]:
+    """Ready is authenticated approval of a spec, never structural shape alone.
+
+    A missing/absent lookup can never be treated as approved (fail closed).
+    """
+    spec = contract.spec
+    gaps: list[str] = []
+    if spec.approved_by in authors:
+        gaps.append("spec_self_approval")
+    if spec.approved_at > now:
+        gaps.append("spec_approved_in_future")
+    if spec.approved_at > earliest_evidence:
+        gaps.append("spec_approved_after_evidence")
+    if not artifact_matches(evidence_root, spec.artifact_ref, spec.artifact_sha256, _MAX_SPEC_ARTIFACT_BYTES):
+        gaps.append("spec_artifact_changed")
+    approver = None if lookup is None else lookup.approved(spec.approval_record, spec.artifact_sha256)
+    if lookup is None or approver is None or approver != spec.approved_by:
+        gaps.append("approval_record_unverified")
+    return tuple(gaps)
 
 
 def _gate_gap(gate: DeliveryGate, observation: GateObservation) -> str:

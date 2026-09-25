@@ -52,7 +52,8 @@ def begin(journal, profile):
 def commit(journal, profile, receipts, kwargs, count, *, result=None, event_id="submission-1", now=NOW, pins=None):
     return commit_quality_result(journal, profile, result or source_result(), receipts,
                                  event_id=event_id, expected_count=count, bindings=pins or bindings(kwargs),
-                                 trusted_issuers=kwargs["trusted_issuers"], evidence_root=kwargs["evidence_root"], now=now)
+                                 trusted_issuers=kwargs["trusted_issuers"], evidence_root=kwargs["evidence_root"], now=now,
+                                 approval_lookup=kwargs.get("approval_lookup"))
 
 
 def test_accepted_result_and_evidence_survive_restart_without_signer_keys(bundle, tmp_path):

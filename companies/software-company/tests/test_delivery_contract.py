@@ -5,6 +5,7 @@ import copy
 import hashlib
 import hmac
 import json
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from company.delivery_contract import (
     DeliveryReport,
     adopted_source,
     delivery_gaps,
+    ready_gaps,
 )
 from company.product_quality import Evidence, ProjectProfile, assess, compile_contract, main, sign_evidence
 from company.quality_execution import compile_execution
@@ -202,16 +204,104 @@ def test_report_has_no_coerced_counts_or_skip_success_alias(path, value):
         DeliveryReport.model_validate_json(json.dumps(change_at(report_data(), path, value)))
 
 
+class FakeApprovalLookupForTest:
+    """Deterministic stand-in for a real, out-of-band approval registry."""
+
+    def __init__(self, records: dict[tuple[str, str], str]):
+        self._records = records
+
+    def approved(self, record: str, artifact_sha256: str) -> str | None:
+        return self._records.get((record, artifact_sha256))
+
+
+def _real_spec_artifact(tmp_path):
+    artifact = tmp_path / "spec.md"
+    artifact.write_text("Synthetic fixture spec; not a real approval.\n", encoding="utf-8")
+    return artifact.name, hashlib.sha256(artifact.read_bytes()).hexdigest()
+
+
+AUTHORS = frozenset({"implementation-worker"})
+
+
 @pytest.fixture
-def delivery_bundle(bundle):
+def ready_ok(tmp_path):
+    """A contract whose spec is genuinely, verifiably approved before any evidence."""
+    artifact_ref, artifact_sha256 = _real_spec_artifact(tmp_path)
+    spec = {**delivery_data()["spec"], "artifact_ref": artifact_ref, "artifact_sha256": artifact_sha256,
+            "approved_by": "director:fixture", "approval_record": "fixture:decision-1",
+            "approved_at": (NOW - timedelta(hours=2)).isoformat()}
+    lookup = FakeApprovalLookupForTest({(spec["approval_record"], artifact_sha256): spec["approved_by"]})
+    return contract(spec=spec), tmp_path, lookup
+
+
+def _ready(contract_, root, lookup, **over):
+    kwargs = {"authors": AUTHORS, "now": NOW, "earliest_evidence": NOW - timedelta(hours=1),
+              "evidence_root": root, "lookup": lookup, **over}
+    return ready_gaps(contract_, **kwargs)
+
+
+def test_ready_gaps_pass_with_verified_lookup(ready_ok):
+    contract_, root, lookup = ready_ok
+    assert _ready(contract_, root, lookup) == ()
+
+
+def test_ready_gaps_self_approval(ready_ok):
+    contract_, root, lookup = ready_ok
+    assert "spec_self_approval" in _ready(contract_, root, lookup, authors=frozenset({contract_.spec.approved_by}))
+
+
+def test_ready_gaps_approved_in_future(ready_ok):
+    contract_, root, lookup = ready_ok
+    assert "spec_approved_in_future" in _ready(contract_, root, lookup, now=NOW - timedelta(hours=3))
+
+
+def test_ready_gaps_approved_after_evidence(ready_ok):
+    contract_, root, lookup = ready_ok
+    assert "spec_approved_after_evidence" in _ready(contract_, root, lookup, earliest_evidence=NOW - timedelta(hours=3))
+
+
+def test_ready_gaps_artifact_changed(ready_ok):
+    contract_, root, lookup = ready_ok
+    (root / contract_.spec.artifact_ref).write_bytes(b"tampered after approval")
+    assert "spec_artifact_changed" in _ready(contract_, root, lookup)
+
+
+def test_ready_gaps_no_lookup_is_unverified(ready_ok):
+    contract_, root, _ = ready_ok
+    assert "approval_record_unverified" in _ready(contract_, root, None)
+
+
+def test_ready_gaps_wrong_principal_is_unverified(ready_ok):
+    contract_, root, _ = ready_ok
+
+    class WrongLookup:
+        def approved(self, record: str, artifact_sha256: str) -> str | None:
+            return "someone-else"
+
+    assert "approval_record_unverified" in _ready(contract_, root, WrongLookup())
+
+
+def test_assess_blocks_delivery_without_approval_lookup(delivery_bundle):
+    profile, receipts, kwargs = delivery_bundle
+    result = assess(profile, receipts, **{**kwargs, "approval_lookup": None})
+    assert not result.quality_pass
+    assert any("approval_record_unverified" in b for b in result.blockers)
+
+
+@pytest.fixture
+def delivery_bundle(bundle, tmp_path):
     _, old_receipts, kwargs = bundle
-    profile = adopted_profile()
+    artifact_ref, artifact_sha256 = _real_spec_artifact(tmp_path)
+    spec = {**delivery_data()["spec"], "artifact_ref": artifact_ref, "artifact_sha256": artifact_sha256,
+            "approved_at": (NOW - timedelta(hours=2)).isoformat()}
+    profile = adopted_profile(delivery=delivery_data(spec=spec))
     digest = compile_contract(profile)["contract_hash"]
     receipts = [rewrite(r, kwargs["trusted_issuers"][r.evidence.issuer].key, contract_hash=digest) for r in old_receipts]
     data = receipts[0].evidence.model_dump()
     data.update(check_id="delivery.definition", issuer="ci", delivery_report=report())
     receipts.append(sign_evidence(Evidence.model_validate(data), RUNNER_KEY))
-    return profile, receipts, {**kwargs, "expected_contract_hash": digest}
+    lookup = FakeApprovalLookupForTest({(spec["approval_record"], artifact_sha256): spec["approved_by"]})
+    return profile, receipts, {**kwargs, "expected_contract_hash": digest, "approval_lookup": lookup}
 
 
 def test_assessor_and_atomic_journal_consume_the_template_contract(delivery_bundle, tmp_path):

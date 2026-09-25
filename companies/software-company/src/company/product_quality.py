@@ -15,7 +15,7 @@ import sys
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -29,7 +29,15 @@ from pydantic import (
     model_validator,
 )
 
-from .delivery_contract import DeliveryContract, DeliveryReport, adopted_source, delivery_gaps
+from .delivery_contract import (
+    ApprovalLookup,
+    DeliveryContract,
+    DeliveryReport,
+    adopted_source,
+    artifact_matches,
+    delivery_gaps,
+    ready_gaps,
+)
 
 POLICY_VERSION = "product-excellence/2"
 POLICY_VERSION_V3 = "product-excellence/3"
@@ -334,24 +342,7 @@ class Assessment:
 
 
 def _artifact_valid(root: Path, evidence: Evidence, max_artifact_bytes: int = MAX_ARTIFACT_BYTES) -> bool:
-    path = PurePosixPath(evidence.artifact_path)
-    if path.is_absolute() or ".." in path.parts or "\\" in evidence.artifact_path or ":" in evidence.artifact_path:
-        return False
-    try:
-        base = root.resolve(strict=True)
-        artifact = (base / str(path)).resolve(strict=True)
-        if not artifact.is_relative_to(base) or not artifact.is_file():
-            return False
-        size = artifact.stat().st_size
-        if size <= 0 or size > max_artifact_bytes:
-            return False
-        digest = hashlib.sha256()
-        with artifact.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(65536), b""):
-                digest.update(chunk)
-        return hmac.compare_digest(digest.hexdigest(), evidence.artifact_sha256)
-    except (OSError, ValueError, RuntimeError):
-        return False
+    return artifact_matches(root, evidence.artifact_path, evidence.artifact_sha256, max_artifact_bytes)
 
 
 def _effective_policy(profile: ProjectProfile) -> tuple[timedelta, int]:
@@ -386,6 +377,7 @@ def assess(
     trusted_issuers: dict[str, TrustedIssuer],
     evidence_root: Path,
     now: datetime | None = None,
+    approval_lookup: ApprovalLookup | None = None,
 ) -> Assessment:
     """Fail closed. PASS is evidence eligibility, never deploy authority or certification.
 
@@ -421,6 +413,8 @@ def assess(
         by_check[receipt.evidence.check_id].append(receipt)
     for unknown in sorted(by_check.keys() - checks.keys()):
         blockers.append(f"{unknown}:unexpected_check")
+    received_receipts = [receipt for group in by_check.values() for receipt in group]
+    earliest_evidence = min((r.evidence.created_at for r in received_receipts), default=current)
     for check_id, check in checks.items():
         candidates = by_check.get(check_id, [])
         if len(candidates) != 1:
@@ -449,7 +443,12 @@ def assess(
         elif check_id in targeted_check_ids and not _targets_met(profile, evidence, check_id):
             reason = "missing_or_unmet_quality_target"
         elif check_id == DELIVERY_CHECK.id and profile.delivery is not None and (
-            gaps := delivery_gaps(profile.delivery, evidence.delivery_report, profile.completion_target)
+            gaps := (
+                ready_gaps(profile.delivery, authors=author_principals, now=current,
+                           earliest_evidence=earliest_evidence, evidence_root=evidence_root,
+                           lookup=approval_lookup)
+                + delivery_gaps(profile.delivery, evidence.delivery_report, profile.completion_target)
+            )
         ):
             reason = "delivery_unmet:" + ";".join(gaps)
         elif not _artifact_valid(evidence_root, evidence, max_artifact_bytes):
