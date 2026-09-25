@@ -184,7 +184,9 @@ def register_quality_run(o: Orchestrator, plan_id: str, profile: ProjectProfile)
         for t in tickets))
     spec = compile_execution(profile, work)
     with ExecutionJournal(journal_path(o)) as journal:
-        journal.register(spec)
+        # Run đăng ký trước N5 (không cờ reopenable) được giữ nguyên, không migrate (ADR gốc 0022, câu hỏi 2).
+        if journal.load_spec(profile.run_id) != compile_execution(profile, work, reopenable=False):
+            journal.register(spec)
     o._audit("quality.registered", {"project_id": profile.project_id, "plan_id": plan_id, "run_id": profile.run_id,
                                     "contract_hash": compile_contract(profile)["contract_hash"]},
              project_id=profile.project_id, once=f"quality.registered:{profile.run_id}:{plan_id}")
@@ -356,6 +358,8 @@ def _step_quality(o: Orchestrator, journal: ExecutionJournal, spec: RunSpec, pro
     if q is not TaskStatus.READY:
         prev = last_attempt_id(journal, run)
         if base_attempt_id(prev) == candidate_attempt_id(*cand): return  # đã chấm đúng candidate này: chờ sha mới
+        barrier = next(t for t in spec.tasks if t.task_id == QUALITY_TASK_ID)
+        if q is TaskStatus.SUCCEEDED and not barrier.reopenable: return  # run trước N5: R6 chặn, người xử lý
         # Hỏng ⇒ retry; đã đạt ở candidate cũ ⇒ mở lại (ADR gốc 0022). Lịch sử attempt cũ giữ nguyên.
         kind, verb = (K.TASK_RETRIED, "retry") if q is TaskStatus.FAILED else (K.TASK_REOPENED, "reopen")
         emit(kind, QUALITY_TASK_ID, f"{run}:quality:{verb}:{prev}", {"reason": f"candidate đổi: {prev} → {candidate_attempt_id(*cand)}"})

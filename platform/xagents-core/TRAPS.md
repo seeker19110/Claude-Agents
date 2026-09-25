@@ -14,6 +14,12 @@ người ngay trong chính core — mỗi dòng có test hoặc đoạn code là
 | Bộ lọc injection lệch giữa hai công ty | K3.4: company bắt 8 mẫu mà studio (cũ) trượt, studio bắt 4 mẫu mà company trượt — mỗi bên tự viết mẫu riêng không đối chiếu | Gộp về một bảng mẫu chung ở `guard.py`, viết lại `vi-ignore` sau khi phát hiện CẢ HAI bản cũ đều trượt cùng 2 câu tấn công tiếng Việt |
 | Chống lặp bằng cờ RAM sai sau mở lại bus | `Supervisor` (khuôn 2 `../../TRAPS.md`): cờ "đã cảnh báo" sống trong RAM, mở lại tiến trình là mất, cảnh báo lặp lại vô hạn | Trạng thái chống lặp phải đọc lại từ audit-log lúc `_rehydrate`, không chỉ khởi tạo rỗng |
 
+## Bẫy biết trước (chưa cắn)
+
+| Bẫy | Vì sao | Chốt chặn / lần sau |
+|---|---|---|
+| Hạ code về trước ADR-0022 sau khi journal đã có `task.reopened` | Code cũ không biết loại event thứ 7, nên `ExecutionEventKind("task.reopened")` ném `ValueError` ở mọi lần replay | Hệ đóng an toàn: company biến lỗi thành `quality.sync_error`, R6 thành `quality_error`. Đã chạy N5 thì chỉ tiến, không lùi; muốn lùi phải bỏ run đó |
+
 ## Cách rà khi có lỗi mới
 
 Cùng khuôn 4 lỗi ở `../../TRAPS.md` §1, thêm câu riêng cho lõi: *"nếu sửa ở đây, cả hai công ty (software-company

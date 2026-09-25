@@ -179,3 +179,37 @@ def test_cli_commit_muon_cho_attempt_cu_bi_tu_choi_attempt_moi_van_chay(tmp_path
     with _journal(tmp_path) as j:
         assert j.events(RUN) == mid, "không ghi gì"
         assert j.resume(RUN).tasks[QUALITY_TASK_ID] is TaskStatus.RUNNING
+
+
+# ---------- ADR gốc 0022 phương án (a): cờ reopenable, run đăng ký trước N5 giữ hành vi cũ ----------
+
+def test_compile_execution_danh_dau_quality_accept_reopenable_ban_legacy_giu_byte():
+    from company.quality_execution import compile_execution
+    from test_product_quality import make_profile
+    from test_quality_execution import work_for
+    profile = make_profile()
+    new, legacy = compile_execution(profile, work_for(profile)), compile_execution(profile, work_for(profile),
+                                                                                    reopenable=False)
+    assert [t.task_id for t in new.tasks if t.reopenable] == [QUALITY_TASK_ID]
+    assert not any(t.reopenable for t in legacy.tasks) and "reopenable" not in legacy.to_json()
+
+
+def test_run_dang_ky_truoc_n5_khong_mo_lai_r6_van_chan_va_khong_sync_error(tmp_path, monkeypatch):
+    from company.quality_execution import compile_execution
+    signers = _signers()
+    driver = FakeDriver(signers)
+    bus, o = _start(tmp_path, driver, trust=write_trust(tmp_path / "trust.json", signers))
+    with monkeypatch.context() as m:  # đăng ký như code trước N5: không có cờ reopenable
+        m.setattr(quality_flow, "compile_execution", lambda p, w, **_: compile_execution(p, w, reopenable=False))
+        _sign_spec_with_profile(tmp_path, bus, o)
+    [(_, first, _)] = driver.calls
+    with _journal(tmp_path) as j:
+        assert not any(t.reopenable for t in j.load_spec(RUN).tasks), "spec cũ giữ nguyên, không migrate"
+        assert j.resume(RUN).status is RunStatus.SUCCEEDED
+    old = first.split("@")[1]
+    sha = _stage(tmp_path, o, "REL-009")
+    quality_flow.sync_quality(o)
+    assert len(driver.calls) == 1, "run cũ không mở lại"
+    assert not [e for e in bus.replay(topic="audit-log") if e.payload.get("action") == "quality.sync_error"]
+    assert quality_release.runs_for_release(o, "REL-009") == ((RUN, "succeeded", old),)
+    assert old != sha, "R6 thấy đạt ở sha cũ ⇒ gap cho REL-009"

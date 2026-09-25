@@ -51,8 +51,12 @@ QUALITY_TASK_ID = "quality:accept"
 CONTRACT_PREFIX = "quality-contract:sha256:"
 
 
-def compile_execution(profile: ProjectProfile, work: RunSpec) -> RunSpec:
+def compile_execution(profile: ProjectProfile, work: RunSpec, *, reopenable: bool = True) -> RunSpec:
     """Preserve the work DAG and append one aggregate, read-only quality barrier.
+
+    The barrier is `reopenable` (root ADR-0022 (a)): a new candidate after SUCCEEDED is verified again in the same
+    run. `reopenable=False` reproduces the pre-N5 spec byte for byte, so runs registered before N5 keep their
+    behaviour (no migration) and still match here and in `commit_quality_result`.
 
     Use the original work spec on repeated calls. Registration of the identical
     compiled spec is idempotent in ExecutionJournal; a changed contract needs a
@@ -75,6 +79,7 @@ def compile_execution(profile: ProjectProfile, work: RunSpec) -> RunSpec:
         complexity=Complexity.C3,
         acceptance=tuple(check.id for check in required_checks(profile)),
         context_refs=(pin,),
+        reopenable=reopenable,
         # No generic tool/write privileges; the coordinator binds trusted evidence drivers.
     )
     return RunSpec(work.run_id, work.objective, (*tasks, barrier))
@@ -187,7 +192,7 @@ def commit_quality_result(
         replace(task, context_refs=tuple(ref for ref in task.context_refs if not ref.startswith(CONTRACT_PREFIX)))
         for task in registered.tasks if task.task_id != QUALITY_TASK_ID
     ))
-    if registered != compile_execution(profile, work):
+    if registered not in (compile_execution(profile, work), compile_execution(profile, work, reopenable=False)):
         raise ExecutionJournalError("registered execution contract does not match the product profile")
     history = journal.events(profile.run_id)
     count = len(history)
