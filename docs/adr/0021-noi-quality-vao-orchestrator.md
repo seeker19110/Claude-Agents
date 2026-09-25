@@ -226,6 +226,7 @@ không mở rộng gói mà không có ADR.
    tích hợp, vì nó còn đổi sau khi ticket cuối được integrate.
 5. **Sha đổi sau `SUCCEEDED`: nghiệm thu lại được, nhưng không nhét vào N1.**
    - Trong N1–N4: sha staged khác sha đã `SUCCEEDED` thì R6 chặn. Hỏng thì đóng, không bao giờ cho qua.
+   - *Đã làm (N5):* ADR-0022 thêm `task.reopened`, nên trần (1) ở mục Hệ quả không còn.
    - Làm tiếp: mã **N5** (bảng B của `docs/thi-hanh/pe2.md`) mở ADR core riêng cho phép `quality:accept` chạy
      lại khi candidate đổi. Mỗi attempt mới ràng sha mới, lịch sử attempt cũ giữ nguyên. Việc này đổi máy
      trạng thái của ADR-0017, nên phải có ADR trước code.

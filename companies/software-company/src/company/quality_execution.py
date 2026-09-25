@@ -254,6 +254,32 @@ def result_event_id(run_id: str, attempt_id: str) -> str:
     return f"{run_id}:quality:result:{attempt_id}"
 
 
+def candidate_attempt_id(release_id: str, candidate_sha: str) -> str:
+    """The attempt id of a staged candidate the first time it is started (root ADR-0021 decision 4)."""
+    return f"{release_id}@{candidate_sha}"
+
+
+def last_attempt_id(journal: ExecutionJournal, run_id: str) -> str:
+    """Attempt id of the latest `quality:accept` TASK_STARTED, or "" before any attempt."""
+    started = next((item for item in reversed(journal.events(run_id))
+                    if item.task_id == QUALITY_TASK_ID and item.kind is ExecutionEventKind.TASK_STARTED), None)
+    return "" if started is None else str(started.payload.get("attempt_id"))
+
+
+def base_attempt_id(attempt_id: str) -> str:
+    """The candidate an attempt was bound to: drops the `~<n>` suffix added by `fresh_attempt_id` (root ADR-0022)."""
+    head, sep, n = attempt_id.rpartition("~")
+    return head if sep and n.isdigit() else attempt_id
+
+
+def fresh_attempt_id(journal: ExecutionJournal, run_id: str, candidate: str) -> str:
+    """`candidate` the first time (the N1 shape, so old journals replay unchanged); a candidate that was already
+    started gets `~<number of starts>`, so its start/result event ids never collide with the earlier attempt."""
+    used = [str(item.payload.get("attempt_id")) for item in journal.events(run_id)
+            if item.task_id == QUALITY_TASK_ID and item.kind is ExecutionEventKind.TASK_STARTED]
+    return f"{candidate}~{len(used)}" if candidate in used else candidate
+
+
 def bindings_from_journal(journal: ExecutionJournal, run_id: str) -> QualityBindings:
     """Pins of the LATEST `quality:accept` attempt, exactly as the coordinator wrote them into TASK_STARTED.
 

@@ -42,9 +42,13 @@ from ..quality_execution import (
     QUALITY_TASK_ID,
     QualityBindings,
     _safe_component,
+    base_attempt_id,
     bindings_from_journal,
+    candidate_attempt_id,
     commit_quality_result,
     compile_execution,
+    fresh_attempt_id,
+    last_attempt_id,
     pinned_profile_path,
     result_event_id,
 )
@@ -265,7 +269,7 @@ def _sync_project(o: Orchestrator, pid: str) -> None:
     if profile is None: return
     run = profile.run_id
     cand = _candidate(o, [str(t["ticket_id"]) for t in _plan_tickets(o, plan_id)])
-    if cand is not None and o._quality_done.get(run) == _attempt_of(cand): return  # đã kết thúc ở đúng candidate này
+    if cand is not None and o._quality_done.get(run) == candidate_attempt_id(*cand): return  # đã kết thúc ở đúng candidate này
     register_quality_run(o, plan_id, profile)
     with ExecutionJournal(journal_path(o)) as journal:
         spec = _registered(journal, run)
@@ -276,8 +280,7 @@ def _sync_project(o: Orchestrator, pid: str) -> None:
             pass
         _step_quality(o, journal, spec, profile, plan_id, work, emit)
         q = journal.resume(run).tasks[QUALITY_TASK_ID]
-        last = _last_started(journal, run, QUALITY_TASK_ID)
-        attempt = str(last.payload.get("attempt_id")) if last is not None else ""
+        attempt = last_attempt_id(journal, run)
     _note_done(o, run, q, attempt, cand)
     if q is not TaskStatus.RUNNING or o.quality_driver is None: return
     # Attempt này đã hỏng ở driver/commit và escalation chưa được người xử lý ⇒ không chạy lại (tránh vòng vô hạn).
@@ -302,13 +305,10 @@ def _registered(journal: ExecutionJournal, run: str) -> RunSpec:
     return spec
 
 
-def _attempt_of(cand: tuple[str, str]) -> str: return f"{cand[0]}@{cand[1]}"
-
-
 def _note_done(o: Orchestrator, run: str, q: TaskStatus, attempt: str, cand: tuple[str, str] | None) -> None:
     """Nhớ (trong RAM) run đã kết thúc ở đúng candidate hiện tại: các `_mark` sau không mở journal nữa."""
-    if q in {TaskStatus.SUCCEEDED, TaskStatus.FAILED} and cand is not None and attempt == _attempt_of(cand):
-        o._quality_done[run] = attempt
+    if q in {TaskStatus.SUCCEEDED, TaskStatus.FAILED} and cand is not None and base_attempt_id(attempt) == candidate_attempt_id(*cand):
+        o._quality_done[run] = candidate_attempt_id(*cand)
 
 
 def _emitter(journal: ExecutionJournal, spec: RunSpec) -> Emit:
@@ -365,16 +365,17 @@ def _step_quality(o: Orchestrator, journal: ExecutionJournal, spec: RunSpec, pro
                   plan_id: str, tickets: list[str], emit: Emit) -> None:
     run = spec.run_id
     q = journal.resume(run).tasks[QUALITY_TASK_ID]
-    if q not in {TaskStatus.READY, TaskStatus.FAILED}: return
+    if q not in {TaskStatus.READY, TaskStatus.FAILED, TaskStatus.SUCCEEDED}: return
     cand = _candidate(o, tickets)
     if cand is None: return
     rid, sha = cand
-    attempt = _attempt_of(cand)
-    if q is TaskStatus.FAILED:
-        last = _last_started(journal, run, QUALITY_TASK_ID)
-        prev = str(last.payload.get("attempt_id")) if last is not None else ""
-        if prev == attempt: return  # đã chấm hỏng đúng candidate này: chờ sha mới, không tự chấm lại
-        emit(K.TASK_RETRIED, QUALITY_TASK_ID, f"{run}:quality:retry:{prev}", {})
+    if q is not TaskStatus.READY:
+        prev = last_attempt_id(journal, run)
+        if base_attempt_id(prev) == candidate_attempt_id(*cand): return  # đã chấm đúng candidate này: chờ sha mới
+        # Hỏng ⇒ retry; đã đạt ở candidate cũ ⇒ mở lại (ADR gốc 0022). Lịch sử attempt cũ giữ nguyên.
+        kind, verb = (K.TASK_RETRIED, "retry") if q is TaskStatus.FAILED else (K.TASK_REOPENED, "reopen")
+        emit(kind, QUALITY_TASK_ID, f"{run}:quality:{verb}:{prev}", {"reason": f"candidate đổi: {prev} → {candidate_attempt_id(*cand)}"})
+    attempt = fresh_attempt_id(journal, run, candidate_attempt_id(*cand))
     bindings = _bindings(o, profile, plan_id, rid, sha, tickets, attempt)
     emit(K.TASK_STARTED, QUALITY_TASK_ID, f"{run}:quality:start:{attempt}", {"attempt_id": attempt, "bindings": bindings})
 
