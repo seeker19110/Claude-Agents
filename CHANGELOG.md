@@ -6,6 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- docs: **đánh giá #335 và đặc tả Product Excellence v2** (#PR). Bản đánh giá `docs/reports/2026-09-25-danh-gia-pr335.md` (adapter chưa có caller runtime, HMAC khoá chung, Ready chỉ kiểm cấu trúc, CAS dựa vào caller, merge khi DoD còn ô mở) và kế hoạch `docs/thi-hanh/pe2.md` gồm bốn hạng mục pe2-quytrinh → pe2-cung → pe2-ky → pe2-noi. Không đổi code.
 - feat(company): **tiếp thu projects-template có chọn lọc** (#335). Thêm DeliveryContract/DeliveryReport Ready–Done–Complete, gate không nhận no-op là PASS, source pin theo commit/blob và nối vào assessor/journal sẵn có; giữ bytes/hash/signature v2 khi opt-out. Bổ sung 60 ca, design precedence và chẩn đoán lỗi đúng tầng; không copy dispatcher/CI/agent registry.
 
 - feat(company): **product-quality contract theo dự án/ngành nối vào execution kernel hiện có** (ADR gốc 0018) (#335). Thêm profile/Design Brief, receipt checker, RunSpec/TaskResult adapter và `/product-goal` nối `/thi-hanh`; giữ sàn tự duyệt ADR-0043 và 6 agent. Thêm 126 test company cùng 25 test core; sửa đóng kết nối SQLite khi khởi tạo journal hỏng. Gia cố ADR-0019: transition/đăng ký run nguyên tử, CAS chống kết quả cũ, ACK idempotent và lưu kết quả nghiệm thu cùng bằng chứng; bỏ skip symlink bằng test ranh giới đa nền tảng, không tăng trần CI. Đây chưa là migration H7 hay runtime tự chủ đầy đủ.
