@@ -233,6 +233,38 @@ không mở rộng gói mà không có ADR.
    - Loại phương án "ký profile/run mới mỗi lần sha đổi" làm đường chính: đúng nhưng đẩy việc thường ngày
      sang người và tạo run rác.
 
+## Bổ sung (pe2-duyet, 2026-09-25): `ApprovalLookup` thật và `--quality-trust`
+
+Mục d giao `ApprovalLookup` cho coordinator nhưng N1 để trống, nên mọi profile có `delivery` đều FAILED ở
+`approval_record_unverified`. Phần bổ sung này chốt lookup như sau:
+
+- `company/spec_approval.py::BusApprovalLookup(bus, db)`. `approval_record` là subject gate spec (`SPEC-<pid>`).
+  Cặp (record, hash spec) được xác minh khi thoả cả ba điều kiện:
+  - **cùng một actor người** vừa `approve` gate đó. Actor đọc bằng `trusted_decision(uat_prefix=None)`, nên không
+    tin actor hệ thống lẫn máy tự duyệt.
+  - actor đó vừa ghim (`quality.profile_set`) một profile có file ghim băm lại đúng `profile_sha256`.
+  - profile đó khai đúng record và hash spec ấy.
+
+  Lookup trả actor đó, và `ready_gaps` so actor với `approved_by`. Lời khai trong profile không là nguồn sự thật.
+  Hỏng ở bất kỳ bước nào ⇒ `None` (hỏng thì đóng).
+- Chỉ **thế hệ mới nhất** của gate có hiệu lực. `gate.request` mới, hoặc một quyết định mới cho cùng subject, xoá
+  lần duyệt trước, và chỉ profile ghim **sau** lần duyệt đó mới thuộc về nó. Đây là phát hiện F2 của
+  `sc-security`: trước đó, một lần approve cũ vẫn được tính dù sau đó đã có `reject`.
+- `submit_quality` dùng `o.quality_lookup` nếu được cấp, không thì dùng `BusApprovalLookup` trên chính bus của
+  orchestrator. Profile không có `delivery` không đổi hành vi.
+- `python -m company.orchestrator --quality-trust <registry> run` cấp registry khoá công khai. Không cờ thì như cũ:
+  kết quả chỉ vào qua `quality_execution commit`.
+- `quality_execution commit --db <bus>` dựng cùng lookup đó. Profile có `delivery` mà không có `--db` thì CLI vẫn
+  từ chối, không đốt attempt. `--db` phải là bus mà `--journal` nằm cạnh (`<db>.quality.sqlite`), không thì CLI
+  từ chối và không mở file. Lý do: bus lạ sẽ đốt attempt thành FAILED (F3).
+- Trần đã biết, không sửa ở đây:
+  - `human:*` trên bus là chuỗi tự khai. Ai chạy được `orchestrator publish --actor human:x`, hoặc ghi thẳng vào
+    SQLite, thì giả được cả gate lẫn lookup (F1). Lookup không yếu hơn chính gate. Muốn đóng lỗ này phải có định
+    danh người thật cho bus, là một ADR riêng.
+  - Lookup so actor đúng từng ký tự, còn `ready_gaps` so sau khi casefold (F5). Tức lookup chặt hơn, không lỏng hơn.
+- Loại phương án **lookup theo `approval_record` tự do**, tức tra một hệ thống duyệt ngoài. Repo không có hệ
+  thống đó, và gate SPEC là nơi duy nhất bus đã kiểm được người ký.
+
 ## Liên quan
 
 ADR gốc 0017 (kernel), 0018 (adapter), 0019 (commit nguyên tử), 0020 (pe2-ky, chữ ký Ed25519);

@@ -340,19 +340,33 @@ def _commit_cli(args: argparse.Namespace) -> dict[str, Any]:
     profile = ProjectProfile.model_validate_json(args.profile.read_text(encoding="utf-8"))
     if profile.run_id != args.run_id:
         raise ValueError("profile belongs to another run")
+    lookup, bus = None, None
     if profile.delivery is not None:
         # Without an ApprovalLookup, delivery.definition always fails: refuse rather than burn the attempt as FAILED.
-        raise CommitRefused("commit CLI không có ApprovalLookup; để driver của orchestrator nộp")
+        if args.db is None:
+            raise CommitRefused("commit CLI không có ApprovalLookup; để driver của orchestrator nộp, hoặc truyền --db <bus>")
+        if not args.db.is_file() or args.journal.resolve() != args.db.with_suffix(".quality.sqlite").resolve():
+            # The approver must come from the bus this journal belongs to, never a stray or fabricated one.
+            raise ValueError("--db must be the orchestrator bus next to --journal")
+        from .spec_approval import BusApprovalLookup  # lazy: spec_approval imports this module
+        from .sqlite_bus import SQLiteBus
+        bus = SQLiteBus(args.db)
+        lookup = BusApprovalLookup(bus, args.db)
     result = result_from_document(json.loads(args.result.read_text(encoding="utf-8")))
     raw = json.loads(args.receipts.read_text(encoding="utf-8"))
     if not isinstance(raw, list):
         raise ValueError("receipts must be an array")
     receipts = [Receipt.model_validate_json(json.dumps(item)) for item in raw]
-    with ExecutionJournal(args.journal) as journal:
-        bindings = bindings_from_journal(journal, args.run_id)
-        state = commit_quality_result(
-            journal, profile, result, receipts, event_id=result_event_id(args.run_id, bindings.expected_attempt_id),
-            bindings=bindings, trusted_issuers=_read_trust(args.trust), evidence_root=args.evidence_root)
+    try:
+        with ExecutionJournal(args.journal) as journal:
+            bindings = bindings_from_journal(journal, args.run_id)
+            state = commit_quality_result(
+                journal, profile, result, receipts, event_id=result_event_id(args.run_id, bindings.expected_attempt_id),
+                bindings=bindings, trusted_issuers=_read_trust(args.trust), evidence_root=args.evidence_root,
+                approval_lookup=lookup)
+    finally:
+        if bus is not None:
+            bus.close()
     return {"run_id": state.run_id, "status": state.status.value,
             "tasks": {key: value.value for key, value in state.tasks.items()}, "blocked_reason": state.blocked_reason}
 
@@ -373,6 +387,8 @@ def main(argv: list[str] | None = None) -> int:
     commit.add_argument("run_id")
     for flag in ("--journal", "--profile", "--result", "--receipts", "--trust", "--evidence-root"):
         commit.add_argument(flag, type=Path, required=True)
+    commit.add_argument("--db", type=Path, default=None,
+                        help="orchestrator bus: who approved the spec is read from its human gate decisions")
     args = parser.parse_args(argv)
     try:
         output: dict[str, Any]

@@ -65,6 +65,8 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--repo", type=Path, help="git repo của khách: khối kỹ thuật sửa code thật trong worktree ticket/<id>")
     ap.add_argument("--base", default="HEAD", help="nhánh/commit gốc để tạo nhánh tích hợp lần đầu (mặc định HEAD)")
     ap.add_argument("--integration", default="company/integration", help="nhánh tích hợp: ticket rẽ từ đây, merge vào đây")
+    ap.add_argument("--quality-trust", type=Path,
+                    help="registry khoá công khai của verifier quality contract (ADR gốc 0020/0021), đặt ngoài mọi worktree")
     ap.add_argument("--artifacts", type=Path, help="artifact store của blackboard (mặc định <db>.artifacts/)")
     ap.add_argument("--workers", type=int, default=1, help="số event khác key chạy song song (mặc định 1)")
     ap.add_argument("--web", action="store_true", help="cho researcher tool web_search/fetch_url (mạng ra ngoài)")
@@ -138,7 +140,8 @@ def main(argv: list[str] | None = None) -> int:
                         integration=ns.integration, workers=ns.workers,
                         web=ns.web, batch_releases=ns.batch_release, artifacts=ns.artifacts or artifact_store(ns.db),
                         deliver=ns.deliver, push_remote=ns.push_remote, release_branch=ns.release_branch,
-                        test_author=ns.test_author, sandbox=_sandbox_for(ns.cmd), deliver_pr=ns.deliver_pr)
+                        test_author=ns.test_author, sandbox=_sandbox_for(ns.cmd), deliver_pr=ns.deliver_pr,
+                        quality_trust=ns.quality_trust)
     return cli_cmds.ORCH_CMDS[ns.cmd](orch, ns)
 
 

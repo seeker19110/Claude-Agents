@@ -53,6 +53,7 @@ from ..quality_execution import (
     result_event_id,
 )
 from ..quality_floor import PROFILE_ACTION
+from ..spec_approval import BusApprovalLookup
 from ..workspace import _git_ok
 
 if TYPE_CHECKING:
@@ -215,7 +216,7 @@ def submit_quality(o: Orchestrator, run_id: str, result: TaskResult, receipts: l
         state = commit_quality_result(journal, profile, result, receipts,
                                       event_id=result_event_id(run_id, b.expected_attempt_id), bindings=b,
                                       trusted_issuers=issuers, evidence_root=evidence_root(o, run_id),
-                                      approval_lookup=o.quality_lookup)
+                                      approval_lookup=o.quality_lookup or BusApprovalLookup(o.bus, _db(o)))
     o._audit("quality.result", {"run_id": run_id, "attempt_id": b.expected_attempt_id,
                                 "status": state.tasks[QUALITY_TASK_ID].value,
                                 "reason": state.failures.get(QUALITY_TASK_ID, "")}, project_id=pid)
