@@ -1,6 +1,6 @@
 # ADR-0020: chữ ký bất đối xứng cho receipt chất lượng, xoay khoá và lộ trình rút HMAC
 
-Ngày: 2026-09-25. Trạng thái: **Proposed** — chờ người đồng ý thêm dependency (mục "Câu hỏi cho người").
+Ngày: 2026-09-25. Trạng thái: **Accepted** 2026-09-25. Chủ dự án đồng ý thêm dependency `cryptography`, tức phương án (a) (mục "Câu hỏi cho người").
 Mở rộng ADR-0018 và ADR-0019; gói K1 của `docs/thi-hanh/pe2.md`, xử lý P3 (và khép P9) trong
 `docs/reports/2026-09-25-danh-gia-pr335.md`. Không có code trong ADR này; code là gói K2.
 
@@ -181,6 +181,8 @@ khép lại khi pha 3 gỡ đường ký HMAC. Ed25519 không có khái niệm k
   mục phụ thuộc), và mục tiêu "chỉ 1 principal giả được" hạ xuống 2 — phải ghi rõ trong `docs/PRODUCT-EXCELLENCE.md`.
 
 ## Câu hỏi cho người
+
+Đã trả lời ngày 2026-09-25: đồng ý `cryptography`.
 
 1. **Chọn dependency** (quyết định duy nhất cần người ký): đồng ý thêm `cryptography` (kéo `cffi`, `pycparser`)
    vào `companies/software-company/pyproject.toml` để dùng Ed25519 — phương án (a)? Hay từ chối, chấp nhận (b)
