@@ -6,19 +6,24 @@ on:
 permissions:
   contents: read
 jobs:
-  snapshot:
+  assemble:
+    if: github.repository == 'seeker19110/Claude-Agents' && github.ref == 'refs/heads/feat/product-quality-harness'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: b84dcb76b9085a686dafae97f47c988ac872446a
-          persist-credentials: false
-      - name: Export tracked public source only
-        run: git archive --format=zip --output=/tmp/claude-agents-base.zip HEAD
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - name: Assemble reviewed bytes and push only the auxiliary branch
+        run: python .integration/assemble.py
+      - name: Export assembled source for verification
+        run: git archive --format=zip --output=/tmp/claude-agents-assembled.zip HEAD
       - uses: actions/upload-artifact@v7
         with:
-          name: quality-integration-base-source
-          path: /tmp/claude-agents-base.zip
+          name: quality-integration-assembled-source
+          path: /tmp/claude-agents-assembled.zip
           retention-days: 1
           if-no-files-found: error
