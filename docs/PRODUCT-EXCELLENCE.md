@@ -215,9 +215,15 @@ uv run python -m company.quality_execution status example-run-not-production --j
 
 `register` chỉ đăng ký plan; không chạy worker. Lặp cùng plan idempotent; đổi contract cùng run bị từ chối.
 `status` từ chối DB không tồn tại thay vì tạo một run rỗng có vẻ đã xong. Không commit `quality.sqlite*`.
-`ExecutionJournal` là kernel H1/H2; nó chưa tự xác minh task result hoặc cấp lease đa coordinator.
-Adapter **không ghi success event**. Coordinator phải kiểm kết quả, chuyển trạng thái bằng `apply_event`,
-rồi ghi journal; identity/OS isolation, single writer và side-effect reconciliation là yêu cầu riêng.
+`ExecutionJournal` vẫn không tự kiểm nội dung test hoặc cấp lease worker. ADR-0019 bổ sung
+`transition(event, expected_count=...)`: kiểm state và ghi nguyên tử, chống quyết định dựa trên lịch sử cũ.
+`evaluate_result` chỉ trả kết quả; coordinator dùng `commit_quality_result` với `QualityBindings` đã ghim
+để lưu TaskResult, receipt và metadata cùng terminal event. Không kiểm filesystem/model trong transaction.
+Start quality task phải có `payload.attempt_id`; nhận lại kết quả từ attempt khác bị từ chối.
+Cùng submission ID và cùng đầu vào chỉ ACK quyết định đã lưu, không chạy lại hoặc ký lại khi receipt hết hạn;
+đổi nội dung nhưng giữ ID bị chặn. Mã và context đổi phải có lần kiểm mới, không tái dùng ACK làm chứng nhận.
+`append` vẫn là API low-level tương thích lịch sử, không dùng cho điều phối mới. Identity/OS isolation,
+lease và side-effect reconciliation vẫn là các yêu cầu riêng. Không coi CAS DB là exactly-once cho Git/deploy.
 Test native journal có crash/restart chứng minh bước triển khai đã xong không phải chạy lại khi quality fail.
 
 ### Không thay sàn tự duyệt đang hoạt động

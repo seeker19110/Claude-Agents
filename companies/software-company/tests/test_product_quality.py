@@ -221,18 +221,33 @@ def test_oversized_artifact(bundle):
     assert not assess(profile, receipts, **kwargs).quality_pass
 
 
-def test_symlink_escape(bundle, tmp_path):
+@pytest.mark.parametrize("denied", [False, True])
+def test_symlink_escape(bundle, tmp_path, monkeypatch, denied):
     profile, receipts, kwargs = bundle
     external = tmp_path.parent / f"{tmp_path.name}-outside.txt"
     external.write_text("outside", encoding="utf-8")
     link = tmp_path / "escape-link"
+    if denied:
+        def unavailable(*args, **kwargs):
+            raise OSError("simulated missing symlink privilege")
+        monkeypatch.setattr(Path, "symlink_to", unavailable)
     try:
         link.symlink_to(external)
     except OSError:
-        pytest.skip("symlink privilege unavailable")
+        # Some Windows accounts cannot create links. Exercise the SAME resolved
+        # path boundary with an explicit OS-result stub; do not omit the test.
+        original = Path.resolve
+
+        def resolve(path, *args, **kwargs):
+            return original(external, *args, **kwargs) if path == link else original(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "resolve", resolve)
+    assert link.resolve(strict=True) == external.resolve(strict=True)
     key = kwargs["trusted_issuers"][receipts[0].evidence.issuer].key
-    receipts[0] = rewrite(receipts[0], key, artifact_path=link.name)
-    assert not assess(profile, receipts, **kwargs).quality_pass
+    receipts[0] = rewrite(receipts[0], key, artifact_path=link.name,
+                          artifact_sha256=hashlib.sha256(external.read_bytes()).hexdigest())
+    assessment = assess(profile, receipts, **kwargs)
+    assert assessment.blockers == (f"{receipts[0].evidence.check_id}:missing_changed_or_unsafe_artifact",)
 
 
 def test_conflicting_receipts_need_reconciliation(bundle):

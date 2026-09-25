@@ -438,6 +438,7 @@ class ExecutionJournal:
     def register(self, spec: RunSpec) -> None:
         body = spec.to_json()
         with self._lock, self._db:
+            self._db.execute("BEGIN IMMEDIATE")
             row = self._db.execute(
                 "SELECT body FROM execution_runs WHERE run_id = ?",
                 (spec.run_id,),
@@ -460,6 +461,7 @@ class ExecutionJournal:
         return None if row is None else RunSpec.from_json(str(row[0]))
 
     def append(self, event: ExecutionEvent) -> None:
+        """Low-level legacy import; new control paths must use validated transition."""
         try:
             with self._lock, self._db:
                 self._db.execute(
@@ -468,6 +470,50 @@ class ExecutionJournal:
                 )
         except sqlite3.IntegrityError as exc:
             raise ExecutionJournalError(f"event_id trùng: {event.event_id}") from exc
+
+    def transition(self, event: ExecutionEvent, *, expected_count: int) -> RunState:
+        """Validate and append atomically (ADR-0019); caller owns authority/evidence.
+
+        expected_count is the number of events for THIS run read before making
+        the decision. Identical redelivery acknowledges the current state, even
+        with an old count; it is not a fresh approval. ID collisions fail closed.
+        Receipt hashing/model calls must happen outside this short transaction.
+        Low-level append remains for legacy imports, not concurrent control.
+        """
+        if type(expected_count) is not int or expected_count < 0:
+            raise ValueError("expected_count must be a nonnegative integer")
+        if not event.event_id.strip() or not event.run_id.strip():
+            raise ValueError("event identity must not be blank")
+        if event.ts.utcoffset() is None:
+            raise ValueError("event timestamp must have a timezone")
+        if event.kind in {ExecutionEventKind.RUN_STARTED, ExecutionEventKind.RUN_CANCELLED} and event.task_id is not None:
+            raise ValueError("a run event must not carry task_id")
+        # Freeze a caller-owned payload and reject non-JSON numeric values.
+        body = json.dumps(json.loads(event.to_json()), ensure_ascii=False, sort_keys=True, allow_nan=False)
+        event = ExecutionEvent.from_json(body)
+        with self._lock, self._db:
+            self._db.execute("BEGIN IMMEDIATE")
+            spec = self.load_spec(event.run_id)
+            if spec is None:
+                raise ExecutionJournalError(f"run {event.run_id} chưa đăng ký RunSpec")
+            history = self.events(event.run_id)
+            state = RunState.replay(spec, history)
+            row = self._db.execute(
+                "SELECT body FROM execution_events WHERE event_id = ?", (event.event_id,),
+            ).fetchone()
+            if row is not None:
+                stored = ExecutionEvent.from_json(str(row[0]))
+                if replace(event, ts=stored.ts).to_json() != stored.to_json():
+                    raise ExecutionJournalError(f"event_id collision: {event.event_id}")
+                return state
+            if len(history) != expected_count:
+                raise ExecutionJournalError(f"stale event count: expected {expected_count}, actual {len(history)}")
+            next_state = apply_event(spec, state, event)
+            self._db.execute(
+                "INSERT INTO execution_events(event_id, run_id, ts, body) VALUES (?,?,?,?)",
+                (event.event_id, event.run_id, event.ts.isoformat(), event.to_json()),
+            )
+            return next_state
 
     def events(self, run_id: str) -> tuple[ExecutionEvent, ...]:
         with self._lock:

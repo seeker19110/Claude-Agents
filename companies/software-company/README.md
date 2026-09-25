@@ -65,7 +65,7 @@ examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--rela
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng pha `intake` cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 6 agent, mỗi agent ≥ 2 ca (agent nhiều pha: ≥ 2 ca mỗi pha); recordings/ = phản hồi model đã ghi
-tests/         pytest 1569 ca / 91 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+tests/         pytest 1581 ca / 92 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, release tự dừng → gate, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
                guard/blackboard, schema consistency, golden 6 agent + 4 hồ sơ gate, bộ sinh subagent, hồ sơ gate, deploy compose (runner tiêm được), rà soát bảo mật);
                coverage fail_under=100 (phủ 100% dòng VÀ 100% nhánh, `branch = true` từ 2026-09-13)
@@ -77,6 +77,8 @@ tests/         pytest 1569 ca / 91 file (bus, registry↔events, delivery+gates,
 `quality_execution.py` nối vào `xagents_core.execution` (RunSpec/TaskResult/journal), không fork kernel.
 Dùng `uv run python -m company.quality_execution plan examples/product-quality-profile.json examples/product-quality-work.json`.
 `plan/register/status` là điểm nối kernel, chưa là worker daemon hoặc gate bắt buộc của mọi Orchestrator run.
+`commit_quality_result` lưu kết quả/receipt cùng transition CAS (ADR gốc 0019), phục hồi và ACK lại
+không chạy lại việc; phải gọi từ coordinator đáng tin, không từ worker trực tiếp.
 Sàn tự duyệt `quality_floor` ADR-0043 được giữ nguyên. Xem [`hợp đồng chất lượng`](../../docs/PRODUCT-EXCELLENCE.md)
 và [`ADR gốc 0018`](../../docs/adr/0018-product-quality-execution-adapter.md).
 

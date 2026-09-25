@@ -62,6 +62,13 @@ DB hỏng hoặc schema `execution_events` không đúng làm constructor Execut
 nhưng để kết nối sống. Hai test đỏ dùng SQLite thật tái hiện; sửa đóng kết nối khi PRAGMA/DDL lỗi, rồi
 ném lại chính lỗi đó. Không nuốt lỗi, không thay schema/state machine.
 
+## Bổ sung cùng PR theo ADR-0019
+
+Những đoạn trên mô tả adapter ban đầu chỉ đọc/đánh giá. ADR-0019 thêm đường **tường minh**
+`commit_quality_result` cho coordinator: lưu kết quả qua `ExecutionJournal.transition` nguyên tử.
+`evaluate_result` vẫn không ghi DB. Không bật luồng Orchestrator hoặc quyền tự duyệt mới; không thay
+sàn ADR-0043. Đây là bổ sung kiểm soát persistence, không tuyên bố H3–H7 đã hoàn thành.
+
 ## Nhãn miền không phải tên agent
 
 CI toàn company đã bắt các literal trùng agent cũ trong schema được port. Không mở rộng miễn trừ

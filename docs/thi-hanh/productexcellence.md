@@ -26,7 +26,9 @@ không coi còn đủ H3/H4/H5/H6/H7 hoặc driver browser/restore đã được
 | Q1 | Profile, design, policy và receipt checker | company | product-excellence | C2 | Chuẩn rõ, cần trusted driver cung cấp bằng chứng | Đã có trong PR #335; chờ CI/review |
 | Q2 | RunSpec/TaskResult/journal adapter | company/core API | product-excellence | C3 | Tái dùng kernel, chưa thay worker/scheduler | PR #335; native replay đạt, chờ CI/review |
 | Q3 | Command, charter, indexes và bản ghi tích hợp | docs | product-excellence | C1 | Một đường vào, thêm tài liệu cần giữ đồng bộ | PR #335; command/README guards đạt |
-| Q4 | Cleanup journal init thất bại | core | product-excellence | C2 | Không rò connection, giữ nguyên lỗi/schema | PR #335; hai test đỏ → xanh, core 544 đạt |
+| Q4 | Cleanup journal init thất bại | core | product-excellence | C2 | Không rò connection, giữ nguyên lỗi/schema | PR #335; hai test đỏ → xanh |
+| Q5 | Atomic transition/CAS và kết quả quality bền | core/company | product-excellence | C3 | Chặn ghi trùng/sai state, cần coordinator tin cậy | Bổ sung PR #335; kiểm thử mới đạt, chưa merge |
+| Q6 | Test symlink không skip theo quyền OS | company tests | product-excellence | C2 | Giữ test ranh giới trên Windows/Linux, không tăng trần | Bổ sung PR #335; guard skip xanh |
 
 Cố ý không làm: đổi 6 prompt/golden/eval; bật cờ tự duyệt; cấp quyền production; scheduler/lease/bridge H7
 thứ hai; chứng nhận ngành giả; dùng fixture receipt làm bằng chứng sản phẩm. Không migration run đang hoạt động.
@@ -70,6 +72,24 @@ không dùng nó như chứng nhận tự chủ hoặc security boundary hoàn c
 5. Code: `try PRAGMA/DDL; except sqlite3.Error: close(); raise`.
 6. Bất biến: happy path/replay không đổi; không nuốt lỗi và không fake success.
 7. Test: 2 ca SQLite thật đỏ trước sửa; toàn core 544 đạt, 100% dòng/nhánh. Chung PR Q1 vì được phát hiện khi nối adapter.
+
+### Q5 — atomic quality persistence
+1. Mục tiêu: state và kết quả nghiệm thu không bị tách khi mất phản hồi hoặc restart.
+2. Scope: execution.py, quality_execution.py và test, không đổi worker pool/scheduler.
+3. Input: event count của run, stable submission ID, QualityBindings do coordinator giữ.
+4. Output: RunState và event chứa TaskResult/receipt; không grant quyền bên ngoài.
+5. API: `ExecutionJournal.transition(event, expected_count=...)`, `commit_quality_result(...)`.
+6. Bất biến: stale/collision/attempt lệch bị chặn; duplicate chỉ ACK; không gọi model trong transaction.
+7. Test: SQLite thật hai connections, rollback, restart, quality fail/retry, receipt serialization.
+
+### Q6 — test đa nền tảng
+1. Mục tiêu: không bỏ test ranh giới artifact khi tài khoản không được tạo symlink.
+2. Scope: test_product_quality.py, không sửa guard/trần của console.
+3. Input: symlink thật khi được hỗ trợ; mô phỏng có tên rõ khi OS từ chối quyền.
+4. Output: cùng assertion từ chối artifact ngoài evidence_root.
+5. API: không thay API production.
+6. Bất biến: không skip/xfail thêm, hash nội dung ngoài khớp để chắc lỗi là path boundary.
+7. Test: hai nhánh real/fallback; guard skip fail trước, xanh sau.
 
 ## D. Điều phối
 
