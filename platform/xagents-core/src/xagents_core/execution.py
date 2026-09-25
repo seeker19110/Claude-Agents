@@ -69,6 +69,7 @@ class ExecutionEventKind(StrEnum):
     TASK_SUCCEEDED = "task.succeeded"
     TASK_FAILED = "task.failed"
     TASK_RETRIED = "task.retried"
+    TASK_REOPENED = "task.reopened"
 
 
 @dataclass(frozen=True)
@@ -147,6 +148,7 @@ class TaskSpec:
     allowed_tools: tuple[str, ...] = ()
     write_scope: tuple[str, ...] = ()
     context_refs: tuple[str, ...] = ()
+    reopenable: bool = False  # ADR-0022: chính sách khai trong spec — chỉ task mang cờ mới nhận TASK_REOPENED
 
     def __post_init__(self) -> None:
         if self.task_id in self.dependencies:
@@ -168,6 +170,10 @@ class RunSpec:
             missing = set(task.dependencies) - known
             if missing:
                 raise ValueError(f"dependency không tồn tại của {task.task_id}: {sorted(missing)}")
+        depended = {dependency for task in self.tasks for dependency in task.dependencies}
+        leafless = sorted(task.task_id for task in self.tasks if task.reopenable and task.task_id in depended)
+        if leafless:
+            raise ValueError(f"chỉ task lá được reopenable, có task phụ thuộc vào: {leafless}")
         _validate_acyclic(self.tasks)
 
     def to_json(self) -> str:
@@ -185,6 +191,8 @@ class RunSpec:
                         "allowed_tools": task.allowed_tools,
                         "write_scope": task.write_scope,
                         "context_refs": task.context_refs,
+                        # Khoá chỉ có khi True: RunSpec đăng ký trước ADR-0022 giữ đúng byte, `register` vẫn idempotent.
+                        **({"reopenable": True} if task.reopenable else {}),
                     }
                     for task in self.tasks
                 ],
@@ -207,6 +215,7 @@ class RunSpec:
                 allowed_tools=tuple(map(str, row["allowed_tools"])),
                 write_scope=tuple(map(str, row["write_scope"])),
                 context_refs=tuple(map(str, row["context_refs"])),
+                reopenable=row.get("reopenable", False) is True,
             )
             for row in task_rows
         )
@@ -383,6 +392,22 @@ def _task_retried(_spec: RunSpec, state: RunState, event: ExecutionEvent) -> Run
     return replace(state, status=run_status, tasks=tasks, failures=failures)
 
 
+def _task_reopened(spec: RunSpec, state: RunState, event: ExecutionEvent) -> RunState:
+    """Mở lại task `reopenable` đã SUCCEEDED (ADR-0022): candidate đổi sau nghiệm thu, lịch sử cũ giữ nguyên."""
+    task_id, status = _task_status(state, event)
+    if state.status not in {RunStatus.RUNNING, RunStatus.SUCCEEDED}:
+        raise ExecutionTransitionError(f"task_reopened: run phải RUNNING hoặc SUCCEEDED, hiện là {state.status.value}")
+    if status is not TaskStatus.SUCCEEDED:
+        raise ExecutionTransitionError(f"task_reopened: task phải SUCCEEDED, hiện là {status.value}")
+    if not next(task.reopenable for task in spec.tasks if task.task_id == task_id):
+        raise ExecutionTransitionError(f"task_reopened: {task_id} không khai reopenable trong RunSpec")
+    if not str(event.payload.get("reason") or "").strip():
+        raise ExecutionTransitionError("task_reopened: payload.reason bắt buộc")
+    tasks = dict(state.tasks)
+    tasks[task_id] = TaskStatus.READY
+    return replace(state, status=RunStatus.RUNNING, tasks=tasks)
+
+
 _HANDLER = {
     ExecutionEventKind.RUN_STARTED: _run_started,
     ExecutionEventKind.RUN_CANCELLED: _run_cancelled,
@@ -390,6 +415,7 @@ _HANDLER = {
     ExecutionEventKind.TASK_SUCCEEDED: _task_succeeded,
     ExecutionEventKind.TASK_FAILED: _task_failed,
     ExecutionEventKind.TASK_RETRIED: _task_retried,
+    ExecutionEventKind.TASK_REOPENED: _task_reopened,
 }
 
 

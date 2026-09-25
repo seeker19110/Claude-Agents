@@ -1,6 +1,6 @@
 # ADR-0022: nghiệm thu lại `quality:accept` khi candidate sha đổi sau `SUCCEEDED`
 
-Ngày: 2026-09-25. Trạng thái: **Proposed**. Chưa có code.
+Ngày: 2026-09-25. Trạng thái: **Accepted** 2026-09-25, code trong PR #342. Xem mục "Quyết định của người" và "Điểm lệch khi thi hành".
 
 Đây là gói N5 của `docs/thi-hanh/pe2.md` (hạng mục pe2-noi2). Nó thực hiện quyết định 5 của người trong ADR-0021
 ("sha đổi sau `SUCCEEDED`: nghiệm thu lại được, nhưng không nhét vào N1") và gỡ trần (1) ở mục Hệ quả của ADR đó.
@@ -324,6 +324,34 @@ console cho state `running` sau khi mở lại thì mở hạng mục riêng.
    có attempt mới đạt. Chạy thủ công thì thêm một bước người, nhưng thấy được từng lần mở lại.
 4. **Giới hạn số lần mở lại mỗi run**: không giới hạn (đề xuất: mỗi lần đều phải qua nghiệm thu đủ receipt). Hay đặt
    trần N lần, vượt trần thì escalation?
+
+## Quyết định của người (2026-09-25)
+
+1. **Phương án:** chủ dự án giao phiên chính "cái nào tốt thì chọn". Phiên chính chọn **(a)**, cờ `reopenable` khai
+   trong RunSpec. Lý do: đây là phương án duy nhất giữ bốn bất biến ở trên, và cũng là phương án duy nhất khớp câu
+   trả lời số 2. Nếu chọn (e), mọi run cũ tự mở lại được, tức là migrate ngầm.
+2. **Run đăng ký trước N5: không migrate.** Nhận diện bằng phép so khớp với `compile_execution(..., reopenable=False)`.
+   Run đó giữ hành vi cũ: không mở lại, R6 chặn.
+3. **Kích hoạt: tự động**, ngay khi RC mới staged phủ đủ ticket.
+4. **Không có trần số lần mở lại.** Lần nào cũng phải qua nghiệm thu đủ receipt, và R6 đóng suốt tới khi có kết quả
+   đạt ở đúng sha.
+
+## Điểm lệch khi thi hành (PR #342)
+
+- **Attempt id lặp lại có hậu tố `~<n>`, không thành `sync_error`.** Chủ dự án chọn phương án này. Ví dụ: RC mới bị
+  huỷ, candidate quay về một RC đã chấm. Attempt lần đầu vẫn giữ dạng `<rid>@<sha>`. Lần lặp lại được id
+  `<rid>@<sha>~<số lần start>` và được chấm lại tự động. Đo trên `main@1261080`: đường `FAILED → RETRIED` có sẵn đã kẹt
+  `READY` mãi trong đúng ca này (`start:<rid>@<sha>` đã có, `emit` bỏ qua). Hậu tố sửa luôn lỗi đó. Phần gốc (bỏ
+  `~<n>`) được dùng để so "cùng candidate".
+- **Không tạo `orch/quality_reopen.py`.** `runs_for_release`/`release_quality` chuyển sang `orch/quality_release.py`
+  (nguồn R6), nên `quality_flow.py` còn dưới 400 dòng. Điểm mở lại nằm ngay trong `_step_quality`.
+- **Ba chỗ gia cố theo review `sc-security`** (mỗi chỗ có test đỏ trước):
+  - R6 đọc trạng thái và candidate từ **một** snapshot journal. Hai lần đọc riêng có thể bị mở lại chen giữa, ghép
+    `succeeded` cũ với sha mới, và cho qua.
+  - Cache RAM `_quality_done` bị xoá khi một attempt khác đang mở.
+  - Kết quả mang `attempt_id` cũ (nộp muộn) bị từ chối và không ghi gì. Trước đây nó bị chấm thành
+    `wrong_task_or_attempt` và đánh FAILED attempt đang chạy.
+- Retry `quality:accept` sau FAILED giờ cũng mang `reason` trong payload.
 
 ## Liên quan
 

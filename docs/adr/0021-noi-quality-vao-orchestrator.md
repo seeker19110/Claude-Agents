@@ -174,7 +174,7 @@ ghi rõ "không đụng bảng chuyển".
 
 - N2 (`quality_floor`, gap R6): N1 cung cấp `quality_flow.runs_for_release(o, rid) ->
   tuple[tuple[str, str | None, str | None], ...]` (`run_id`, trạng thái `quality:accept`, `candidate_sha`), chỉ đọc
-  journal. `DeliveryLead._quality_evidence` truyền nó vào `collect_evidence`. N1 không đổi `floor_gaps`.
+  journal. `DeliveryLead._quality_evidence` truyền nó vào `collect_evidence`. N1 không đổi `floor_gaps`. (Từ ADR-0022, hàm này nằm ở `orch/quality_release.py` và đọc một snapshot.)
 - N3 (console): đọc `<db>.quality.sqlite` ở chế độ chỉ đọc, như cách đọc bus. N1 chỉ bảo đảm đường dẫn suy ra
   được từ `--db`.
 
@@ -226,6 +226,7 @@ không mở rộng gói mà không có ADR.
    tích hợp, vì nó còn đổi sau khi ticket cuối được integrate.
 5. **Sha đổi sau `SUCCEEDED`: nghiệm thu lại được, nhưng không nhét vào N1.**
    - Trong N1–N4: sha staged khác sha đã `SUCCEEDED` thì R6 chặn. Hỏng thì đóng, không bao giờ cho qua.
+   - *Đã làm (N5):* ADR-0022 thêm `task.reopened` cho task `reopenable`, nên trần (1) ở mục Hệ quả không còn với run đăng ký sau N5. Run đăng ký trước đó giữ trần (1) vì không migrate.
    - Làm tiếp: mã **N5** (bảng B của `docs/thi-hanh/pe2.md`) mở ADR core riêng cho phép `quality:accept` chạy
      lại khi candidate đổi. Mỗi attempt mới ràng sha mới, lịch sử attempt cũ giữ nguyên. Việc này đổi máy
      trạng thái của ADR-0017, nên phải có ADR trước code.

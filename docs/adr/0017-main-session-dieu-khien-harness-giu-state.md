@@ -28,6 +28,9 @@ contract máy đọc được và dựng lại state từ log append-only.
    `PENDING → RUNNING → SUCCEEDED|BLOCKED|CANCELLED`; task:
    `PENDING/READY → RUNNING → SUCCEEDED|FAILED`, task lỗi có thể `TASK_RETRIED → READY`.
    Dependency chỉ mở READY khi mọi dependency đã SUCCEEDED.
+   *Sửa đổi bởi ADR-0022:* task khai `reopenable` trong RunSpec (chỉ task lá) đã `SUCCEEDED` được `TASK_REOPENED`
+   (bắt buộc có lý do) về `READY` khi candidate đổi; run `SUCCEEDED` khi đó về `RUNNING`. Task không khai cờ vẫn là
+   trạng thái cuối.
 5. Journal và state machine ở core chỉ là **cơ chế**. Nó không biết ticket/company/gate/model/PR. Các package
    miền sẽ map workflow của mình vào contract này ở PR sau.
 6. PR này là **H1+H2 foundation**, chưa đổi source of truth của `/thi-hanh`. Cho tới khi bridge H7 được merge,

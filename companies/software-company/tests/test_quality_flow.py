@@ -23,7 +23,7 @@ from xagents_core.execution import (
 from company.events import Task
 from company.gate_cli import main as gate_main
 from company.llm import FakeClient
-from company.orch import quality_flow
+from company.orch import quality_flow, quality_release
 from company.orchestrator import Orchestrator
 from company.product_quality import CATALOG, Evidence, sign_evidence
 from company.quality_execution import QUALITY_TASK_ID
@@ -287,7 +287,7 @@ def test_chieu_ticket_lam_lai_va_giao_lai_thanh_attempt_moi_roi_succeeded(tmp_pa
     assert _acts(bus, "quality.registered") == [{"project_id": "P1", "plan_id": "PLAN-P1-1", "run_id": RUN,
                                                  "contract_hash": o.quality_profiles["P1"]["contract_hash"]}]
     assert quality_flow.active_bindings(o, RUN) is None, "chưa mở attempt quality nào"
-    assert quality_flow.runs_for_release(o, "REL-X") == ()
+    assert quality_release.runs_for_release(o, "REL-X") == ()
     # RC huỷ bị bỏ qua; RC còn lại không có nhánh tích hợp (không --repo) ⇒ không tính được bindings ⇒ sync_error
     o.lead.releases += ["REL-1", "REL-2"]; o.lead.release_tickets.update({"REL-1": ["T1"], "REL-2": ["T1"]})
     o.void_releases.add("REL-2"); o.release_sha.update({"REL-1": "a" * 40, "REL-2": "b" * 40})
@@ -296,7 +296,7 @@ def test_chieu_ticket_lam_lai_va_giao_lai_thanh_attempt_moi_roi_succeeded(tmp_pa
     assert err["run_id"] == RUN and "nhánh tích hợp" in err["error"]
     assert RUN in o.paused and "P1" not in o.paused, "escalate theo run, không chặn vòng ticket của dự án"
     quality_flow.note_profile(o, {"project_id": "P2", "run_id": "run-P2"})  # run chưa đăng ký: không thuộc RC nào
-    assert quality_flow.runs_for_release(o, "REL-1") == ((RUN, "ready", None),)
+    assert quality_release.runs_for_release(o, "REL-1") == ((RUN, "ready", None),)
 
 
 def test_bus_khong_ben_thi_khong_doc_duoc_profile_va_khong_vo_vong_mark():
@@ -393,7 +393,7 @@ def test_driver_loi_thanh_sync_error_roi_driver_tot_nghiem_thu_duoc(tmp_path):
     o.gate.decide(RUN, "approve", by="human:rm", reason="đã thay driver trình duyệt chết bằng driver chạy được")
     o.run()
     rid = o.lead.releases[-1]
-    assert quality_flow.runs_for_release(o, rid) == ((RUN, "succeeded", o.release_sha[rid]),)
+    assert quality_release.runs_for_release(o, rid) == ((RUN, "succeeded", o.release_sha[rid]),)
 
 
 def test_quality_hong_roi_sha_moi_duoc_staged_thi_attempt_moi(tmp_path):

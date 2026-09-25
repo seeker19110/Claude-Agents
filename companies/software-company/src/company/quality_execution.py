@@ -51,8 +51,12 @@ QUALITY_TASK_ID = "quality:accept"
 CONTRACT_PREFIX = "quality-contract:sha256:"
 
 
-def compile_execution(profile: ProjectProfile, work: RunSpec) -> RunSpec:
+def compile_execution(profile: ProjectProfile, work: RunSpec, *, reopenable: bool = True) -> RunSpec:
     """Preserve the work DAG and append one aggregate, read-only quality barrier.
+
+    The barrier is `reopenable` (root ADR-0022 (a)): a new candidate after SUCCEEDED is verified again in the same
+    run. `reopenable=False` reproduces the pre-N5 spec byte for byte, so runs registered before N5 keep their
+    behaviour (no migration) and still match here and in `commit_quality_result`.
 
     Use the original work spec on repeated calls. Registration of the identical
     compiled spec is idempotent in ExecutionJournal; a changed contract needs a
@@ -75,6 +79,7 @@ def compile_execution(profile: ProjectProfile, work: RunSpec) -> RunSpec:
         complexity=Complexity.C3,
         acceptance=tuple(check.id for check in required_checks(profile)),
         context_refs=(pin,),
+        reopenable=reopenable,
         # No generic tool/write privileges; the coordinator binds trusted evidence drivers.
     )
     return RunSpec(work.run_id, work.objective, (*tasks, barrier))
@@ -187,7 +192,7 @@ def commit_quality_result(
         replace(task, context_refs=tuple(ref for ref in task.context_refs if not ref.startswith(CONTRACT_PREFIX)))
         for task in registered.tasks if task.task_id != QUALITY_TASK_ID
     ))
-    if registered != compile_execution(profile, work):
+    if registered not in (compile_execution(profile, work), compile_execution(profile, work, reopenable=False)):
         raise ExecutionJournalError("registered execution contract does not match the product profile")
     history = journal.events(profile.run_id)
     count = len(history)
@@ -209,6 +214,11 @@ def commit_quality_result(
                     if item.task_id == QUALITY_TASK_ID and item.kind is ExecutionEventKind.TASK_STARTED), None)
     if started is None or started.payload.get("attempt_id") != bindings.expected_attempt_id:
         raise ExecutionJournalError("quality attempt is not the coordinator's active started attempt")
+    if result.attempt_id != bindings.expected_attempt_id:
+        # A late result for an older attempt (e.g. after a reopen, root ADR-0022) is refused, not scored: scoring
+        # it would mark the ACTIVE attempt FAILED for work that was never run on its candidate.
+        raise ExecutionJournalError(
+            f"stale result: attempt {result.attempt_id!r} is not the active attempt {bindings.expected_attempt_id!r}")
     if expected_count is not None and expected_count != count:
         raise ExecutionJournalError(f"stale event count: expected {expected_count}, actual {count}")
     verified = evaluate_result(
@@ -254,12 +264,44 @@ def result_event_id(run_id: str, attempt_id: str) -> str:
     return f"{run_id}:quality:result:{attempt_id}"
 
 
+def candidate_attempt_id(release_id: str, candidate_sha: str) -> str:
+    """The attempt id of a staged candidate the first time it is started (root ADR-0021 decision 4)."""
+    return f"{release_id}@{candidate_sha}"
+
+
+def last_attempt_id(journal: ExecutionJournal, run_id: str) -> str:
+    """Attempt id of the latest `quality:accept` TASK_STARTED, or "" before any attempt."""
+    started = next((item for item in reversed(journal.events(run_id))
+                    if item.task_id == QUALITY_TASK_ID and item.kind is ExecutionEventKind.TASK_STARTED), None)
+    return "" if started is None else str(started.payload.get("attempt_id"))
+
+
+def base_attempt_id(attempt_id: str) -> str:
+    """The candidate an attempt was bound to: drops the `~<n>` suffix added by `fresh_attempt_id` (root ADR-0022)."""
+    head, sep, n = attempt_id.rpartition("~")
+    return head if sep and n.isdigit() else attempt_id
+
+
+def fresh_attempt_id(journal: ExecutionJournal, run_id: str, candidate: str) -> str:
+    """`candidate` the first time (the N1 shape, so old journals replay unchanged); a candidate that was already
+    started gets `~<number of starts>`, so its start/result event ids never collide with the earlier attempt."""
+    used = [str(item.payload.get("attempt_id")) for item in journal.events(run_id)
+            if item.task_id == QUALITY_TASK_ID and item.kind is ExecutionEventKind.TASK_STARTED]
+    return f"{candidate}~{len(used)}" if candidate in used else candidate
+
+
 def bindings_from_journal(journal: ExecutionJournal, run_id: str) -> QualityBindings:
     """Pins of the LATEST `quality:accept` attempt, exactly as the coordinator wrote them into TASK_STARTED.
 
     Never taken from arguments or worker output (root ADR-0021 §b). Whether that attempt is still the active
     one is checked again, atomically, by `commit_quality_result`."""
-    started = next((item for item in reversed(journal.events(run_id))
+    return bindings_from_events(journal.events(run_id))
+
+
+def bindings_from_events(events: tuple[ExecutionEvent, ...]) -> QualityBindings:
+    """`bindings_from_journal` on a snapshot the caller already read, so status and candidate come from the SAME
+    history (root ADR-0022: after a reopen, two reads can pair an old SUCCEEDED with the new candidate)."""
+    started = next((item for item in reversed(events)
                     if item.task_id == QUALITY_TASK_ID and item.kind is ExecutionEventKind.TASK_STARTED), None)
     if started is None or not isinstance(started.payload.get("bindings"), dict):
         raise ExecutionJournalError("no coordinator-bound quality attempt in the journal")
