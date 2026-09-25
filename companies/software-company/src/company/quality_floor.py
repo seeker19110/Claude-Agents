@@ -13,7 +13,7 @@ dữ liệu, không phải một phép kẹp có thể quên ở chỗ gọi (AD
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -60,6 +60,12 @@ def parse_bar(raw: Mapping[str, Any]) -> QualityBar:
     return QualityBar(**fields)
 
 
+ProductQuality = tuple[tuple[str, str | None, str | None], ...]
+#: Nguồn R6 cho một release: (các run chạm release, ticket của dự án có profile nằm ngoài mọi run).
+ReleaseQuality = tuple[ProductQuality, tuple[str, ...]]
+R6 = "R6: nghiệm thu quality contract chưa đạt ở sha đã staged"
+
+
 @dataclass(frozen=True)
 class QualityEvidence:
     """Bằng chứng tại thời điểm mở gate. `None` ở một trường = không có bằng chứng đó (⇒ khoảng trống)."""
@@ -76,6 +82,12 @@ class QualityEvidence:
     had_incident: bool
     release_approved: bool
     production_deploy: Mapping[str, Any] | None
+    #: R6 (ADR gốc 0021 §f): `(run_id, trạng thái quality:accept, candidate_sha)` của mọi run có ticket trong release.
+    product_quality: ProductQuality = ()
+    #: R6 (quyết định 3): ticket của dự án có profile nằm ngoài mọi run — không ai nghiệm thu nó.
+    quality_unrun: tuple[str, ...] = ()
+    #: R6: không đọc được journal (hỏng thì đóng) — thông điệp lỗi, `None` = đọc được hoặc không cần đọc.
+    quality_error: str | None = None
 
 
 def _machine_ok_at(d: Mapping[str, Any] | None, sha: str | None) -> bool:
@@ -104,6 +116,18 @@ def _release_gaps(ev: QualityEvidence, bar: QualityBar) -> list[str]:
         gaps.append(f"R4: finding đã được người miễn ({', '.join(ev.waived)}) — máy không thừa hưởng quyết định đó")
     if ev.had_incident:
         gaps.append("R5: release này từng có escalation/quyết định khác approve — việc của người")
+    return gaps + _quality_gaps(ev)
+
+
+def _quality_gaps(ev: QualityEvidence) -> list[str]:
+    """R6: chỉ `succeeded` ở ĐÚNG sha đã staged mới không là khoảng trống (quyết định 5: sha đổi sau khi đạt ⇒ chặn)."""
+    gaps = [f"{R6} (journal: {ev.quality_error})"] if ev.quality_error is not None else []
+    for run_id, status, sha in ev.product_quality:
+        if status != "succeeded":
+            gaps.append(f"{R6} ({run_id}: quality:accept={status!r})")
+        elif sha is None or sha != ev.staged_sha:
+            gaps.append(f"{R6} ({run_id}: đạt ở {sha!r}, sha đã staged là {ev.staged_sha!r})")
+    gaps += [f"{R6} ({tid}: ticket của dự án có profile không thuộc run nào)" for tid in ev.quality_unrun]
     return gaps
 
 
@@ -168,13 +192,15 @@ class _Gate(Protocol):
 
 
 def collect_evidence(bus: _Replayable, kind: str, rid: str, *, tickets: Iterable[str], needs_security: bool,
-                     waived: Iterable[str], history: Iterable[_Gate]) -> QualityEvidence:
+                     waived: Iterable[str], history: Iterable[_Gate],
+                     quality: Callable[[], ReleaseQuality] | None = None) -> QualityEvidence:
     """Dựng `QualityEvidence` cho gate `kind` của release `rid` từ bus — bản MỚI NHẤT của mỗi nguồn.
 
     Nguồn nào thiếu thì trường đó là `None`/rỗng (⇒ `floor_gaps` báo khoảng trống), không bao giờ điền giá trị
     mặc định "cho có". `release.staged` chỉ tin khi actor là `orchestrator` (audit-log là topic mở: agent ghi được
     một dòng cùng tên với sha tuỳ ý). `tickets`/`needs_security`/`waived` do `DeliveryLead` giữ; `history` là
-    `gate.history` — cả ba đều đã có sẵn ở nơi gọi, không đọc lại từ bus.
+    `gate.history` — cả ba đều đã có sẵn ở nơi gọi, không đọc lại từ bus. `quality` (R6) đọc journal quality chỉ
+    khi được gọi; nó ném lỗi ⇒ `quality_error` (hỏng thì đóng), không để lỗi đọc journal thành "không có run nào".
     # no-ky-thuat: quét tuyến tính audit-log + review-results + release-events mỗi lần mở gate release/nghiệm thu, ổn tới ~50k event audit, quay lại khi mở gate chậm quá 1s trên company.sqlite thật
     """
     staged: str | None = None; run: dict[str, Any] | None = None
@@ -208,6 +234,12 @@ def collect_evidence(bus: _Replayable, kind: str, rid: str, *, tickets: Iterable
         src = str(env.payload.get("source"))
         if env.causation_id is not None and env.causation_id in causes.get(src, set()):
             verdicts[src] = str(env.payload.get("verdict"))
+    runs: ProductQuality = (); unrun: tuple[str, ...] = (); qerr: str | None = None
+    if quality is not None:
+        try:
+            runs, unrun = quality()
+        except Exception as e:  # mọi lỗi đọc journal đều phải thành R6, không bao giờ thành "đạt"
+            qerr = f"{type(e).__name__}: {str(e)[:200]}"
     subjects = {rid, f"UAT-{rid}"}
     gates = [g for g in history if g.subject_id in subjects and g.decision != "pending"]
     return QualityEvidence(
@@ -218,4 +250,5 @@ def collect_evidence(bus: _Replayable, kind: str, rid: str, *, tickets: Iterable
         had_incident=any(g.kind == "escalation" or g.decision != "approve" for g in gates),
         release_approved=any(g.subject_id == rid and g.kind == "release" and g.decision == "approve" for g in gates),
         production_deploy=deploys.get("production"),
+        product_quality=runs, quality_unrun=unrun, quality_error=qerr,
     )

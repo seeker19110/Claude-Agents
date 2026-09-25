@@ -50,6 +50,7 @@ import sys
 import threading
 from collections import Counter
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -72,6 +73,7 @@ from .orch.guards import _dict_of, pending_clarifications
 from .orch.guards import _has_dispute as _has_dispute
 from .orch.guards import _test_scope_ok as _test_scope_ok
 from .orch.quality_flow import QualityPin, TrustedDriver
+from .orch.quality_release import release_quality
 from .orch.review_source import enforce_source as enforce_source
 
 # Không dùng trong file này nhưng là hợp đồng công khai của module (gate_brief.py, test) — giữ re-export tường
@@ -207,6 +209,7 @@ class Orchestrator:
         self.gate = PersistentGate(bus, approvers=gate_approvers())
         self.lead = DeliveryLead(bus, self.gate, max_retries=max_retries, batch_releases=batch_releases)
         self.lead.require_integration = self.integration is not None
+        self.lead.quality_source = partial(release_quality, self)  # R6 (ADR gốc 0021 §f): chỉ đọc journal
         budget_usd = project_budget_usd if project_budget_usd is not None else getattr(client, "budget_usd", None)
         # ADR-0032: ngưỡng "nợ kiến trúc treo" cấu hình cùng chỗ với trần ngân sách (llm.yaml `debt_reviews`).
         self.supervisor = Supervisor(bus, max_retries=max_retries, project_budget_usd=budget_usd,
