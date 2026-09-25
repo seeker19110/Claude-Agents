@@ -36,9 +36,9 @@ thay kế hoạch H3–H7 của ADR-0017.
 | Mã | Việc | Mảng | Hạng mục | Mức | Ưu | Nhược | Khi nào |
 |---|---|---|---|---|---|---|---|
 | P0 | pr-policy chặn DoD và khối xác thực còn `- [ ]`; rút gọn đoạn trong `AGENTS.md` | ci/docs | pe2-quytrinh | C1 | Rẻ, chặn lặp lại P2 của #335 | PR cũ đang mở phải sửa thân | xong #337 |
-| P1 | CAS tự đếm từ snapshot; `append` thành `_append_unchecked` kèm alias deprecated; test cổng cấm `src/` gọi `append` | core/company | pe2-cung | C2 | Bỏ lệ thuộc kỷ luật caller | Đổi chữ ký công khai (giữ tương thích một vòng) | ◐ PR #PR |
-| P2 | `QualityTarget.check_id`; `evidence_policy` có trần trong profile; `POLICY_VERSION` `/3` chỉ khi có trường mới | company | pe2-cung | C2 | Target đúng driver; policy theo rủi ro | Thêm trường schema | ◐ PR #PR |
-| P3 | Ready thật: người duyệt không phải tác giả, `approved_at` hợp lệ, băm lại spec, `ApprovalLookup` | company | pe2-cung | C2 | Ready có nghĩa thật | Cần coordinator cấp lookup | ◐ PR #PR |
+| P1 | CAS tự đếm từ snapshot; `append` thành `_append_unchecked` kèm alias deprecated; test cổng cấm `src/` gọi `append` | core/company | pe2-cung | C2 | Bỏ lệ thuộc kỷ luật caller | Đổi chữ ký công khai (giữ tương thích một vòng) | ◐ PR #338 |
+| P2 | `QualityTarget.check_id`; `evidence_policy` có trần trong profile; `POLICY_VERSION` `/3` chỉ khi có trường mới | company | pe2-cung | C2 | Target đúng driver; policy theo rủi ro | Thêm trường schema | ◐ PR #338 |
+| P3 | Ready thật: người duyệt không phải tác giả, `approved_at` hợp lệ, băm lại spec, `ApprovalLookup` | company | pe2-cung | C2 | Ready có nghĩa thật | Cần coordinator cấp lookup | ◐ PR #338 |
 | K1 | ADR gốc 0020: chữ ký bất đối xứng, xoay khoá, lộ trình HMAC | docs | pe2-ky | C3 | Quyết định dependency trước code | Viết ADR tốn một vòng | chưa |
 | K2 | Ed25519 + `key_id` + `not_after`; registry chỉ chứa public key; HMAC chỉ cho contract ghim `legacy_hmac` | company | pe2-ky | C3 | Verifier hết ký giả được | Thêm dependency `cryptography` | chưa |
 | N1 | ADR gốc 0021 và orchestrator: đăng ký RunSpec khi ticket có profile, giao `quality:accept` cho trusted driver, CLI `commit` | company | pe2-noi | C3 | Adapter có giá trị thật | Đụng runtime, rủi ro hồi quy | chưa |
