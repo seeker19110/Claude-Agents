@@ -1,0 +1,91 @@
+# Product excellence — tích hợp đúng Claude-Agents
+
+Ngày 2026-09-25 · căn cứ `main@b84dcb76b9085a686dafae97f47c988ac872446a` (#334).
+Một hạng mục, hai package (company + core); đây là kế hoạch tích hợp contract, không thay kế hoạch H3–H7.
+
+## A. Hiện trạng
+
+Repo đích là `seeker19110/Claude-Agents`. Không dùng PR #113 của repo `X-Agents` làm bằng chứng đã tích hợp.
+Workspace/6 agent/sàn tự duyệt/kernel đã tồn tại; giữ chúng. Profile sản phẩm và adapter exact-context còn thiếu.
+
+| Đề bài cần | Đã có ở base | Việc |
+|---|---|---|
+| Core giữ state | `platform/xagents-core/src/xagents_core/execution.py:140–204,424–498`, RunSpec/journal | Q2 nối, không fork |
+| Chất lượng trước tự duyệt | `companies/software-company/src/company/quality_floor.py:108–123` | Giữ sàn ADR-0043, không auto-bypass |
+| Layout/UI/UX theo dự án/ngành | Skills hiện có; chưa có ProjectProfile/DesignBrief máy kiểm trong kernel adapter | Q1 |
+| Một lệnh đi hết quy trình | `.claude/commands/thi-hanh.md:1–66`, state A–F hiện hành | Q3 nối entrypoint |
+| Lỗi init journal không rò kết nối | `execution.py:424–430` trước sửa: PRAGMA/DDL không cleanup lỗi | Q4, hai test SQLite thật |
+
+Số dòng tham chiếu base là điểm bắt đầu đọc, không thay đọc toàn hàm. ADR-0017 nói rõ H1/H2 foundation,
+không coi còn đủ H3/H4/H5/H6/H7 hoặc driver browser/restore đã được triển khai.
+
+## B. Kế hoạch
+
+| Mã | Việc | Mảng | Hạng mục | Mức | Lợi ích / đánh đổi | Khi nào |
+|---|---|---|---|---|---|---|
+| Q1 | Profile, design, policy và receipt checker | company | product-excellence | C2 | Chuẩn rõ, cần trusted driver cung cấp bằng chứng | Đã có trong PR #335; chờ CI/review |
+| Q2 | RunSpec/TaskResult/journal adapter | company/core API | product-excellence | C3 | Tái dùng kernel, chưa thay worker/scheduler | PR #335; native replay đạt, chờ CI/review |
+| Q3 | Command, charter, indexes và bản ghi tích hợp | docs | product-excellence | C1 | Một đường vào, thêm tài liệu cần giữ đồng bộ | PR #335; command/README guards đạt |
+| Q4 | Cleanup journal init thất bại | core | product-excellence | C2 | Không rò connection, giữ nguyên lỗi/schema | PR #335; hai test đỏ → xanh, core 544 đạt |
+
+Cố ý không làm: đổi 6 prompt/golden/eval; bật cờ tự duyệt; cấp quyền production; scheduler/lease/bridge H7
+thứ hai; chứng nhận ngành giả; dùng fixture receipt làm bằng chứng sản phẩm. Không migration run đang hoạt động.
+Rủi ro chính: caller không đáng tin có thể tự truyền pins/registry — adapter phải nằm sau coordinator cách ly,
+không dùng nó như chứng nhận tự chủ hoặc security boundary hoàn chỉnh.
+
+## C. Gói việc
+
+### Q1 — domain quality
+1. Mục tiêu: contract theo goal, ngành, bề mặt, acceptance, target và Design Brief.
+2. Scope: `company/product_quality.py`, test tương ứng và ví dụ; không sửa collector/runtime hiện tại.
+3. Input: profile do director dựng, context/candidate/author/registry do coordinator giữ.
+4. Output: contract hash + required checks + Assessment; không grant authority.
+5. API: `compile_contract(profile)`, `required_checks(profile)`, `assess(profile, receipts, **pins)`.
+6. Bất biến: missing/unknown/fail/stale/self-approval/artifact đổi → không pass; không nới ngưỡng.
+7. Test: 84 ca kể cả CLI và key path; 100% line/branch. PR `feat(company): product excellence — native execution quality adapter`.
+
+### Q2 — native execution
+1. Mục tiêu: không tạo DAG/state/journal thứ hai.
+2. Scope: `company/quality_execution.py`, tests, work spec ví dụ.
+3. Input: `xagents_core.execution.RunSpec` gốc + profile; native TaskResult + trusted pins.
+4. Output: graph giữ scope có task quality cuối; TaskResult đã đánh giá; CLI plan/register/status.
+5. API: `compile_execution(profile, work) -> RunSpec`, `evaluate_result(...) -> TaskResult`.
+6. Bất biến: không tự append success; pin/attempt/base/head/diff không khớp → fail; lặp register không nhân run.
+7. Test: 30 ca; thực thi core journal restart và retry, không replay implementation đã xong. Chung PR Q1.
+
+### Q3 — main-session contract
+1. Mục tiêu: một goal, hợp đồng chất lượng đúng ngành, không đòi người dùng điền technical profile.
+2. Scope: `.claude/commands/product-goal.md`, liên kết `/thi-hanh`, charter, README/CODEMAP/AGENTS/CLAUDE.
+3. Input: goal của chủ dự án, constraints/quyền và quyết định đã có.
+4. Output: A–F + profile + evidence plan; state hiện hành không đổi trước H7.
+5. Giao diện: `/product-goal <mã> <mục tiêu>`; không che `/goal` native.
+6. Bất biến: không claim daemon, không giả user research, không coi CI xanh là UX đẹp/đúng.
+7. Test: cổng command frontmatter/path hiện có + readme counts; kiểm diff chỉ thêm đúng phạm vi. Chung PR Q1.
+
+### Q4 — initialization failure
+1. Mục tiêu: constructor SQLite lỗi không để connection sống.
+2. Scope: init ExecutionJournal và một test file core; không đổi journal schema hoặc success transition.
+3. Input: DB hỏng bytes hoặc execution_events schema hỏng.
+4. Output: giữ SQLite exception, connection bị đóng.
+5. Code: `try PRAGMA/DDL; except sqlite3.Error: close(); raise`.
+6. Bất biến: happy path/replay không đổi; không nuốt lỗi và không fake success.
+7. Test: 2 ca SQLite thật đỏ trước sửa; toàn core 544 đạt, 100% dòng/nhánh. Chung PR Q1 vì được phát hiện khi nối adapter.
+
+## D. Điều phối
+
+Q1 → Q2; Q3 độc lập khi API đã chốt; Q4 phát hiện từ integration test. Một PR cho cả hạng mục.
+Phiên ChatGPT này không có công cụ spawn subagent thực thi; không ghi review độc lập giả. Test và đọc diff
+đã làm trực tiếp; review độc lập vẫn là điều kiện trước merge. Không ép người dùng chạy lại bản tích hợp từ đầu.
+
+## E. Kiểm chứng và phần còn lại
+
+Core local: 544/544, 100% dòng/nhánh. Company đã collect 1569 ca; riêng modules mới + quality_floor cũ:
+158 ca đạt, 100% hai module mới. Một test integration cũ fail giống hệt khi chạy base và nhánh mới trong
+môi trường thiếu toolchain đầy đủ. Full company local bị timeout; không gọi đó là toàn suite đạt.
+Kết quả CI trên đúng SHA của PR là cổng độc lập và phải được cập nhật vào session/PR.
+
+## F. Lệnh thi hành
+
+`/thi-hanh productexcellence` — đọc bảng B/PR trước, tiếp phần chưa hoàn tất; không tạo lại Q1–Q4 đã có.
+`/thi-hanh productexcellence --dung-sau-ke-hoach` — chỉ đọc trạng thái. Nâng H3–H7 theo ADR-0017, không
+coi lệnh này tự cài worker daemon, driver browser, quyền deploy hoặc khóa ký.
