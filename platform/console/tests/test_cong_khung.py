@@ -26,6 +26,7 @@ DEV_TASK = ROOT / "scripts" / "dev-task.sh"
 HOOKS = ROOT / ".claude" / "hooks"
 SETTINGS = ROOT / ".claude" / "settings.json"
 
+
 def _bash_chay_duoc(ung_vien: str) -> bool:
     """Thử THẬT: viết một script vào thư mục tạm rồi bảo `ung_vien` chạy nó bằng đúng đường dẫn hệ điều hành.
 
@@ -36,8 +37,9 @@ def _bash_chay_duoc(ung_vien: str) -> bool:
         s = Path(d) / "probe.sh"
         s.write_text("echo ok\n", encoding="utf-8")
         try:
-            kq = subprocess.run([ung_vien, str(s)], capture_output=True, text=True,
-                                encoding="utf-8", errors="replace", timeout=30)
+            kq = subprocess.run(
+                [ung_vien, str(s)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30
+            )
         except (OSError, subprocess.SubprocessError):
             return False
         return kq.returncode == 0 and "ok" in kq.stdout
@@ -60,8 +62,9 @@ def _tim_bash() -> str | None:
         ung_vien.append(b)
     if os.name == "nt":
         try:
-            ep = subprocess.run(["git", "--exec-path"], capture_output=True, text=True,
-                                check=True, timeout=30).stdout.strip()
+            ep = subprocess.run(
+                ["git", "--exec-path"], capture_output=True, text=True, check=True, timeout=30
+            ).stdout.strip()
         except (OSError, subprocess.SubprocessError):
             ep = ""
         if ep:
@@ -91,8 +94,8 @@ def _chay(script: Path, *args: str, stdin: str = "", **moi_truong: str) -> subpr
         input=stdin,
         capture_output=True,
         text=True,
-        encoding='utf-8',
-        errors='replace',   # hook in tiếng Việt ra stderr; mặc định Windows là cp1252 → vỡ, stderr thành None
+        encoding="utf-8",
+        errors="replace",  # hook in tiếng Việt ra stderr; mặc định Windows là cp1252 → vỡ, stderr thành None
         env=env,
         cwd=ROOT,
     )
@@ -211,6 +214,10 @@ CHAN_GIT = HOOKS / "block-dangerous-git.sh"
         "git merge --abort",
         "git rebase --abort",
         "git cherry-pick --abort",
+        # tách theo đoạn lệnh không được làm lọt push vào main nằm ở đoạn sau
+        "git status && git push origin main",
+        "git push origin feat-x; git push origin main",
+        "git fetch | git push -f origin main",
     ],
 )
 def test_chan_git_chan_dung_khuon_cam(cmd: str) -> None:
@@ -229,6 +236,9 @@ def test_chan_git_chan_dung_khuon_cam(cmd: str) -> None:
         "git commit -m 'nói về git reset --hard trong message'",
         "echo 'git push origin main'",
         "git diff main...HEAD",
+        # đo được 2026-09-26: `main` ở lệnh KHÁC trong cùng dòng (đích PR của gh) bị đọc thành đích push
+        "git push -u origin feat-x && gh pr create --base main --title t",
+        "git push origin feat-x || git log main",
     ],
 )
 def test_chan_git_khong_chan_oan(cmd: str) -> None:
@@ -263,8 +273,8 @@ def _cong(cmd: str, kho: Path, _cwd: str | None = None, **env: str) -> subproces
         input=_payload(cmd),
         capture_output=True,
         text=True,
-        encoding='utf-8',
-        errors='replace',
+        encoding="utf-8",
+        errors="replace",
         env={**os.environ, "CLAUDE_PROJECT_DIR": str(kho), "DEV_TASK_DRY_RUN": "1", **env},
         cwd=cwd,
     )
@@ -428,12 +438,7 @@ def test_auto_format_khong_bao_gio_can_luong() -> None:
 def test_moi_hook_khai_trong_settings_ton_tai_that() -> None:
     """Hook trỏ sai đường dẫn = cổng chết im lặng, đúng khuôn lỗi `test_cong_repo.py` canh."""
     cfg = json.loads(SETTINGS.read_text(encoding="utf-8"))
-    lenh = [
-        h["command"]
-        for nhom in cfg.get("hooks", {}).values()
-        for muc in nhom
-        for h in muc["hooks"]
-    ]
+    lenh = [h["command"] for nhom in cfg.get("hooks", {}).values() for muc in nhom for h in muc["hooks"]]
     assert lenh, "settings.json chưa nối hook nào — hàng rào không được bật"
     for mot_lenh in lenh:
         duong_dan = mot_lenh.replace("${CLAUDE_PROJECT_DIR}/", "").split()[0]
@@ -518,4 +523,5 @@ def test_bash_duoc_chon_chay_duoc_script_theo_duong_dan_repo(tmp_path: Path) -> 
     assert BASH is not None
     kq = subprocess.run([BASH, str(script)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert kq.returncode == 0 and "CHAY_DUOC" in kq.stdout, (
-        f"bash được chọn ({BASH}) không chạy nổi script ở {script}: rc={kq.returncode} err={kq.stderr!r}")
+        f"bash được chọn ({BASH}) không chạy nổi script ở {script}: rc={kq.returncode} err={kq.stderr!r}"
+    )
