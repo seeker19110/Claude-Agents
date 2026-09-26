@@ -131,7 +131,7 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
             o.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=resume_actor(by),
                                       payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
             res.actions.append(f"release_waived:{tid}:{','.join(sources)}")
-            if o._rerun_release(tid, by, reason, res): res.actions.append(f"release_rerun:{tid}")
+            if o._rerun_release(tid, by, reason, res) or o._retry_unhandled(tid, by, reason): res.actions.append(f"release_rerun:{tid}")
         elif o._superseded_release(tid):
             # RC cũ mà nội dung đã nằm trong một bản GIAO sau nó (nhánh tích hợp cộng dồn): "đóng" là huỷ RC,
             # KHÔNG trả ticket đã giao về làm lại. Đo được 2026-09-06: sau bản giao v0.15.1, 10 RC cũ
@@ -178,7 +178,8 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
             res.actions.append(f"closed:{tid}")
         return
     if decision == "approve":  # mở lại với hint = lý do người duyệt, cấp thêm một ngân sách ticket
-        b = o.supervisor.budgets.get(tid); t = o.lead.tickets.get(tid)
+        # `dispatched` + event `tasks` bị bỏ (`_mark_unhandled`, vd transient quá trần) → chạy lại đúng event đó (TCK-012, 2026-09-26)
+        retry = o.lead.state.get(tid) == "dispatched" and tid in o.unhandled; b = o.supervisor.budgets.get(tid); t = o.lead.tickets.get(tid)
         if b and t:
             b.limit = max(b.limit, b.used) + t.budget_tokens
             o._audit("budget.extended", {"ticket_id": tid, "limit": b.limit, "by": by}, ticket_id=tid)
@@ -196,7 +197,7 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
             o.lead.reopen(tid, hint=reason or "người duyệt mở lại sau escalation")
         o.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=resume_actor(by),
                                   payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
-        res.actions.append(f"reopen:{tid}")
+        res.actions.append(f"retry:{tid}" if retry and o._retry_unhandled(tid, by, reason) else f"reopen:{tid}")
         # Escalation vì một REVIEW AGENT lỗi (không phải assignee): ticket vẫn `in_review`, event PR đã bị đánh dấu
         # xử lý, nên duyệt gate xong không có gì chạy lại review còn thiếu — ticket nằm im tới `review_timeout`
         # (2 giờ) mới được `tick` giao lại. Đo được (2026-09-05): QLKH-005/QLKH-013 duyệt xong đứng im, người
