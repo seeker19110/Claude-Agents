@@ -46,6 +46,10 @@ provider trước**, rồi mới dọn lịch sử. Đổi khóa quan trọng h�
   public key ngoài repo (`COMPANY_GATE_REVIEWER_REGISTRY`). Spec, release, nghiệm thu, nợ kiến trúc, reject/close vẫn
   là người. **Trần đã biết:** khoá bí mật là file của cùng user OS — mã khách chạy qua `SubprocessSandbox` đọc được
   (F1, ADR gốc 0023); chỉ bật reviewer cùng sandbox container.
+- **Phạm vi `rong`** (ADR gốc 0025, `COMPANY_GATE_REVIEWER_SCOPE=rong`, chủ dự án chọn 2026-09-26): reviewer (phiên
+  chính, `reviewer:phien-chinh`) `approve`/`reject` mọi gate trừ `spec`, không trần, kể cả chấp nhận finding của release
+  và nghiệm thu thay khách. Four-eyes thực chất không còn; dấu vết vẫn trung thực (không `human:*`). Lộ khoá ở phạm vi
+  này = mã khách tự duyệt được release/nghiệm thu.
 - **Chống prompt injection** (`guard.py`, ADR-0012): dữ liệu nguồn nội bộ nghi injection thì từ chối chạy; dữ liệu
   nguồn ngoài (khách, web, diff repo khách) bị lọc đoạn khớp mẫu và ghi audit, vì không thể từ chối đọc.
 - **Quét tài sản prompt** (`company.assetscan`, ADR-0022): `guard.py` canh dữ liệu chạy qua, còn cổng này canh

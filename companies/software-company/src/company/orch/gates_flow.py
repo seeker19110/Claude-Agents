@@ -18,7 +18,8 @@ from typing import TYPE_CHECKING
 
 from ..delivery import DONE_STATES
 from ..events import Envelope
-from ..gate_risk import AUTOAPPROVE_ACTOR, request_gate
+from ..gate_reviewer import machine_acceptor
+from ..gate_risk import request_gate
 from ..gates import Decision, GateRequest
 from ..roles import LEAD_ACTOR, ROLE, resume_actor
 from .routes import ACTOR, MAX_TURN_CONTINUATIONS, PROD_ROUTE, RESEARCH_TOPICS, REVIEW_AGENT, Route, review_route
@@ -38,7 +39,7 @@ def _on_gate_decide(o: Orchestrator, env: Envelope, res: StepResult) -> StepResu
     o.escalation_decided[sid] += 1
     if kind == "escalation":
         o._on_escalation_decided(sid, decision, by, d.get("reason", ""), res)
-    elif kind == "acceptance" and decision == "approve" and env.actor == AUTOAPPROVE_ACTOR:  # actor do bus kiểm, không `by` tự khai
+    elif kind == "acceptance" and decision == "approve" and machine_acceptor(env.actor):  # actor do bus kiểm, không `by` tự khai
         # ADR-0043 §3: máy nghiệm thu — đóng ticket ở đây vì không có `acceptance-results` nào kéo theo; audit
         # `acceptance.auto` là thứ `_rehydrate` dựng lại sau restart (trạng thái ticket không được chỉ sống trong RAM).
         rid = sid.removeprefix(o.gate.UAT_PREFIX or "")
@@ -237,7 +238,7 @@ def _customer_overrides_auto(o: Orchestrator, env: Envelope, rid: str, sid: str,
     lặng nuốt: ghi `acceptance.overridden` và mở gate `escalation` cho người quyết làm lại hay chấp nhận."""
     if env.payload.get("verdict") == "accepted": return
     last = next((g for g in reversed(o.gate.history) if g.subject_id == sid), None)
-    if last is None or last.decided_by != AUTOAPPROVE_ACTOR or rid in o.gate.pending: return
+    if last is None or not machine_acceptor(last.decided_by or "") or rid in o.gate.pending: return
     o._audit("acceptance.overridden", {"release_id": rid, "verdict": env.payload.get("verdict"),
                                        "signed_by": env.payload.get("signed_by")})
     request_gate(o.gate, GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,

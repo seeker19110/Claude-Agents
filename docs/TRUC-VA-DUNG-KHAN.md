@@ -153,6 +153,11 @@ Rồi mở **một phiên Claude mới** (không phải phiên đang điều ph�
 `COMPANY_GATE_REVIEWER` — tắt rồi mở lại tiến trình thì quyết định cũ của reviewer không được áp, gate hiện lại
 chờ người (hỏng thì đóng). Thu hồi khoá: đặt `not_after` về hiện tại trong registry.
 
+**Phạm vi `rong`** (ADR gốc 0025 — phiên chính quyết mọi gate trừ spec): thêm `COMPANY_GATE_REVIEWER_SCOPE=rong` vào
+env của CẢ orchestrator lẫn phiên ký, khoá `init-key --id phien-chinh`. Phiên chính chạy `/gate-review` và ký
+`gate_reviewer decide <subject> --id phien-chinh [--decision reject] ...`. Dừng: bỏ biến rồi mở lại orchestrator —
+quyết định ngoài S2 của reviewer không còn được áp, các gate đó hiện lại chờ người.
+
 ### Giới hạn đã biết (đừng trông chờ những thứ này)
 
 - **Không thu hồi thông tin xác thực.** Gói đăng ký / khoá API vẫn dùng được sau khi pause. Nghi rò rỉ

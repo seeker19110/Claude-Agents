@@ -118,11 +118,12 @@ class PersistentGate(CorePersistentGate[Envelope, AuditLog], HumanGate):
         # `request_cls=GateRequest` (company) ⇒ phần tử trả về là GateRequest của company; core khai lớp cơ sở.
         return cast(GateRequest, super().decide(subject_id, decision, by=by, reason=reason, actor=actor, enforce=enforce))
 
-    def decide_signed(self, subject_id: str, by: str, reason: str, signed: dict[str, Any]) -> GateRequest:
-        """`approve` của reviewer (ADR gốc 0024): như `decide`, nhưng bản ghi mang các trường chữ ký — đường ghi của
+    def decide_signed(self, subject_id: str, by: str, reason: str, signed: dict[str, Any],
+                      decision: str = "approve") -> GateRequest:
+        """Quyết định của reviewer (ADR gốc 0024; `reject` chỉ phạm vi `rong`, ADR gốc 0025): như `decide`, nhưng bản ghi mang các trường chữ ký — đường ghi của
         core chỉ có bốn trường. Chỉ `gate_reviewer.decide` gọi, sau khi đã tự kiểm bằng nhánh tin cậy."""
-        r = cast(GateRequest, super(CorePersistentGate, self).decide(subject_id, "approve", by=by, reason=reason))
-        self._log(by, "gate.decide", {"subject_id": subject_id, "decision": "approve", "by": by, "reason": reason,
+        r = cast(GateRequest, super(CorePersistentGate, self).decide(subject_id, decision, by=by, reason=reason))
+        self._log(by, "gate.decide", {"subject_id": subject_id, "decision": decision, "by": by, "reason": reason,
                                       **signed}, by=by)
         return r
 

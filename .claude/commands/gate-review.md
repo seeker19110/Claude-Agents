@@ -45,8 +45,20 @@ không đủ, thì **để nguyên cho người**. "Không quyết" là một k�
    là kết quả, không phải lỗi để lách.** Đừng thử lại bằng tham số khác.
 5. **Báo cáo**: với mỗi gate đã xét, in ra một dòng `subject — approve | để cho người — lý do một câu`.
 
+## Phạm vi `rong` (ADR gốc 0025) — khi `COMPANY_GATE_REVIEWER_SCOPE=rong`
+
+Chủ dự án giao phiên chính quyết mọi gate trừ duyệt spec. Khi biến này bật:
+- Điều kiện 1 ("phiên mới") **không áp**: phiên chính được chạy skill này, ký `--id phien-chinh`.
+- Xét **mọi** gate trong `gate_cli list` trừ `spec`: `escalation` (kể cả `REL-*`, nợ kiến trúc), `release`,
+  `acceptance`. Không trần số lần.
+- Được `--decision reject`. Quyết theo hồ sơ: bằng chứng đạt → `approve`; lỗi thật trong sản phẩm cần sửa →
+  `reject` với hint cụ thể; không đủ bằng chứng để quyết bên nào → để nguyên, báo người.
+- Lý do vẫn phải có `root_cause`/`decision`/`hint`. Chấp nhận rủi ro (license, finding security) thì ghi rõ rủi ro
+  gì đã được chấp nhận trong `root_cause` — người đọc sau phải thấy máy đã chấp nhận cái gì.
+
 ## Không bao giờ
 
 - Ký bằng `human:*`, hay gõ `gate_cli approve` (đó là cửa của người).
 - Sửa registry, khoá, cờ, hoặc bất kỳ file nào của repo.
-- Quyết gate mà chính phiên này đã góp phần tạo ra nguyên nhân hoặc hint.
+- Quyết gate mà chính phiên này đã góp phần tạo ra nguyên nhân hoặc hint (trừ phạm vi `rong` ở trên).
+- Quyết gate `spec`, ở bất kỳ phạm vi nào.

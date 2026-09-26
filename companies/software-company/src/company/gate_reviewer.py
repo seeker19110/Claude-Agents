@@ -32,6 +32,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 
 from .bus import REVIEWER_PREFIX
 from .events import AuditLog, Envelope
+from .gate_risk import AUTOAPPROVE_ACTOR
 from .gates import GateRequest
 from .product_quality import IssuerKey
 
@@ -39,6 +40,8 @@ if TYPE_CHECKING:
     from .gate_cli import PersistentGate
 
 FLAG_ENV = "COMPANY_GATE_REVIEWER"
+SCOPE_ENV = "COMPANY_GATE_REVIEWER_SCOPE"
+SCOPE_RONG = "rong"  # ADR gốc 0025: mọi gate trừ `spec`, approve lẫn reject, không trần
 REGISTRY_ENV = "COMPANY_GATE_REVIEWER_REGISTRY"
 PREFIX = REVIEWER_PREFIX
 DEFAULT_REGISTRY = Path.home() / ".config" / "xagents" / "gate-reviewers.json"
@@ -52,6 +55,17 @@ _NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 
 def enabled() -> bool:
     return os.environ.get(FLAG_ENV, "").strip().lower() in {"1", "true", "yes"}
+
+
+def scope_rong() -> bool:
+    """Phạm vi ADR gốc 0025, đọc lại mỗi lần như cờ: bỏ biến là quyết định ngoài S2 thôi được tin khi replay."""
+    return os.environ.get(SCOPE_ENV, "").strip().lower() == SCOPE_RONG
+
+
+def machine_acceptor(actor: str) -> bool:
+    """Actor máy được đóng gate nghiệm thu thay khách: sàn ADR-0043 hoặc reviewer (chỉ phạm vi `rong` mới tới được
+    gate `acceptance` — `refusal`). Chỉ gọi trên envelope đã qua nhánh tin cậy (scheduler lọc `gate.decide` giả)."""
+    return actor == AUTOAPPROVE_ACTOR or actor.startswith(PREFIX)
 
 
 def registry_path() -> Path:
@@ -159,6 +173,10 @@ def sign_decision(
 
 def refusal(req: GateRequest, history: list[GateRequest], decision: object) -> str:
     """Lý do reviewer KHÔNG được quyết gate này; "" = trong phạm vi. Một chỗ cho cả chiều ghi (CLI) và chiều tin."""
+    if scope_rong():  # ADR gốc 0025: chủ dự án giữ lại đúng một quyết định — duyệt spec
+        if decision not in {"approve", "reject"}:
+            return f"ngoài phạm vi: decision {decision!r} — reviewer chỉ approve/reject"
+        return "ngoài phạm vi: spec luôn là của người (ADR gốc 0025)" if req.kind == "spec" else ""
     if decision != "approve":
         return "ngoài phạm vi: reviewer chỉ approve (mở lại/chạy lại); reject/close là của người"
     if (
@@ -214,8 +232,16 @@ def trusted_reviewer(
     return d
 
 
-def decide(gate: PersistentGate, subject_id: str, principal: str, reason: str, key: Path, brief: Path) -> GateRequest:
-    """Ký và ghi `approve` của reviewer. Tự kiểm lại bằng chính nhánh tin cậy TRƯỚC khi ghi: ghi một quyết định mà
+def decide(
+    gate: PersistentGate,
+    subject_id: str,
+    principal: str,
+    reason: str,
+    key: Path,
+    brief: Path,
+    decision: str = "approve",
+) -> GateRequest:
+    """Ký và ghi quyết định của reviewer (`reject` chỉ trong phạm vi `rong`). Tự kiểm lại bằng chính nhánh tin cậy TRƯỚC khi ghi: ghi một quyết định mà
     orchestrator sẽ không tin thì gate đóng ở tiến trình này mà vẫn chờ ở mọi tiến trình khác."""
     if not principal.startswith(PREFIX):
         raise ValueError(f"actor của reviewer phải mang tiền tố {PREFIX!r} (không ký dưới tên người)")
@@ -227,18 +253,18 @@ def decide(gate: PersistentGate, subject_id: str, principal: str, reason: str, k
     req = gate.pending.get(subject_id)
     if req is None:
         raise KeyError(f"{subject_id}: không có gate đang chờ")
-    if why := refusal(req, gate.history, "approve"):
+    if why := refusal(req, gate.history, decision):
         raise PermissionError(why)
     signed = sign_decision(
         subject_id,
-        "approve",
+        decision,
         principal,
         reason,
         generation_of(req),
         hashlib.sha256(brief.read_bytes()).hexdigest(),
         load_private_key(key),
     )
-    data = {"subject_id": subject_id, "decision": "approve", "by": principal, "reason": reason, **signed}
+    data = {"subject_id": subject_id, "decision": decision, "by": principal, "reason": reason, **signed}
     env = Envelope(
         topic="audit-log",
         key=principal,
@@ -249,7 +275,7 @@ def decide(gate: PersistentGate, subject_id: str, principal: str, reason: str, k
     )
     if trusted_reviewer(env, req, gate.history) is None:
         raise PermissionError(f"chữ ký không qua registry {registry_path()} (khoá lạ, hết hạn, hoặc registry khác)")
-    return gate.decide_signed(subject_id, principal, reason, signed)
+    return gate.decide_signed(subject_id, principal, reason, signed, decision)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -261,8 +287,9 @@ def main(argv: list[str] | None = None) -> int:
     k.add_argument("--registry", type=Path, default=None)
     k.add_argument("--key-dir", type=Path, default=DEFAULT_KEY_DIR)
     k.add_argument("--days", type=int, default=90)
-    d = sub.add_parser("decide", help="approve một gate escalation trong phạm vi, có chữ ký")
+    d = sub.add_parser("decide", help="quyết một gate trong phạm vi, có chữ ký")
     d.add_argument("subject_id")
+    d.add_argument("--decision", choices=("approve", "reject"), default="approve")
     d.add_argument("--id", required=True)
     d.add_argument("--reason", required=True)
     d.add_argument("--key", type=Path, default=None)
@@ -278,13 +305,13 @@ def main(argv: list[str] | None = None) -> int:
     bus = SQLiteBus(ns.db)
     try:
         key = ns.key or DEFAULT_KEY_DIR / f"{_principal(ns.id).removeprefix(PREFIX)}.pem"
-        decide(PersistentGate(bus), ns.subject_id, _principal(ns.id), ns.reason, key, ns.brief)
+        decide(PersistentGate(bus), ns.subject_id, _principal(ns.id), ns.reason, key, ns.brief, ns.decision)
     except (KeyError, PermissionError, ValueError, OSError) as e:
         print(f"từ chối: {e}", file=sys.stderr)
         return 1
     finally:
         bus.close()
-    print(f"{ns.subject_id}: approve bởi {_principal(ns.id)} (có chữ ký)")
+    print(f"{ns.subject_id}: {ns.decision} bởi {_principal(ns.id)} (có chữ ký)")
     return 0
 
 
