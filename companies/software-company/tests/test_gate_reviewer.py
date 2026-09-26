@@ -334,6 +334,7 @@ def test_cli_init_key_roi_decide_tren_bus_that(tmp_path, monkeypatch, capsys):
 
 # ---------- đường hỏng: không tin, không ghi ----------
 
+
 def test_ten_reviewer_khong_hop_le(tmp_path):
     with pytest.raises(ValueError, match="không hợp lệ"):
         gr.new_key("reviewer:Có Dấu", tmp_path / "r.json", tmp_path / "k")
@@ -351,9 +352,13 @@ def test_registry_hong_thi_khong_tin_ai(khoa, tmp_path, monkeypatch):
 def test_khoa_khong_phai_ed25519(tmp_path):
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import ec
+
     p = tmp_path / "ec.pem"
-    p.write_bytes(ec.generate_private_key(ec.SECP256R1()).private_bytes(
-        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    p.write_bytes(
+        ec.generate_private_key(ec.SECP256R1()).private_bytes(
+            serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+        )
+    )
     with pytest.raises(ValueError, match="Ed25519"):
         gr.load_private_key(p)
 
@@ -373,3 +378,15 @@ def test_decide_tu_kiem_truoc_khi_ghi_registry_lech_thi_khong_ghi(khoa, brief, t
         gr.decide(g, "T1", ID, LY_DO, khoa, brief)
     assert "T1" in g.pending
     assert not [e for e in g.bus.replay(topic="audit-log") if e.payload["action"] == "gate.decide"]
+
+
+def test_chay_duoc_bang_python_m(monkeypatch, capsys):
+    """`python -m company.gate_reviewer` là đường người trực gõ (`docs/TRUC-VA-DUNG-KHAN.md`) — chạy qua runpy để
+    dòng `__main__` thực sự thực thi, như `test_coverage_100.py::test_dunder_main_goi_main_va_thoat`."""
+    import runpy
+    import sys
+
+    monkeypatch.setattr(sys, "argv", ["gate_reviewer", "--help"])
+    with pytest.raises(SystemExit) as e:
+        runpy.run_module("company.gate_reviewer", run_name="__main__")
+    assert e.value.code == 0 and "init-key" in capsys.readouterr().out

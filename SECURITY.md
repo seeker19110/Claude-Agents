@@ -41,6 +41,11 @@ provider trước**, rồi mới dọn lịch sử. Đổi khóa quan trọng h�
 để mở ra Internet.
 
 - **Human gate**: các bước không thể hoàn tác (release, đăng video) dừng lại chờ người duyệt bằng `gate_cli`.
+- **Reviewer có chữ ký** (ADR gốc 0024, mặc định TẮT — `COMPANY_GATE_REVIEWER=1` mới bật): actor `reviewer:<id>` chỉ
+  được `approve` gate `escalation` ticket/dự án, mỗi subject một lần, và chỉ được tin khi chữ ký Ed25519 khớp registry
+  public key ngoài repo (`COMPANY_GATE_REVIEWER_REGISTRY`). Spec, release, nghiệm thu, nợ kiến trúc, reject/close vẫn
+  là người. **Trần đã biết:** khoá bí mật là file của cùng user OS — mã khách chạy qua `SubprocessSandbox` đọc được
+  (F1, ADR gốc 0023); chỉ bật reviewer cùng sandbox container.
 - **Chống prompt injection** (`guard.py`, ADR-0012): dữ liệu nguồn nội bộ nghi injection thì từ chối chạy; dữ liệu
   nguồn ngoài (khách, web, diff repo khách) bị lọc đoạn khớp mẫu và ghi audit, vì không thể từ chối đọc.
 - **Quét tài sản prompt** (`company.assetscan`, ADR-0022): `guard.py` canh dữ liệu chạy qua, còn cổng này canh
