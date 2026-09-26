@@ -120,3 +120,9 @@ BUILD_PHASES: tuple[str, ...] = (STACK.BACKEND, STACK.FRONTEND, STACK.MOBILE, ST
 Assignee = Literal["builder"]
 BuildPhase = Literal["backend", "frontend", "mobile", "database", "platform", "data"]
 ReviewSource = Literal["reviewer", "qa", "security"]
+
+
+def resume_actor(by: str) -> str:
+    """Actor phát `supervisor-actions` resume sau khi gate escalation được quyết: người thì chính người đó; reviewer
+    (ADR gốc 0024) thì supervisor — topic chỉ của supervisor/người, người quyết thật (`by`) vẫn nằm ở bản ghi `gate.decide`."""
+    return by if by == "human" or by.startswith("human:") else ROLE.SUPERVISOR

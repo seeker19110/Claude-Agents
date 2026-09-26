@@ -20,7 +20,7 @@ from ..delivery import DONE_STATES
 from ..events import Envelope
 from ..gate_risk import AUTOAPPROVE_ACTOR, request_gate
 from ..gates import Decision, GateRequest
-from ..roles import LEAD_ACTOR, ROLE
+from ..roles import LEAD_ACTOR, ROLE, resume_actor
 from .routes import ACTOR, MAX_TURN_CONTINUATIONS, PROD_ROUTE, RESEARCH_TOPICS, REVIEW_AGENT, Route, review_route
 
 if TYPE_CHECKING:
@@ -127,7 +127,7 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
         # không có code để sửa: DPIA, license...) hay đúng là lỗi code thật cần các ticket merged làm lại.
         if decision == "approve":
             sources = o.lead.waive_release_findings(tid)
-            o.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
+            o.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=resume_actor(by),
                                       payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
             res.actions.append(f"release_waived:{tid}:{','.join(sources)}")
             if o._rerun_release(tid, by, reason, res): res.actions.append(f"release_rerun:{tid}")
@@ -151,7 +151,7 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
         return
     if tid in o.stalled:  # escalation cấp dự án (chuỗi nghiên cứu lỗi): retry event hoặc đóng dự án
         if decision == "approve":
-            o.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
+            o.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=resume_actor(by),
                                       payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
             res.actions.append(f"retry:{tid}" if o._retry_stalled(tid, by, reason) else f"retry_failed:{tid}")
         else:
@@ -166,7 +166,7 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
         # hàng đợi rỗng, phải phát lại CR bằng tay.
         # `resume` trước: supervisor đã `pause` subject khi escalate — không gỡ thì event chạy lại bị hoãn
         # "paused:<subject>" và `_check_escalations` mở gate mới cho cùng việc.
-        o.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
+        o.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=resume_actor(by),
                                   payload={"target": tid, "action": "resume", "reason": f"escalation {decision}: {reason}"[:300]}))
         if decision == "approve":
             ok = o._retry_unhandled(tid, by, reason)
@@ -191,7 +191,7 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
             res.actions.append(f"already_integrated:{tid}")
         elif o.lead.state.get(tid) in {"blocked", "escalated"}:
             o.lead.reopen(tid, hint=reason or "người duyệt mở lại sau escalation")
-        o.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
+        o.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=resume_actor(by),
                                   payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
         res.actions.append(f"reopen:{tid}")
         # Escalation vì một REVIEW AGENT lỗi (không phải assignee): ticket vẫn `in_review`, event PR đã bị đánh dấu

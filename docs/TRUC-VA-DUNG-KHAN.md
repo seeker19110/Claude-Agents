@@ -138,6 +138,21 @@ uv run python -m company.orchestrator --db company.sqlite \
 
 `resume` gỡ pause **và** gọi lại hàng đợi bị hoãn — không cần khởi động lại tiến trình.
 
+### Máy duyệt escalation — reviewer có chữ ký (ADR gốc 0024)
+
+Mặc định TẮT. Người trực bật có chủ ý, ghi vào bàn giao ca:
+
+```bash
+cd companies/software-company
+uv run python -m company.gate_reviewer init-key --id doc-lap        # một lần; in đường dẫn khoá + registry
+export COMPANY_GATE_REVIEWER=1                                        # cả tiến trình orchestrator lẫn phiên reviewer
+```
+
+Rồi mở **một phiên Claude mới** (không phải phiên đang điều phối/sửa code) và chạy `/gate-review`. Phiên đó chỉ
+`approve` escalation ticket/dự án, mỗi subject một lần; lần chặn thứ hai của cùng subject về người. Dừng: bỏ
+`COMPANY_GATE_REVIEWER` — tắt rồi mở lại tiến trình thì quyết định cũ của reviewer không được áp, gate hiện lại
+chờ người (hỏng thì đóng). Thu hồi khoá: đặt `not_after` về hiện tại trong registry.
+
 ### Giới hạn đã biết (đừng trông chờ những thứ này)
 
 - **Không thu hồi thông tin xác thực.** Gói đăng ký / khoá API vẫn dùng được sau khi pause. Nghi rò rỉ

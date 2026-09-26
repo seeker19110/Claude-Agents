@@ -24,6 +24,9 @@ from .events import Envelope
 from .gate_risk import AUTOAPPROVE_ACTOR
 from .quality_floor import BAR_ACTION, PROFILE_ACTION
 
+#: ADR gốc 0024: actor của reviewer có chữ ký. Bus chỉ cho nó GHI `gate.decide`; tin hay không là việc của
+#: `gate_reviewer.trusted_reviewer` lúc áp (chữ ký, phạm vi, trần) — như `AUTOAPPROVE_ACTOR` bên trên.
+REVIEWER_PREFIX = "reviewer:"
 SCHEMA_DIR = CORE.schema_dir
 
 
@@ -42,7 +45,8 @@ class InMemoryBus(CoreInMemoryBus[Envelope]):
 
     def _extra_publish_checks(self, env: Envelope) -> None:
         if env.topic == "audit-log" and env.payload.get("action") == "gate.decide" \
-                and not (is_human(env.actor) or env.actor in ("orchestrator", AUTOAPPROVE_ACTOR)):
+                and not (is_human(env.actor) or env.actor in ("orchestrator", AUTOAPPROVE_ACTOR)
+                         or env.actor.startswith(REVIEWER_PREFIX)):
             # audit-log mở cho mọi actor, nhưng quyết định gate là của người: agent không được ghi `gate.decide`
             # (`"orchestrator"` chỉ ghi khi đóng gate nghiệm thu từ chữ ký khách; `AUTOAPPROVE_ACTOR` ("code")
             # chỉ ghi khi `gate_risk.request_gate` tự động qua gate rủi ro thấp — cả hai bị `gate_cli._trusted`

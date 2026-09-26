@@ -24,6 +24,7 @@ from xagents_core.gate_cli import trusted_decision as trusted_decision
 from . import gate_risk
 from .bus import InMemoryBus
 from .events import AuditLog, Envelope
+from .gate_reviewer import trusted_reviewer
 from .gate_risk import AUTOAPPROVE_ACTOR, AUTOAPPROVE_REASON_PREFIX
 from .gates import GateKind, GateRequest, HumanGate, gate_approvers, gate_autoapprove_enabled
 from .product_quality import LEGACY_SCHEMES, ProjectProfile, allowed_schemes, compile_contract
@@ -105,7 +106,8 @@ class PersistentGate(CorePersistentGate[Envelope, AuditLog], HumanGate):
         sid = _json_evidence(env).get("subject_id")
         g = self.pending.get(sid) or next((h for h in reversed(self.history) if h.subject_id == sid), None) \
             if isinstance(sid, str) else None
-        return trusted_autoapprove(env, g.kind if g is not None else None)
+        # ADR gốc 0024: reviewer có chữ ký — sau cùng, nhánh tự kiểm actor `reviewer:*` nên không khớp nhánh nào ở trên.
+        return trusted_autoapprove(env, g.kind if g is not None else None) or trusted_reviewer(env, g, self.history)
 
     def decide(self, subject_id: str, decision: str, by: str, reason: str = "", actor: str | None = None,
                *, enforce: bool = True) -> GateRequest:
@@ -115,6 +117,14 @@ class PersistentGate(CorePersistentGate[Envelope, AuditLog], HumanGate):
             raise PermissionError(f"'{AUTOAPPROVE_ACTOR}' là tên của máy tự duyệt (ADR-0043) — không ký tay dưới tên này")
         # `request_cls=GateRequest` (company) ⇒ phần tử trả về là GateRequest của company; core khai lớp cơ sở.
         return cast(GateRequest, super().decide(subject_id, decision, by=by, reason=reason, actor=actor, enforce=enforce))
+
+    def decide_signed(self, subject_id: str, by: str, reason: str, signed: dict[str, Any]) -> GateRequest:
+        """`approve` của reviewer (ADR gốc 0024): như `decide`, nhưng bản ghi mang các trường chữ ký — đường ghi của
+        core chỉ có bốn trường. Chỉ `gate_reviewer.decide` gọi, sau khi đã tự kiểm bằng nhánh tin cậy."""
+        r = cast(GateRequest, super(CorePersistentGate, self).decide(subject_id, "approve", by=by, reason=reason))
+        self._log(by, "gate.decide", {"subject_id": subject_id, "decision": "approve", "by": by, "reason": reason,
+                                      **signed}, by=by)
+        return r
 
     def __init__(self, bus: InMemoryBus, **kw):
         super().__init__(bus, envelope_cls=Envelope, audit_cls=AuditLog, request_cls=GateRequest, **kw)

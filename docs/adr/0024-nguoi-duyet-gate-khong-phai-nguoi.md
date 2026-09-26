@@ -1,6 +1,6 @@
 # ADR gốc 0024: một phiên Claude độc lập được mở lại ticket bị chặn — actor riêng có chữ ký, không giả `human:*`
 
-Ngày: 2026-09-26 · Trạng thái: **Proposed**, chờ chủ dự án chọn ở mục "Câu hỏi cho người" · Sửa: ADR-0043 (software-company) §1
+Ngày: 2026-09-26 · Trạng thái: **được chấp nhận** 2026-09-26 (lựa chọn ở mục "Quyết định đã chốt"; code #PR) · Sửa: ADR-0043 (software-company) §1
 ("`escalation` KHÔNG tự duyệt") · Liên quan: ADR gốc 0023 (F1: actor trên bus là chuỗi tự khai), ADR gốc 0020 (chữ ký
 Ed25519 cho receipt)
 
@@ -49,7 +49,7 @@ lỗ đó.
 - Độc lập là tính chất của **quan hệ** giữa người quyết và việc được quyết, không phải của một phiên. Một phiên
   điều phối công ty (sửa code, viết hint, đọc bus) luôn là tác giả của một phần việc nó sẽ duyệt.
 
-## Quyết định (đề xuất, chờ chọn)
+## Quyết định
 
 ### 1. Một actor mới, không phải người: `reviewer:<id>`
 
@@ -137,7 +137,35 @@ người khi replay. Quyết định sẽ mất sau một lần restart (bẫy "
   `diagnose`, `ticket_quay_vong`). Tỉ lệ đó vượt tỉ lệ của người (hôm nay 2/13 escalation cần `reject`) thì phải
   thu hẹp phạm vi hoặc tắt cờ.
 
-## Câu hỏi cho người
+## Quyết định đã chốt (2026-09-26)
+
+Chủ dự án giao phiên chính chọn (*"bạn tự quyết cho nó hoạt động ổn định đi"*). Phiên chọn cũng là phiên viết
+code — lựa chọn nào nghiêng về an toàn hơn thì lấy cái đó, để người đọc sau không phải tin phán đoán của nó.
+
+| Câu | Chọn | Vì sao |
+|---|---|---|
+| 1. Phạm vi | **S2**: `approve` escalation ticket (`decision:reopen\|close`) và dự án (`decision:retry\|close`) | Đúng phần "chạy lại" đo được (11/13); không đụng release/spec/nợ kiến trúc |
+| 2. Trần | **1 lần mỗi subject** | Lần sau về người ⇒ reviewer không bao giờ duyệt lại hint của chính nó |
+| 3. Khoá | File ngoài repo: khoá bí mật `~/.config/xagents/gate-reviewer/<tên>.pem`, registry `~/.config/xagents/gate-reviewers.json` (`COMPANY_GATE_REVIEWER_REGISTRY`) | Cùng khuôn registry ADR gốc 0020 |
+| 4. Chạy | **Theo lệnh**: một phiên Claude tách riêng chạy `/gate-review` | Không cần luật quyền mới cho một tiến trình tự chạy; người bật được, tắt được |
+| 5. Bốn gate đang chờ | Không đổi — vẫn của người | Lệnh duyệt đã bị chặn *Self-Approval*; không đi đường khác tới cùng kết quả |
+
+### Điểm lệch so với mục Quyết định ở trên (code thật, `companies/software-company/src/company/gate_reviewer.py`)
+
+- **§3 (loại tác giả theo `key_id`) không làm**: PR và hint của công ty không mang chữ ký, nên không có gì để so.
+  Thay bằng trần 1 lần mỗi subject (đạt cùng mục đích: reviewer không duyệt hint nó viết) cộng quy trình của skill
+  `/gate-review` (phiên mới, chỉ đọc hồ sơ, không phải phiên điều phối).
+- **"Tiến trình riêng, không tool ghi" là quy trình, không phải code**: CLI không biết nó được gọi từ phiên nào.
+  Code chỉ bảo đảm chữ ký, phạm vi, thế hệ, trần, cờ.
+- **Cờ đọc cả lúc áp** (như `COMPANY_GATE_AUTOAPPROVE`): tắt cờ rồi mở lại tiến trình thì quyết định cũ của
+  reviewer không được áp — gate hiện lại chờ người. Hỏng thì đóng, đổi lại vài gate phải duyệt lại.
+- **Thu hồi khoá**: đặt `not_after` về hiện tại trong registry — quyết định ký trước mốc đó vẫn hợp lệ; xoá hẳn khoá
+  thì mọi quyết định cũ của nó thôi được tin (gate hiện lại chờ người).
+- **Trần đã biết của khoá**: cùng user OS thì mã khách chạy qua `SubprocessSandbox` đọc được file khoá, đúng như F1
+  (ADR gốc 0023). Chỉ ADR gốc 0023 (sandbox không tụt ngầm) đóng được; tới lúc đó, bật reviewer chỉ nên cùng
+  sandbox container.
+
+## Câu hỏi cho người (bản gốc lúc Proposed — đã trả lời ở trên)
 
 1. **Phạm vi:**
    - S1: chỉ `escalation` ticket (mở lại);
