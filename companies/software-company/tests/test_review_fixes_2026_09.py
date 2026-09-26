@@ -174,6 +174,7 @@ def test_ticket_bi_bo_duoc_dung_lai_khi_mo_lai_tu_sqlite(tmp_path):
     assert "ticket.abandoned" in acts
     o2 = Orchestrator(SQLiteBus(db), FakeClient(handler=failing))
     assert "T1" in o2.lead.abandoned and not o2.lead._dep_done("T1") and o2.lead.state.get("T2") == "blocked"
+    assert o2.lead.state.get("T1") == "closed", "trước đây: `ticket.blocked` cũ thắng, dựng lại thành `blocked` — ticket đã bỏ lại chờ người duyệt"
 
 
 # ---------- resume, nhiều thread, một tiến trình mỗi bus ----------
