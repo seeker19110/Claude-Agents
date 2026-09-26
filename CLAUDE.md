@@ -43,6 +43,7 @@ chặn commit khi đứng trên `main`, staged có file cấm, diff hạ `fail_u
 - `/gate-brief <subject>` — hồ sơ bằng chứng chỉ đọc cho một human gate của software-company; không ký thay người.
 - `/gate-review [subject]` — reviewer có chữ ký (ADR gốc 0024): một phiên Claude **mới, tách riêng** mở lại ticket/dự án
   bị chặn trong phạm vi hẹp; actor `reviewer:<id>`, không bao giờ `human:*`. Phiên đã sửa code/viết hint thì không chạy.
+  Phạm vi `rong` (ADR gốc 0025, `COMPANY_GATE_REVIEWER_SCOPE=rong`): phiên chính quyết mọi gate trừ spec, ký `reviewer:phien-chinh`.
 - `/thi-hanh <mã> [đề bài]` — thi hành một đề bài từ đặc tả tới mọi PR merge theo `docs/KHUON-THI-HANH.md`: phiên chính
   điều phối, subagent thực thi theo mức C1/C2/C3, người ra lệnh một lần. Trạng thái ở `docs/thi-hanh/<mã>.md`.
 - `.claude/agents/sc-*` — 10 trợ lý kiểm duyệt chỉ đọc (một per agent + một per gate), sinh tự động; gọi khi cần
