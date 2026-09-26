@@ -65,7 +65,7 @@ examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--rela
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng pha `intake` cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 6 agent, mỗi agent ≥ 2 ca (agent nhiều pha: ≥ 2 ca mỗi pha); recordings/ = phản hồi model đã ghi
-tests/         pytest 1850 ca / 102 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+tests/         pytest 1902 ca / 103 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, release tự dừng → gate, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
                guard/blackboard, schema consistency, golden 6 agent + 4 hồ sơ gate, bộ sinh subagent, hồ sơ gate, deploy compose (runner tiêm được), rà soát bảo mật);
                coverage fail_under=100 (phủ 100% dòng VÀ 100% nhánh, `branch = true` từ 2026-09-13)
@@ -322,3 +322,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 `delivery_contract.py` tiếp thu Ready/Done/Complete và gate no-op-safe từ projects-template,
 opt-in qua `ProjectProfile.delivery`; nguồn được ghim, không copy dispatcher hoặc sửa journal.
 Xem `docs/adr/0045-selective-template-delivery.md`; file ví dụ là fixture, không approval thật.
+
+`template_handoff.py` xuất policy/schema native và kiểm bundle do projects-template tạo.
+Đây chỉ là chuẩn bị dữ liệu, không approval, không thực thi gate, không thay run đã đăng ký.
+Xem [hướng dẫn hai chiều](../../docs/integrations/template-handoff.md) và `tests/test_template_handoff.py`.
