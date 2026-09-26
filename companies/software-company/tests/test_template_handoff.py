@@ -205,3 +205,9 @@ def test_parser_recursion_is_normalized(bundle: dict, tmp_path: Path, monkeypatc
 def test_json_numeric_overflow_is_rejected() -> None:
     with pytest.raises(ValueError, match="nonfinite"):
         bridge._document(b'{"x":1e999}')
+    # Exercise OUR depth limit below CPython's recursion limit on both 3.11 and 3.13.
+    at_limit = b'{"x":' + b'[' * 63 + b'0' + b']' * 63 + b'}'
+    assert isinstance(bridge._document(at_limit), dict)
+    beyond_limit = b'{"x":' + b'[' * 64 + b'0' + b']' * 64 + b'}'
+    with pytest.raises(ValueError, match="deeply"):
+        bridge._document(beyond_limit)
