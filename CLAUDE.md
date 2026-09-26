@@ -72,3 +72,20 @@ chặn commit khi đứng trên `main`, staged có file cấm, diff hạ `fail_u
 
 Bộ nhớ dài hạn của Claude nằm ngoài repo (`~/.claude/projects/.../memory/`). Bài học đáng để repo giữ thì đưa vào
 `TRAPS.md` — bộ nhớ là của một người, `TRAPS.md` là của mọi phiên.
+
+## Compact Instructions
+
+Dùng auto-compact native, cửa sổ **300000 token mỗi phiên** trong `.claude/settings.json`; không phải token
+cộng dồn của ticket và không tăng giới hạn prompt của agent. Cách kiểm tra: `docs/AUTO-COMPACT.md`.
+
+Khi compact, giữ mục tiêu, spec đã duyệt, giới hạn quyền/ngân sách, quyết định kiến trúc, việc dở và bước kế
+tiếp; giữ branch/worktree/HEAD, file đã đổi, PR, lệnh test + kết quả + đường dẫn bằng chứng. Ghi rõ phần
+chưa kiểm được; không biến lời khai thành bằng chứng. Không đưa khoá, token hay toàn văn log/diff vào bản tóm tắt.
+
+Cập nhật `docs/thi-hanh/<mã>.md` và nhật ký phù hợp trong `docs/sessions/` ở mỗi mốc công việc, không đợi tới
+khi cửa sổ đầy. Dữ liệu khách/bí mật không được ghi vào tài liệu đã theo dõi bởi git. Execution journal,
+bus và artifact hiện có là nguồn trạng thái bền; bản tóm tắt chỉ dẫn đường, không ghi đè chúng.
+
+Sau compact, **đọc lại** `AGENTS.md`, `CLAUDE.md` của package đang sửa và đúng hồ sơ thi hành/nhật ký; đối chiếu
+`git status`, branch/worktree/HEAD, trạng thái task/gate và bằng chứng trước khi tiếp tục. Không chạy lại tác vụ
+đã hoàn thành chỉ vì mất lịch sử hội thoại; không tự duyệt spec, đổi quyền hay đánh dấu xong vì vừa compact.
