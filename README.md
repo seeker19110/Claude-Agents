@@ -22,7 +22,7 @@ companies/    software-company/  keeper/
 
 | Thư mục | Vai trò | Quy mô |
 |---|---|---|
-| [`companies/software-company/`](companies/software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 6 agent (5 công đoạn + supervisor), 45 skill, 19 topic, 14 template, 3 human gate (+ gate `escalation`; kế hoạch do `_check_plan` chặn bằng code, ADR-0037) có trợ lý kiểm duyệt chỉ đọc (10 subagent + hồ sơ bằng chứng `gate_brief`, `/gate-brief`), giao hàng thật bằng tag + nhánh `company/release` (`--deliver`), ADR 0001–0045, 1850 test |
+| [`companies/software-company/`](companies/software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 6 agent (5 công đoạn + supervisor), 45 skill, 19 topic, 14 template, 3 human gate (+ gate `escalation`; kế hoạch do `_check_plan` chặn bằng code, ADR-0037) có trợ lý kiểm duyệt chỉ đọc (10 subagent + hồ sơ bằng chứng `gate_brief`, `/gate-brief`), giao hàng thật bằng tag + nhánh `company/release` (`--deliver`), ADR 0001–0045, 1902 test |
 | [`platform/gateway/`](platform/gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code. **Nhiều tài khoản có rủi ro khoá tài khoản Google — đọc [§Rủi ro tài khoản](platform/gateway/README.md#rủi-ro-tài-khoản--đọc-trước-khi-gõ-make-login-lần-thứ-hai) trước** | daemon `127.0.0.1:1123/v1`, CLI `python -m gateway start/stop/status/login/logout/reset/setup/models`, 269 test |
 | [`platform/console/`](platform/console/) | Trực ban hợp nhất: một trang web cục bộ nhìn công ty — hàng đợi human gate, ticket, token và chi phí, gói tài khoản đang xoay — duyệt gate ngay tại chỗ khi bật `--allow-decide`, đổi model/backend khi bật `--allow-config`, giao việc mới (yêu cầu phần mềm kèm nơi lưu dự án) khi bật `--allow-submit`. Cập nhật tức thì bằng SSE, địa chỉ deep-link tới từng gate/ticket, tìm và lọc mọi bảng, cài được thành app (PWA). Đọc bus SQLite ở chế độ chỉ đọc; quyết định đi qua đúng `HumanGate`, việc mới đi qua đúng bus + schema của công ty | `127.0.0.1:8200`, chỉ thư viện chuẩn (`http.server`), 8 màn hình, chỉ đọc mặc định + token mỗi lần chạy, ADR 0001–0004 |
 | [`platform/xagents-core/`](platform/xagents-core/) | Lõi chung của mọi công ty AI: bus, llm, runner, guard, gate, **execution harness kernel** — company import từ đây thay vì tự fork | mypy `strict` + phủ 100% dòng VÀ 100% nhánh từ ngày đầu, 586 test; execution contract/state/journal theo ADR gốc 0017, mở đường để phiên chính làm director thay vì giữ execution state trong context |
@@ -147,6 +147,12 @@ topic (JSON Schema, có key) ──► registry: agent nào nhận topic nào
   lệch phiên bản prompt thì CI đỏ). Không liệt lại ở đây để tránh lệch với nguồn khi checklist đổi.
 - Thay đổi lớn (kiến trúc, agent mới, schema topic) → viết ADR trong `<công ty>/docs/adr/` trước.
 - Không commit secret, `llm.yaml`, dữ liệu thật; không gọi provider trả phí trong test; mọi thay đổi vào `main` qua PR.
+
+## Cầu nối với projects-template
+
+`company.template_handoff` xuất schema/chính sách từ DeliveryContract đang dùng và kiểm bundle spec/plan.
+Template xuất dữ liệu theo chính sách này; consumer kiểm hash được ghim độc lập, đủ AC và bytes spec.
+Không copy runtime, không tự duyệt hoặc phát hành: [cách dùng và ranh giới](docs/integrations/template-handoff.md).
 
 ## Giấy phép
 
