@@ -9,6 +9,7 @@ Cùng khuôn tiêm runner với `test_deploy_compose.py` (ADR-0039): máy chạy
 - `COMPANY_DEPLOY=process` mà `which` trả None mà không raise → `test_process_khai_dich_danh_ma_thieu_binary_thi_raise` đỏ;
 - bỏ thay `.` bằng `repo_root` trong prefix → `test_prefix_thay_dau_cham_bang_duong_dan_repo` đỏ.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -30,8 +31,13 @@ from company.deploy import (
 )
 from company.smoke import Runtime
 
-RT = Runtime(("python", "-m", "http.server", "{port}"), path="/healthz", timeout_s=2, port=8080,
-             deploy="infra/staging/wsl/deploy_process.sh")
+RT = Runtime(
+    ("python", "-m", "http.server", "{port}"),
+    path="/healthz",
+    timeout_s=2,
+    port=8080,
+    deploy="infra/staging/wsl/deploy_process.sh",
+)
 
 
 class FakeProcess:
@@ -65,10 +71,12 @@ def _deploy(tmp_path, rt=RT, *, which=lambda b: f"/usr/bin/{b}", **kw):
 
 def _probe_tra(monkeypatch, status):
     import company.deploy as D
+
     monkeypatch.setattr(D, "http_probe", lambda url: status)
 
 
 # ---------- đường đi chính: hai phần (up + smoke), không có `ps` như compose ----------
+
 
 def test_duong_hanh_phuc_ok_khong_goi_down(tmp_path, monkeypatch):
     _probe_tra(monkeypatch, 200)
@@ -109,6 +117,7 @@ def test_thieu_cong_rt_port_thi_bao_loi_khong_the_probe(tmp_path):
 
 # ---------- `runtime.deploy` là script, không dò tên mặc định (khác compose) ----------
 
+
 def test_khong_khai_deploy_thi_skipped_khong_doan_ten(tmp_path):
     rt = Runtime(RT.command, path=RT.path, timeout_s=2, port=8080, deploy="")
     r, _ = _deploy(tmp_path, rt=rt)
@@ -129,10 +138,19 @@ def test_deploy_script_doc_dung_tu_spec(tmp_path):
 
 # ---------- fail-closed đúng khuôn compose ----------
 
+
 def test_process_khai_dich_danh_ma_thieu_binary_thi_raise(tmp_path):
     with pytest.raises(DeployError, match="wsl"):
-        deploy(_repo(tmp_path), "P1", "staging", RT, mode="process", binary="wsl.exe --cd . bash",
-               run=FakeProcess(), which=lambda b: None)
+        deploy(
+            _repo(tmp_path),
+            "P1",
+            "staging",
+            RT,
+            mode="process",
+            binary="wsl.exe --cd . bash",
+            run=FakeProcess(),
+            which=lambda b: None,
+        )
 
 
 def test_mac_dinh_binary_process_la_cau_noi_wsl(monkeypatch):
@@ -151,6 +169,7 @@ def test_mac_dinh_binary_compose_khong_doi(monkeypatch):
 
 # ---------- argv/prefix do CODE ghép ----------
 
+
 def test_process_argv_chi_up_down():
     assert _process_argv(["bash"], "s.sh", "up") == ["bash", "s.sh", "up"]
     assert _process_argv(["bash"], "s.sh", "down") == ["bash", "s.sh", "down"]
@@ -168,12 +187,21 @@ def test_prefix_thay_dau_cham_bang_duong_dan_repo(tmp_path):
 
 # ---------- `run` ném lỗi hệ thống: đọc được, không phải crash orchestrator ----------
 
+
 def test_binary_bien_mat_giua_chung_thi_ly_do_doc_duoc(tmp_path):
     def raise_not_found(argv, **kw):
         raise FileNotFoundError
 
-    r = deploy(_repo(tmp_path), "P1", "staging", RT, mode="process", binary="bash", run=raise_not_found,
-               which=lambda b: f"/usr/bin/{b}")
+    r = deploy(
+        _repo(tmp_path),
+        "P1",
+        "staging",
+        RT,
+        mode="process",
+        binary="bash",
+        run=raise_not_found,
+        which=lambda b: f"/usr/bin/{b}",
+    )
     assert r.ok is False and "không có trên máy" in r.error
 
 
@@ -181,8 +209,16 @@ def test_qua_gio_thi_ly_do_doc_duoc(tmp_path):
     def raise_timeout(argv, **kw):
         raise subprocess.TimeoutExpired(cmd=argv, timeout=kw.get("timeout", 0))
 
-    r = deploy(_repo(tmp_path), "P1", "staging", RT, mode="process", binary="bash", run=raise_timeout,
-               which=lambda b: f"/usr/bin/{b}")
+    r = deploy(
+        _repo(tmp_path),
+        "P1",
+        "staging",
+        RT,
+        mode="process",
+        binary="bash",
+        run=raise_timeout,
+        which=lambda b: f"/usr/bin/{b}",
+    )
     assert r.ok is False and "quá" in r.error and "s" in r.error
 
 
@@ -193,3 +229,31 @@ def test_record_ok_co_verified_by_va_khong_co_container(tmp_path, monkeypatch):
     assert rec["verified_by"] == "orchestrator" and rec["ok"] is True
     assert "services" not in rec and "container_ids" not in rec, "rỗng thì record() không đưa vào (khớp compose)"
     assert rec["port"] == 8080 and "smoke" in rec
+
+
+# ---------- output không phải UTF-8 của repo khách (họ lỗi #329) ----------
+
+# Script khách in thẳng byte 0xe3 0x28 (không phải UTF-8 hợp lệ); viết bằng escape để file test chỉ có ASCII.
+_IN_BYTE_LA = "import sys; sys.stdout.buffer.write(b'truoc \\xe3\\x28 sau\\n'); sys.stdout.flush()\n"
+
+
+def test_process_giu_output_khi_script_khach_in_byte_khong_phai_utf8(tmp_path: Path) -> None:
+    """Giải mã `encoding="utf-8"` không kèm `errors=`: Linux ném UnicodeDecodeError khỏi deploy, Windows chết ở luồng
+    đọc và trả `stdout=None` → output mất lặng lẽ. Cùng khuôn #329 (git/gh), còn sót ở `deploy.py`."""
+    import sys
+
+    from company.deploy import _process_cmd
+
+    (tmp_path / "run.py").write_text(_IN_BYTE_LA, encoding="utf-8")
+    ok, out = _process_cmd(subprocess.run, [sys.executable], tmp_path, "run.py", "up", timeout=60)
+    assert ok and "truoc" in out and "sau" in out, out
+
+
+def test_compose_giu_output_khi_in_byte_khong_phai_utf8(tmp_path: Path) -> None:
+    import sys
+
+    from company.deploy import _compose
+
+    (tmp_path / "compose").write_text(_IN_BYTE_LA, encoding="utf-8")  # `python compose ...` chạy chính file này
+    ok, out = _compose(subprocess.run, sys.executable, tmp_path, "p", "docker-compose.yml", "ps", timeout=60)
+    assert ok and "truoc" in out and "sau" in out, out

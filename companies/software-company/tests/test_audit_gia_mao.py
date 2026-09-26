@@ -39,6 +39,7 @@ FORGED = [
     ("project.stalled", {"project_id": "P9", "event_id": "E9"}),
     ("agent_error_unhandled", {"subject": "P9", "agent": "product", "topic": "research-requests", "event_id": "E9"}),
     ("integration.conflict", {"ticket_id": "T9", "release_id": "REL-9", "conflicts": []}),
+    ("ticket.continued", {"ticket_id": "T9", "attempt": 1}),
     ("release.finding_waived", {"release_id": "REL-9", "source": "qa"}),
     ("debt.escalated", {"project_id": "P9", "debt_id": "D1"}),
     ("spec.runtime_missing", {"project_id": "P9", "event_id": "E9"}),
@@ -50,6 +51,7 @@ def _state(o: Orchestrator) -> dict:
     return {"processed": set(o.processed), "once": set(o.once), "plans": dict(o.plans), "delivered": dict(o.delivered),
             "lead.state": dict(o.lead.state), "missing_tm": set(o.missing_threat_model), "stalled": dict(o.stalled),
             "unhandled": dict(o.unhandled), "integrated": set(o.integrated), "conflicts": dict(o.conflict_retries),
+            "continued": dict(o.turn_continuations),
             "waived": {k: set(v) for k, v in o.lead.release_waived.items() if v}, "debt": dict(o.debt_gate),
             "runtime": dict(o.spec_runtime_reworks), "plan_reworks": dict(o.plan_reworks)}
 

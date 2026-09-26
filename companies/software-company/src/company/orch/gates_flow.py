@@ -13,6 +13,7 @@ chạy, một ở đây `_after_error`) — cả ba đi qua `mark_unhandled` khi
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING
 
 from ..delivery import DONE_STATES
@@ -20,7 +21,7 @@ from ..events import Envelope
 from ..gate_risk import AUTOAPPROVE_ACTOR, request_gate
 from ..gates import Decision, GateRequest
 from ..roles import LEAD_ACTOR, ROLE
-from .routes import ACTOR, PROD_ROUTE, RESEARCH_TOPICS, REVIEW_AGENT, Route, review_route
+from .routes import ACTOR, MAX_TURN_CONTINUATIONS, PROD_ROUTE, RESEARCH_TOPICS, REVIEW_AGENT, Route, review_route
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
@@ -312,10 +313,46 @@ def _rework_after_error(o: Orchestrator, env: Envelope, r: Route, error: Excepti
     if r.tools != "rw": return False
     tid = str(env.payload.get("ticket_id") or env.key)
     if o.lead.state.get(tid) not in {"dispatched", "in_progress"}: return False
+    if _continue_after_turn_cap(o, env, tid, error): return True
     try:
         o.lead.rework(tid, f"lần trước lỗi: {str(error)[:500]}")
     except ValueError as ex:
         o._audit("handler_error", {"agent": LEAD_ACTOR, "error": str(ex)[:300]}, ticket_id=tid)
+    return True
+
+def cli_subtype(error: object) -> str:
+    """`subtype` của `claude -p` trong PHẦN ĐẦU thông điệp (`LLMError.head`, do adapter viết) — không soi phần chữ
+    của model, để model viết "subtype=..." trong câu trả lời dở không đổi được cách xử lý lỗi."""
+    m = re.search(r"subtype=([a-z_]+)", str(getattr(error, "head", "") or ""))
+    return m.group(1) if m else ""
+
+#: `subtype` của `claude -p` là trục trặc của lượt ép đầu ra, không phải nội dung sai: thử lại đúng một lần trước khi hỏi
+#: người. Đo được 2026-09-24 (CAMPUS-UNI/REL-003): ops trên `release-candidates` chết một lần là gate escalation.
+AUTORETRY_SUBTYPES = frozenset({"error_max_structured_output_retries"})
+
+def _autoretry_once(o: Orchestrator, env: Envelope, agent: str, error: Exception, res: StepResult) -> bool:
+    """Lỗi thuộc `AUTORETRY_SUBTYPES` lần ĐẦU cho (event, agent) → hoãn như `transient:` để nhịp sau chạy lại slot
+    này (slot không vào `partial`). Khoá `once` bền qua restart; lần thứ hai đi `_after_error` như mọi lỗi khác."""
+    key = f"autoretry:{env.event_id}:{agent}"
+    if cli_subtype(error) not in AUTORETRY_SUBTYPES or key in o.once: return False
+    o._remember(key)
+    o._audit("llm.autoretry", {"agent": agent, "topic": env.topic, "event_id": env.event_id, "error": str(error)[:300]},
+             ticket_id=env.payload.get("ticket_id"), project_id=o.project_for(env))
+    res.actions.append(f"transient:{agent}:thử lại một lần sau {cli_subtype(error)}"); res.transient = True
+    return True
+
+def _continue_after_turn_cap(o: Orchestrator, env: Envelope, tid: str, error: Exception) -> bool:
+    """Hết lượt tool mà lượt này CÓ sửa đổi chưa commit → làm tiếp từ WIP, không tính retry, tối đa
+    `MAX_TURN_CONTINUATIONS` lần mỗi ticket. Worktree sạch = đi vòng tròn, không phải thiếu lượt → retry như cũ."""
+    if cli_subtype(error) != "error_max_turns" or o.turn_continuations[tid] >= MAX_TURN_CONTINUATIONS: return False
+    ws = o.workspace(tid)
+    if ws is None or not ws.path.exists() or not ws.dirty(): return False
+    with o._lock: o.turn_continuations[tid] += 1; n = o.turn_continuations[tid]
+    o._audit("ticket.continued", {"ticket_id": tid, "attempt": n, "max": MAX_TURN_CONTINUATIONS, "error": str(error)[:300]},
+             ticket_id=tid, project_id=o.project_for(env))
+    o.lead.continue_no_retry(tid, f"làm tiếp lần {n}/{MAX_TURN_CONTINUATIONS}: lượt trước hết lượt tool (error_max_turns) "
+                                  "giữa chừng; việc dở đã được giữ thành WIP trong worktree — xem git_status/git_diff, "
+                                  "làm nốt phần còn thiếu, đừng làm lại từ đầu")
     return True
 
 def _retry_stalled(o: Orchestrator, pid: str, by: str, reason: str) -> bool:

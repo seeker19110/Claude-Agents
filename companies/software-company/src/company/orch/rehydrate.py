@@ -131,6 +131,8 @@ def rehydrate(o: Orchestrator) -> None:
                 if d.get("subject_id"): quyet.append((env.event_id, str(d["subject_id"])))
             elif a["action"] == "integration.conflict":
                 o.conflict_retries[str(d["ticket_id"])] += 1
+            elif a["action"] == "ticket.continued":
+                o.turn_continuations[str(d["ticket_id"])] += 1
             elif a["action"] == "release.finding_waived":
                 o.lead.release_waived[str(d["release_id"])].add(str(d["source"]))
             elif a["action"] == "debt.escalated": o.debt_gate[str(d["project_id"])] = d

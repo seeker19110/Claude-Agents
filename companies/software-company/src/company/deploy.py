@@ -157,8 +157,8 @@ def _process_cmd(run: Any, prefix: list[str], repo: Path, script: str, sub: str,
     """Một lệnh con `process` (`up` hoặc `down`); không ném — (ok, stdout) hoặc (False, lý do rút gọn)."""
     argv = _process_argv(prefix, script, sub)
     try:
-        r = run(argv, cwd=str(repo), capture_output=True, text=True, encoding="utf-8", env=clean_env(),
-                timeout=timeout)
+        r = run(argv, cwd=str(repo), capture_output=True, text=True, encoding="utf-8", errors="replace",
+                env=clean_env(), timeout=timeout)
     except FileNotFoundError:
         return False, f"{prefix[0] if prefix else ''}: không có trên máy (đặt {ENV_RUNTIME} hoặc {ENV_MODE}=off)"
     except subprocess.TimeoutExpired:
@@ -180,8 +180,8 @@ def _compose(run: Any, binary: str, repo: Path, project: str, cfile: str, *args:
     """Một lệnh con compose; không ném — (ok, stdout) hoặc (False, lý do rút gọn)."""
     argv = _argv(binary, project, cfile, *args)
     try:
-        r = run(argv, cwd=str(repo), capture_output=True, text=True, encoding="utf-8", env=clean_env(),
-                timeout=timeout)
+        r = run(argv, cwd=str(repo), capture_output=True, text=True, encoding="utf-8", errors="replace",
+                env=clean_env(), timeout=timeout)
     except FileNotFoundError:
         return False, f"{binary}: không có trên máy (đặt {ENV_RUNTIME} hoặc {ENV_MODE}=off)"
     except subprocess.TimeoutExpired:
