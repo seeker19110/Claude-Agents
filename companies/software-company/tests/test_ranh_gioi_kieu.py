@@ -34,7 +34,10 @@ ORCH = SRC / "orch"
 # 27 → 28 (2026-09-09, audit): `ticket_fsm._task_tu_log` nhận một phần tử `tickets` của bản ghi `plan.proposed`
 # đọc thẳng từ audit-log — chính là "payload của bus" mà docstring trên gọi là kiểu ĐÚNG. Không kiểu hoá chặt
 # hơn được: hàm này tồn tại để xử lý bản ghi thế hệ CŨ, tức là hình dạng KHÔNG khớp `Task` hiện hành.
-TRAN_DICT_ANY = 28
+# 28 → 30 (2026-09-27, ADR-0046): `verify.evidence_after` nhận và trả `payload` của `review-results` — payload của
+# bus, kiểu ĐÚNG theo docstring trên. Cùng PR gom bằng chứng máy trước/sau lượt chấm (QA hồi quy + security)
+# từ `orchestrator.py` vào `verify.py`, nên thân hàm của orchestrator giảm 6 dòng thay vì tăng.
+TRAN_DICT_ANY = 30
 
 
 def test_k63_ba_kieu_o_ranh_gioi_van_la_dataclass_co_truong_co_kieu() -> None:
