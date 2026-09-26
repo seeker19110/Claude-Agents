@@ -4,6 +4,13 @@ Theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/). Mỗi PR merge v�
 ngoặc, số PR ở cuối. Chi tiết và lý do nằm trong PR và ADR; ở đây chỉ trả lời "đã đổi gì, khi nào".
 Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là của sản phẩm khách, ADR-0027) — nhóm theo ngày.
 
+## Chưa phát hành — cầu nối template
+
+- feat(company): **cầu nối delivery hai chiều, offline và không cấp quyền**: xuất policy/schema từ native
+  DeliveryContract; kiểm bundle được pin độc lập, policy, toàn bộ AC và bytes spec trước khi trả contract.
+  Không đổi ApprovalLookup, receipt, journal, gate hay run đã đăng ký. Chi tiết và kết quả kiểm thử:
+  `docs/reports/2026-09-26-bidirectional-delivery-handoff.md`.
+
 ## Chưa phát hành
 
 - docs: bộ khung repo 9 file — AGENTS/CLAUDE/TRAPS, ARCHITECTURE/CODEMAP/CHANGELOG, task pack/prompt sheet/session log; mỗi package con có CLAUDE/TRAPS/CODEMAP/ARCHITECTURE riêng
