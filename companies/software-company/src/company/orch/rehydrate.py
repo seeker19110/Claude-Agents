@@ -59,6 +59,8 @@ def rehydrate(o: Orchestrator) -> None:
     last_retry: dict[str, tuple[int, dict[str, Any]]] = {}   # event_id → (thứ tự trong log, bản ghi stalled)
     hen: dict[str, tuple[str, str]] = {}                     # event_id → (mốc hẹn ISO, lý do hoãn)
     quyet: list[tuple[str, str]] = []                        # (event_id của gate.decide, subject_id)
+    duyet: list[tuple[str, int, str, int]] = []              # approve gặp `unhandled`: (event_id, thứ tự, subject, số RC)
+    bo_idx: dict[str, int] = {}                              # subject → thứ tự `agent_error_unhandled` cuối
     for i, env in enumerate(log):
         if env.topic == "audit-log" and _trusted_writer(env.payload.get("action"), env.actor):
             a = env.payload; d = _evidence(a)
@@ -112,7 +114,8 @@ def rehydrate(o: Orchestrator) -> None:
             elif a["action"] == "project.stalled":
                 o.stalled[d["project_id"]] = d; o.stall_count[d["event_id"]] += 1
             elif a["action"] in {"project.retried", "project.closed"}: o.stalled.pop(d["project_id"], None)
-            elif a["action"] == "agent_error_unhandled" and d.get("subject"): o.unhandled[str(d["subject"])] = d
+            elif a["action"] == "agent_error_unhandled" and d.get("subject"):
+                o.unhandled[str(d["subject"])] = d; bo_idx[str(d["subject"])] = i
             elif a["action"] == "plan_rejected" and d.get("source_event"):
                 o.plan_reworks[str(d["source_event"])] += 1
                 o.unhandled[str(d["project_id"])] = {"agent": ROLE.PRODUCT, "topic": d.get("source_topic"),
@@ -129,6 +132,10 @@ def rehydrate(o: Orchestrator) -> None:
                 o.plan_reworks.pop(str(d.get("event_id")), None)
             elif a["action"] == "gate.decide":
                 if d.get("subject_id"): quyet.append((env.event_id, str(d["subject_id"])))
+                sid = str(d.get("subject_id") or "")
+                if d.get("decision") == "approve" and sid in o.unhandled and (
+                        sid in o.lead.release_tickets or o.lead.state.get(sid) == "dispatched"):
+                    duyet.append((env.event_id, i, sid, len(o.lead.releases)))
             elif a["action"] == "integration.conflict":
                 o.conflict_retries[str(d["ticket_id"])] += 1
             elif a["action"] == "ticket.continued":
@@ -155,6 +162,8 @@ def rehydrate(o: Orchestrator) -> None:
     # gate escalation lúc 06:51:31, restart lúc 06:51:45, sau đó không một dòng `orchestrated` nào nữa.
     # Ai đã bảo "chạy lại" mà event chưa được xử lý lại thì phải bỏ dấu để hàng đợi nhận lại — TRỪ khi việc
     # đó đã có người khác làm xong trong lúc chờ (xem `_retry_con_can`).
+    for idx, sid in _duyet_chua_chay_lai(o, duyet, bo_idx):
+        rec = o.unhandled.pop(sid); last_retry[str(rec["event_id"])] = (idx, rec)
     reopened = {eid for eid, (idx, rec) in last_retry.items()
                 if idx > last_done.get(eid, -1) and o._retry_con_can(log, idx, rec)}
     # KHÔNG audit ở đây: `_rehydrate` chạy trong MỌI tiến trình, kể cả lệnh chỉ-đọc (`status`, `report`,
@@ -196,6 +205,28 @@ def _nap_lai_hen(o: Orchestrator, hen: dict[str, tuple[str, str]]) -> None:
             giu.append(e)
     o.queue = giu
 
+
+
+def _duyet_chua_chay_lai(o: Orchestrator, duyet: list[tuple[str, int, str, int]],
+                         bo_idx: dict[str, int]) -> list[tuple[int, str]]:
+    """Duyệt escalation của release / ticket `dispatched` mà event bị bỏ (`unhandled`) KHÔNG được chạy lại: code
+    trước #354 bỏ sót, gate đã đóng nên không còn gì mở lại được. Coi lần duyệt đó là lệnh chạy lại chưa kịp chạy
+    (đúng việc `_retry_unhandled` làm từ #354), để `reopened` đưa event vào lại hàng đợi. Đo được
+    2026-09-26 (CAMPUS-UNI/REL-007): duyệt 15:44, lượt QA hồi quy bị bỏ 13:42 nằm im, không gate, không watchdog.
+    Chỉ tính quyết định đã xử lý, và bản ghi lỗi có TRƯỚC nó (lỗi mới sau lần chạy lại thì đã có gate mới).
+
+    Lần duyệt đã bị dự án đi qua thì không còn là lệnh: release mà sau đó đã có RC mới (REL-003 duyệt 2026-09-24,
+    sau đó REL-004/005/007 — phát lại là deploy RC cũ đè staging), ticket không còn `dispatched` (đã đóng, mở lại)."""
+    ra: list[tuple[int, str]] = []
+    for eid, idx, sid, n in duyet:
+        rec = o.unhandled.get(sid)
+        if eid not in o.processed or rec is None or bo_idx.get(sid, -1) > idx: continue
+        # no-ky-thuat: RC mới của BẤT KỲ dự án nào cũng chặn, công ty nhiều dự án thì lần duyệt cũ nằm lại chờ người, quay lại khi chạy song song hai dự án
+        # `abandoned`: dựng lại từ log, `DeliveryLead.abandon` không đặt `closed` — ticket bị từ chối vẫn `dispatched`
+        dang_giao = o.lead.state.get(sid) == "dispatched" and sid not in o.lead.abandoned
+        if (len(o.lead.releases) > n) if sid in o.lead.release_tickets else not dang_giao: continue
+        ra.append((idx, sid))
+    return ra
 
 
 def _retry_con_can(o: Orchestrator, log: list[Envelope], idx: int, rec: dict[str, Any]) -> bool:
