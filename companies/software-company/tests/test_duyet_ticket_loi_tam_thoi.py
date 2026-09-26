@@ -68,3 +68,32 @@ def test_restart_giua_loi_va_duyet_van_giao_lai_viec(tmp_path, monkeypatch):
     orch2.run()
     assert orch2.lead.state[tid] != "dispatched" and tid not in orch2.unhandled
     bus2.close()
+
+
+def test_duyet_escalation_release_chay_lai_luot_qa_hoi_quy_bi_bo(tmp_path):
+    """Cùng họ, nhánh RELEASE: security chặn → escalation REL; trong lúc chờ, lượt QA hồi quy staging bị bỏ vì hoãn
+    transient quá trần (`unhandled[REL]`). Duyệt = waive + `_rerun_release` (chỉ chạy lại ops `pending_human`) →
+    lượt QA không ai chạy lại, release nằm im. Đo được 2026-09-26 (CAMPUS-UNI/REL-007)."""
+    from company.events import Envelope
+    from company.orchestrator import StepResult
+    from test_release_escalation_orchestrator import _blocked_release
+
+    bus = SQLiteBus(tmp_path / "c.sqlite")
+    orch = Orchestrator(bus, FakeClient(handler=handler))
+    rid, _tid = _blocked_release(orch)
+    ev = Envelope(
+        topic="release-events",
+        key=rid,
+        actor="ops",
+        payload={"release_id": rid, "env": "staging", "status": "deployed", "version": "0.1.0"},
+    )
+    bus.publish(ev)
+    orch.processed.add(ev.event_id)
+    orch._mark_unhandled(ev, "qa", "hoãn transient quá 7200s: transient:qa", StepResult(ev.event_id, ev.topic, ev.key))
+    orch.gate.decide(
+        rid, "approve", by="human:owner", reason="root_cause: thiếu bằng chứng; decision: approve; hint: giao"
+    )
+    orch.run()
+    assert rid not in orch.unhandled, "lượt QA hồi quy bị bỏ phải được chạy lại"
+    assert "event.retried" in [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    bus.close()

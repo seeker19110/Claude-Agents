@@ -131,7 +131,7 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
             o.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=resume_actor(by),
                                       payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
             res.actions.append(f"release_waived:{tid}:{','.join(sources)}")
-            if o._rerun_release(tid, by, reason, res): res.actions.append(f"release_rerun:{tid}")
+            if o._rerun_release(tid, by, reason, res) or o._retry_unhandled(tid, by, reason): res.actions.append(f"release_rerun:{tid}")
         elif o._superseded_release(tid):
             # RC cũ mà nội dung đã nằm trong một bản GIAO sau nó (nhánh tích hợp cộng dồn): "đóng" là huỷ RC,
             # KHÔNG trả ticket đã giao về làm lại. Đo được 2026-09-06: sau bản giao v0.15.1, 10 RC cũ
