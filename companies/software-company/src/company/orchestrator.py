@@ -69,9 +69,9 @@ from .orch.enrich import _with_chan_doan as _with_chan_doan
 from .orch.enrich import _with_diff as _with_diff
 from .orch.guards import _can_author_tests as _can_author_tests
 from .orch.guards import _cycle as _cycle
-from .orch.guards import _dict_of, pending_clarifications
 from .orch.guards import _has_dispute as _has_dispute
 from .orch.guards import _test_scope_ok as _test_scope_ok
+from .orch.guards import pending_clarifications
 from .orch.quality_flow import QualityPin, TrustedDriver
 from .orch.quality_release import release_quality
 from .orch.review_source import enforce_source as enforce_source
@@ -380,12 +380,7 @@ class Orchestrator:
                 res.actions.append(f"{agent}→{r.topic_out}×{len(g.payloads)}")
             else:
                 tools = None
-                run_ev: dict[str, Any] | None = None
-                if r.tools == "ro" and env.topic == "release-events" and r.topic_out == "review-results":
-                    # ADR-0029 mục "regression-staging": bằng chứng chạy là của ORCHESTRATOR, không phải của model.
-                    # Chạy smoke trước lượt QA, đưa vào input để QA dẫn nó; sau lượt, verdict bị đối chiếu với nó.
-                    run_ev = self._regression_run(inp)
-                    inp = inp.model_copy(update={"payload": {**inp.payload, "evidence": {**_dict_of(inp.payload.get("evidence")), "run": run_ev}}})
+                inp, bang_chung = self._evidence_before(r, inp)  # ADR-0029/0046: bằng chứng MÁY chạy trước lượt chấm
                 if r.tools == "ro":
                     tools = self._read_only_tools(inp)
                 elif r.tools == "research":
@@ -424,8 +419,7 @@ class Orchestrator:
                     self._audit("review.subject_overridden", {"release_id": rid, "claimed_ticket_id": p.get("ticket_id"),
                                                               "source": p.get("source")}, actor=agent, project_id=self.project_for(env))
                     p = {**p, "ticket_id": rid}
-                if run_ev is not None:
-                    p = self._verdict_with_run(agent, inp, p, run_ev)
+                p = self._evidence_after(agent, inp, p, bang_chung)
                 out = self.runner.publish(agent, inp, r.topic_out, p, key=key_for(r.topic_out, p, env.key),
                                           tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
                 res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
@@ -470,6 +464,8 @@ class Orchestrator:
     _deploy_release = verify.deploy_release
     _regression_run = verify.regression_run
     _verdict_with_run = verify.verdict_with_run
+    _evidence_before = verify.evidence_before
+    _evidence_after = verify.evidence_after
 
 
     def _integration_status(self) -> dict[str, Any] | None:
