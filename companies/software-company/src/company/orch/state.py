@@ -69,6 +69,7 @@ class OrchState:
     # ticket_id → số lần builder hết lượt tool (`error_max_turns`) mà worktree có tiến độ, được làm tiếp KHÔNG tính
     # retry. Cùng lý do với `conflict_retries`: đo được 2026-09-24 (CAMPUS-UNI/TCK-011, TCK-015) hai trong ba retry
     # cháy vì hết lượt trong khi WIP vẫn được giữ — ticket blocked vì thiếu lượt, không vì làm sai.
+    # Cả hai bộ đếm này về 0 khi người mở lại ticket (audit `ticket.reopened`), cùng lúc `retry` về 0.
     turn_continuations: Counter[str] = field(default_factory=Counter,
                                              metadata=_src("audit:ticket.continued"))
     # spec chưa có threat model vì agent `security` lỗi

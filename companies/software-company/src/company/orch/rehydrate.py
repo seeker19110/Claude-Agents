@@ -133,6 +133,8 @@ def rehydrate(o: Orchestrator) -> None:
                 o.conflict_retries[str(d["ticket_id"])] += 1
             elif a["action"] == "ticket.continued":
                 o.turn_continuations[str(d["ticket_id"])] += 1
+            elif a["action"] == "ticket.reopened":  # người mở lại: đếm lại từ 0 như `retry` (`DeliveryLead.reopen`)
+                o.turn_continuations.pop(str(d["ticket_id"]), None); o.conflict_retries.pop(str(d["ticket_id"]), None)
             elif a["action"] == "release.finding_waived":
                 o.lead.release_waived[str(d["release_id"])].add(str(d["source"]))
             elif a["action"] == "debt.escalated": o.debt_gate[str(d["project_id"])] = d
