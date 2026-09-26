@@ -3,6 +3,7 @@
 Ngày: 2026-09-23 · Trạng thái: được chấp nhận · Nối tiếp: ADR-0011 §4 giai đoạn 3 (`docs/thi-hanh/adr113.md`,
 cơ chế actor `"code"` + `RISK_RULES`), ADR-0029 (hồi quy trên staging do orchestrator chạy), ADR-0039/0041
 (deploy thật bằng compose/script), ADR-0017 (gate nghiệm thu).
+Đề xuất sửa §1: ADR gốc 0024 (`docs/adr/0024-nguoi-duyet-gate-khong-phai-nguoi.md`, Proposed) — reviewer có chữ ký được mở lại ticket escalation; ADR này giữ nguyên hiệu lực tới khi 0024 được chấp nhận.
 
 ## Bối cảnh
 
