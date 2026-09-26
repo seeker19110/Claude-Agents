@@ -96,7 +96,9 @@ def test_unknown_field_is_not_an_authority_extension(bundle: dict, tmp_path: Pat
 
 @pytest.mark.parametrize("raw", [b'[]', b'null', b'bad', b'\xff', b'{"x":1,"x":2}', b'{"x":NaN}',
                                   b'{"x":Infinity}', b' ' * (1048576 + 1),
-                                  b'{"x":' + b'[' * 2000 + b'0' + b']' * 2000 + b'}'])
+                                  b'{"x":' + b'[' * 2000 + b'0' + b']' * 2000 + b'}'],
+                         ids=["array", "null", "invalid-json", "invalid-utf8", "duplicate-key", "nan",
+                              "infinity", "oversized", "deeply-nested"])
 def test_strict_bounded_json(raw: bytes, tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         bridge.prepare_handoff(raw, expected_sha256=hashlib.sha256(raw).hexdigest(),
