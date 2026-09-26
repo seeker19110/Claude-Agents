@@ -4,6 +4,13 @@ Theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/). Mỗi PR merge v�
 ngoặc, số PR ở cuối. Chi tiết và lý do nằm trong PR và ADR; ở đây chỉ trả lời "đã đổi gì, khi nào".
 Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là của sản phẩm khách, ADR-0027) — nhóm theo ngày.
 
+## Chưa phát hành — cầu nối template
+
+- feat(company): **cầu nối delivery hai chiều, offline và không cấp quyền**: xuất policy/schema từ native
+  DeliveryContract; kiểm bundle được pin độc lập, policy, toàn bộ AC và bytes spec trước khi trả contract.
+  Không đổi ApprovalLookup, receipt, journal, gate hay run đã đăng ký. Chi tiết và kết quả kiểm thử:
+  `docs/reports/2026-09-26-bidirectional-delivery-handoff.md`.
+
 ## Chưa phát hành
 
 - feat(company): **phiên chính quyết mọi gate trừ spec — phạm vi `rong` của reviewer có chữ ký** (#351). ADR gốc 0025 (Accepted, chủ dự án quyết 2026-09-26: *"phiên chính tự quyết định thay tôi làm hết mọi thứ, trừ duyệt spec ban đầu"*). `COMPANY_GATE_REVIEWER_SCOPE=rong`: reviewer `approve`/`reject` mọi gate — escalation (kể cả `REL-*`, nợ kiến trúc), release, acceptance — trừ `spec`, không trần; vẫn đường chữ ký Ed25519 của ADR gốc 0024, ký `reviewer:phien-chinh`, không bao giờ `human:*`. Nghiệm thu do reviewer duyệt đóng ticket như sàn ADR-0043 (`machine_acceptor`), khách ký khác `accepted` sau đó vẫn thắng. Bỏ biến = quay về S2, quyết định ngoài S2 thôi được tin khi replay. Test đỏ trước 8 ca + 1 ca vòng thật (ticket kẹt `released`); 7 đột biến đều bị giết.
