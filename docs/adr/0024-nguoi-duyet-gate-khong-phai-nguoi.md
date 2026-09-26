@@ -1,6 +1,6 @@
 # ADR gốc 0024: một phiên Claude độc lập được mở lại ticket bị chặn — actor riêng có chữ ký, không giả `human:*`
 
-Ngày: 2026-09-26 · Trạng thái: **được chấp nhận** 2026-09-26 (lựa chọn ở mục "Quyết định đã chốt"; code #PR) · Sửa: ADR-0043 (software-company) §1
+Ngày: 2026-09-26 · Trạng thái: **được chấp nhận** 2026-09-26 (lựa chọn ở mục "Quyết định đã chốt"; code #348) · Sửa: ADR-0043 (software-company) §1
 ("`escalation` KHÔNG tự duyệt") · Liên quan: ADR gốc 0023 (F1: actor trên bus là chuỗi tự khai), ADR gốc 0020 (chữ ký
 Ed25519 cho receipt)
 
