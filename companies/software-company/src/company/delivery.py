@@ -414,6 +414,14 @@ class DeliveryLead:
         self._set(tid, "changes_requested")
         self.tickets[tid] = self.tickets[tid].model_copy(update={"hint": hint}); self._publish_task(self.tickets[tid])
 
+    def continue_no_retry(self, tid: str, hint: str) -> None:
+        """Agent hết lượt tool giữa chừng nhưng đã để lại tiến độ trong worktree: phát lại task với hint mới, KHÔNG
+        tính retry — thiếu lượt không phải làm sai. Trần số lần do orchestrator giữ (`turn_continuations`)."""
+        if self.state.get(tid) not in {"dispatched", "in_progress"}:
+            raise ValueError(f"{tid}: làm tiếp chỉ từ dispatched/in_progress (đang {self.state.get(tid)})")
+        self.state[tid] = "changes_requested"
+        self.tickets[tid] = self.tickets[tid].model_copy(update={"hint": hint}); self._publish_task(self.tickets[tid])
+
     def blocked(self) -> list[str]:
         return [tid for tid, st in self.state.items() if st == "blocked"]
 

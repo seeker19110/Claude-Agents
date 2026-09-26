@@ -133,6 +133,7 @@ class Orchestrator:
         plans: dict[str, dict[str, Any]]
         integrated: set[str]
         conflict_retries: Counter[str]
+        turn_continuations: Counter[str]
         missing_threat_model: set[str]
         spec_runtime_reworks: Counter[str]
         plan_reworks: Counter[str]
@@ -434,6 +435,7 @@ class Orchestrator:
             res.actions.append(f"transient:{agent}:{str(e)[:120]}"); res.transient = True
             with self._lock: self.stats["transient"] += 1
         except (RunnerError, LLMError) as e:  # runner đã ghi audit; không retry lời gọi (ADR-0005)
+            if self._autoretry_once(env, agent, e, res): return  # trừ lỗi ép schema của CLI: thử lại một lần
             res.actions.append(f"error:{agent}:{str(e)[:120]}")
             with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(slot)
             self._after_error(env, agent, e, r, res)
@@ -446,6 +448,7 @@ class Orchestrator:
     # ---------- lỗi agent không nhánh nào nhận, quyết định gate (ADR-0034: orch/gates_flow.py) ----------
 
     _after_error = gates_flow._after_error
+    _autoretry_once = gates_flow._autoretry_once
     _mark_unhandled = gates_flow._mark_unhandled
     _rework_after_error = gates_flow._rework_after_error
     _stall = gates_flow._stall

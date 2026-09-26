@@ -46,6 +46,7 @@ ACTOR = "orchestrator"
 PAUSING = frozenset({"pause", "budget_cut", "escalate"})
 
 MAX_CONFLICT_RETRIES = 6  # xung đột merge thứ 7 liên tiếp cho một ticket mới tính vào retry nội dung (xem conflict_retries)
+MAX_TURN_CONTINUATIONS = 3  # lần builder hết lượt tool mà worktree có tiến độ được làm tiếp không tính retry (xem turn_continuations)
 # Chuỗi nghiên cứu chạy theo key=project, không có ticket/retry/blocked: một agent lỗi là cả dự án đứng mà không ai
 # thấy. Lỗi ở các topic này mở gate `escalation` cấp dự án (approve = chạy lại event, reject = đóng dự án).
 RESEARCH_TOPICS = frozenset({"research-requests", "research-findings", "requirements-draft", "clarification-answers"})
