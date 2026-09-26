@@ -189,7 +189,9 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
                         project_id=o.lead.tickets[tid].project_id if tid in o.lead.tickets else None)
             o.lead.mark_done_already_integrated(tid)
             res.actions.append(f"already_integrated:{tid}")
-        elif o.lead.state.get(tid) in {"blocked", "escalated"}:
+        elif o.lead.state.get(tid) in {"blocked", "escalated"}:  # hai trần "không tính retry" về 0 cùng `retry`
+            with o._lock: o.turn_continuations.pop(tid, None); o.conflict_retries.pop(tid, None)
+            o._audit("ticket.reopened", {"ticket_id": tid, "by": by}, ticket_id=tid)
             o.lead.reopen(tid, hint=reason or "người duyệt mở lại sau escalation")
         o.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=resume_actor(by),
                                   payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
