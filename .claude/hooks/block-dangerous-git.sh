@@ -65,12 +65,21 @@ chan() {
 nham_nhanh_chinh() { printf '%s' "$cmd_scan" | grep -Eq '(^|[[:space:]:])(main|master)([[:space:]]|$)'; }
 
 # --- 1 + 1b: mọi thứ ghi vào nhánh chính ---
-if la_git push && nham_nhanh_chinh; then
-  if co_co '--force|--force-with-lease|--force-with-lease=[^[:space:]]*|-f'; then
-    chan "force-push vào nhánh chính" "Luật cấm 1: không đẩy thẳng nhánh chính; force-push còn xoá lịch sử người khác."
+# Xét TỪNG ĐOẠN lệnh (tách ở `&&` `||` `;` `|`): `git push -u origin x && gh pr create --base main` có `main` ở lệnh
+# gh, không phải đích push — dò cả dòng thì chặn oan (đo được 2026-09-26). `cmd_scan` được gán lại theo đoạn nên
+# `la_git`/`nham_nhanh_chinh`/`co_co` bên dưới chỉ nhìn đúng đoạn đó.
+toan_bo="$cmd_scan"
+while IFS= read -r cmd_scan; do
+  if la_git push && nham_nhanh_chinh; then
+    if co_co '--force|--force-with-lease|--force-with-lease=[^[:space:]]*|-f'; then
+      chan "force-push vào nhánh chính" "Luật cấm 1: không đẩy thẳng nhánh chính; force-push còn xoá lịch sử người khác."
+    fi
+    chan "push thẳng vào nhánh chính" "Luật cấm 1 (AGENTS.md): mọi thay đổi đi nhánh → PR → CI xanh → squash merge."
   fi
-  chan "push thẳng vào nhánh chính" "Luật cấm 1 (AGENTS.md): mọi thay đổi đi nhánh → PR → CI xanh → squash merge."
-fi
+done <<EOF
+$(printf '%s\n' "$toan_bo" | sed 's/&&/\n/g; s/||/\n/g; s/[;|]/\n/g')
+EOF
+cmd_scan="$toan_bo"
 
 # --- 2: reset --hard ---
 if la_git reset && co_co '--hard'; then
